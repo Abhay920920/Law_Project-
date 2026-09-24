@@ -1,0 +1,145 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "HC Show Business\t API",
+        "version": "1.0.0",
+        "description": "API provides details of business transacted on a particular date based on CNR number and date for which business is needed. Business date is the date of court proceedings which may be available from the Case History."
+    },
+    "basePath": "/nic/ecourts/hc-show-business-api",
+    "paths": {
+        "/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "put": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "delete": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "head": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "patch": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            }
+        },
+        "/showBusiness": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "dept_id",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_str",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_token",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "version",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    }
+                ]
+            }
+        }
+    },
+    "securityDefinitions": {
+        "ouath_token": {
+            "type": "oauth2",
+            "flow": "application",
+            "tokenUrl": "//oauth2/token",
+            "scopes": {
+                "napix": "napix"
+            }
+        }
+    },
+    "security": [
+        {
+            "ouath_token": [
+                "napix"
+            ]
+        }
+    ],
+    "schemes": [
+        "https"
+    ],
+    "tags": [],
+    "host": "delhigw.napix.gov.in"
+}

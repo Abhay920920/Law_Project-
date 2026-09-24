@@ -1,0 +1,104 @@
+@model IEnumerable<MVCCaseManagement.Models.LabourCase>
+
+@{
+    ViewData["Title"] = "Review Petition Filing";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid fade-in py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="bi bi-file-earmark-diff text-primary me-2"></i>Review Petition Filing
+            </h1>
+            <p class="text-muted small mb-0">Official Management of Review Petitions filed before High Court / Appellate Courts</p>
+        </div>
+        <div>
+            <a href="@Url.Action("ManageReviewPetition", "Labour")" class="btn btn-primary rounded-pill shadow-sm px-4 fw-semibold">
+                <i class="bi bi-plus-lg me-2"></i>Register New Review Petition
+            </a>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4" style="width: 20%; min-width: 150px;">RP Number</th>
+                            <th style="width: 20%; min-width: 150px;">Review Petitioner</th>
+                            <th style="width: 15%; min-width: 150px;">Court</th>
+                            <th style="width: 15%; min-width: 120px;">Bench</th>
+                            <th style="width: 15%; min-width: 150px;">Advocate</th>
+                            <th style="width: 10%; min-width: 100px;">Status</th>
+                            <th class="text-end pe-4" style="width: 5%; min-width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var item in Model)
+                            {
+                                var displayCaseNo = !string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) ? item.CO_Claimant_CaseNumber : (!string.IsNullOrEmpty(item.CaseNumber) ? item.CaseNumber : "-");
+                                var displayCaseYr = item.CO_Claimant_CaseYear.HasValue && item.CO_Claimant_CaseYear > 0 ? item.CO_Claimant_CaseYear.Value.ToString() : (item.CaseYear > 0 ? item.CaseYear.ToString() : "-");
+                                var displayCourt = !string.IsNullOrEmpty(item.CO_Claimant_Court) ? item.CO_Claimant_Court : (!string.IsNullOrEmpty(item.CourtName) ? item.CourtName : "High Court");
+                                var displayBench = !string.IsNullOrEmpty(item.CO_Claimant_HighCourtBench) ? item.CO_Claimant_HighCourtBench : "-";
+                                var displayAdv = !string.IsNullOrEmpty(item.CO_Claimant_AdvocateName) ? item.CO_Claimant_AdvocateName : (!string.IsNullOrEmpty(item.AdvocateName) ? item.AdvocateName : "-");
+                                var displayStatus = !string.IsNullOrEmpty(item.CO_Claimant_CaseStatus) ? item.CO_Claimant_CaseStatus : (!string.IsNullOrEmpty(item.CaseStatus) ? item.CaseStatus : "Pending");
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="data-id font-monospace fw-bold text-primary">@displayCaseNo / @displayCaseYr</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-medium text-dark">@(string.IsNullOrEmpty(item.PetitionerName) ? "-" : item.PetitionerName)</div>
+                                    </td>
+                                    <td>
+                                        <div class="location-text text-muted">@displayCourt</div>
+                                    </td>
+                                    <td>
+                                        <div class="location-text text-muted">@displayBench</div>
+                                    </td>
+                                    <td>
+                                        <div class="small text-muted">@displayAdv</div>
+                                    </td>
+                                    <td>
+                                        @if (string.Equals(displayStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success-subtle text-success-emphasis">@displayStatus</span>
+                                        }
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3" title="View Details">
+                                                <i class="bi bi-eye-fill me-1"></i>View
+                                            </a>
+                                            <a href="@Url.Action("ManageReviewPetition", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-secondary rounded-circle" title="Edit">
+                                                <i class="bi bi-pencil-fill"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                                    No Review Petitions found.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

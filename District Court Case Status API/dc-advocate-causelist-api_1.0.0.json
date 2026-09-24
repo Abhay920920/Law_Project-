@@ -1,0 +1,149 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "version": "1.0.0",
+        "title": "DC Advocate Causelist API",
+        "description": "API provides cases listed on a particular date from a court establishment for a given Advocate Bar Registration Number. I nput for this API is Establishment Code, Advocate\u2019s Bar Registration Number, Cause List Date and other details . The Advocate may be petitioner\u2019s advocate or respondent\u2019s advocate or an extra party advocate."
+    },
+    "basePath": "/nic/ecourts/dc-advocate-causelist-api",
+    "paths": {
+        "/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "put": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "delete": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "head": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "patch": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            }
+        },
+        "/advocateCauselist": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "dept_id",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_str",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_token",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "version",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    }
+                ]
+            }
+        }
+    },
+    "securityDefinitions": {
+        "clientIdHeader": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-IBM-Client-Id"
+        },
+        "Oauth_token": {
+            "type": "oauth2",
+            "flow": "application",
+            "tokenUrl": "//oauth2/token",
+            "scopes": {
+                "napix": "napix"
+            }
+        }
+    },
+    "schemes": [
+        "https"
+    ],
+    "security": [
+        {
+            "Oauth_token": [
+                "napix"
+            ]
+        }
+    ],
+    "host": "delhigw.napix.gov.in"
+}

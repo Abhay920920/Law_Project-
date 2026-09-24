@@ -1,0 +1,2 @@
+-- NOTE: This file has been consolidated into the core SQL migrations directory:
+-- Location: Law Project/MVCCaseManagement/SQL/DB_Update_IsWorkman.sql

@@ -1,0 +1,133 @@
+@model IEnumerable<MVCCaseManagement.Models.OtherCourtsCase>
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    ViewData["Title"] = "O.S Case List";
+    var litigantType = ViewBag.LitigantType as string;
+    var activeCourt = ViewBag.ActiveCourt as string;
+}
+
+<div class="container-fluid pt-2 pb-4" style="max-width: 1600px;">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 col-xl-2 d-print-none">
+            @await Html.PartialAsync("_OtherCourtsSidebar")
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="col-lg-9 col-xl-10">
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
+                <div class="card-header bg-white py-3 border-bottom-0 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="fw-bold text-primary mb-0"><i class="bi bi-table me-2"></i>@activeCourt @litigantType Case List</h5>
+                        <p class="small text-muted mb-0">List of all registered cases for this module</p>
+                    </div>
+                    <a href="@Url.Action(litigantType == "Corporation" ? "OSCorporation" : "OSClaimant", "Home")" class="btn btn-primary btn-sm rounded-pill px-4">
+                        <i class="bi bi-plus-lg me-1"></i> Add New Case
+                    </a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 custom-list-table">
+                            <thead class="bg-light text-muted small text-uppercase fw-bold">
+                                <tr>
+                                    <th class="ps-4">Case Details</th>
+                                    <th>Petitioner/Claimant</th>
+                                    <th>Respondent</th>
+                                    <th>Status / Stage</th>
+                                    <th>Next Hearing</th>
+                                    <th class="text-end pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (!Model.Any())
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center py-5 text-muted">
+                                            <i class="bi bi-folder-x fs-1 d-block mb-2 opacity-25"></i>
+                                            No cases found for this category.
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    foreach (var item in Model)
+                                    {
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="fw-bold text-dark">@(string.IsNullOrEmpty(item.CaseNumber) ? "NOT FILED" : item.CaseNumber + "/" + item.CaseYear)</div>
+                                                <div class="xsmall text-muted">@item.Court</div>
+                                                <div class="badge bg-light text-primary border border-primary-subtle xsmall mt-1">@item.CaseNature</div>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold small text-dark">@(item.PetitionerName ?? item.LitigantType)</div>
+                                                @if (!string.IsNullOrEmpty(item.ClaimType))
+                                                {
+                                                    <div class="xsmall text-muted">@item.ClaimType</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold small text-dark">@item.RespondentName</div>
+                                                @if (item.Respondents != null && item.Respondents.Any())
+                                                {
+                                                    <div class="xsmall text-muted">+@(item.Respondents.Count) others</div>
+                                                }
+                                            </td>
+                                            <td>
+                                                <div class="badge @(item.DisposalStatus == "DISPOSED" || item.DisposalStatus == "DNP" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") px-3 rounded-pill xsmall border">
+                                                    @(item.DisposalStatus ?? "PENDING")
+                                                </div>
+                                                <div class="xsmall text-muted mt-1">@item.CaseStage</div>
+                                            </td>
+                                            <td>
+                                                @if (item.NextDateOfHearing.HasValue)
+                                                {
+                                                    <div class="fw-bold small">@item.NextDateOfHearing.Value.ToString("dd-MM-yyyy")</div>
+                                                    @if (item.NextDateOfHearing.Value.Date == DateTime.Today)
+                                                    {
+                                                        <span class="badge bg-danger xsmall blink">TODAY</span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="xsmall text-muted">-</span>
+                                                }
+                                            </td>
+                                            <td class="text-end pe-4">
+                                                <div class="btn-group shadow-sm rounded-pill overflow-hidden">
+                                                    <a href="@Url.Action("OtherCourtsCaseDetails", "Home", new { id = item.CaseID })" class="btn btn-sm btn-white text-primary border-end" title="View Details">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                    <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = item.CaseID })" class="btn btn-sm btn-white text-warning border-end" title="Edit Case">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </a>
+                                                    <button type="button" class="btn btn-sm btn-white text-danger" title="Delete">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .custom-list-table tr {
+        transition: all 0.2s ease;
+    }
+    .custom-list-table tbody tr:hover {
+        background-color: #f8fafc;
+        transform: scale(1.002);
+    }
+    .xsmall { font-size: 0.75rem; }
+    .btn-white { background: #fff; border: 1px solid #e2e8f0; }
+    .btn-white:hover { background: #f8fafc; }
+    .blink { animation: blinker 1s linear infinite; }
+    @@keyframes blinker { 50% { opacity: 0; } }
+</style>

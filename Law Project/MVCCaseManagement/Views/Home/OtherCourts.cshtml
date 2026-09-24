@@ -1,0 +1,44 @@
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    ViewData["Title"] = "Other Courts";
+}
+
+<div class="central-hub mx-auto" id="hubContent">
+    <div class="hub-icon-wrapper">
+        <i class="bi bi-bank2" id="hubIcon"></i>
+    </div>
+    <h2 id="hubTitle">O.S Workspace</h2>
+    <p id="hubDesc">You are currently in the Original Suit Cases (O.S) module. Prepare case files, manage hearings, and monitor progress securely from this workspace.</p>
+    
+    <!-- OS Specific Actions -->
+    <div id="osSelectionArea" class="mt-4 pt-4 border-top">
+        <h5 class="fw-bold text-dark mb-4">Please specify the litigant type to proceed:</h5>
+        <div class="d-flex gap-3 justify-content-center flex-wrap">
+            <a href="@Url.Action("OSClaimant", "Home")" class="btn btn-outline-primary btn-lg fw-bold selection-btn text-decoration-none">
+                <i class="bi bi-person-fill me-2"></i>Claimant
+            </a>
+            <a href="@Url.Action("OSCorporation", "Home")" class="btn btn-primary btn-lg fw-bold selection-btn text-white text-decoration-none">
+                <i class="bi bi-building me-2"></i>Corporation
+            </a>
+        </div>
+    </div>
+
+    <div class="action-indicator mt-4" id="defaultActionArea" style="display: none;">
+        <i class="bi bi-ui-checks-grid me-2"></i> Workspace Ready
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Parse query parameter on load to show correct content if landed directly for OS
+        $(document).ready(function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const activeCourtParam = urlParams.get('activeCourt');
+            
+            // If we are on OS hub, ensure visual consistency
+            if(!activeCourtParam || activeCourtParam === 'OS') {
+                // Hub is already showing correctly via server-side rendering
+            }
+        });
+    </script>
+}

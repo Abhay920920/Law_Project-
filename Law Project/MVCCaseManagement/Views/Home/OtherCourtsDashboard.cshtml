@@ -1,0 +1,186 @@
+@model MVCCaseManagement.Models.DashboardStatsViewModel
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    string courtName = ViewBag.ActiveCourt switch {
+        "PSC" => "P & SC",
+        "CC" => "Criminal Case",
+        "Consumer" => "Consumer Complaint",
+        "LAC" => "Land Acquisition",
+        "ECA" => "ECA",
+        _ => ViewBag.ActiveCourt
+    };
+    ViewData["Title"] = $"{courtName} Dashboard";
+}
+
+<div class="container-fluid pt-2 pb-4" style="max-width: 1600px;">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 col-xl-2 d-print-none">
+            @await Html.PartialAsync("_OtherCourtsSidebar")
+        </div>
+
+        <!-- Main Dashboard Area -->
+        <div class="col-lg-9 col-xl-10">
+            <!-- Header section -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h4 class="fw-bold text-primary mb-1"><i class="bi bi-speedometer2 me-2"></i>@courtName Dashboard</h4>
+                    <p class="text-muted small mb-0">Overview of active @courtName cases and upcoming hearings</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="@Url.Action((string)ViewBag.ActiveCourt + "Form", "Home")" class="btn btn-primary shadow-sm rounded-pill px-4">
+                        <i class="bi bi-plus-lg me-1"></i> New Registration
+                    </a>
+                </div>
+            </div>
+
+            <!-- Stat Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-3">
+                    <div class="stat-card card-bold-total p-3 border-0 shadow-sm rounded-4 h-100">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
+                                <i class="bi bi-folder2-open fs-4"></i>
+                            </div>
+                            <h6 class="mb-0 small fw-bold">Total Cases</h6>
+                        </div>
+                        <div class="d-flex align-items-baseline">
+                            <h3 class="fw-bold mb-0">@Model.TotalCases</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card card-bold-pending p-3 border-0 shadow-sm rounded-4 h-100">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
+                                <i class="bi bi-hourglass-split fs-4"></i>
+                            </div>
+                            <h6 class="mb-0 small fw-bold">Pending</h6>
+                        </div>
+                        <div class="d-flex align-items-baseline">
+                            <h3 class="fw-bold mb-0">@Model.PendingCases</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card card-bold-disposed p-3 border-0 shadow-sm rounded-4 h-100">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
+                                <i class="bi bi-check-all fs-4"></i>
+                            </div>
+                            <h6 class="mb-0 small fw-bold">Disposed</h6>
+                        </div>
+                        <div class="d-flex align-items-baseline">
+                            <h3 class="fw-bold mb-0">@Model.CloseCount</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card card-bold-hearings p-3 border-0 shadow-sm rounded-4 h-100">
+                        <div class="d-flex align-items-center mb-3">
+                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
+                                <i class="bi bi-calendar3 fs-4"></i>
+                            </div>
+                            <h6 class="mb-0 small fw-bold">Today's Hearings</h6>
+                        </div>
+                        <div class="d-flex align-items-baseline">
+                            <h3 class="fw-bold mb-0">@Model.HearingsToday</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden bg-white" style="border: 1px solid rgba(232, 219, 179, 0.4) !important;">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #3D45AA 0%, #2D3380 100%) !important;">
+                    <h6 class="fw-bold mb-0 text-white"><i class="bi bi-calendar-week me-2"></i>Upcoming Hearing Schedule</h6>
+                    <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = ViewBag.ActiveCourt, litigantType = "Claimant" })" class="btn btn-sm btn-white rounded-pill px-3 opacity-90">View All</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light bg-opacity-50">
+                                <tr>
+                                    <th class="ps-4">Case Details</th>
+                                    <th>Court</th>
+                                    <th>Current Stage</th>
+                                    <th>Hearing Date</th>
+                                    <th class="text-end pe-4">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.RecentCases != null && Model.RecentCases.Any())
+                                {
+                                    foreach (var caseItem in Model.RecentCases)
+                                    {
+                                        <tr>
+                                            <td class="ps-4">
+                                                <div class="fw-bold text-dark">@caseItem.MVCNo</div>
+                                                <div class="xsmall text-muted">Created: @caseItem.CreatedAt.ToString("dd MMM yyyy")</div>
+                                            </td>
+                                            <td>
+                                                <span class="small">@caseItem.MACTName</span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-soft-primary text-primary border rounded-pill px-3">@caseItem.DisposalResult</span>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold">@caseItem.NextHearingDate?.ToString("dd-MM-yyyy")</div>
+                                                @if (caseItem.NextHearingDate?.Date == DateTime.Today)
+                                                {
+                                                    <div class="xsmall text-danger fw-bold animate-pulse"><i class="bi bi-alarm-fill me-1"></i>TODAY</div>
+                                                }
+                                            </td>
+                                            <td class="text-end pe-4">
+                                                <a href="@Url.Action("EditOtherCourtsCase", "Home", new { id = caseItem.CaseID })" class="btn btn-icon btn-light rounded-circle shadow-sm">
+                                                    <i class="bi bi-pencil-square text-primary"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="5" class="text-center py-5">
+                                            <div class="text-muted">
+                                                <i class="bi bi-inbox fs-1 mb-3 d-block opacity-25"></i>
+                                                No upcoming hearings found for this module.
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .glass-card {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+    .stat-icon {
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .bg-soft-primary { background-color: #f0f4f8; }
+    .btn-white { background: white; border: 1px solid #e2e8f0; }
+    .btn-icon {
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .xsmall { font-size: 0.75rem; }
+</style>

@@ -1,0 +1,2 @@
+-- NOTE: This file has been consolidated into the core SQL migrations directory:
+-- Location: Law Project/MVCCaseManagement/SQL/57_Migration_Labour_CO_Fields.sql

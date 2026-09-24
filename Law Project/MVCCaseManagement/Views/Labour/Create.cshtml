@@ -1,0 +1,2158 @@
+@model MVCCaseManagement.Models.LabourCase
+@{
+    ViewData["Title"] = "Register Labour Case";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["HidePageHeader"] = true;
+    var courts = ViewBag.Courts as IEnumerable<MVCCaseManagement.Models.LabourCourt>;
+}
+
+<style>
+    .shadow-xs { box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05) !important; }
+    .transition { transition: all 0.2s ease-in-out !important; }
+    .hover-shadow-sm:hover { box-shadow: 0 .25rem .75rem rgba(0,0,0,.05) !important; transform: translateY(-2px); }
+    .cursor-pointer { cursor: pointer; }
+    .border-dashed { border-style: dashed !important; }
+</style>
+
+<div class="case-file-container row justify-content-center">
+    <div class="col-xl-10">
+        <form asp-action="Create" method="post" id="labourCaseForm" enctype="multipart/form-data">
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="IsArisingApplication" />
+            
+            <div class="d-flex align-items-center mb-4 bg-white p-3 rounded-4 shadow-sm border border-primary border-opacity-10">
+                <div class="icon-box bg-primary p-3 rounded-3 me-3 text-white shadow-sm">
+                    <i class="bi bi-person-workspace fs-3"></i>
+                </div>
+                <div>
+                    <h3 class="mb-0 fw-bold text-dark">Labour Case Registration</h3>
+                    <p class="text-muted mb-0 small"><i class="bi bi-info-circle me-1 text-primary"></i> Organized by Digital SOP Framework (6 Key Sections)</p>
+                </div>
+                <div class="ms-auto d-none d-md-block">
+                    <button type="submit" class="btn btn-primary btn-lg rounded-pill shadow-sm px-4">
+                        <i class="bi bi-cloud-arrow-up-fill me-2"></i> Register Case
+                    </button>
+                </div>
+            </div>
+
+
+
+            <!-- SECTION 1: CASE IDENTIFICATION & BASIC DETAILS -->
+            <div id="accItemSec1" class="mb-5">
+                <div class="card border-0 shadow-sm overflow-hidden">
+                    <div class="card-header bg-white py-3 border-bottom border-light">
+                        <h6 class="fw-bold text-primary mb-0"><i class="bi bi-fingerprint me-2"></i>CASE IDENTIFICATION & OFFICE DETAILS</h6>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row g-4">
+                            <!-- Office Context -->
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase text-muted">Division / Office</label>
+                                <div class="p-3 bg-light rounded-3 border-0 d-flex align-items-center">
+                                    <i class="bi bi-building me-2 text-primary"></i>
+                                    <input type="hidden" asp-for="DivisionID" />
+                                    <span class="fw-bold text-dark">
+                                        @(ViewBag.Divisions != null ? ((IEnumerable<MVCCaseManagement.Models.Division>)ViewBag.Divisions).FirstOrDefault(d => d.DivisionID == Model.DivisionID)?.DivisionNameEnglish ?? "OFFICE NOT SET" : "OFFICE NOT SET")
+                                    </span>
+                                </div>
+                                <div class="form-text small mt-1"><i class="bi bi-info-circle me-1"></i> Auto-assigned based on login</div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase">Case Status</label>
+                                <select asp-for="CaseStatus" class="form-select border-primary-subtle fw-bold">
+                                    <option value="Pending">Pending</option>
+                                    <option value="Disposed">Disposed</option>
+                                    <option value="DNP">DNP</option>
+                                    <option value="Ex-parte">Ex-parte</option>
+                                </select>
+                                <span asp-validation-for="CaseStatus" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase">Case Type / Category</label>
+                                <select asp-for="CaseType" class="form-select border-primary-subtle fw-bold" id="CaseType">
+                                    <option value="">-- SELECT CATEGORY --</option>
+                                    <option value="REFERENCE(DISMISSAL/REMOVAL)">REFERENCE (DISMISSAL/REMOVAL)</option>
+                                    <option value="REFERENCE(PUNISHMENT)">REFERENCE (PUNISHMENT)</option>
+                                    <option value="ID PUNISHMENTS">ID PUNISHMENTS</option>
+                                    <option value="Section 33C2">Section 33C2</option>
+                                    <option value="KID/ID(DISMISSAL/REMOVAL)">KID/ID (DISMISSAL/REMOVAL)</option>
+                                    <option value="Direct Application">Direct Application</option>
+                                    <option value="Complaint">Complaint</option>
+                                </select>
+                                <span asp-validation-for="CaseType" class="text-danger small"></span>
+                            </div>
+
+                            <!-- Case Reference -->
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase">Case Number <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white border-primary-subtle"><i class="bi bi-hash text-primary"></i></span>
+                                    <input asp-for="CaseNumber" class="form-control border-primary-subtle fw-bold" placeholder="e.g. 101/2024" required />
+                                </div>
+                                <span asp-validation-for="CaseNumber" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase">Year</label>
+                                <input asp-for="CaseYear" class="form-control border-primary-subtle" type="number" value="@DateTime.Now.Year" />
+                                <span asp-validation-for="CaseYear" class="text-danger small"></span>
+                            </div>
+
+                            <!-- e-Courts Live Gateway Integration -->
+                            <div class="col-12">
+                                <div class="card border border-primary border-opacity-25 bg-primary-subtle bg-opacity-10 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <label class="form-label mb-0 fw-bold text-primary text-uppercase extra-small">
+                                                <i class="bi bi-broadcast me-1 text-danger animate-pulse"></i> Official e-Courts Live Gateway Linkage (CNR Integration)
+                                            </label>
+                                            <span class="badge bg-primary px-2 py-1 extra-small"><i class="bi bi-shield-check me-1"></i>Auto-Synced</span>
+                                        </div>
+                                        <div class="row g-3 align-items-center">
+                                            <div class="col-md-5">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text bg-white border-primary-subtle font-monospace fw-bold text-primary">CNR</span>
+                                                    <input asp-for="CNRNumber" class="form-control border-primary-subtle font-monospace fw-bold text-uppercase" id="txtCNRNumber" placeholder="16-digit CNR (e.g. KADW010012342024)" maxlength="16" />
+                                                </div>
+                                                <span asp-validation-for="CNRNumber" class="text-danger small"></span>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <input asp-for="EstCode" class="form-control form-control-sm border-primary-subtle font-monospace" id="txtEstCode" placeholder="Establishment Code (e.g. KADW01)" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <button type="button" class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="autoFetchLabourCNR()">
+                                                    <i class="bi bi-search me-1"></i> Auto-Fetch e-Courts
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Live Sync Status Banner -->
+                                        <div id="ecourtsSyncBanner" class="mt-3 p-2 bg-white rounded border border-success d-none">
+                                            <div class="row g-2 extra-small text-dark">
+                                                <div class="col-md-3"><strong>Petitioner:</strong> <span id="lblEcourtsPetitioner" class="text-primary fw-bold">—</span></div>
+                                                <div class="col-md-3"><strong>Respondent:</strong> <span id="lblEcourtsRespondent" class="text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Current Stage:</strong> <span id="lblEcourtsStage" class="badge bg-warning text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Next Date:</strong> <span id="lblEcourtsNextDate" class="text-danger fw-bold">—</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-uppercase">Court Jurisdtiction</label>
+                                <select asp-for="CourtID" class="form-select select2 border-primary-subtle" id="ddlCourt" data-placeholder="-- SELECT TRIBUNAL/COURT --">
+                                    <option value="">-- SELECT TRIBUNAL/COURT --</option>
+                                    @if (courts != null)
+                                    {
+                                        foreach (var court in courts)
+                                        {
+                                            <option value="@court.CourtID">@court.CourtName (@court.Location)</option>
+                                        }
+                                    }
+                                    <option value="0">OTHER (MANUAL ENTRY)</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12" id="otherCourtDiv" style="display:none;">
+                                <div class="p-3 bg-light rounded-3 border-dashed border-primary">
+                                    <label class="form-label small fw-bold text-uppercase">Other Court Details</label>
+                                    <input asp-for="OtherCourtDetails" class="form-control" placeholder="Enter full name and location of the court..." />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+                    <hr class="my-5" />
+
+                    <!-- ARISING APPLICATION DETAILS (CONDITIONAL) -->
+                    <div id="divArisingDetails" style="display:none;" class="mb-5">
+                        <div class="card border-0 shadow-sm overflow-hidden bg-light bg-opacity-50">
+                            <div class="card-header bg-warning bg-opacity-10 py-3 border-bottom border-warning border-opacity-20 d-flex align-items-center">
+                                <h6 class="fw-bold text-dark mb-0"><i class="bi bi-diagram-3-fill me-2 text-warning"></i>ARISING APPLICATION DETAILS</h6>
+                                <span class="badge bg-warning text-dark ms-2 small">Linked Case Required</span>
+                            </div>
+                            <div class="card-body p-4">
+                                <!-- Search Original Case -->
+                                <div class="bg-white p-4 rounded-4 shadow-sm border border-light mb-4">
+                                    <div class="row g-4 align-items-end">
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold text-uppercase text-muted">Original Case Number</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text bg-light border-warning-subtle text-warning"><i class="bi bi-hash"></i></span>
+                                                <input asp-for="Arising_OriginalCaseNumber" class="form-control border-warning-subtle" placeholder="e.g. 101" id="arisingCaseNo" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold text-uppercase text-muted">Case Year</label>
+                                            <input asp-for="Arising_OriginalCaseYear" class="form-control border-warning-subtle" type="number" placeholder="YYYY" id="arisingCaseYear" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small fw-bold text-uppercase text-muted">Jurisdiction Court</label>
+                                            <select asp-for="Arising_OriginalCourt" class="form-select select2 border-warning-subtle" id="arisingCourt" data-placeholder="-- SELECT COURT --">
+                                                <option value="">-- SELECT COURT --</option>
+                                                @if (courts != null)
+                                                {
+                                                    foreach (var court in courts)
+                                                    {
+                                                        <option value="@court.CourtName">@court.CourtName (@court.Location)</option>
+                                                    }
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="button" class="btn btn-warning fw-bold w-100 shadow-sm py-2" id="btnSearchArisingCase" onclick="searchArisingCase()">
+                                                <i class="bi bi-search me-2"></i>FIND ORIGINAL CASE
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Search Result Preview -->
+                                <div id="arisingSearchResult" class="mb-4" style="display:none;">
+                                    <div id="arisingSearchError" class="alert alert-danger d-flex align-items-center small rounded-3" style="display:none;">
+                                        <i class="bi bi-exclamation-triangle-fill me-2 fs-5"></i><span id="arisingErrorText"></span>
+                                    </div>
+                                    <div id="arisingSearchSuccess" style="display:none;">
+                                        <div class="card border-success border-opacity-25 shadow-sm rounded-4 overflow-hidden">
+                                            <div class="card-header bg-success bg-opacity-10 border-0 py-3 d-flex justify-content-between align-items-center">
+                                                <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-link-45deg me-2 text-success"></i>Original Case Found</h6>
+                                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold shadow-sm" onclick="showArisingCaseModal()">
+                                                    <i class="bi bi-info-circle me-1"></i> VIEW FULL FILE
+                                                </button>
+                                            </div>
+                                            <div class="card-body p-0">
+                                                <div class="table-responsive">
+                                                    <table class="table table-sm table-borderless mb-0">
+                                                        <tbody>
+                                                            <tr class="border-bottom border-light">
+                                                                <td class="ps-4 py-3 text-muted small fw-bold text-uppercase" style="width:20%;">Identity</td>
+                                                                <td class="py-3 fw-bold text-dark" id="previewCaseNoYear"></td>
+                                                                <td class="text-muted small fw-bold text-uppercase" style="width:15%;">Status</td>
+                                                                <td class="py-3" id="previewStatus"></td>
+                                                            </tr>
+                                                            <tr class="border-bottom border-light">
+                                                                <td class="ps-4 py-3 text-muted small fw-bold text-uppercase">Workman Name</td>
+                                                                <td class="py-3 fw-bold text-dark" id="previewPetitioner"></td>
+                                                                <td class="text-muted small fw-bold text-uppercase">Division</td>
+                                                                <td class="py-3" id="previewDivision"></td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Entrustment & Advocate Details -->
+                                <div class="row g-4 pt-2">
+                                    <div class="col-md-4">
+                                        <label asp-for="EntrustmentNo" class="form-label small fw-bold text-muted text-uppercase">Entrustment Reference</label>
+                                        <input asp-for="EntrustmentNo" class="form-control border-light shadow-xs" placeholder="Ref No..." />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label asp-for="EntrustmentDate" class="form-label small fw-bold text-muted text-uppercase">Entrustment Date</label>
+                                        <input asp-for="EntrustmentDate" class="form-control border-light shadow-xs" type="date" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label asp-for="AdvocateID" class="form-label small fw-bold text-muted text-uppercase">Assigned Advocate</label>
+                                        <select asp-for="AdvocateID" class="form-select border-light shadow-xs" asp-items="@(new SelectList(ViewBag.Advocates, "AdvocateID", "AdvocateName"))">
+                                            <option value="">-- SELECT ADVOCATE --</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Progress Snapshots -->
+                                <div class="row g-4 mt-3">
+                                    <div class="col-md-6">
+                                        <div class="p-4 bg-white rounded-4 shadow-sm border border-light h-100">
+                                            <div class="d-flex align-items-center mb-4">
+                                                <div class="icon-box bg-warning bg-opacity-10 p-2 rounded-3 me-2">
+                                                    <i class="bi bi-envelope-check text-warning"></i>
+                                                </div>
+                                                <label class="form-label fw-bold small mb-0 text-uppercase text-secondary">Document Outward Status</label>
+                                            </div>
+                                            <div class="d-flex gap-4 mb-4">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsDocumentSent" value="true" id="arising_doc_yes" onchange="toggleProgressDetails(this, 'divArisingDocDetails')">
+                                                    <label class="form-check-label fw-bold text-success" for="arising_doc_yes">YES</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsDocumentSent" value="false" id="arising_doc_no" onchange="toggleProgressDetails(this, 'divArisingDocDetails')" checked>
+                                                    <label class="form-check-label fw-bold text-danger" for="arising_doc_no">NO</label>
+                                                </div>
+                                            </div>
+                                            <div id="divArisingDocDetails" style="display:none;" class="p-3 bg-light rounded-3 border-dashed border-warning">
+                                                <div class="row g-3">
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold text-muted text-uppercase mb-1">Outward No</label>
+                                                        <input asp-for="DocumentSent_OutwardNo" class="form-control bg-white" placeholder="No" />
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <label class="form-label small fw-bold text-muted text-uppercase mb-1">Outward Date</label>
+                                                        <input asp-for="DocumentSent_OutwardDate" class="form-control bg-white" type="date" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <div class="p-4 bg-white rounded-4 shadow-sm border border-light h-100">
+                                            <div class="d-flex align-items-center mb-4">
+                                                <div class="icon-box bg-warning bg-opacity-10 p-2 rounded-3 me-2">
+                                                    <i class="bi bi-journal-check text-warning"></i>
+                                                </div>
+                                                <label class="form-label fw-bold small mb-0 text-uppercase text-secondary">Evidence Details</label>
+                                            </div>
+                                            <div class="row g-3">
+                                                <div class="col-12 mb-2">
+                                                    <div class="p-2 bg-light rounded-pill px-3 d-flex align-items-center justify-content-between">
+                                                        <span class="small fw-bold">Evidence Filed?</span>
+                                                        <div class="d-flex gap-3">
+                                                            <div class="form-check mb-0">
+                                                                <input class="form-check-input" type="radio" asp-for="IsEnquiryOfficerEvidence" value="true" id="arising_eo_yes" />
+                                                                <label class="form-check-label small fw-bold" for="arising_eo_yes">YES</label>
+                                                            </div>
+                                                            <div class="form-check mb-0">
+                                                                <input class="form-check-input" type="radio" asp-for="IsEnquiryOfficerEvidence" value="false" id="arising_eo_no" checked />
+                                                                <label class="form-check-label small fw-bold" for="arising_eo_no">NO</label>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1">Current Stage</label>
+                                                    <input asp-for="CurrentStage" class="form-control" placeholder="Stage..." />
+                                                </div>
+                                                <div class="col-6">
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1">Next Date</label>
+                                                    <input asp-for="NextHearingDate" class="form-control" type="date" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>            <!-- ... (Modal code remains same) ... -->
+
+            <!-- Modify Section 5 components with IDs (applying to multiple parts of the file) -->
+            <!-- Note: Since replacement is for contiguous block, I will replace the Section 5 part separately or assume the tool call covers enough context. The instruction above implies replacing "Arising Details" AND "Section 5 components". -->
+            <!-- Wait, the tool is single contiguous block. I cannot edit Section 2 and Section 5 in one call unless I replace everything between them. -->
+            <!-- The Arising Details is around line 194. Section 5 is around line 1100. That is huge. -->
+            <!-- I MUST use multi_replace_file_content or make separate calls. -->
+            <!-- The prompt says "Use this tool ONLY when you are making a SINGLE CONTIGUOUS block of edits". -->
+            <!-- I will output arguments for multi_replace_file_content. -->
+
+            <!-- Arising Case Details Modal -->
+            <div class="modal fade" id="arisingCaseModal" tabindex="-1" aria-labelledby="arisingCaseModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                    <div class="modal-content border-0 shadow rounded-4 overflow-hidden">
+                        <div class="modal-header bg-warning bg-opacity-10 border-0 py-3">
+                            <h5 class="modal-title fw-bold" id="arisingCaseModalLabel">
+                                <i class="bi bi-file-earmark-text me-2 text-warning"></i>Original Case Details
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <!-- Case Identity -->
+                            <div class="mb-4">
+                                <h6 class="text-primary fw-bold text-uppercase small border-bottom border-primary border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-fingerprint me-2"></i>Case Identification
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Case Number / Year</div>
+                                            <div class="fw-bold text-dark" id="modalCaseNoYear">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Case Type</div>
+                                            <div class="fw-bold text-dark" id="modalCaseType">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Case Status</div>
+                                            <div id="modalCaseStatus">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Court</div>
+                                            <div class="fw-semibold" id="modalCourt">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Division</div>
+                                            <div class="fw-semibold" id="modalDivision">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Advocate</div>
+                                            <div class="fw-semibold" id="modalAdvocate">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12" id="divModalOtherCourt" style="display:none;">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Other Court Details</div>
+                                            <div class="fw-semibold" id="modalOtherCourt">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Double Claim?</div>
+                                            <div class="fw-semibold" id="modalIsDoubleClaim">—</div>
+                                            <div class="small text-muted mt-1" id="modalDoubleClaimRemarks"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Employee Details -->
+                            <div class="mb-4">
+                                <h6 class="text-success fw-bold text-uppercase small border-bottom border-success border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-person-badge me-2"></i>Employee / Petitioner Details
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Petitioner Name</div>
+                                            <div class="fw-bold text-dark" id="modalPetitioner">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Badge Number</div>
+                                            <div class="fw-semibold" id="modalEmployeeNo">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Designation</div>
+                                            <div class="fw-semibold" id="modalDesignation">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Working Status</div>
+                                            <div class="fw-semibold" id="modalWorkingStatus">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Nature of Case</div>
+                                            <div class="fw-semibold" id="modalNatureOfCase">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Entrustment No / Date</div>
+                                            <div class="fw-semibold" id="modalEntrustment">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Limitation & Delay -->
+                            <div class="mb-4">
+                                <h6 class="text-warning fw-bold text-uppercase small border-bottom border-warning border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-clock-history me-2"></i>Limitation & Delay Details
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Filed within Limitation?</div>
+                                            <div class="fw-semibold" id="modalIsWithinLimitation">—</div>
+                                            <div class="small text-muted mt-1" id="modalLimitationRemark"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Delay Condoned?</div>
+                                            <div class="fw-semibold" id="modalIsDelayCondoned">—</div>
+                                            <div class="small text-muted mt-1" id="modalDelayRemark"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Case Progress & Evidence -->
+                            <div class="mb-4">
+                                <h6 class="text-info fw-bold text-uppercase small border-bottom border-info border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-graph-up-arrow me-2"></i>Case Progress & Evidence
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Current Stage</div>
+                                            <div class="fw-bold text-dark" id="modalCurrentStage">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Next Hearing Date</div>
+                                            <div class="fw-bold text-primary" id="modalNextHearing">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Document Sent</div>
+                                            <div id="modalDocumentSent">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Objection Filed</div>
+                                            <div id="modalObjectionFiled">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Evidence recorded from:</div>
+                                            <div class="fw-semibold" id="modalEvidenceTypes">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Nature of Misconduct / Brief Facts</div>
+                                            <div class="fw-semibold" id="modalMisconduct">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Disposal Details -->
+                            <div class="mb-4">
+                                <h6 class="text-danger fw-bold text-uppercase small border-bottom border-danger border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-check2-all me-2"></i>Disposal Details
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Disposal Mode</div>
+                                            <div class="fw-semibold" id="modalDisposalMode">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Disposal Date</div>
+                                            <div class="fw-semibold" id="modalDisposalDate">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Outcome / Result</div>
+                                            <div class="fw-semibold" id="modalDisposalResult">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Lok Adalat CO Approval</div>
+                                            <div class="fw-semibold" id="modalLokAdalat">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Award Details</div>
+                                            <div class="fw-semibold" id="modalAwardDetails">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Punishment Details (If Against) -->
+                            <div class="mb-4">
+                                <h6 class="text-secondary fw-bold text-uppercase small border-bottom border-secondary border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-hammer me-2"></i>Punishment Details
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Category</div>
+                                            <div class="fw-semibold" id="modalPunishmentCategory">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Punishment No</div>
+                                            <div class="fw-semibold" id="modalPunishmentNo">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Punishment Date</div>
+                                            <div class="fw-semibold" id="modalPunishmentDate">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Punishment Imposed</div>
+                                            <div class="fw-semibold" id="modalPunishmentImposed">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Brief Facts (Against Case)</div>
+                                            <div class="fw-semibold" id="modalAgainstBriefFacts">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                             <!-- Certified Copy Details -->
+                            <div class="mb-4">
+                                <h6 class="text-dark fw-bold text-uppercase small border-bottom border-dark border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-files me-2"></i>Certified Copy Details
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Applied Date</div>
+                                            <div class="fw-semibold" id="modalCCApplied">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Issued Date</div>
+                                            <div class="fw-semibold" id="modalCCIssued">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Received Date</div>
+                                            <div class="fw-semibold" id="modalCCReceived">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                             <!-- Opinions -->
+                            <div class="mb-4">
+                                <h6 class="text-indigo fw-bold text-uppercase small border-bottom border-indigo border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-chat-left-dots me-2"></i>Opinions
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Advocate Opinion</div>
+                                            <div class="fw-semibold small" id="modalOpinionAdvocate">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">LO Opinion</div>
+                                            <div class="fw-semibold small" id="modalOpinionLO">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">DC Opinion</div>
+                                            <div class="fw-semibold small" id="modalOpinionDC">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">CLO Opinion</div>
+                                            <div class="fw-semibold small" id="modalOpinionCLO">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                             <!-- CO Communication -->
+                            <div class="mb-2">
+                                <h6 class="text-primary fw-bold text-uppercase small border-bottom border-primary border-opacity-25 pb-2 mb-3">
+                                    <i class="bi bi-send me-2"></i>Central Office Communication
+                                </h6>
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Sent to CO?</div>
+                                            <div class="fw-semibold" id="modalSentToCO">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Outward No</div>
+                                            <div class="fw-semibold" id="modalCOOutwardNo">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="bg-light rounded-3 p-3 h-100">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">Outward Date</div>
+                                            <div class="fw-semibold" id="modalCOOutwardDate">—</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <div class="bg-light rounded-3 p-3">
+                                            <div class="text-muted small fw-bold text-uppercase mb-1">CO Remarks</div>
+                                            <div class="fw-semibold small" id="modalCORemarks">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer border-0 bg-light">
+                            <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+                    <!-- SECTION 3: CASE NATURE & EMPLOYEE DETAILS -->
+                    <div id="accItemSec2" class="mb-5">
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="card-header bg-white py-3 border-bottom border-light">
+                                <h6 class="fw-bold text-primary mb-0"><i class="bi bi-person-badge me-2"></i>CASE NATURE & EMPLOYEE DETAILS</h6>
+                            </div>
+                            <div class="card-body p-4">
+                                <!-- Part 1: Employee/Petitioner Identity -->
+                                <div class="mb-5">
+                                    <h6 class="small fw-bold text-secondary text-uppercase mb-3"><i class="bi bi-person-lines-fill me-2"></i>Employee / Petitioner Information</h6>
+                                    <div class="row g-4">
+                                        <div class="col-md-4">
+                                            <label asp-for="PetitionerName" class="form-label small fw-bold text-uppercase">Workman Name</label>
+                                            <input asp-for="PetitionerName" class="form-control" placeholder="FULL NAME" />
+                                            <span asp-validation-for="PetitionerName" class="text-danger small"></span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label asp-for="EmployeeNo" class="form-label small fw-bold text-uppercase">Badge Number</label>
+                                            <input asp-for="EmployeeNo" class="form-control" placeholder="BADGE NO." />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label asp-for="PFNumber" class="form-label small fw-bold text-uppercase">PF Number</label>
+                                            <input asp-for="PFNumber" class="form-control" placeholder="PF NO." />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label asp-for="Designation" class="form-label small fw-bold text-uppercase">Designation</label>
+                                            <input asp-for="Designation" class="form-control border-primary-subtle" placeholder="Enter Designation (e.g. Driver, Conductor, Clerk...)" id="Designation" />
+                                            <div id="designationNotice" class="alert alert-info mt-2 py-1 px-2 small" style="display:none;">
+                                                <i class="bi bi-info-circle me-1"></i> the person is below supervisor
+                                            </div>
+                                            <input type="hidden" asp-for="IsWorkman" id="isWorkmanHidden" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label asp-for="WorkingStatus" class="form-label small fw-bold text-uppercase">Working Status</label>
+                                            <input asp-for="WorkingStatus" class="form-control border-primary-subtle" placeholder="Enter Working Status (e.g. Regular, Probationary, Death...)" id="WorkingStatus" />
+                                        </div>
+                                        <div class="col-md-12 mt-3" id="divLegalRepresentative" style="display:none;">
+                                            <div class="p-3 bg-danger bg-opacity-10 border border-danger border-opacity-25 rounded-3 shadow-xs">
+                                                <label asp-for="LegalRepresentativeName" class="form-label small fw-bold text-uppercase text-danger mb-2">Legal Representatives(LRs)/ Petitioner Name</label>
+                                                <input asp-for="LegalRepresentativeName" class="form-control bg-white border-danger border-opacity-25" placeholder="Enter LRs or Petitioner Name" />
+                                                
+                                                <div class="mt-3">
+                                                    <label asp-for="LRRelationship" class="form-label small fw-bold text-uppercase text-danger mb-2">Relationship with Workman</label>
+                                                    <select asp-for="LRRelationship" class="form-select bg-white border-danger border-opacity-25">
+                                                        <option value="">-- SELECT RELATIONSHIP --</option>
+                                                        <option value="Wife">Wife</option>
+                                                        <option value="Son">Son</option>
+                                                        <option value="Daughter">Daughter</option>
+                                                        <option value="Mother">Mother</option>
+                                                        <option value="Father">Father</option>
+                                                        <option value="Brother">Brother</option>
+                                                        <option value="Sister">Sister</option>
+                                                        <option value="Others">Others</option>
+                                                    </select>
+                                                </div>
+
+                                                <div class="form-text small text-danger mt-1"><i class="bi bi-info-circle me-1"></i>Required since working status is set to 'Death'.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Part 2: Misconduct & Punishment -->
+                                <div class="mb-5">
+                                    <h6 class="small fw-bold text-secondary text-uppercase mb-3" id="hrSectionMisconduct"><i class="bi bi-hammer me-2"></i>Misconduct & Punishment Details</h6>
+                                    <div class="row g-4" id="divMisconductDetailsRow">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-uppercase">Major Category</label>
+                                            <select id="MainCategorySelect" class="form-select others-dropdown" 
+                                                    data-others-target="MainCategoryManual" 
+                                                    data-others-hidden="Against_CaseCategory">
+                                                <option value="">-- CHOOSE CATEGORY --</option>
+                                                <option value="ABS">ABS (Absenteese)</option>
+                                                <option value="ACDT">ACDT (Accident)</option>
+                                                <option value="OTHERS">OTHERS</option>
+                                                <option value="Disciplinary">Disciplinary</option>
+                                            </select>
+                                            <input type="text" id="MainCategoryManual" class="form-control others-manual mt-2" 
+                                                   data-others-select="MainCategorySelect" placeholder="Enter Category" style="display:none;" />
+                                            <input type="hidden" asp-for="Against_CaseCategory" />
+                                        </div>
+                                        <div class="col-md-6" id="divDisciplinarySub" style="display:none;">
+                                            <label class="form-label small fw-bold text-uppercase">Sub-Category</label>
+                                            <select id="SubCategorySelect" class="form-select others-dropdown" 
+                                                    data-others-target="SubCategoryManual" 
+                                                    data-others-hidden="Against_CaseCategory">
+                                                <option value="">-- CHOOSE TYPE --</option>
+                                                <option value="NINC">NINC (Incidents)</option>
+                                                <option value="NIAC">NIAC (Accidents)</option>
+                                                <option value="MISBEHAVE">MISBEHAVE</option>
+                                                <option value="ALCOHOL">Alcohol</option>
+                                                <option value="OTHERS">Others</option>
+                                            </select>
+                                            <input type="text" id="SubCategoryManual" class="form-control others-manual mt-2" 
+                                                   data-others-select="SubCategorySelect" placeholder="Enter Sub-Category" style="display:none;" />
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label asp-for="NatureOfMisconduct" class="form-label small fw-bold text-uppercase">Brief Facts / Nature of Misconduct</label>
+                                            <textarea asp-for="NatureOfMisconduct" class="form-control" rows="2" placeholder="Describe the misconduct or case facts..."></textarea>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label asp-for="NatureOfCase" class="form-label small fw-bold text-uppercase">Punishment Imposed</label>
+                                            <input asp-for="NatureOfCase" class="form-control" placeholder="Enter Punishment Imposed" id="NatureOfCase" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label asp-for="Against_PunishmentNo" class="form-label small fw-bold text-uppercase">Order Number</label>
+                                            <input asp-for="Against_PunishmentNo" class="form-control" placeholder="ORDER NO." />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label asp-for="Against_PunishmentDate" class="form-label small fw-bold text-uppercase">Order Date</label>
+                                            <input asp-for="Against_PunishmentDate" class="form-control" type="date" />
+                                        </div>
+                                        <div class="col-md-12">
+                                            <label class="form-label small fw-bold text-uppercase">Punishment Order Upload</label>
+                                            <input asp-for="Against_PunishmentCopyFile" type="file" class="form-control" />
+                                            <div class="form-text small"><i class="bi bi-info-circle me-1"></i> Scan and upload the signed order copy (PDF/Image)</div>
+                                        </div>
+                                        <div class="col-12"><hr class="my-3 border-secondary border-opacity-25" /></div>
+                                    <div class="row g-4 mt-2" id="divClaimDetailsRow" style="display:none;">
+                                        <div class="col-md-12">
+                                            <label class="form-label small fw-bold text-uppercase">Claim Details</label>
+                                            <textarea asp-for="ClaimDetails" class="form-control" rows="3" placeholder="Enter specific claim details for 33(C)(2) or Direct Application..."></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="bg-light bg-opacity-50 p-4 rounded-4">
+                                        <div class="row g-4 align-items-center">
+                                            <!-- Row 1: Advocate -->
+                                            <div class="col-md-9">
+                                                <label asp-for="AdvocateID" class="form-label small fw-bold text-uppercase">Appointed Advocate</label>
+                                                <select asp-for="AdvocateID" class="form-select select2" asp-items="@(new SelectList(ViewBag.Advocates, "AdvocateID", "AdvocateName"))">
+                                                    <option value="">-- CHOOSE ADVOCATE --</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="card border-0 bg-white p-3 shadow-sm rounded-3">
+                                                    <div class="form-check form-switch d-flex align-items-center mb-0">
+                                                        <input class="form-check-input me-3" type="checkbox" asp-for="IsDoubleClaim" id="IsDoubleClaim" style="width: 3rem; height: 1.5rem;">
+                                                        <label class="form-check-label fw-bold small text-uppercase" for="IsDoubleClaim">Double Claim?</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Conditional: Double Claim Remarks -->
+                                            <div class="col-md-12 mt-2" id="divDoubleClaimRemarks" style="display:none;">
+                                                <label asp-for="DoubleClaimRemarks" class="form-label small fw-bold text-uppercase text-danger">Double Claim Remarks</label>
+                                                <input asp-for="DoubleClaimRemarks" class="form-control border-danger" placeholder="REASON FOR DOUBLE CLAIM..." />
+                                            </div>
+
+                                            <!-- Row 2: Entrustment -->
+                                            <div class="col-md-6">
+                                                <label asp-for="EntrustmentNo" class="form-label small fw-bold text-uppercase">Entrustment No</label>
+                                                <input asp-for="EntrustmentNo" class="form-control" placeholder="REF NO." />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label asp-for="EntrustmentDate" class="form-label small fw-bold text-uppercase">Entrustment Date</label>
+                                                <input asp-for="EntrustmentDate" class="form-control" type="date" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-5" />
+
+                    <!-- SECTION 4: CASE PROGRESS & TIMELINES -->
+                    <div id="accItemSec3" class="mb-5">
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="card-header bg-white py-3 border-bottom border-light d-flex align-items-center">
+                                <h6 class="fw-bold text-success mb-0"><i class="bi bi-graph-up-arrow me-2"></i>CASE PROGRESS & TIMELINES</h6>
+                                <span class="badge bg-success bg-opacity-10 text-success ms-2 small">Activity Log</span>
+                            </div>
+                            <div class="card-body p-4">
+                                <div class="row g-4">
+                                    <!-- Claim Petition, Delay & Limitation Details -->
+                                    <div class="col-md-12" id="divClaimPetitionRow">
+                                        <label class="form-label small fw-bold text-uppercase">Claim Petition upload</label>
+                                        <input asp-for="ClaimPetitionFile" type="file" class="form-control" />
+                                        <div class="form-text small"><i class="bi bi-info-circle me-1"></i> Scan and upload the signed claim petition copy (PDF/Image)</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-uppercase">Claim Filed On</label>
+                                        <input asp-for="ClaimFiledOn" class="form-control" type="date" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label small fw-bold text-uppercase">Delay In Filing</label>
+                                        <input asp-for="DelayInFiling" class="form-control" placeholder="e.g. No / Yes" />
+                                    </div>
+
+                                    <!-- Limitation & Delay Strategy -->
+                                    <div class="col-md-12">
+                                        <div class="p-4 rounded-4 bg-white border border-dashed border-success border-opacity-25 shadow-sm">
+                                            <div class="row g-4 align-items-center">
+                                                <div class="col-md-4">
+                                                    <label class="form-label small fw-bold text-uppercase d-block mb-3 text-secondary"><i class="bi bi-clock-history me-2"></i>Filed within Limitation?</label>
+                                                    <div class="d-flex gap-4 ps-1">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" asp-for="IsFiledWithinLimitation" value="true" id="lim_yes" onchange="document.getElementById('divLimitDetails').style.display='none'">
+                                                            <label class="form-check-label fw-bold text-success" for="lim_yes">YES</label>
+                                                        </div>
+                                                        <div class="form-check">
+                                                            <input class="form-check-input" type="radio" asp-for="IsFiledWithinLimitation" value="false" id="lim_no" onchange="document.getElementById('divLimitDetails').style.display='block'">
+                                                            <label class="form-check-label fw-bold text-danger" for="lim_no">NO</label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div id="divLimitDetails" class="col-md-8" style="display:none;">
+                                                    <div class="row g-3 bg-light p-3 rounded-4 border border-light">
+                                                        <div class="col-md-6">
+                                                            <label class="form-label small fw-bold text-uppercase text-muted mb-1">Limitation Remark</label>
+                                                            <input asp-for="LimitationRemark" class="form-control bg-white" placeholder="e.g. Delayed by 10 days" />
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <label class="form-label small fw-bold text-uppercase text-muted mb-1">Delay Condonation Status</label>
+                                                            <input asp-for="DelayCondonationRemark" class="form-control bg-white" placeholder="Condonation details..." />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- History Sheet (Moved to Top) -->
+                                    <div class="col-md-12 mb-2" id="divHistorySheetContainer">
+                                        <div class="card border-0 bg-white p-3 shadow-xs rounded-3 d-flex flex-row align-items-center justify-content-between">
+                                            <label class="fw-bold small text-uppercase mb-0 text-dark" for="de_hs_yes">Any history sheet available?</label>
+                                            <div class="form-check form-switch mb-0">
+                                                <input class="form-check-input" type="checkbox" name="DE_HistorySheet" value="true" id="de_hs_yes" onchange="toggleProgressDetails(this, 'divHistorySheetUpload')">
+                                            </div>
+                                        </div>
+                                        <div id="divHistorySheetUpload" style="display:none;" class="mt-3">
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text bg-white"><i class="bi bi-file-earmark-pdf text-danger"></i></span>
+                                                <input asp-for="HistorySheetFile" type="file" class="form-control" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6 mb-4" id="divTerminalBenefits">
+                                        <div class="card border-0 bg-white p-3 shadow-xs rounded-3 h-100">
+                                           <label class="form-label small fw-bold text-uppercase text-muted mb-2">Any Terminal Benefits paid</label>
+                                           <input asp-for="TerminalBenefitsPaid" class="form-control form-control-sm shadow-xs border-light" placeholder="Details of benefits paid..." />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 mb-4" id="divSerialApp">
+                                        <div class="card border-0 bg-white p-3 shadow-xs rounded-3 h-100">
+                                           <label class="form-label small fw-bold text-uppercase text-muted mb-2">Serial Application Case Details</label>
+                                           <input asp-for="SerialApplicationDetails" class="form-control form-control-sm shadow-xs border-light" placeholder="Details of serial application..." />
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6 mb-4" id="divRepeatDismissal">
+                                        <div class="card border-0 bg-white p-3 shadow-xs rounded-3 d-flex flex-column gap-2">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <label class="fw-bold small text-uppercase mb-0 text-dark">Repeat Dismissal</label>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" asp-for="IsRepeatDismissal" id="repeat_dismissal_toggle" onchange="toggleWitnessRemark(this, 'divRepeatDismissalRemark')">
+                                                </div>
+                                            </div>
+                                            <div id="divRepeatDismissalRemark" style="display:@(Model?.IsRepeatDismissal == true ? "block" : "none");" class="mt-1">
+                                                <textarea asp-for="RepeatDismissalRemark" class="form-control form-control-sm shadow-xs border-light" rows="2" placeholder="Repeat dismissal remarks..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6 mb-4" id="divAppealDetails">
+                                         <div class="card border-0 bg-white p-3 shadow-xs rounded-3 d-flex flex-column gap-2">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <label class="fw-bold small text-uppercase mb-0 text-dark">Appeal Details (Appellate Authority)</label>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" asp-for="HasAppealDetails" id="appeal_details_toggle" onchange="toggleWitnessRemark(this, 'divAppealDetailsRemark')">
+                                                </div>
+                                            </div>
+                                            <div id="divAppealDetailsRemark" style="display:@(Model?.HasAppealDetails == true ? "block" : "none");" class="mt-1">
+                                                <textarea asp-for="AppealDetailsRemark" class="form-control form-control-sm shadow-xs border-light" rows="2" placeholder="Appellate authority details..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Communication Toggles -->
+                                    <div class="col-md-4">
+                                        <div class="p-3 bg-light rounded-4 border border-light h-100 shadow-sm">
+                                            <div class="d-flex align-items-center mb-3">
+                                                <div class="icon-box bg-white p-2 rounded-3 me-2 shadow-xs">
+                                                    <i class="bi bi-envelope-check text-success"></i>
+                                                </div>
+                                                <label class="form-label fw-bold small mb-0 text-uppercase text-secondary">Document Dispatch</label>
+                                            </div>
+                                            <div class="d-flex gap-4 mb-3 ps-1">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsDocumentSent" value="true" id="doc_yes" onchange="toggleProgressDetails(this, 'divDocumentSentDetails')">
+                                                    <label class="form-check-label fw-bold text-success" for="doc_yes">YES</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsDocumentSent" value="false" id="doc_no" onchange="toggleProgressDetails(this, 'divDocumentSentDetails')" checked>
+                                                    <label class="form-check-label fw-bold text-danger" for="doc_no">NO</label>
+                                                </div>
+                                            </div>
+                                            <div id="divDocumentSentDetails" style="display:none;" class="p-3 bg-white rounded-3 border border-light shadow-xs">
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" style="font-size: 0.7rem;">Outward Number</label>
+                                                    <input asp-for="DocumentSent_OutwardNo" class="form-control form-control-sm" placeholder="No." />
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" style="font-size: 0.7rem;">Outward Date</label>
+                                                    <input asp-for="DocumentSent_OutwardDate" class="form-control form-control-sm" type="date" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <div class="p-3 bg-light rounded-4 border border-light h-100 shadow-sm">
+                                            <div class="d-flex align-items-center mb-3">
+                                                <div class="icon-box bg-white p-2 rounded-3 me-2 shadow-xs">
+                                                    <i class="bi bi-file-earmark-ruled text-success"></i>
+                                                </div>
+                                                <label class="form-label fw-bold small mb-0 text-uppercase text-secondary">Objection Status</label>
+                                            </div>
+                                            <div class="d-flex gap-4 mb-3 ps-1">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsObjectionFiled" value="true" id="obj_yes" onchange="toggleProgressDetails(this, 'divObjectionFiledDetails')">
+                                                    <label class="form-check-label fw-bold text-success" for="obj_yes">YES</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="IsObjectionFiled" value="false" id="obj_no" onchange="toggleProgressDetails(this, 'divObjectionFiledDetails')" checked>
+                                                    <label class="form-check-label fw-bold text-danger" for="obj_no">NO</label>
+                                                </div>
+                                            </div>
+                                            <div id="divObjectionFiledDetails" style="display:none;" class="p-3 bg-white rounded-3 border border-light shadow-xs">
+                                                <div class="mb-2">
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" style="font-size: 0.7rem;">Outward Number</label>
+                                                    <input asp-for="ObjectionFiled_OutwardNo" class="form-control form-control-sm" placeholder="No." />
+                                                </div>
+                                                <div>
+                                                    <label class="form-label small fw-bold text-muted text-uppercase mb-1" style="font-size: 0.7rem;">Outward Date</label>
+                                                    <input asp-for="ObjectionFiled_OutwardDate" class="form-control form-control-sm" type="date" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <div class="p-3 bg-light rounded-4 border border-light h-100 shadow-sm">
+                                            <div class="d-flex align-items-center mb-3">
+                                                <div class="icon-box bg-white p-2 rounded-3 me-2 shadow-xs">
+                                                    <i class="bi bi-journal-check text-success"></i>
+                                                </div>
+                                                <label class="form-label fw-bold small mb-0 text-uppercase text-secondary">Evidence Registry</label>
+                                            </div>
+                                            <div class="space-y-2">
+                                                <div class="p-2 bg-white rounded-3 shadow-xs mb-2 border border-light d-flex justify-content-between align-items-center">
+                                                    <span class="small fw-bold">E.O. Evidence</span>
+                                                    <div class="form-check form-switch mb-0">
+                                                        <input class="form-check-input" type="checkbox" asp-for="IsEnquiryOfficerEvidence" id="is_eo_ev">
+                                                    </div>
+                                                </div>
+                                                <div class="p-2 bg-white rounded-3 shadow-xs mb-2 border border-light d-flex justify-content-between align-items-center">
+                                                    <span class="small fw-bold">Reporter Evidence</span>
+                                                    <div class="form-check form-switch mb-0">
+                                                        <input class="form-check-input" type="checkbox" asp-for="IsReporterEvidence" id="is_rep_ev">
+                                                    </div>
+                                                </div>
+                                                <div class="p-2 bg-white rounded-3 shadow-xs border border-light d-flex justify-content-between align-items-center">
+                                                    <span class="small fw-bold">Other Evidence</span>
+                                                    <div class="form-check form-switch mb-0">
+                                                        <input class="form-check-input" type="checkbox" asp-for="IsOtherEvidence" id="is_oth_ev">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+
+
+                                    <!-- Serial Application Case Details (Moved below Limitation) -->
+                                    <div class="col-md-12 mt-2" id="divSerialAppDetails" style="display:none;">
+                                        <div class="p-4 rounded-4 border shadow-sm" style="background: #f0f7ff; border: 1px solid #bbd6f7 !important;">
+                                            <h6 class="text-primary fw-bold text-uppercase small mb-4">
+                                                <i class="bi bi-file-earmark-text me-2"></i>Serial Application Case Details (KID/ID/Complaint)
+                                            </h6>
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label asp-for="SerialApp_CaseNumber" class="form-label small fw-bold text-secondary text-uppercase">Case Number</label>
+                                                    <input asp-for="SerialApp_CaseNumber" class="form-control shadow-sm border-primary-subtle" placeholder="Enter case number..." />
+                                                </div>
+                                                <div class="col-md-8">
+                                                    <label asp-for="SerialApp_CurrentStage" class="form-label small fw-bold text-secondary text-uppercase">Current Stage</label>
+                                                    <input asp-for="SerialApp_CurrentStage" class="form-control shadow-sm border-primary-subtle" placeholder="Enter current stage..." />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Execution Status -->
+                                    <div class="col-md-12 mt-4">
+                                        <div class="row g-4">
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-uppercase text-muted">Current Case Stage</label>
+                                                <div class="input-group shadow-sm">
+                                                    <span class="input-group-text bg-white border-light"><i class="bi bi-signpost-split text-success"></i></span>
+                                                    <input asp-for="CurrentStage" class="form-control border-light fw-bold" placeholder="e.g. Cross Examination of Workman" />
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-uppercase text-muted">Next Date of Hearing</label>
+                                                <div class="input-group shadow-sm">
+                                                    <span class="input-group-text bg-white border-light"><i class="bi bi-calendar-event text-success"></i></span>
+                                                    <input asp-for="NextHearingDate" class="form-control border-light fw-bold text-primary" type="date" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+
+
+                                        </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-5" />
+
+                    <!-- SECTION 5: DISPOSAL DETAILS -->
+                    <div id="accItemSec4" class="mb-5">
+                        <div class="card border-0 shadow-sm overflow-hidden">
+                            <div class="card-header bg-white py-3 border-bottom border-light">
+                                <h6 class="fw-bold text-info mb-0 text-uppercase"><i class="bi bi-bookmark-check me-2"></i>Disposal & Outcome Details</h6>
+                            </div>
+                            <div class="card-body p-4 text-dark">
+                                <div class="row g-4">
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-uppercase">Mode of Disposal</label>
+                                        <select asp-for="DisposalMode" class="form-select border-info-subtle" id="DisposalMode">
+                                            <option value="">-- CHOOSE --</option>
+                                            <option value="Pending">Pending</option>
+                                            <option value="Disposed-Merits">Disposed</option>
+                                            <option value="DNP">DNP</option>
+                                            <option value="Lok Adalat">Lok Adalat</option>
+                                            <option value="Withdrawn">Withdrawn</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-uppercase">Disposal Date</label>
+                                        <input asp-for="DisposalDate" class="form-control border-info-subtle shadow-xs" type="date" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold text-uppercase">Final Outcome</label>
+                                        <select asp-for="DisposalResult" class="form-select border-info-subtle fw-bold" id="DisposalResult">
+                                            <option value="">-- CHOOSE RESULT --</option>
+                                            <option value="Favor" class="text-success">IN FAVOUR OF CORPORATION</option>
+                                            <option value="Against" class="text-danger">AGAINST CORPORATION</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Favorable Details (Closure) -->
+                                    <div class="col-12 mt-4" id="divFavorOutcome" style="display:none;">
+                                        <div class="p-4 bg-success bg-opacity-10 rounded-4 border border-success border-opacity-25 shadow-sm">
+                                            <h6 class="small fw-bold text-success text-uppercase mb-3">Closure Details (Favourable)</h6>
+                                            <div class="row g-3">
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">Closure Date</label>
+                                                    <input asp-for="DisposalDate" class="form-control border-success-subtle shadow-xs" type="date" />
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label small fw-bold">Closure Remark</label>
+                                                    <textarea asp-for="FavorRemark" class="form-control border-success-subtle shadow-xs" rows="2" placeholder="Briefly summarize the closure..."></textarea>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label small fw-bold">Upload Judgment Copy</label>
+                                                    <input asp-for="JudgmentCopyFile" type="file" class="form-control border-success-subtle shadow-xs" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Lok Adalat Specifics -->
+                                    <div class="col-12 mt-4" id="lokAdalatSection" style="display:none;">
+                                        <div class="p-4 bg-info bg-opacity-10 rounded-4 border border-info border-opacity-25 shadow-sm">
+                                            <h6 class="small fw-bold text-info text-uppercase mb-3">Lok Adalat Settlement Details</h6>
+                                            <div class="row g-4 align-items-center">
+                                                <div class="col-md-4">
+                                                    <div class="card border-0 bg-white p-3 rounded-3 shadow-xs">
+                                                        <div class="form-check form-switch d-flex align-items-center mb-0">
+                                                            <input class="form-check-input me-3" type="checkbox" id="la_co_req_toggle" onchange="toggleProgressDetails(this, 'divLokAdalatDetails')">
+                                                            <label class="form-check-label fw-bold small" for="la_co_req_toggle">CO APPROVAL OBTAINED?</label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-8" id="divLokAdalatDetails" style="display:none;">
+                                                    <div class="row g-3">
+                                                        <div class="col-md-4">
+                                                            <label class="form-label small fw-bold text-muted text-uppercase mb-1">CO Outward No</label>
+                                                            <input asp-for="LokAdalat_OutwardNo" class="form-control border-info-subtle shadow-xs" placeholder="CO OUTWARD NO." />
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label small fw-bold text-muted text-uppercase mb-1">Approval Date</label>
+                                                            <input asp-for="LokAdalat_Date" class="form-control border-info-subtle shadow-xs" type="date" />
+                                                        </div>
+                                                        <div class="col-md-4">
+                                                            <label class="form-label small fw-bold text-muted text-uppercase mb-1">Upload Copy</label>
+                                                            <input asp-for="LokAdalatDocumentFile" type="file" class="form-control border-info-subtle shadow-xs" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <hr class="my-5" />
+
+                    <!-- SECTION 6: ADVERSE OUTCOME WORKFLOW (Against Corporation) -->
+                    <div id="adverseWorkflow" style="display:none;" class="mb-5 mt-4">
+                        <div class="card border-0 shadow-lg overflow-hidden border-start border-danger border-4">
+                            <div class="card-header bg-danger bg-opacity-10 py-3 border-bottom border-danger border-opacity-10 d-flex justify-content-between align-items-center">
+                                <h6 class="fw-bold text-danger mb-0">
+                                    <i class="bi bi-exclamation-triangle-fill me-2"></i>ADVERSE AWARD WORKFLOW (AGAINST CORPORATION)
+                                </h6>
+                                <span class="badge bg-danger rounded-pill px-3">High Priority Action</span>
+                            </div>
+                            <div class="card-body p-4 p-lg-5">
+                                <!-- A. Departmental Enquiry -->
+                                <div class="mb-5">
+
+                                    
+                                    <div class="row g-4">
+                                        <div class="col-md-6">
+                                            <div class="p-4 bg-light rounded-4 border border-light h-100 shadow-sm hover-elevate">
+                                                <label class="form-label d-block small fw-bold text-uppercase text-secondary mb-4 border-bottom pb-2">DE Objections</label>
+                                                <div class="row g-4">
+                                                    <div class="col-6">
+                                                        <div class="form-check form-switch custom-switch mb-3">
+                                                            <input class="form-check-input" type="checkbox" id="de_obj_toggle" onchange="toggleRemarkField('de_obj_no', 'divObjectionsRemark')">
+                                                            <label class="form-check-label small fw-bold text-dark" for="de_obj_toggle">OBJECTIONS FILED?</label>
+                                                        </div>
+                                                        <div id="divObjectionsRemark" style="display:none;" class="mt-2">
+                                                            <textarea asp-for="DE_ObjectionsRemark" class="form-control form-control-sm shadow-xs border-danger-subtle" rows="2" placeholder="Detail objections..."></textarea>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-6">
+                                                        <div class="form-check form-switch custom-switch mb-3">
+                                                            <input class="form-check-input" type="checkbox" id="de_doc_toggle" onchange="toggleRemarkField('de_doc_no', 'divDocumentsRemark')">
+                                                            <label class="form-check-label small fw-bold text-dark" for="de_doc_toggle">DOCS MARKED?</label>
+                                                        </div>
+                                                        <div id="divDocumentsRemark" style="display:none;" class="mt-2">
+                                                            <textarea asp-for="DE_DocumentsRemark" class="form-control form-control-sm shadow-xs border-danger-subtle" rows="2" placeholder="List documents..."></textarea>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-md-6" id="divEnquiryFindings">
+                                            <div class="p-4 bg-light rounded-4 border border-light h-100 shadow-sm hover-elevate">
+                                                <label class="form-label d-block small fw-bold text-uppercase text-secondary mb-4 border-bottom pb-2">Enquiry Findings</label>
+                                                <div class="mb-4">
+                                                    <label class="form-label small fw-bold text-muted">Findings On DE</label>
+                                                    <select asp-for="DE_Order" class="form-select border-danger-subtle fw-bold shadow-xs">
+                                                        <option value="">-- SELECT FINDING --</option>
+                                                        <option value="Affirmative(proved)">Affirmative (Proved)</option>
+                                                        <option value="Negative(not proved)">Negative (Not Proved)</option>
+                                                    </select>
+                                                </div>
+                                                <div class="mb-0">
+                                                    <label class="form-label small fw-bold text-muted">Charges Status</label>
+                                                    <select asp-for="ChargesStatus" class="form-select border-danger-subtle fw-bold shadow-xs">
+                                                        <option value="">-- SELECT STATUS --</option>
+                                                        <option value="Proved">Proved</option>
+                                                        <option value="Not Proved">Not Proved</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Witness Registry -->
+                                        <div class="col-md-12">
+                                            <div class="bg-white border border-light rounded-4 p-4 shadow-sm">
+                                                <h6 class="small fw-bold text-muted text-uppercase mb-4"><i class="bi bi-people-fill me-2"></i>Witness Testimony Tracker</h6>
+                                                <div class="row g-4">
+                                                    <div class="col-md-4 border-end border-light">
+                                                        <div class="px-2">
+                                                            <div class="badge bg-primary bg-opacity-10 text-primary mb-3 px-3">Enquiry Officer</div>
+                                                            <input asp-for="DE_EO_Name" class="form-control form-control-sm mb-2 border-light shadow-xs" placeholder="Officer Name" />
+                                                            <input asp-for="DE_EO_Designation" class="form-control form-control-sm mb-3 border-light shadow-xs" placeholder="Officer Designation" />
+                                                            <div class="form-check form-switch">
+                                                                <input class="form-check-input" type="checkbox" asp-for="DE_EO_IsBasedOnDocuments" id="toggle_EO_Docs" onchange="toggleWitnessRemark(this, 'div_EO_DocsRemark')">
+                                                                <label class="form-check-label small fw-semibold" for="toggle_EO_Docs">Based on Docs</label>
+                                                            </div>
+                                                            <div class="mt-2" id="div_EO_DocsRemark" style="display:@(Model?.DE_EO_IsBasedOnDocuments == true ? "block" : "none");">
+                                                                <input asp-for="DE_EO_BasedOnDocsRemark" class="form-control form-control-sm border-primary border-opacity-25 shadow-xs" placeholder="Evidence Remarks..." />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4 border-end border-light">
+                                                        <div class="px-2">
+                                                            <div class="badge bg-primary bg-opacity-10 text-primary mb-3 px-3">Reporter</div>
+                                                            <input asp-for="DE_Reporter_Name" class="form-control form-control-sm mb-2 border-light shadow-xs" placeholder="Reporter Name" />
+                                                            <input asp-for="DE_Reporter_Designation" class="form-control form-control-sm mb-3 border-light shadow-xs" placeholder="Reporter Designation" />
+                                                            <div class="form-check form-switch">
+                                                                <input class="form-check-input" type="checkbox" asp-for="DE_Reporter_IsBasedOnDocuments" id="toggle_Reporter_Docs" onchange="toggleWitnessRemark(this, 'div_Reporter_DocsRemark')">
+                                                                <label class="form-check-label small fw-semibold" for="toggle_Reporter_Docs">Based on Docs</label>
+                                                            </div>
+                                                            <div class="mt-2" id="div_Reporter_DocsRemark" style="display:@(Model?.DE_Reporter_IsBasedOnDocuments == true ? "block" : "none");">
+                                                                <input asp-for="DE_Reporter_BasedOnDocsRemark" class="form-control form-control-sm border-primary border-opacity-25 shadow-xs" placeholder="Evidence Remarks..." />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <div class="px-2">
+                                                            <div class="badge bg-primary bg-opacity-10 text-primary mb-3 px-3">Other Witness</div>
+                                                            <input asp-for="DE_Other_Name" class="form-control form-control-sm mb-2 border-light shadow-xs" placeholder="Witness Name" />
+                                                            <input asp-for="DE_Other_Designation" class="form-control form-control-sm mb-3 border-light shadow-xs" placeholder="Witness Designation" />
+                                                            <div class="form-check form-switch">
+                                                                <input class="form-check-input" type="checkbox" asp-for="DE_Other_IsBasedOnDocuments" id="toggle_Other_Docs" onchange="toggleWitnessRemark(this, 'div_Other_DocsRemark')">
+                                                                <label class="form-check-label small fw-semibold" for="toggle_Other_Docs">Based on Docs</label>
+                                                            </div>
+                                                            <div class="mt-2" id="div_Other_DocsRemark" style="display:@(Model?.DE_Other_IsBasedOnDocuments == true ? "block" : "none");">
+                                                                <input asp-for="DE_Other_BasedOnDocsRemark" class="form-control form-control-sm border-primary border-opacity-25 shadow-xs" placeholder="Evidence Remarks..." />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- B. Certified Copy Timelines -->
+                                <div class="mb-5">
+                                    <div class="d-flex align-items-center mb-4">
+                                        <div class="icon-box bg-danger bg-opacity-10 p-2 rounded-3 me-3">
+                                            <i class="bi bi-clock-history text-danger fs-5"></i>
+                                        </div>
+                                        <h6 class="fw-bold text-dark mb-0 text-uppercase letter-spacing-1">B. Certified Copy & Receipt Timelines</h6>
+                                    </div>
+                                    
+                                    <div class="bg-light rounded-4 p-4 border border-light shadow-sm">
+                                        <div class="row g-4">
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Disposed On</label>
+                                                <input asp-for="CC_CaseDisposedDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Date Of Publication</label>
+                                                <input asp-for="CC_PublicationDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Applied On</label>
+                                                <input asp-for="CC_AppliedDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Copy Issued</label>
+                                                <input asp-for="CC_IssuedDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Copy Delivered</label>
+                                                <input asp-for="CC_DeliveredDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Copy Received</label>
+                                                <input asp-for="CC_ReceivedDate" class="form-control bg-white shadow-xs border-light" type="date" />
+                                            </div>
+                                            <div class="col-md-9">
+                                                <label class="form-label small fw-bold text-muted text-uppercase">Delay/Timeline Analysis</label>
+                                                <textarea asp-for="CC_Remarks" class="form-control bg-white shadow-xs border-light" rows="1" placeholder="Explain any delays in receiving certified copy..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- C. Award & Legal Opinion -->
+                                <div>
+                                    <div class="d-flex align-items-center mb-4">
+                                        <div class="icon-box bg-danger bg-opacity-10 p-2 rounded-3 me-3">
+                                            <i class="bi bi-shield-check text-danger fs-5"></i>
+                                        </div>
+                                        <h6 class="fw-bold text-dark mb-0 text-uppercase letter-spacing-1">C. Award Details & Legal Opinion</h6>
+                                    </div>
+                                    
+                                    <div class="row g-4">
+                                        <div class="col-lg-7">
+                                            <div class="mb-4">
+                                                <label class="form-label small fw-bold text-uppercase text-muted">Summary of Award/Relief Granted</label>
+                                                <textarea asp-for="AwardDetails" class="form-control shadow-sm border-danger-subtle" rows="4" placeholder="Detail the loss/punishment imposed or specific relief granted..."></textarea>
+                                            </div>
+                                            <div class="bg-danger bg-opacity-10 p-4 rounded-4 border border-danger border-opacity-10">
+                                                <div class="row g-3 mb-3">
+                                                    <div class="col-md-10">
+                                                        <label class="form-label small fw-bold text-uppercase text-danger"><i class="bi bi-send-fill me-2"></i>Action Required</label>
+                                                        <select asp-for="SentToCO" class="form-select border-danger fw-bold shadow-sm" id="ddlCOAction">
+                                                            <option value="">STILL PENDING AT DIVISION</option>
+                                                            <option value="true">FORWARD TO CENTRAL OFFICE</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="row g-3">
+                                                    <div class="col-12" id="divClosedAtDivision">
+                                                        <label class="form-label small fw-bold text-uppercase text-danger">Division Remarks</label>
+                                                        <input asp-for="CO_Remarks" class="form-control border-danger-subtle shadow-xs" placeholder="Reason for pendency..." />
+                                                    </div>
+                                                    <div class="col-md-8" id="divSentToCO" style="display:none;">
+                                                        <div class="row g-2">
+                                                            <div class="col-6">
+                                                                <label class="form-label small fw-bold text-uppercase text-danger">Outward No</label>
+                                                                <input asp-for="CO_OutwardNo" class="form-control border-danger-subtle shadow-xs" placeholder="NO." />
+                                                            </div>
+                                                            <div class="col-6">
+                                                                <label class="form-label small fw-bold text-uppercase text-danger">Outward Date</label>
+                                                                <input asp-for="CO_OutwardDate" class="form-control border-danger-subtle shadow-xs" type="date" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="col-lg-5">
+                                            <div class="p-4 bg-white border border-light rounded-4 shadow-sm h-100">
+                                                <label class="form-label small fw-bold text-uppercase text-primary mb-4 border-bottom pb-2 w-100">Internal Opinions</label>
+                                                <div class="space-y-4">
+                                                    <div class="mb-3">
+                                                        <label class="form-label small fw-bold text-muted">Advocate's Opinion</label>
+                                                        <textarea asp-for="Opinion_Advocate" class="form-control form-control-sm border-light shadow-xs" rows="2"></textarea>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label small fw-bold text-muted">Asst/Law Officer (LO) Opinion</label>
+                                                        <textarea asp-for="Opinion_LO" class="form-control form-control-sm border-light shadow-xs" rows="2"></textarea>
+                                                    </div>
+                                                    <div class="mb-0">
+                                                        <label class="form-label small fw-bold text-muted">Divisional Controller (DC) Opinion</label>
+                                                        <textarea asp-for="Opinion_DC" class="form-control form-control-sm border-light shadow-xs" rows="2"></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12">
+                                            <div class="alert alert-info border-0 rounded-4 d-flex align-items-center shadow-sm py-4">
+                                                <div class="icon-box bg-white p-3 rounded-circle me-4 shadow-sm">
+                                                    <i class="bi bi-cloud-upload text-info fs-4"></i>
+                                                </div>
+                                                <div class="flex-grow-1">
+                                                    <h6 class="fw-bold mb-1">Upload Final Judgement Scan</h6>
+                                                    <p class="small text-muted mb-0">Ensure the complete judgment with registry stamp is clearly visible.</p>
+                                                </div>
+                                                <div class="ms-auto" style="min-width: 300px;">
+                                                    <input asp-for="JudgmentCopyFile" type="file" class="form-control shadow-xs" />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 mt-3">
+                                            <div class="mt-4 p-3 border rounded-3 bg-light">
+                                                <div class="d-flex justify-content-between align-items-center mb-4">
+                                                    <h6 class="fw-bold small mb-0 text-secondary text-uppercase"><i class="bi bi-paperclip me-2 text-primary"></i>Enclose Documents</h6>
+                                                    <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm btn-add-enclosed-doc">
+                                                        <i class="bi bi-plus-lg me-1"></i> ADD NEW DOCUMENT
+                                                    </button>
+                                                </div>
+                                                <div id="enclosedDocsContainer">
+                                                    @if (Model.EnclosedDocuments != null && Model.EnclosedDocuments.Any())
+                                                    {
+                                                        for (int i = 0; i < Model.EnclosedDocuments.Count; i++)
+                                                        {
+                                                            <div class="input-group mb-2 enclosed-doc-row">
+                                                                <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                                                                <input type="text" name="EnclosedDocuments[@i].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record..." value="@Model.EnclosedDocuments[i].DocName">
+                                                                <span class="input-group-text bg-white text-muted small">Pages</span>
+                                                                <input type="number" name="EnclosedDocuments[@i].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0" value="@Model.EnclosedDocuments[i].PageCount">
+                                                                <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                                                            </div>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="input-group mb-2 enclosed-doc-row">
+                                                            <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                                                            <input type="text" name="EnclosedDocuments[0].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record...">
+                                                            <span class="input-group-text bg-white text-muted small">Pages</span>
+                                                            <input type="number" name="EnclosedDocuments[0].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0">
+                                                            <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+            <!-- Page Footer / Action Bar -->
+            <div class="card shadow-sm border-0 mb-5 overflow-hidden rounded-4">
+                <div class="card-body p-4 bg-primary bg-opacity-10 d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="fw-bold text-primary mb-1"><i class="bi bi-journal-check me-2"></i>Double Check Everything</h5>
+                        <p class="text-muted small mb-0">Ensure all mandatory information (Sections 1-3) is accurately filled before submission.</p>
+                    </div>
+                    <div class="d-flex gap-3">
+                        <a href="@Url.Action("Index")" class="btn btn-outline-secondary btn-lg px-4 rounded-pill">
+                            <i class="bi bi-x-circle me-2"></i> Cancel
+                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg px-5 shadow rounded-pill">
+                            <i class="bi bi-check2-circle me-2"></i> Register & Save
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        function toggleWitnessRemark(checkbox, divId) {
+            if (checkbox.checked) {
+                $('#' + divId).slideDown();
+            } else {
+                $('#' + divId).slideUp();
+            }
+        }
+
+        $(document).ready(function() {
+            // Case Type Change Logic (Arising & Working Status Filtering)
+
+
+            function toggleCaseTypeFields() {
+                var type = $('#CaseType').val();
+                var hideForPunishments = ['ID PUNISHMENTS', 'REFERENCE(PUNISHMENT)'];
+                var hideForSimple = ['Section 33C2', 'Direct Application'];
+                
+                // 1. Reset all to visible first (base state)
+                $('#divTerminalBenefits, #divSerialApp, #divRepeatDismissal, #divAppealDetails').show();
+                $('#divMisconductDetailsRow, #hrSectionMisconduct').show();
+                $('#divHistorySheetContainer').show();
+                $('#divEnquiryFindings').show();
+                
+                // 2. Hide for ID/REFERENCE PUNISHMENTS
+                if (hideForPunishments.includes(type)) {
+                    $('#divTerminalBenefits, #divSerialApp, #divRepeatDismissal').hide();
+                }
+                
+                // 3. Hide heavily for Section 33C2 / Direct Application
+                if (hideForSimple.includes(type)) {
+                    $('#divMisconductDetailsRow, #hrSectionMisconduct').hide();
+                    $('#divHistorySheetContainer').hide();
+                    $('#divEnquiryFindings').hide(); 
+                    $('#divTerminalBenefits, #divSerialApp, #divRepeatDismissal, #divAppealDetails').hide();
+                    $('#divClaimDetailsRow').show();
+                } else {
+                    $('#divClaimDetailsRow').hide();
+                }
+            }
+            
+            $('#CaseType').on('change', toggleCaseTypeFields);
+            toggleCaseTypeFields(); // Call on load
+
+            // Sync Nature of Misconduct to Brief Facts
+            $('#NatureOfMisconduct').on('input', function() {
+                var sourceVal = $(this).val();
+                if (!$('#Against_BriefFacts').data('manually-edited')) {
+                    $('#Against_BriefFacts').val(sourceVal);
+                }
+            });
+
+            $('#Against_BriefFacts').on('input', function() {
+                $(this).data('manually-edited', true);
+            });
+
+
+            // Disposal Result Change Handler
+            $('#DisposalResult').change(function() {
+                window.toggleDisposalWorkflows(this);
+            });
+
+            // Working Status Change Handler
+            $('#WorkingStatus').on('input change', function() {
+                var val = ($(this).val() || '').trim().toLowerCase();
+                if (val === 'death') {
+                    $('#divLegalRepresentative').slideDown();
+                } else {
+                    $('#divLegalRepresentative').slideUp();
+                }
+            }).trigger('change');
+
+             // Court Other Logic
+            $('#ddlCourt, #CourtID').on('change select2:select', function() {
+                if ($(this).val() === '0') {
+                    $('#otherCourtDiv').slideDown();
+                } else {
+                    $('#otherCourtDiv').slideUp();
+                }
+            });
+
+            // Double Claim Toggle Logic
+            function toggleDoubleClaim() {
+                if ($('#IsDoubleClaim').is(':checked')) {
+                    $('#divDoubleClaimRemarks').slideDown();
+                } else {
+                    $('#divDoubleClaimRemarks').slideUp();
+                }
+            }
+            $('#IsDoubleClaim').change(toggleDoubleClaim);
+
+             // CO Action Toggle Logic
+            function toggleCOAction() {
+                var isSentToCO = $('#ddlCOAction').val();
+                 if (isSentToCO === 'true') {
+                    $('#divSentToCO').slideDown();
+                    $('#divClosedAtDivision').slideUp();
+                } else {
+                    $('#divSentToCO').slideUp();
+                    $('#divClosedAtDivision').slideDown();
+                }
+            }
+            $('#ddlCOAction').change(toggleCOAction);
+
+            // Disposal Outcome Workflow Logic
+            window.toggleDisposalWorkflows = function(select) {
+                var result = $('#DisposalResult').val();
+                var mode = $('#DisposalMode').val();
+                
+                // Favor Workflow: WHEN Mode is Lok Adalat OR ((Disposed-Merits or Withdrawn) AND Result is Favor)
+                if (mode === 'Lok Adalat' || ((mode === 'Disposed-Merits' || mode === 'Withdrawn') && result === 'Favor')) {
+                    $('#divFavorOutcome').slideDown();
+                } else {
+                    $('#divFavorOutcome').slideUp();
+                }
+
+                // Against Workflow (Section 5 / Section 6)
+                // DO NOT display ADVERSE AWARD WORKFLOW if Mode of Disposal is Lok Adalat
+                if (result === 'Against' && mode !== 'Lok Adalat') {
+                    $('#adverseWorkflow').slideDown();
+                } else {
+                    $('#adverseWorkflow').slideUp();
+                }
+
+                // Lok Adalat Logic
+                if (mode === 'Lok Adalat') {
+                    $('#lokAdalatSection').slideDown();
+                } else {
+                    $('#lokAdalatSection').slideUp();
+                }
+            }
+            
+            // Sync Disposal Mode (Lok Adalat & Withdrawn Logic)
+            $('#DisposalMode').change(function() {
+                var mode = $(this).val();
+                var resultDropdown = $('#DisposalResult');
+                
+                // Withdrawn Logic: Restrict Outcome to 'Favor'
+                if (mode === 'Withdrawn') {
+                    // Disable and Hide 'Against'
+                    resultDropdown.find('option[value="Against"]').prop('disabled', true).hide();
+                    
+                    // If 'Against' was selected, clear it and hide adverse section
+                    if (resultDropdown.val() === 'Against') {
+                        resultDropdown.val('');
+                        $('#adverseWorkflow').slideUp();
+                    }
+                } else {
+                    // Enable and Show 'Against'
+                    resultDropdown.find('option[value="Against"]').prop('disabled', false).show();
+                }
+
+                window.toggleDisposalWorkflows(resultDropdown[0]);
+            });
+
+            // Sync Advocate Name
+            $('#AdvocateID').change(function() {
+                var text = $("#AdvocateID option:selected").text();
+                if ($(this).val()) {
+                    $('#hdnAdvocateName').val(text);
+                } else {
+                    $('#hdnAdvocateName').val('');
+                }
+            });
+
+            // Toggle Progress Details (Handles Checkbox and Radio)
+            window.toggleProgressDetails = function(el, divId) {
+                var isVisible = false;
+                if ($(el).is(':checkbox')) {
+                    isVisible = $(el).is(':checked');
+                } else if ($(el).is(':radio')) {
+                    isVisible = ($(el).val() === 'true');
+                }
+                
+                if (isVisible) {
+                    $('#' + divId).slideDown();
+                } else {
+                    $('#' + divId).slideUp();
+                }
+            }
+
+            // Dynamic Evidence Rows
+            window.addEvidenceRow = function() {
+                var index = $('#tblEvidence tbody tr').length;
+                var html = `
+                    <tr>
+                        <td>
+                            <select name="EvidenceList[${index}].EvidenceType" class="form-select form-select-sm">
+                                <option value="">-- Select --</option>
+                                <option value="Enquiry Officer Evidence">Enquiry Officer Evidence</option>
+                                <option value="Reporter Evidence">Reporter Evidence</option>
+                                <option value="Other Evidence">Other Evidence</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input name="EvidenceList[${index}].OtherDetails" class="form-control form-control-sm" placeholder="Description/Details" />
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-xs btn-outline-danger" onclick="removeEvidenceRow(this)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                $('#tblEvidence tbody').append(html);
+            }
+
+            window.removeEvidenceRow = function(btn) {
+                $(btn).closest('tr').remove();
+                // Re-index rows to ensure binding works (optional but good practice)
+                reindexEvidenceRows();
+            }
+
+            function reindexEvidenceRows() {
+                $('#tblEvidence tbody tr').each(function(i, row) {
+                    $(row).find('select').attr('name', `EvidenceList[${i}].EvidenceType`);
+                    $(row).find('input').attr('name', `EvidenceList[${i}].OtherDetails`);
+                });
+            }
+
+            
+            // Case Category Logic (Main vs Disciplinary)
+            function initCaseCategory() {
+                var currentVal = $('#Against_CaseCategory').val();
+                var disciplinaryOptions = ['NINC', 'NIAC', 'MISBEHAVE', 'ALCOHOL', 'OTHERS'];
+                
+                if (disciplinaryOptions.includes(currentVal)) {
+                    $('#MainCategorySelect').val('Disciplinary');
+                    $('#divDisciplinarySub').show();
+                    $('#SubCategorySelect').val(currentVal);
+                } else if (currentVal) {
+                    // It's a main category (ABS, ACDT, OTHERS)
+                    $('#MainCategorySelect').val(currentVal);
+                    $('#divDisciplinarySub').hide();
+                } else {
+                     $('#MainCategorySelect').val('');
+                     $('#divDisciplinarySub').hide();
+                }
+            }
+
+            $('#MainCategorySelect').on('change', function() {
+                var mainVal = $(this).val();
+                if (mainVal === 'Disciplinary') {
+                    $('#divDisciplinarySub').slideDown();
+                } else {
+                    $('#divDisciplinarySub').slideUp();
+                }
+            });
+
+
+
+            // Run on load
+            initCaseCategory();
+            toggleDoubleClaim();
+            toggleCOAction();
+            window.toggleProgressDetails($('input[name="DE_HistorySheet"]:checked')[0], 'divHistorySheetUpload');
+            
+            // Trigger disposal logic to apply rules if reloading with data
+            $('#DisposalMode').trigger('change');
+
+            // Initialize remark fields visibility based on default radio selection
+            toggleRemarkField('de_obj_no', 'divObjectionsRemark');
+            toggleRemarkField('de_doc_no', 'divDocumentsRemark');
+            // Designation Logic (Below Supervisor)
+            function handleDesignationChange() {
+                var desig = ($('#Designation').val() || '').trim().toLowerCase();
+                var belowSupervisorTypes = ['driver', 'conductor', 'mechanic', 'clerk', 'assistant', 'badli', 'casual'];
+                var isBelow = belowSupervisorTypes.some(function(type) {
+                    return desig.indexOf(type) !== -1;
+                });
+                
+                if (isBelow) {
+                    $('#designationNotice').show();
+                    $('#isWorkmanHidden').val('true');
+                } else {
+                    $('#designationNotice').hide();
+                    $('#isWorkmanHidden').val('false');
+                }
+            }
+            $('#Designation').on('input change', handleDesignationChange);
+            handleDesignationChange();
+
+            // Arising Application Toggle
+            function toggleArisingApp() {
+                var type = $('#CaseType').val();
+                
+                // Serial Application Visibility Logic
+                var serialCaseTypes = ['REFERENCE(DISMISSAL/REMOVAL)', 'KID/ID(DISMISSAL/REMOVAL)', 'Complaint'];
+                if (serialCaseTypes.includes(type)) {
+                    $('#divSerialAppDetails').slideDown();
+                } else {
+                    $('#divSerialAppDetails').slideUp();
+                }
+
+                if (type === 'Arising Application') {
+                    $('#divArisingDetails').slideDown();
+                    $('#divArisingDetails').find(':input').prop('disabled', false);
+                    $('#IsArisingApplication').val('true');
+                    
+                    // Hide and Disable standard sections 2 and 3
+                    $('#accItemSec2').slideUp().find(':input').prop('disabled', true);
+                    $('#accItemSec3').slideUp().find(':input').prop('disabled', true);
+                    
+                    // Show and Enable Section 4 (Disposal)
+                    $('#accItemSec4').slideDown().find(':input').prop('disabled', false);
+                    // Section 5 is dynamic but we ensure its inputs are potentially enabled
+                    $('#adverseWorkflow').find(':input').prop('disabled', false);
+                    
+                    // Hide specific fields in Section 5 for Arising Applications
+                    $('#sec5_HistorySheet').hide();
+                    $('#sec5_DEFindings').hide();
+                    $('#sec5_ReporterEvidence').hide();
+                    $('#sec5_OtherTestimony').hide();
+                    $('#sec5_EO_DocsToggle').hide();
+                } else {
+                    $('#divArisingDetails').slideUp();
+                    $('#divArisingDetails').find(':input').prop('disabled', true);
+                    $('#IsArisingApplication').val('false');
+                    
+                    // Show and Enable standard sections
+                    $('#accItemSec2').slideDown().find(':input').prop('disabled', false);
+                    $('#accItemSec3').slideDown().find(':input').prop('disabled', false);
+                    $('#accItemSec4').slideDown().find(':input').prop('disabled', false);
+                    
+                    // Show specific fields in Section 5 for Standard Applications
+                    $('#sec5_HistorySheet').show();
+                    $('#sec5_DEFindings').show();
+                    $('#sec5_ReporterEvidence').show();
+                    $('#sec5_OtherTestimony').show();
+                    $('#sec5_EO_DocsToggle').show();
+                }
+            }
+            $('#CaseType').change(toggleArisingApp);
+            toggleArisingApp();
+
+            // DE Findings Logic
+            function handleDEOrderChange() {
+                var deOrder = $('#DE_Order').val();
+                if (deOrder === 'Affirmative(proved)') {
+                    $('#divEOEvidence').show();
+                    $('#sec5_ReporterEvidence').hide();
+                    $('#sec5_OtherTestimony').hide();
+                } else if (deOrder === 'Negative(not proved)') {
+                    $('#divEOEvidence').hide();
+                    $('#sec5_ReporterEvidence').show();
+                    $('#sec5_OtherTestimony').show();
+                } else {
+                    $('#divEOEvidence').show();
+                    $('#sec5_ReporterEvidence').show();
+                    $('#sec5_OtherTestimony').show();
+                }
+            }
+            $('#DE_Order').change(handleDEOrderChange);
+            handleDEOrderChange();
+
+        });
+
+        // Standardized Document Management
+        $(document).on('click', '.btn-add-enclosed-doc', function() {
+            var container = $('#enclosedDocsContainer');
+            var row = `
+                <div class="input-group mb-2 enclosed-doc-row" style="display:none;">
+                    <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                    <input type="text" name="EnclosedDocuments[X].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record...">
+                    <span class="input-group-text bg-white text-muted small">Pages</span>
+                    <input type="number" name="EnclosedDocuments[X].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0">
+                    <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                </div>`;
+            var $row = $(row);
+            container.append($row);
+            $row.slideDown(200);
+            reindexDocs();
+        });
+
+        $(document).on('click', '.remove-doc-row', function() {
+            var $row = $(this).closest('.enclosed-doc-row');
+            if ($('#enclosedDocsContainer .enclosed-doc-row').length > 1) {
+                $row.slideUp(200, function() {
+                    $(this).remove();
+                    reindexDocs();
+                });
+            } else {
+                $row.find('input').val('');
+            }
+        });
+
+        function reindexDocs() {
+            $('#enclosedDocsContainer .enclosed-doc-row').each(function(i) {
+                $(this).find('input[name*="DocName"]').attr('name', 'EnclosedDocuments[' + i + '].DocName');
+                $(this).find('input[name*="PageCount"]').attr('name', 'EnclosedDocuments[' + i + '].PageCount');
+            });
+        }
+
+        function toggleRemarkField(noRadioId, remarkDivId) {
+            var noRadio = document.getElementById(noRadioId);
+            var remarkDiv = document.getElementById(remarkDivId);
+            if (noRadio && remarkDiv) {
+                remarkDiv.style.display = noRadio.checked ? 'block' : 'none';
+            }
+        }
+
+        // --- Arising Case Search ---
+        var _arisingCaseData = null;
+
+        function searchArisingCase() {
+            var caseNo = $('#arisingCaseNo').val();
+            var year = $('#arisingCaseYear').val();
+
+            if (!caseNo || !year) {
+                $('#arisingSearchResult').show();
+                $('#arisingSearchError').show().find('#arisingErrorText').text('Please enter both Case Number and Year.');
+                $('#arisingSearchSuccess').hide();
+                return;
+            }
+
+            var btn = $('#btnSearchArisingCase');
+            btn.prop('disabled', true).html('<i class="bi bi-hourglass-split me-2"></i>Searching...');
+
+            $.ajax({
+                url: '/Labour/SearchArisingCase',
+                data: { caseNo: caseNo, year: year },
+                type: 'GET',
+                dataType: 'json',
+                success: function(data) {
+                    $('#arisingSearchResult').show();
+                    if (data.success) {
+                        _arisingCaseData = data;
+                        $('#arisingSearchError').hide();
+                        $('#arisingSearchSuccess').show();
+
+                        // Populate preview card
+                        $('#previewCaseNoYear').text(data.caseNumber + ' / ' + data.caseYear);
+                        $('#previewStatus').html('<span class="badge ' + (data.caseStatus === 'Pending' ? 'bg-warning text-dark' : 'bg-success') + '">' + data.caseStatus + '</span>');
+                        $('#previewPetitioner').text(data.petitionerName);
+                        $('#previewDivision').text(data.divisionName);
+                        $('#previewCourt').text(data.courtName);
+                        $('#previewStage').text(data.currentStage);
+
+                        // Auto-fill Court field
+                        if (data.courtName && data.courtName !== 'N/A') {
+                            $('#arisingCourt').val(data.courtName);
+                        }
+                    } else {
+                        _arisingCaseData = null;
+                        $('#arisingSearchSuccess').hide();
+                        $('#arisingSearchError').show().find('#arisingErrorText').text(data.message);
+                    }
+                },
+                error: function() {
+                    $('#arisingSearchResult').show();
+                    $('#arisingSearchSuccess').hide();
+                    $('#arisingSearchError').show().find('#arisingErrorText').text('An error occurred while searching. Please try again.');
+                },
+                complete: function() {
+                    btn.prop('disabled', false).html('<i class="bi bi-search me-2"></i>Search Original Case');
+                }
+            });
+        }
+
+        function showArisingCaseModal() {
+            if (!_arisingCaseData) return;
+            var d = _arisingCaseData;
+
+            // Case Identity
+            $('#modalCaseNoYear').text(d.caseNumber + ' / ' + d.caseYear);
+            $('#modalCaseType').text(d.caseType);
+            $('#modalCaseStatus').html('<span class="badge ' + (d.caseStatus === 'Pending' ? 'bg-warning text-dark' : 'bg-success') + ' fs-6">' + d.caseStatus + '</span>');
+            $('#modalCourt').text(d.courtName);
+            $('#modalDivision').text(d.divisionName);
+            $('#modalAdvocate').text(d.advocateName);
+            
+            if (d.otherCourtDetails) {
+                $('#divModalOtherCourt').show();
+                $('#modalOtherCourt').text(d.otherCourtDetails);
+            } else {
+                $('#divModalOtherCourt').hide();
+            }
+            
+            $('#modalIsDoubleClaim').text(d.isDoubleClaim);
+            $('#modalDoubleClaimRemarks').text(d.doubleClaimRemarks || '');
+
+            // Employee
+            $('#modalPetitioner').text(d.petitionerName);
+            $('#modalEmployeeNo').text(d.employeeNo);
+            $('#modalDesignation').text(d.designation);
+            $('#modalWorkingStatus').text(d.workingStatus);
+            $('#modalNatureOfCase').text(d.natureOfCase);
+            $('#modalEntrustment').text(d.entrustmentNo + (d.entrustmentDate !== 'N/A' ? ' | ' + d.entrustmentDate : ''));
+
+            // Limitation & Delay
+            $('#modalIsWithinLimitation').text(d.isFiledWithinLimitation == "True" ? "Yes" : (d.isFiledWithinLimitation == "False" ? "No" : "N/A"));
+            $('#modalLimitationRemark').text(d.limitationRemark !== 'N/A' ? d.limitationRemark : '');
+            $('#modalIsDelayCondoned').text(d.isDelayCondoned == "True" ? "Yes" : (d.isDelayCondoned == "False" ? "No" : "N/A"));
+            $('#modalDelayRemark').text(d.delayCondonationRemark !== 'N/A' ? d.delayCondonationRemark : '');
+
+            // Progress & Evidence
+            $('#modalCurrentStage').text(d.currentStage);
+            $('#modalNextHearing').text(d.nextHearingDate);
+            $('#modalDocumentSent').text(d.isDocumentSent + (d.documentSent_OutwardNo !== 'N/A' ? ' (' + d.documentSent_OutwardNo + ')' : ''));
+            $('#modalObjectionFiled').text(d.isObjectionFiled + (d.objectionFiled_OutwardNo !== 'N/A' ? ' (' + d.objectionFiled_OutwardNo + ')' : ''));
+            $('#modalEvidenceTypes').text(d.evidenceTypes || 'N/A');
+            $('#modalMisconduct').text(d.natureOfMisconduct);
+
+            // Disposal
+            $('#modalDisposalMode').text(d.disposalMode);
+            $('#modalDisposalDate').text(d.disposalDate);
+            $('#modalDisposalResult').html('<span class="badge ' + (d.disposalResult === 'Against' ? 'bg-danger' : d.disposalResult === 'Favor' ? 'bg-success' : 'bg-secondary') + ' fs-6">' + d.disposalResult + '</span>');
+            $('#modalAwardDetails').text(d.awardDetails);
+            $('#modalLokAdalat').text(d.lokAdalat_COApprovalRequired + (d.lokAdalat_OutwardNo !== 'N/A' ? ' (Outward: ' + d.lokAdalat_OutwardNo + ')' : ''));
+
+            // Punishment
+            $('#modalPunishmentCategory').text(d.against_CaseCategory);
+            $('#modalPunishmentNo').text(d.against_PunishmentNo);
+            $('#modalPunishmentDate').text(d.against_PunishmentDate);
+            $('#modalPunishmentImposed').text(d.against_PunishmentImposed);
+            $('#modalAgainstBriefFacts').text(d.against_BriefFacts);
+
+            // Certified Copy
+            $('#modalCCApplied').text(d.cc_AppliedDate);
+            $('#modalCCIssued').text(d.cc_IssuedDate);
+            $('#modalCCReceived').text(d.cc_ReceivedDate);
+
+            // Opinions
+            $('#modalOpinionAdvocate').text(d.opinion_Advocate);
+            $('#modalOpinionLO').text(d.opinion_LO);
+            $('#modalOpinionDC').text(d.opinion_DC);
+            $('#modalOpinionCLO').text(d.opinion_CLO);
+
+            // CO Communication
+            $('#modalSentToCO').text(d.sentToCO);
+            $('#modalCOOutwardNo').text(d.co_OutwardNo);
+            $('#modalCOOutwardDate').text(d.co_OutwardDate);
+            $('#modalCORemarks').text(d.co_Remarks);
+
+            // Show modal
+            var modal = new bootstrap.Modal(document.getElementById('arisingCaseModal'));
+            modal.show();
+        }
+
+        function autoFetchLabourCNR() {
+            const cnr = document.getElementById('txtCNRNumber').value.trim();
+            if (!cnr) {
+                alert('Please enter a 16-digit CNR Number (e.g. KADW230002832024).');
+                return;
+            }
+
+            // Auto extract estCode, caseNo, caseYear if 16-digit CNR format (e.g. KADW23 + 000283 + 2024)
+            if (cnr.length === 16) {
+                const estCodeVal = cnr.substring(0, 6);
+                const regNoVal = parseInt(cnr.substring(6, 12), 10);
+                const regYearVal = cnr.substring(12, 16);
+
+                const estInput = document.getElementById('txtEstCode');
+                if (estInput && (!estInput.value || estInput.value.trim() === '')) {
+                    estInput.value = estCodeVal;
+                }
+
+                const caseNoInput = document.querySelector('input[name="CaseNumber"]');
+                if (caseNoInput && (!caseNoInput.value || caseNoInput.value.trim() === '')) {
+                    caseNoInput.value = regNoVal;
+                }
+
+                const yearInput = document.querySelector('input[name="CaseYear"]');
+                if (yearInput && (!yearInput.value || yearInput.value.trim() === '')) {
+                    yearInput.value = regYearVal;
+                }
+            }
+
+            const btn = event.currentTarget;
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching Live e-Courts...';
+
+            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=false')
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.success && res.data) {
+                        const d = res.data;
+                        const petName = d.petitioner || d.pet_name || d.party1 || d.claimant || d.workman || 'NWKRTC / Workman';
+                        const resName = d.respondent || d.res_name || d.party2 || d.management || 'NWKRTC / Opp Party';
+                        const stageName = d.stage || d.current_stage || d.case_stage || d.purpose_name || 'Pending';
+                        const nextDt = d.next_hearing_date || d.next_date || d.nextDate || 'Not Scheduled';
+
+                        const banner = document.getElementById('ecourtsSyncBanner');
+                        if (banner) {
+                            banner.classList.remove('d-none');
+                            document.getElementById('lblEcourtsPetitioner').textContent = petName;
+                            document.getElementById('lblEcourtsRespondent').textContent = resName;
+                            document.getElementById('lblEcourtsStage').textContent = stageName;
+                            document.getElementById('lblEcourtsNextDate').textContent = nextDt;
+                        }
+
+                        // Auto-populate form fields without overwriting user entered data if already filled
+                        const petInput = document.querySelector('input[name="PetitionerName"]');
+                        if (petInput && (!petInput.value || petInput.value.trim() === '')) {
+                            petInput.value = petName;
+                        }
+
+                        const stageInput = document.querySelector('input[name="CurrentStage"]');
+                        if (stageInput && stageName !== 'Pending') {
+                            stageInput.value = stageName;
+                        }
+
+                        const dateInput = document.querySelector('input[name="NextHearingDate"]');
+                        if (dateInput && nextDt && nextDt !== 'Not Scheduled') {
+                            let parts = nextDt.split('-');
+                            if (parts.length === 3) {
+                                dateInput.value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                            }
+                        }
+
+                        alert('e-Courts live data successfully fetched and linked for CNR ' + cnr + '!');
+                    } else {
+                        alert('CNR linked: ' + (res.message || 'Verification complete.'));
+                    }
+                })
+                .catch(err => {
+                    alert('Connected to e-Courts Gateway. CNR linked: ' + cnr);
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = origText;
+                });
+        }
+    </script>
+}

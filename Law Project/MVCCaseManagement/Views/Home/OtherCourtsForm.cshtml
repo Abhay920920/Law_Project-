@@ -1,0 +1,945 @@
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    string courtName = ViewBag.ActiveCourt switch {
+        "PSC" => "P & SC",
+        "CC" => "Criminal Case",
+        "Consumer" => "Consumer Complaint",
+        "LAC" => "Land Acquisition",
+        _ => ViewBag.ActiveCourt
+    };
+    ViewData["Title"] = $"{courtName} Details";
+}
+
+<style>
+    .gov-card {
+        background: white;
+        border-radius: 24px;
+        border: 1px solid rgba(232, 219, 179, 0.4);
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+    .gov-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 35px -5px rgba(191, 70, 70, 0.2) !important;
+    }
+    .gov-card-header {
+        background: linear-gradient(135deg, #3D45AA 0%, #2D3380 100%) !important;
+        padding: 1.25rem 1.5rem !important;
+    }
+    .gov-card-header h6 {
+        color: white !important;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .bg-light-premium {
+        background-color: #FFFDEB !important;
+        border: 1px solid rgba(232, 219, 179, 0.5) !important;
+    }
+</style>
+
+<div class="container-fluid py-4" style="max-width: 1600px;">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 col-xl-2 d-print-none">
+            @await Html.PartialAsync("_OtherCourtsSidebar")
+        </div>
+
+        <!-- Main Form Area -->
+        <div class="col-lg-9 col-xl-10">
+            <div id="otherCourtsForm" class="text-start">
+
+
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success alert-dismissible fade show rounded-pill px-4 shadow-sm" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i> @TempData["SuccessMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+        @if (TempData["ErrorMessage"] != null)
+        {
+            <div class="alert alert-danger alert-dismissible fade show rounded-pill px-4 shadow-sm" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i> @TempData["ErrorMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        <form id="mainForm" enctype="multipart/form-data" method="post" action="@Url.Action("SaveOtherCourtsCase", "Home")">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="CaseType" value="@ViewBag.ActiveCourt" />
+            <input type="hidden" name="LitigantType" value="@ViewBag.LitigantType" />
+            <input type="hidden" name="IsPendingForFiling" value="false" />
+            
+            <!-- Section 1: Basic Case Information -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-person-badge-fill me-2"></i>SECTION 1: BASIC CASE INFORMATION</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+
+                        <div class="col-md-4">
+                            <label class="form-label">Division</label>
+                            <input type="text" class="form-control bg-light text-muted fw-bold" value="@User.FindFirst("DivisionName")?.Value" readonly tabindex="-1" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Case Type / ಪ್ರಕರಣದ ಹಂತ</label>
+                            <select class="form-select" name="CaseStage">
+                                <option value="">-- Choose Stage --</option>
+                                <option value="pending">pending</option>
+                                <option value="disposed">disposed</option>
+                                <option value="dnp">dnp</option>
+                                <option value="ex-parte">ex-parte</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="caseNumberDiv">
+                            <label class="form-label">Case Number</label>
+                            <input type="text" class="form-control" name="CaseNumber" placeholder="Enter number..." />
+                        </div>
+                        <div class="col-md-4" id="caseYearDiv">
+                            <label class="form-label">Case Year</label>
+                            <input type="number" class="form-control" name="CaseYear" placeholder="YYYY" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Court</label>
+                            <input type="text" class="form-control" name="Court" placeholder="Name of Court" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Case Nature</label>
+                            <input type="text" class="form-control" name="CaseNature" placeholder="Enter nature of case..." />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Claim Details</label>
+                            <input type="text" class="form-control" name="ClaimDetails" placeholder="Describe specifics..." />
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="p-3 bg-light rounded border border-primary border-opacity-25 shadow-sm">
+                                <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-people-fill me-1"></i> Petitioner Details</label>
+                                <div id="respondentList">
+                                    <div class="row g-2 mb-2 respondent-row align-items-center">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="Respondents[0].Name" placeholder="Name of petitioner..." />
+                                        </div>
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="Respondents[0].Remark" placeholder="Remark for this name..." />
+                                        </div>
+                                        <div class="col-md-2 text-end">
+                                            <button type="button" class="btn btn-outline-primary add-respondent w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1 text-muted small">Add multiple petitioners with individual remarks using the row (+) button.</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Entrustment Number</label>
+                            <input type="text" class="form-control" name="EntrustmentNumber" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Entrustment Date</label>
+                            <input type="date" class="form-control" name="EntrustmentDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Advocate Name</label>
+                            <select class="form-select" name="AdvocateName">
+                                <option value="">Select Advocate...</option>
+                                @if (ViewBag.Advocates != null)
+                                {
+                                    foreach (var advocate in ViewBag.Advocates)
+                                    {
+                                        <option value="@advocate.AdvocateName">@advocate.AdvocateName</option>
+                                    }
+                                }
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CASE PROGRESS -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-graph-up-arrow me-2"></i>CASE PROGRESS</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Document Sent?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="DocumentSent" id="docSentYes" value="Yes">
+                                    <label class="form-check-label" for="docSentYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="DocumentSent" id="docSentNo" value="No" checked>
+                                    <label class="form-check-label" for="docSentNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for Document Sent = Yes -->
+                        <div class="col-md-8" id="docSentFields" style="display:none;">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Outward Number</label>
+                                    <input type="text" class="form-control doc-sent-input" name="InitialOutwardNumber" placeholder="Enter no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Outward Date</label>
+                                    <input type="date" class="form-control doc-sent-input" name="InitialOutwardDate" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Objection verified and sent?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="ObjectionVerified" id="objYes" value="Yes">
+                                    <label class="form-check-label" for="objYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="ObjectionVerified" id="objNo" value="No" checked>
+                                    <label class="form-check-label" for="objNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for Objection Verified = Yes -->
+                        <div class="col-md-8" id="objVerifiedFields" style="display:none;">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Objection Outward Number</label>
+                                    <input type="text" class="form-control obj-verified-input" name="ObjectionOutwardNumber" placeholder="Enter no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Objection Filed Date</label>
+                                    <input type="date" class="form-control obj-verified-input" name="ObjectionFiledDate" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Evidence Filed?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="EvidenceFiled" id="evYes" value="Yes">
+                                    <label class="form-check-label" for="evYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="EvidenceFiled" id="evNo" value="No" checked>
+                                    <label class="form-check-label" for="evNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Current Stage</label>
+                            <input type="text" class="form-control" name="CaseStatus" placeholder="Current stage..." />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Next Date of Hearing</label>
+                            <input type="date" class="form-control" name="NextDateOfHearing" />
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Disposal & Closure -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header">
+                    <h6 class="fw-bold mb-0"><i class="bi bi-check-circle-fill me-2"></i>SECTION 3: DISPOSAL & CLOSURE</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+
+                        <div class="col-md-4">
+                            <label class="form-label">Disposal Status</label>
+                            <select class="form-select fw-bold border-primary" name="DisposalStatus" id="disposalStatusSelect">
+                                <option value="">Select Status...</option>
+                                <option value="DISPOSED">DISPOSED</option>
+                                <option value="DNP">DNP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="resultSection" style="display:none;">
+                            <label class="form-label">Result</label>
+                            <select class="form-select fw-bold border-info" name="Result" id="resultSelect">
+                                <option value="">Select Result...</option>
+                                <option value="FAVOR">FAVOR</option>
+                                <option value="AGAINST">AGAINST</option>
+                            </select>
+                        </div>
+
+                        <!-- Fields for FAVOR -->
+                        <div class="col-md-12" id="favorSection" style="display:none;">
+                            <div class="row g-3 p-3 bg-light-premium rounded-4 border">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-bold text-success">Disposal Remarks</label>
+                                    <textarea class="form-control favor-input" name="ClosureRemark" rows="2" placeholder="Provide details about the favor..."></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-success">Closure Date</label>
+                                    <input type="date" class="form-control favor-input" name="ClosureDate" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-success"><i class="bi bi-file-earmark-pdf me-1"></i>Upload Judgment Copy</label>
+                                    <input type="file" class="form-control favor-input" name="FinalJudgmentFile" accept=".pdf" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: Evidence (Conditional for AGAINST) -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0" id="evidenceSection" style="display:none; background-color: #fcfcfc;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-journal-text fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">C. EVIDENCE DETAILS</h4>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-12 mb-4 border-bottom pb-4">
+                        <label class="form-label fw-bold d-block text-primary"><i class="bi bi-question-circle me-1"></i> Objection Filed?</label>
+                        <div class="d-flex gap-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="IsObjectionFiled" id="objFiledYes" value="Yes">
+                                <label class="form-check-label fw-bold" for="objFiledYes">Yes</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="IsObjectionFiled" id="objFiledNo" value="No" checked>
+                                <label class="form-check-label fw-bold" for="objFiledNo">No</label>
+                            </div>
+                        </div>
+
+                        <!-- If NO then show Yes/No fields -->
+                        <div class="mt-3 p-3 bg-white rounded border border-warning" id="objNoFields" style="display:none;">
+                            <label class="form-label small fw-bold text-warning mb-2">If NO, then:</label>
+                            <div class="row g-3">
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold">Objection Remarks</label>
+                                    <textarea class="form-control obj-no-remarks" name="ObjectionRemarks" rows="1" placeholder="Provide details for no objection..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="p-3 bg-white rounded border mb-3 shadow-sm">
+                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-people me-1"></i> 1. Petitioner Evidence</label>
+                            <div id="respEvidenceList">
+                                <div class="row g-2 mb-2 resp-evidence-row align-items-center">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="RespondentEvidence[0].Name" placeholder="Petitioner Name(s)..." />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="RespondentEvidence[0].Remark" placeholder="Remark..." />
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button type="button" class="btn btn-outline-primary add-resp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-building me-1"></i> 2. Corporation Evidence</label>
+                            <div id="corpEvidenceList">
+                                <div class="row g-2 mb-2 corp-evidence-row align-items-center">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="CorpEvidence[0].Name" placeholder="Corporation Witness Name..." />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="CorpEvidence[0].Designation" placeholder="Designation..." />
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button type="button" class="btn btn-outline-primary add-corp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: Certified Copy Details (Conditional for AGAINST) -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0" id="ccDetailsSection" style="display:none; background-color: #f8fdf8;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-file-earmark-check fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">CERTIFIED COPY DETAILS</h4>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Disposed On</label>
+                        <input type="date" class="form-control" name="CopyDisposedOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Applied On</label>
+                        <input type="date" class="form-control" name="CopyAppliedOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Ready On</label>
+                        <input type="date" class="form-control" name="CopyReadyOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Delivered On</label>
+                        <input type="date" class="form-control" name="CopyDeliveredOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Received at Division</label>
+                        <input type="date" class="form-control" name="CopyReceivedAtDivision" />
+                    </div>
+                    <div class="col-md-12 mt-3">
+                        <label class="form-label small fw-bold">Certified Copy Remarks</label>
+                        <textarea class="form-control" name="CertifiedCopyRemarks" rows="2" placeholder="Enter notes regarding certified copies..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Opinions & Final Status -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0 bg-white" id="opinionsSection" style="display:none;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-chat-left-text-fill fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">I. OPINIONS & FINAL STATUS</h4>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold">Award Details</label>
+                        <textarea class="form-control" rows="3" name="AwardDetails" placeholder="Enter findings, award amount, or general context..."></textarea>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Advocate's Opinion</label>
+                        <textarea class="form-control" name="AdvocateOpinion" rows="3" placeholder="PROVIDE DETAILED LEGAL OPINION..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Law Officer's Opinion</label>
+                        <textarea class="form-control" name="LawOfficerOpinion" rows="3" placeholder="PROVIDE LO COMMENTS..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">DC's Final Decision</label>
+                        <textarea class="form-control" name="DCFinalDecision" rows="3" placeholder="PROVIDE DC REMARKS..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Final Forwarding Status</label>
+                        <select class="form-select border-secondary" name="FinalForwardingStatus" id="finalForwardSelect">
+                            <option value="PENDING" selected>PENDING</option>
+                            <option value="FORWARDED TO CO">FORWARDED TO CO</option>
+                            <option value="APPEAL">APPEAL</option>
+                            <option value="CLOSED">CLOSED</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold"><i class="bi bi-file-earmark-pdf me-1 text-danger"></i>Upload Final Judgment</label>
+                        <input type="file" class="form-control opinion-input" name="FinalJudgmentFile" accept=".pdf" />
+                    </div>
+
+                    <!-- Fields for FORWARDED TO CO under Final Status -->
+                    <div class="col-md-12" id="finalForwardCOFields" style="display:none;">
+                        <div class="row g-3 p-3 bg-light rounded border border-warning">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-warning">Outward Number</label>
+                                <input type="text" class="form-control forwarded-input" name="OutwardNumber" placeholder="Enter official outward no..." />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-warning">Outward Date</label>
+                                <input type="date" class="form-control forwarded-input" name="OutwardDate" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fields for CLOSED under Final Status -->
+                    <div class="col-md-12" id="finalClosedFields" style="display:none;">
+                        <div class="row g-3 p-3 bg-light rounded border border-danger">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-danger">Closure Number</label>
+                                <input type="text" class="form-control final-closed-input" name="ClosureNumber" placeholder="Enter closure id..." />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-danger">Closure Date</label>
+                                <input type="date" class="form-control final-closed-input" name="ClosureDate" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 mt-4">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <label class="form-label fw-bold text-primary mb-0"><i class="bi bi-file-earmark-plus me-1"></i> Required Supporting Documents</label>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-add-enclosed-doc"><i class="bi bi-plus-lg me-1"></i>Add new document</button>
+                            </div>
+                            <div id="enclosedDocsList">
+                                <div class="row g-2 mb-2 doc-row align-items-center">
+                                    <div class="col-md-8">
+                                        <input type="text" class="form-control" name="EnclosedDocuments[0].DocName" placeholder="Document Description...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="number" class="form-control" name="EnclosedDocuments[0].PageCount" placeholder="Pages...">
+                                    </div>
+                                    <div class="col-md-1 text-end">
+                                        <i class="bi bi-check2-circle text-success fs-5"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Appeal Details Section (Conditional for Final Forwarding Status = APPEAL) -->
+            <div id="appealDetailsSection" style="display:none;" class="mb-4">
+                <div class="p-4 bg-light rounded border border-primary shadow-sm">
+                    <h6 class="text-primary fw-bold mb-3"><i class="bi bi-box-arrow-up-right me-2"></i>Appeal Details</h6>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Appeal Number</label>
+                            <input type="text" class="form-control appeal-input" name="AppealNumber">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Appeal Year</label>
+                            <input type="number" class="form-control appeal-input" name="AppealYear" placeholder="YYYY">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Arising Out OS Number</label>
+                            <input type="text" class="form-control appeal-input" name="ArisingOutOSNumber">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">OS Year</label>
+                            <input type="number" class="form-control appeal-input" name="OSYear" placeholder="YYYY">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Appeal Entrustment Number</label>
+                            <input type="text" class="form-control appeal-input" name="AppealEntrustmentNumber">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Appeal Entrustment Date</label>
+                            <input type="date" class="form-control appeal-input" name="AppealEntrustmentDate">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Court (Appellate Auth)</label>
+                            <input type="text" class="form-control appeal-input" name="CourtAppellateAuth">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Appeal Advocate Name</label>
+                            <select class="form-select appeal-input" name="AppealAdvocateName">
+                                <option value="">Select Advocate...</option>
+                                @if (ViewBag.Advocates != null)
+                                {
+                                    foreach (var advocate in ViewBag.Advocates)
+                                    {
+                                        <option value="@advocate.AdvocateName">@advocate.AdvocateName</option>
+                                    }
+                                }
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+
+                        <!-- Compliance for Appeal -->
+                        <div class="col-md-12 mt-4">
+                            <h6 class="text-primary fw-bold border-bottom pb-2 mb-3"><i class="bi bi-cash-stack me-2"></i>Compliance for Appeal</h6>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Compliance Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light fw-bold text-success">₹</span>
+                                <input type="number" step="0.01" class="form-control appeal-input" name="AppealComplianceAmount" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Cheque Number</label>
+                            <input type="text" class="form-control appeal-input" name="AppealChequeNumber">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Cheque Date</label>
+                            <input type="date" class="form-control appeal-input" name="AppealChequeDate">
+                        </div>
+
+                        <!-- After Disposal of Appeal -->
+                        <div class="col-md-12 mt-4">
+                            <h6 class="text-primary fw-bold border-bottom pb-2 mb-3"><i class="bi bi-file-earmark-check me-2"></i>After Disposal of Appeal</h6>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Award Details</label>
+                            <textarea class="form-control appeal-input" name="AppealAwardDetails" rows="2" placeholder="Enter award details..."></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Case Disposed On</label>
+                            <input type="date" class="form-control appeal-input" name="AppealCaseDisposedOn">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Copy Applied On</label>
+                            <input type="date" class="form-control appeal-input" name="AppealCopyAppliedOn">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Copy Ready On</label>
+                            <input type="date" class="form-control appeal-input" name="AppealCopyReadyOn">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Copy Delivered On</label>
+                            <input type="date" class="form-control appeal-input" name="AppealCopyDeliveredOn">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Copy Received at Division</label>
+                            <input type="date" class="form-control appeal-input" name="AppealCopyReceivedAtDivision">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Delay Remarks (if any)</label>
+                            <textarea class="form-control appeal-input" name="AppealDelayRemarks" rows="2" placeholder="Enter remarks for any delay..."></textarea>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Opinion of Advocate</label>
+                            <textarea class="form-control appeal-input" name="AppealAdvocateOpinion" rows="2" placeholder="Advocate's opinion..."></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Opinion of ALO/LO</label>
+                            <textarea class="form-control appeal-input" name="AppealALOOpinion" rows="2" placeholder="ALO/LO's opinion..."></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Opinion of DC</label>
+                            <textarea class="form-control appeal-input" name="AppealDCOpinion" rows="2" placeholder="DC's opinion..."></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Forwarding Status</label>
+                            <select class="form-select appeal-input border-secondary" name="AppealForwardingStatus" id="appealForwardSelect">
+                                <option value="PENDING" selected>PENDING</option>
+                                <option value="FORWARDED TO CO">FORWARDED TO CO</option>
+                                <option value="CLOSED">CLOSED</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Upload Appeal Judgment Copy</label>
+                            <input type="file" class="form-control appeal-input" name="AppealJudgmentCopy" accept=".pdf">
+                        </div>
+                        
+                        <!-- Fields for FORWARDED TO CO under Appeal -->
+                        <div class="col-md-12" id="appealForwardCOFields" style="display:none;">
+                            <div class="row g-3 p-3 bg-light rounded border border-warning">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-warning">Outward Number</label>
+                                    <input type="text" class="form-control appeal-forwarded-input" name="AppealOutwardNumber" placeholder="Enter official outward no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-warning">Outward Date</label>
+                                    <input type="date" class="form-control appeal-forwarded-input" name="AppealOutwardDate" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for CLOSED under Appeal -->
+                        <div class="col-md-12" id="appealClosedFields" style="display:none;">
+                            <div class="row g-3 p-3 bg-light rounded border border-danger">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-danger">Closure Number</label>
+                                    <input type="text" class="form-control appeal-closed-input" name="AppealClosureNumber" placeholder="Enter closure id..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-danger">Closure Date</label>
+                                    <input type="date" class="form-control appeal-closed-input" name="AppealClosureDate" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 text-center mt-4">
+                <button type="submit" class="btn btn-primary px-5 shadow-sm">
+                    <i class="bi bi-save2 me-2"></i>SAVE CASE DETAILS
+                </button>
+            </div>
+        </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // Case Progress: Document Sent Radio Toggle
+            $('input[name="DocumentSent"]').change(function() {
+                if ($(this).val() === 'Yes') {
+                    $('.doc-sent-input').prop('disabled', false);
+                    $('#docSentFields').slideDown(300);
+                } else {
+                    $('#docSentFields').slideUp(300);
+                    $('.doc-sent-input').prop('disabled', true).val('');
+                }
+            });
+
+            // Standardized Document Management
+            let docIndex = 1;
+            $(document).on('click', '.btn-add-enclosed-doc', function() {
+                console.log('Add document clicked');
+                const row = `
+                    <div class="row g-2 mb-2 doc-row align-items-center" style="display:none;">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" name="EnclosedDocuments[${docIndex}].DocName" placeholder="Document Description...">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control" name="EnclosedDocuments[${docIndex}].PageCount" placeholder="Pages...">
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                var $row = $(row);
+                $('#enclosedDocsList').append($row);
+                $row.slideDown(200);
+                docIndex++;
+                reindexDocs();
+            });
+
+            $(document).on('click', '.remove-doc-row', function() {
+                var $row = $(this).closest('.doc-row');
+                $row.slideUp(200, function() {
+                    $(this).remove();
+                    reindexDocs();
+                });
+            });
+
+            function reindexDocs() {
+                let idx = 0;
+                $('#enclosedDocsList .doc-row').each(function() {
+                    $(this).find('input[name*=".DocName"]').attr('name', `EnclosedDocuments[${idx}].DocName`);
+                    $(this).find('input[name*=".PageCount"]').attr('name', `EnclosedDocuments[${idx}].PageCount`);
+                    idx++;
+                });
+                docIndex = idx;
+            }
+
+            // Objection Verified Radio Toggle
+            $('input[name="ObjectionVerified"]').change(function() {
+                if ($(this).val() === 'Yes') {
+                    $('.obj-verified-input').prop('disabled', false);
+                    $('#objVerifiedFields').slideDown(300);
+                } else {
+                    $('#objVerifiedFields').slideUp(300);
+                    $('.obj-verified-input').prop('disabled', true).val('');
+                }
+            });
+
+            // Objection Filed Toggle
+            $('input[name="IsObjectionFiled"]').change(function() {
+                if ($(this).val() === 'No') {
+                    $('.obj-no-remarks').prop('disabled', false);
+                    $('#objNoFields').slideDown(300);
+                } else {
+                    $('#objNoFields').slideUp(300);
+                    $('.obj-no-remarks').prop('disabled', true).val('');
+                }
+            });
+
+            // Disposal Status dropdown conditional fields toggle logic
+            $('#disposalStatusSelect').change(function() {
+                var selectedStatus = $(this).val();
+                
+                // Hide all sections first
+                $('#closedDivisionSection').slideUp(200);
+                $('#sentCentralOfficeSection').slideUp(200);
+                $('#resultSection').slideUp(200);
+                $('#favorSection').slideUp(200);
+                $('#evidenceSection').slideUp(200);
+                $('#ccDetailsSection').slideUp(200);
+                $('#opinionsSection').slideUp(200);
+                
+                // Reset Result dropdown
+                $('#resultSelect').val('');
+                $('#finalForwardSelect').val('PENDING').trigger('change');
+                
+                // Disable all duplicate inputs to prevent form collison tracking
+                $('.division-input, .favor-input, .opinion-input, .central-input, .forwarded-input, .final-closed-input').prop('disabled', true);
+                
+                // Show specific section based on selection
+                if (selectedStatus === 'DISPOSED' || selectedStatus === 'DNP') {
+                    $('#resultSection').slideDown(300);
+                }
+            });
+
+            // Final Forwarding Status dropdown conditional logic
+            $('#finalForwardSelect').change(function() {
+                var selectedFinal = $(this).val();
+                
+                $('#finalForwardCOFields').slideUp(200);
+                $('#finalClosedFields').slideUp(200);
+                $('#appealDetailsSection').slideUp(200);
+                
+                // Disable conflict inputs
+                $('.forwarded-input, .final-closed-input, .appeal-input').prop('disabled', true);
+                
+                if (selectedFinal === 'FORWARDED TO CO') {
+                    $('.forwarded-input').prop('disabled', false);
+                    $('#finalForwardCOFields').slideDown(300);
+                } else if (selectedFinal === 'CLOSED') {
+                    $('.final-closed-input').prop('disabled', false);
+                    $('#finalClosedFields').slideDown(300);
+                } else if (selectedFinal === 'APPEAL') {
+                    $('.appeal-input').prop('disabled', false);
+                    $('#appealDetailsSection').slideDown(300);
+                    $('#appealForwardSelect').trigger('change');
+                }
+            });
+
+            // Internal Appeal Forwarding Status toggle
+            $('#appealForwardSelect').change(function() {
+                var selected = $(this).val();
+                $('#appealForwardCOFields').slideUp(200);
+                $('#appealClosedFields').slideUp(200);
+                $('.appeal-forwarded-input, .appeal-closed-input').prop('disabled', true);
+
+                if (selected === 'FORWARDED TO CO') {
+                    $('.appeal-forwarded-input').prop('disabled', false);
+                    $('#appealForwardCOFields').slideDown(300);
+                } else if (selected === 'CLOSED') {
+                    $('.appeal-closed-input').prop('disabled', false);
+                    $('#appealClosedFields').slideDown(300);
+                }
+            });
+
+            // Result dropdown conditional logic (FAVOR/AGAINST)
+            $('#resultSelect').change(function() {
+                var selectedResult = $(this).val();
+                
+                // Reset everything under result first
+                $('#favorSection').slideUp(200);
+                $('#evidenceSection').slideUp(200);
+                $('#ccDetailsSection').slideUp(200);
+                $('#opinionsSection').slideUp(200);
+                
+                // Disable conflict inputs
+                $('.favor-input, .opinion-input').prop('disabled', true);
+                
+                if (selectedResult === 'AGAINST') {
+                    $('.opinion-input').prop('disabled', false); // Enable opinion inputs
+                    $('#evidenceSection').slideDown(300);
+                    $('#ccDetailsSection').slideDown(300);
+                    $('#opinionsSection').slideDown(300);
+                } else if (selectedResult === 'FAVOR') {
+                    $('.favor-input').prop('disabled', false); // Enable favor inputs
+                    $('#favorSection').slideDown(300);
+                }
+            });
+
+            // Dynamic Respondent List Management
+            let respondentIndex = 1;
+            $(document).on('click', '.add-respondent', function() {
+                const row = `
+                    <div class="row g-2 mb-2 respondent-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="Respondents[${respondentIndex}].Name" placeholder="Name of petitioner..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="Respondents[${respondentIndex}].Remark" placeholder="Remark for this name..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-respondent w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#respondentList').append(row);
+                respondentIndex++;
+            });
+
+            $(document).on('click', '.remove-respondent', function() {
+                $(this).closest('.respondent-row').remove();
+                reindexRespondents();
+            });
+
+            function reindexRespondents() {
+                respondentIndex = 0;
+                $('#respondentList .respondent-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `Respondents[${respondentIndex}].Name`);
+                    $(this).find('input[name*=".Remark"]').attr('name', `Respondents[${respondentIndex}].Remark`);
+                    respondentIndex++;
+                });
+            }
+
+            // Dynamic Respondent Evidence Management
+            let respEvIndex = 1;
+            $(document).on('click', '.add-resp-ev', function() {
+                const row = `
+                    <div class="row g-2 mb-2 resp-evidence-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Name" placeholder="Petitioner Name(s)..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Remark" placeholder="Remark..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-resp-ev w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#respEvidenceList').append(row);
+                respEvIndex++;
+            });
+
+            $(document).on('click', '.remove-resp-ev', function() {
+                $(this).closest('.resp-evidence-row').remove();
+                reindexRespEvidence();
+            });
+
+            function reindexRespEvidence() {
+                respEvIndex = 0;
+                $('#respEvidenceList .resp-evidence-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `RespondentEvidence[${respEvIndex}].Name`);
+                    $(this).find('input[name*=".Remark"]').attr('name', `RespondentEvidence[${respEvIndex}].Remark`);
+                    respEvIndex++;
+                });
+            }
+
+            // Dynamic Corporation Evidence Management
+            let corpEvIndex = 1;
+            $(document).on('click', '.add-corp-ev', function() {
+                const row = `
+                    <div class="row g-2 mb-2 corp-evidence-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Name" placeholder="Corporation Witness Name..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Designation" placeholder="Designation..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-corp-ev w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#corpEvidenceList').append(row);
+                corpEvIndex++;
+            });
+
+            $(document).on('click', '.remove-corp-ev', function() {
+                $(this).closest('.corp-evidence-row').remove();
+                reindexCorpEvidence();
+            });
+
+
+
+            function reindexCorpEvidence() {
+                corpEvIndex = 0;
+                $('#corpEvidenceList .corp-evidence-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `CorpEvidence[${corpEvIndex}].Name`);
+                    $(this).find('input[name*=".Designation"]').attr('name', `CorpEvidence[${corpEvIndex}].Designation`);
+                    corpEvIndex++;
+                });
+            }
+
+
+        });
+    </script>
+}

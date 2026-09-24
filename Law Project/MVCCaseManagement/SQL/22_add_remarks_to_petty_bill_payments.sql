@@ -1,0 +1,9 @@
+IF NOT EXISTS (
+    SELECT * FROM sys.columns 
+    WHERE Name = N'Remarks' AND Object_ID = Object_ID(N'PETTY_BILL_PAYMENTS')
+)
+BEGIN
+    ALTER TABLE PETTY_BILL_PAYMENTS
+    ADD Remarks NVARCHAR(500) NULL;
+END
+GO

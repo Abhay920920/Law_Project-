@@ -1,0 +1,149 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "version": "1.0.0",
+        "title": "DC Show Business API",
+        "description": "API provides details of business transacted on a particular date based on CNR number and date for which business is needed. Business date is the date of court proceedings which may be available from the Case History. "
+    },
+    "basePath": "/nic/ecourts/dc-show-business-api",
+    "paths": {
+        "/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "put": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "delete": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "head": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "patch": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            }
+        },
+        "/showBusiness": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "dept_id",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_str",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_token",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "version",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    }
+                ]
+            }
+        }
+    },
+    "securityDefinitions": {
+        "clientIdHeader": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-IBM-Client-Id"
+        },
+        "Oauth_token": {
+            "type": "oauth2",
+            "flow": "application",
+            "tokenUrl": "//oauth2/token",
+            "scopes": {
+                "napix": "napix"
+            }
+        }
+    },
+    "schemes": [
+        "https"
+    ],
+    "security": [
+        {
+            "Oauth_token": [
+                "napix"
+            ]
+        }
+    ],
+    "host": "delhigw.napix.gov.in"
+}

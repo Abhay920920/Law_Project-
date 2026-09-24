@@ -1,0 +1,144 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "HC Caveat Name API",
+        "version": "1.0.0",
+        "description": "API provides list of Caveats from a High court establishment matching name of the party. Input for this API is Establishment Code, Party Name, Search type and other details. Search type parameter provides facility to search the name string anywhere (A) or starting with (S) with the input characters. The list also includes matched case numbers along with the Caveats."
+    },
+    "basePath": "/nic/ecourts/hc-caveat-name-api",
+    "paths": {
+        "/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "put": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "delete": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "head": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "patch": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            }
+        },
+        "/caveatname": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "dept_id",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_str",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_token",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "version",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    }
+                ]
+            }
+        }
+    },
+    "securityDefinitions": {
+        "Ouath_token": {
+            "type": "oauth2",
+            "flow": "application",
+            "tokenUrl": "//oauth2/token",
+            "scopes": {
+                "napix": "napix"
+            }
+        }
+    },
+    "security": [
+        {
+            "Ouath_token": [
+                "napix"
+            ]
+        }
+    ],
+    "schemes": [
+        "https"
+    ],
+    "host": "delhigw.napix.gov.in"
+}

@@ -1,0 +1,5 @@
+IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[MVC_CASE_ADVERSE_PW]') AND name = N'IsTreated')
+BEGIN
+    ALTER TABLE [dbo].[MVC_CASE_ADVERSE_PW] ADD [IsTreated] BIT NOT NULL DEFAULT 0;
+END
+GO

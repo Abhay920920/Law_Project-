@@ -1,0 +1,33 @@
+{
+  "ConnectionStrings": {
+    "MVCCaseDB": "Server=(localdb)\\mssqllocaldb;Database=MVCCaseManagementDB;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=False;"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Information"
+    }
+  },
+  "SMS": {
+    "Username": "DEVELOPMENT_USER",
+    "Password": "DEVELOPMENT_PASSWORD",
+    "SenderId": "NWKRTC",
+    "SecureKey": "DEVELOPMENT_SECURE_KEY",
+    "ApiUrl": "https://smsmobile1.karnataka.gov.in/index.php/sendmsg",
+    "TemplateId": "1107174825473036218"
+  },
+  "eCourts": {
+    "ApiKey": "YOUR_NAPIX_CLIENT_ID",
+    "SecretKey": "YOUR_NAPIX_CLIENT_SECRET",
+    "DeptId": "clonwkrtc",
+    "HmacKey": "YOUR_HMAC_KEY",
+    "AuthKey": "YOUR_AES_AUTH_KEY",
+    "IV": "YOUR_AES_IV",
+    "GatewayUrl": "https://delhigw.napix.gov.in/nic/ecourts",
+    "OAuthTokenUrl": "https://delhigw.napix.gov.in/nic/ecourts/oauth2/token"
+  },
+  "AppSettings": {
+    "TR18ApiKey": "YOUR_TR18_API_KEY",
+    "TR18ApiBaseUrl": "https://tr18.itnwkrtc.in/api/v1/accidents.php"
+  }
+}

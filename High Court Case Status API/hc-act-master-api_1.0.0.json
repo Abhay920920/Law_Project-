@@ -1,0 +1,143 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "title": "HC Act Master API",
+        "version": "1.0.0",
+        "description": "For every Act, a unique National Act Code. API provides list of the Acts and relevant National Act Codes used in the eCourts project for further accessing relevant APIs. This API doesn\u2019t require any input string and can just be connected using dept_id,request_str,token & version to get the list of all the Acts with the respective National Act codes."
+    },
+    "basePath": "/nic/ecourts/hc-act-master-api",
+    "paths": {
+        "/": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "put": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "post": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "delete": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "head": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            },
+            "patch": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "consumes": [],
+                "produces": []
+            }
+        },
+        "/actMaster": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "description": "success",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "dept_id",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_str",
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "request_token",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    },
+                    {
+                        "name": "version",
+                        "required": true,
+                        "in": "query",
+                        "type": "string"
+                    }
+                ]
+            }
+        }
+    },
+    "securityDefinitions": {
+        "ouath_token": {
+            "type": "oauth2",
+            "flow": "application",
+            "tokenUrl": "//oauth2/token",
+            "scopes": {
+                "napix": "napix"
+            }
+        }
+    },
+    "security": [
+        {
+            "ouath_token": [
+                "napix"
+            ]
+        }
+    ],
+    "schemes": [
+        "https"
+    ],
+    "host": "delhigw.napix.gov.in"
+}

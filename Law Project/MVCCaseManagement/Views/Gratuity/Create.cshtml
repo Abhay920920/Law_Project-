@@ -1,0 +1,2065 @@
+@model MVCCaseManagement.Models.GratuityViewModel
+
+@{
+    ViewData["Title"] = (Model.CaseID > 0 ? "Edit" : "New") + " Gratuity Case";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid px-4 py-4 fade-in">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+             <h2 class="fw-bold text-gratuity mb-1">
+                <i class="bi bi-file-earmark-plus-fill me-2"></i> @ViewData["Title"]
+            </h2>
+             <p class="text-muted mb-0 small"><i class="bi bi-info-circle me-1"></i> Enter complete details for gratuity proceedings and assessment</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="@Url.Action("Index")" class="btn btn-outline-secondary rounded-pill shadow-sm bg-white">
+                <i class="bi bi-arrow-left me-2"></i> Dashboard
+            </a>
+            <a href="@Url.Action("CaseList")" class="btn btn-outline-gratuity rounded-pill shadow-sm bg-white">
+                <i class="bi bi-list-ul me-2"></i> Case List
+            </a>
+        </div>
+    </div>
+
+    <div class="alert alert-warning border-0 shadow-sm rounded-pill mb-4 px-4 py-3 fade-in d-flex align-items-center">
+        <i class="bi bi-exclamation-triangle-fill fs-4 me-3 text-warning"></i>
+        <div>
+            <span class="fw-bold text-dark">Required Fields Check:</span> Please ensure all mandatory fields marked with a red asterisk (<span class="text-danger">*</span>) are filled correctly before saving.
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="bi bi-exclamation-circle me-2"></i> @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <div asp-validation-summary="All" class="text-danger alert alert-danger py-2 mb-4 shadow-sm border-0 border-start border-4 border-danger fade-in" style="display: @(ViewData.ModelState.IsValid ? "none" : "block")">
+        <h6 class="fw-bold mb-2"><i class="bi bi-exclamation-octagon-fill me-2"></i> Please fix the following errors:</h6>
+    </div>
+
+    <form asp-action="@(Model.CaseID > 0 ? "Edit" : "Create")" method="post" enctype="multipart/form-data" class="needs-validation" novalidate>
+        @Html.AntiForgeryToken()
+        @if (Model.CaseID > 0)
+        {
+            <input type="hidden" asp-for="CaseID" />
+            <input type="hidden" id="hdnActionTaken" value="@Model.ActionTaken" />
+            <input type="hidden" id="hdnAppealOutwardNo" value="@Model.AppealActionOutwardNo" />
+            <input type="hidden" id="hdnAppealDate" value="@(Model.AppealActionDate?.ToString("yyyy-MM-dd"))" />
+            <input type="hidden" asp-for="AppealJudgmentPath" />
+            <input type="hidden" asp-for="AdverseJudgmentPath" />
+            <input type="hidden" asp-for="InitialActionPath1" />
+            <input type="hidden" asp-for="InitialActionPath2" />
+            <input type="hidden" asp-for="StayOrderPath1" />
+            <input type="hidden" asp-for="StayOrderPath2" />
+
+             @* Data Lock Fields (Preserve specialized data entered in Action/Claimant Appeal pages) *@
+             <input type="hidden" asp-for="ActionTaken" />
+             <input type="hidden" asp-for="IsFeasibilityReceived" />
+             <input type="hidden" asp-for="FeasibilityReceiptDate" />
+             <input type="hidden" asp-for="ApprovalOutwardNo" />
+             <input type="hidden" asp-for="ApprovalDate" />
+             <input type="hidden" asp-for="AppealActionOutwardNo" />
+             <input type="hidden" asp-for="AppealActionDate" />
+             <input type="hidden" asp-for="InitialActionRemarks" />
+             <input type="hidden" asp-for="FinalRemarks" />
+
+             <input type="hidden" asp-for="IsPendingForFiling" />
+             <input type="hidden" asp-for="HighCourtBench" />
+             <input type="hidden" asp-for="OtherHighCourtBench" />
+             <input type="hidden" asp-for="StayGranted" />
+             <input type="hidden" asp-for="StayComplianceOutwardNo" />
+             <input type="hidden" asp-for="StayComplianceDate" />
+             <input type="hidden" asp-for="CorpWPNumber" />
+             <input type="hidden" asp-for="CorpWPYear" />
+             <input type="hidden" asp-for="CorpWPAdvocate" />
+             <input type="hidden" asp-for="CorpWPEntrustmentNo" />
+             <input type="hidden" asp-for="CorpWPEntrustmentDate" />
+             <input type="hidden" asp-for="CorpWPStatus" />
+             <input type="hidden" asp-for="RestorationFiled" />
+             <input type="hidden" asp-for="RestorationDate" />
+             <input type="hidden" asp-for="RestorationStatus" />
+             <input type="hidden" asp-for="CorpWPOutcome" />
+             <input type="hidden" asp-for="CorpWPActionTaken" />
+             <input type="hidden" asp-for="ClosureOutwardNo" />
+
+             <input type="hidden" asp-for="IsClaimantSCAppeal" />
+             <input type="hidden" asp-for="IsClaimantSCPending" />
+             <input type="hidden" asp-for="ClaimantSCDiaryNumber" />
+             <input type="hidden" asp-for="ClaimantSCYear" />
+             <input type="hidden" asp-for="ClaimantSCNumber" />
+             <input type="hidden" asp-for="ClaimantSLPYear" />
+             <input type="hidden" asp-for="ClaimantSCFiledBy" />
+             <input type="hidden" asp-for="ClaimantSCEntrustmentNo" />
+             <input type="hidden" asp-for="ClaimantSCEntrustmentDate" />
+             <input type="hidden" asp-for="ClaimantSCAdvocate" />
+             <input type="hidden" asp-for="ClaimantSCStatus" />
+             <input type="hidden" asp-for="ClaimantSCOutcome" />
+             <input type="hidden" asp-for="ClaimantSCActionTaken" />
+             <input type="hidden" asp-for="ClaimantSCClosureNo" />
+             <input type="hidden" asp-for="ClaimantSCClosureDate" />
+
+             <input type="hidden" asp-for="ClaimantDivisionID" />
+             <input type="hidden" asp-for="ClaimantArisingWPNumber" />
+             <input type="hidden" asp-for="ClaimantArisingWPYear" />
+             <input type="hidden" asp-for="ClaimantMVCCurrentStatus" />
+             <input type="hidden" asp-for="ClaimantWPNumber" />
+             <input type="hidden" asp-for="ClaimantWPYear" />
+             <input type="hidden" asp-for="ClaimantHighCourtBench" />
+             <input type="hidden" asp-for="ClaimantOtherHighCourtBench" />
+             <input type="hidden" asp-for="ClaimantWPEntrustmentNo" />
+             <input type="hidden" asp-for="ClaimantWPEntrustmentDate" />
+             <input type="hidden" asp-for="ClaimantWPAdvocate" />
+             <input type="hidden" asp-for="ClaimantWPStatus" />
+             <input type="hidden" asp-for="ClaimantWPDecision" />
+             <input type="hidden" asp-for="ClaimantActionTaken" />
+             <input type="hidden" asp-for="ClaimantApprovalNo" />
+             <input type="hidden" asp-for="ClaimantApprovalDate" />
+
+             <input type="hidden" asp-for="ComplianceStatus" />
+             <input type="hidden" asp-for="FinalAmount" />
+             <input type="hidden" asp-for="TotalServicePeriod" />
+             <input type="hidden" asp-for="IsViewedByCO" />
+        }
+
+        <div class="card border-0 shadow-lg main-form-card">
+            <div class="card-header bg-white border-bottom p-0 overflow-hidden">
+                <ul class="nav nav-tabs nav-justified modern-tabs" id="gratuityTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(Model.CaseID > 0 && (Model.ActionTaken == "Appeal" || Model.ForwardingStatus == "Appeal before Appellant Authority") ? "" : "active")" id="basic-tab" data-bs-toggle="tab" data-bs-target="#basic" type="button" role="tab">
+                            <i class="bi bi-info-square me-2"></i><span>1. Basic Details</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="outcome-tab" data-bs-toggle="tab" data-bs-target="#outcome" type="button" role="tab">
+                            <i class="bi bi-calculator me-2"></i><span>2. Outcome & Assessment</span>
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation" id="appeal-tab-container">
+                        <button class="nav-link @(Model.CaseID > 0 && (Model.ActionTaken == "Appeal" || Model.ForwardingStatus == "Appeal before Appellant Authority") ? "active" : "")" id="appeal-tab" data-bs-toggle="tab" data-bs-target="#appeal" type="button" role="tab">
+                            <i class="bi bi-gavel me-2"></i><span>3. Appeal Details</span>
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="card-body p-4">
+                <div class="tab-content" id="gratuityTabsContent">
+                    
+                    <!-- TAB 1: Basic Details -->
+                    <div class="tab-pane fade @(Model.CaseID > 0 && (Model.ActionTaken == "Appeal" || Model.ForwardingStatus == "Appeal before Appellant Authority") ? "" : "show active")" id="basic" role="tabpanel">
+                        <h5 class="fw-bold text-gratuity mb-3 section-heading">Case Information</h5>
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                @if (ViewBag.IsCentralOffice == true)
+                                {
+                                    <label asp-for="DivisionCode" class="form-label">Division</label>
+                                    <select asp-for="DivisionCode" asp-items="Model.DivisionList" class="form-select">
+                                        <option value="">-- Select Division --</option>
+                                    </select>
+                                }
+                                else
+                                {
+                                    <label for="DisplayDivisionName" class="form-label">Division</label>
+                                    <input type="hidden" name="DivisionCode" value="@Model.DivisionCode" id="hdnDivisionCode" />
+                                    <input id="DisplayDivisionName" name="DisplayDivisionName" class="form-control" value="@ViewBag.UserDivisionName" readonly />
+                                }
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="CaseStatus" class="form-label">Case Status</label>
+                                <select asp-for="CaseStatus" asp-items="Model.StatusList" class="form-select">
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="CourtType" class="form-label">Court</label>
+                                <input asp-for="CourtType" class="form-control" value="@(string.IsNullOrEmpty(Model.CourtType) ? "Controlling Authority" : Model.CourtType)" readonly />
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="PGANumber" class="form-label">PGA / CR Number <span class="text-danger">*</span></label>
+                                <input asp-for="PGANumber" class="form-control" required />
+                                <span asp-validation-for="PGANumber" class="text-danger small"></span>
+                            </div>
+                            
+                            <div class="col-md-4">
+                                <label asp-for="ClaimantName" class="form-label">Claimant Name <span class="text-danger">*</span></label>
+                                <input asp-for="ClaimantName" class="form-control" required />
+                                <span asp-validation-for="ClaimantName" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="DateOfBirth" class="form-label">Date of Birth</label>
+                                <input asp-for="DateOfBirth" class="form-control" type="date" />
+                            </div>
+                            <div class="col-md-4">
+                                <label for="DesignationSelect" class="form-label">Designation</label>
+                                <select id="DesignationSelect" class="form-select others-dropdown" 
+                                        data-others-target="DesignationManual" 
+                                        data-others-hidden="ClaimantDesignationHidden"
+                                        asp-items="Model.DesignationList">
+                                    <option value="">-- Select Designation --</option>
+                                </select>
+                                <input type="text" id="DesignationManual" class="form-control others-manual mt-2" 
+                                       data-others-select="DesignationSelect" placeholder="Enter Designation" aria-label="Enter Custom Designation" style="display:none;" />
+                                <input type="hidden" asp-for="ClaimantDesignation" id="ClaimantDesignationHidden" />
+                            </div>
+                             <div class="col-md-4">
+                                <label for="WorkingStatusSelect" class="form-label">Working Status</label>
+                                <select id="WorkingStatusSelect" class="form-select others-dropdown" 
+                                        data-others-target="WorkingStatusManual" 
+                                        data-others-hidden="WorkingStatusHidden"
+                                        asp-items="Model.WorkingStatusList">
+                                     <option value="">-- Select Status --</option>
+                                </select>
+                                <input type="text" id="WorkingStatusManual" class="form-control others-manual mt-2" 
+                                       data-others-select="WorkingStatusSelect" placeholder="Enter Status" aria-label="Enter Custom Working Status" style="display:none;" />
+                                <input type="hidden" asp-for="WorkingStatus" id="WorkingStatusHidden" />
+                            </div>
+
+                            <!-- VRS Additional Benefits Section -->
+                            <div class="col-md-8" id="vrsBenefitSection">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label d-block">Any additional benefits given? (if VRS)</label>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" asp-for="IsAdditionalBenefitsGiven" value="true" id="vrsBenefitYes">
+                                            <label class="form-check-label" for="vrsBenefitYes">Yes</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" asp-for="IsAdditionalBenefitsGiven" value="false" id="vrsBenefitNo">
+                                            <label class="form-check-label" for="vrsBenefitNo">No</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6" id="vrsAmountDiv">
+                                        <label asp-for="AdditionalBenefitsAmount" class="form-label">Additional Benefits Amount</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">₹</span>
+                                            <input asp-for="AdditionalBenefitsAmount" class="form-control" placeholder="0.00" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label asp-for="EntrustmentNo" class="form-label">Entrustment No <span class="text-danger">*</span></label>
+                                <input asp-for="EntrustmentNo" class="form-control" required />
+                                <span asp-validation-for="EntrustmentNo" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="EntrustmentDate" class="form-label">Entrustment Date <span class="text-danger">*</span></label>
+                                <input asp-for="EntrustmentDate" type="date" class="form-control" required />
+                                <span asp-validation-for="EntrustmentDate" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="AdvocateName" class="form-label">Advocate Name</label>
+                                <input asp-for="AdvocateName" class="form-control" />
+                            </div>
+                            <div class="col-md-8">
+                                <label asp-for="AmountClaimed" class="form-label text-uppercase fw-bold text-gratuity">CLAIM DETAILS</label>
+                                <textarea asp-for="AmountClaimed" class="form-control border-gratuity border-2" rows="1" placeholder="Enter claim details..."></textarea>
+                            </div>
+                        </div>
+
+                        <h5 class="fw-bold text-gratuity mb-3 section-heading">Case Progress</h5>
+                        <div class="row g-3 mb-4 border-bottom pb-4">
+                            <!-- Document Sent -->
+                            <div class="col-md-4">
+                                <label class="form-label d-block">Document Sent?</label>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" value="true" asp-for="IsDocumentSent" id="isDocSentYes">
+                                    <label class="form-check-label" for="isDocSentYes">Yes</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" value="false" asp-for="IsDocumentSent" id="isDocSentNo">
+                                    <label class="form-check-label" for="isDocSentNo">No</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="DocumentOutwardNo" class="form-label">Document Outward Number</label>
+                                <input asp-for="DocumentOutwardNo" class="form-control" />
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="DocumentOutwardDate" class="form-label">Document Outward Date</label>
+                                <input asp-for="DocumentOutwardDate" class="form-control" type="date" />
+                            </div>
+
+                            <!-- Objection Filed -->
+                            <div class="col-md-4">
+                                <label class="form-label d-block">Objection Filed?</label>
+                                <div class="form-check form-check-inline">
+                                     <input class="form-check-input" type="radio" value="true" asp-for="IsObjectionFiled" id="isObjFiledYes">
+                                     <label class="form-check-label" for="isObjFiledYes">Yes</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                     <input class="form-check-input" type="radio" value="false" asp-for="IsObjectionFiled" id="isObjFiledNo">
+                                     <label class="form-check-label" for="isObjFiledNo">No</label>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="ObjectionOutwardNo" class="form-label">Objection Outward No</label>
+                                <input asp-for="ObjectionOutwardNo" class="form-control" />
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="ObjectionFiledDate" class="form-label">Objection Filed Date</label>
+                                <input asp-for="ObjectionFiledDate" class="form-control" type="date" />
+                            </div>
+
+                            <!-- Evidence Filed -->
+                            <div class="col-md-4">
+                                <label class="form-label d-block">Evidence Filed?</label>
+                                <div class="form-check form-check-inline">
+                                     <input class="form-check-input" type="radio" value="true" asp-for="IsEvidenceFiled" id="isEvidFiledYes">
+                                     <label class="form-check-label" for="isEvidFiledYes">Yes</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                     <input class="form-check-input" type="radio" value="false" asp-for="IsEvidenceFiled" id="isEvidFiledNo">
+                                     <label class="form-check-label" for="isEvidFiledNo">No</label>
+                                </div>
+                            </div>
+
+                            <!-- Stage & Hearing -->
+                            <div class="col-md-4">
+                                <label asp-for="CurrentStage" class="form-label">Current Stage</label>
+                                <input asp-for="CurrentStage" class="form-control" />
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="NextHearingDate" class="form-label">Next Date of Hearing</label>
+                                <input asp-for="NextHearingDate" class="form-control" type="date" />
+                            </div>
+                        </div>
+                        <h5 class="fw-bold text-gratuity mb-3 section-heading">Case Outcome</h5>
+                        <div class="row g-3 mb-4 border-bottom pb-4">
+                            <div class="col-md-6">
+                                <label asp-for="DisposalResult" class="form-label">Result</label>
+                                <select asp-for="DisposalResult" class="form-select">
+                                    <option value="">-- Select Result --</option>
+                                    <option value="In Favour of Corporation">In Favour of Corporation</option>
+                                    <option value="Against Corporation">Against Corporation</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="DisposalDate" class="form-label">Case Disposed On</label>
+                                <input asp-for="DisposalDate" type="date" class="form-control" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: Outcome & Work After Disposal -->
+                    <div class="tab-pane fade" id="outcome" role="tabpanel">
+
+                        <h5 class="fw-bold text-gratuity mb-3 section-heading">Work After Disposal (Claim & Service Particulars)</h5>
+                        <div class="row g-3 mb-4">
+                             <!-- Common Service Dates removed, moved to respective columns -->
+
+                        </div>
+
+                        <!-- Comparative Assessment -->
+                        <div class="row g-4">
+                            <!-- Corporation Assessment -->
+                            <div class="col-md-6 border-end">
+                                <div class="assessment-box corp h-100">
+                                    <h6 class="fw-bold text-gratuity mb-4 border-bottom pb-2"><i class="bi bi-building-fill me-2"></i>Corporation Assessment as per SR</h6>
+                                    
+                                     <div class="mb-3">
+                                        <label asp-for="AppointmentDate" class="form-label">Date of Appointment</label>
+                                        <input asp-for="AppointmentDate" type="date" class="form-control" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label asp-for="RetirementDate" class="form-label">Date of Retirement / Dismissal / VRS / Death</label>
+                                        <input asp-for="RetirementDate" type="date" class="form-control" />
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Break in Service (SPE/LWA/ABS)</label>
+                                        <div class="row g-2">
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_years" class="form-control" min="0" placeholder="0" aria-label="Break in Service Years" />
+                                                    <span class="input-group-text">Yrs</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_months" class="form-control" min="0" max="11" placeholder="0" aria-label="Break in Service Months" />
+                                                    <span class="input-group-text">Mon</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_days" class="form-control" min="0" max="30" placeholder="0" aria-label="Break in Service Days" />
+                                                    <span class="input-group-text">Days</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input asp-for="Period_SPE_LWA_ABS" type="hidden" id="Period_SPE_LWA_ABS" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Qualifying Service (Length)</label>
+                                        <div class="row g-2">
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_years" class="form-control" min="0" placeholder="0" aria-label="Qualifying Service Years" />
+                                                    <span class="input-group-text">Yrs</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_months" class="form-control" min="0" max="11" placeholder="0" aria-label="Qualifying Service Months" />
+                                                    <span class="input-group-text">Mon</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_days" class="form-control" min="0" max="30" placeholder="0" aria-label="Qualifying Service Days" />
+                                                    <span class="input-group-text">Days</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input asp-for="QualifyingService_Corp" type="hidden" id="QualifyingService_Corp" />
+                                    </div>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnBasic" class="form-label">Last Drawn Basic</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnBasic" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnBDA" class="form-label">BDA</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnBDA" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnDA" class="form-label">DA</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnDA" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label asp-for="GratuityAmount_Corp_Act" class="form-label">Gratuity Amount (As per Act)</label>
+                                        <input asp-for="GratuityAmount_Corp_Act" class="form-control border-gratuity" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label asp-for="GratuityAmount_Corp_Reg" class="form-label">Gratuity Amount (As per Regulation)</label>
+                                        <input asp-for="GratuityAmount_Corp_Reg" class="form-control border-gratuity" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ALC Assessment -->
+                            <div class="col-md-6">
+                                <div class="assessment-box ca h-100">
+                                    <h6 class="fw-bold text-primary mb-4 border-bottom pb-2"><i class="bi bi-journal-check me-2"></i>Controlling authority assessment</h6>
+                                    
+                                     <div class="row g-3 mb-3">
+                                         <div class="col-md-6">
+                                             <label asp-for="AppointmentDate_CA" class="form-label">Date of Appointment</label>
+                                             <input asp-for="AppointmentDate_CA" type="date" class="form-control" />
+                                         </div>
+                                         <div class="col-md-6">
+                                             <label asp-for="CA_AppointmentRemark" class="form-label">Remark</label>
+                                             <input asp-for="CA_AppointmentRemark" class="form-control" placeholder="Remark for Appointment" />
+                                         </div>
+                                     </div>
+                                    <div class="mb-3">
+                                        <label asp-for="RetirementDate_CA" class="form-label">Date of Retirement / Dismissal / VRS / Death</label>
+                                        <input asp-for="RetirementDate_CA" type="date" class="form-control" />
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Break in Service (SPE/LWA/ABS)</label>
+                                        <div class="row g-2">
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_years_ca" class="form-control" min="0" placeholder="0" aria-label="Break in Service Years (CA)" />
+                                                    <span class="input-group-text">Yrs</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_months_ca" class="form-control" min="0" max="11" placeholder="0" aria-label="Break in Service Months (CA)" />
+                                                    <span class="input-group-text">Mon</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="break_days_ca" class="form-control" min="0" max="30" placeholder="0" aria-label="Break in Service Days (CA)" />
+                                                    <span class="input-group-text">Days</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input asp-for="Period_SPE_LWA_ABS_CA" type="hidden" id="Period_SPE_LWA_ABS_CA" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Qualifying Service (Length)</label>
+                                        <div class="row g-2">
+                                             <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_years_ca" class="form-control" min="0" placeholder="0" aria-label="Qualifying Service Years (CA)" />
+                                                    <span class="input-group-text">Yrs</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_months_ca" class="form-control" min="0" max="11" placeholder="0" aria-label="Qualifying Service Months (CA)" />
+                                                    <span class="input-group-text">Mon</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" id="qs_days_ca" class="form-control" min="0" max="30" placeholder="0" aria-label="Qualifying Service Days (CA)" />
+                                                    <span class="input-group-text">Days</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <input asp-for="QualifyingService_CA" type="hidden" id="QualifyingService_CA" />
+                                    </div>
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnBasic_CA" class="form-label">Last Drawn Basic</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnBasic_CA" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnBDA_CA" class="form-label">BDA</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnBDA_CA" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                        <div class="col-4">
+                                            <label asp-for="LastDrawnDA_CA" class="form-label">DA</label>
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input asp-for="LastDrawnDA_CA" class="form-control text-end" placeholder="0.00" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label asp-for="GratuityAmount_CA_Act" class="form-label">Gratuity Amount (As per Act)</label>
+                                        <input asp-for="GratuityAmount_CA_Act" class="form-control border-primary" />
+                                    </div>
+                                    <div class="mb-3">
+                                        <label asp-for="GratuityAmount_CA_Reg" class="form-label">Gratuity Amount (As per Regulation)</label>
+                                        <input asp-for="GratuityAmount_CA_Reg" class="form-control border-primary" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mt-4">
+                            <div class="col-md-6 border-end">
+                                <h6 class="fw-bold text-gratuity mb-3">Deduction & Payment Details (Corp)</h6>
+                                <div class="mb-3 form-check">
+                                    <input asp-for="IsDeductionMade" class="form-check-input" type="checkbox" id="chkDeduction" />
+                                    <label class="form-check-label" for="chkDeduction">Any Deduction Made?</label>
+                                </div>
+                                <div class="mb-3" id="divDeductionDetails">
+                                    <label asp-for="DeductionAmount" class="form-label">Deduction Amount</label>
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">₹</span>
+                                        <input asp-for="DeductionAmount" class="form-control" placeholder="0.00" />
+                                    </div>
+                                    <label asp-for="DeductionDetails" class="form-label">Deduction Details</label>
+                                    <textarea asp-for="DeductionDetails" class="form-control" rows="2"></textarea>
+                                </div>
+                                <div id="paymentContainer" class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-bold mb-0">Actual Amount Paid by Corp</label>
+                                        <button type="button" class="btn btn-sm btn-outline-gratuity rounded-pill" id="btnAddPayment">
+                                            <i class="bi bi-plus-circle me-1"></i> Add Payment row
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-borderless align-middle" id="paymentTable">
+                                            <thead>
+                                                <tr class="small text-muted text-uppercase">
+                                                    <th style="width: 40%">Amount (₹)</th>
+                                                    <th style="width: 35%">Cheque No</th>
+                                                    <th style="width: 20%">Date</th>
+                                                    <th style="width: 5%"></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (Model.Payments != null && Model.Payments.Count > 0)
+                                                {
+                                                    for (int i = 0; i < Model.Payments.Count; i++)
+                                                    {
+                                                        <tr>
+                                                            <td>
+                                                                <input type="number" name="Payments[@i].Amount" class="form-control form-control-sm" value="@Model.Payments[i].Amount" step="0.01" aria-label="Payment Amount" />
+                                                            </td>
+                                                            <td>
+                                                                <input type="text" name="Payments[@i].ChequeNumber" class="form-control form-control-sm" value="@Model.Payments[i].ChequeNumber" aria-label="Cheque Number" />
+                                                            </td>
+                                                            <td>
+                                                                <input type="date" name="Payments[@i].ChequeDate" class="form-control form-control-sm" value="@(Model.Payments[i].ChequeDate?.ToString("yyyy-MM-dd"))" aria-label="Cheque Date" />
+                                                            </td>
+                                                            <td class="text-end">
+                                                                <button type="button" class="btn btn-link text-danger p-0 btnRemovePayment" aria-label="Remove Payment Row"><i class="bi bi-trash"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                     <tr>
+                                                         <td>
+                                                             <input type="number" name="Payments[0].Amount" class="form-control form-control-sm" placeholder="0.00" step="0.01" aria-label="Payment Amount" />
+                                                         </td>
+                                                         <td>
+                                                             <input type="text" name="Payments[0].ChequeNumber" class="form-control form-control-sm" placeholder="Cheque No" aria-label="Cheque Number" />
+                                                         </td>
+                                                         <td>
+                                                             <input type="date" name="Payments[0].ChequeDate" class="form-control form-control-sm" aria-label="Cheque Date" />
+                                                         </td>
+                                                         <td class="text-end"></td>
+                                                     </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6 ps-4">
+                                <h6 class="fw-bold text-primary mb-3">Deduction & Payment Details (CA)</h6>
+                                <div class="mb-3 form-check">
+                                    <input asp-for="IsDeductionMade_CA" class="form-check-input" type="checkbox" id="chkDeduction_CA" />
+                                    <label class="form-check-label" for="chkDeduction_CA">Any Deduction Made?</label>
+                                </div>
+                                <div class="mb-3" id="divDeductionDetails_CA">
+                                    <label asp-for="DeductionAmount_CA" class="form-label">Deduction Amount</label>
+                                    <div class="input-group mb-2">
+                                        <span class="input-group-text">₹</span>
+                                        <input asp-for="DeductionAmount_CA" class="form-control" placeholder="0.00" />
+                                    </div>
+                                    <label asp-for="DeductionDetails_CA" class="form-label">Deduction Details</label>
+                                    <textarea asp-for="DeductionDetails_CA" class="form-control" rows="2"></textarea>
+                                </div>
+                                
+                                <div class="row g-2 mb-3">
+                                    <div class="col-12"><label for="ActualPaidAmount_CA" class="form-label fw-bold">Actual Amount Paid by CORPORATION</label></div>
+                                    <div class="col-12">
+                                        <input asp-for="ActualPaidAmount_CA" class="form-control" placeholder="Amount" id="ActualPaidAmount_CA" />
+                                    </div>
+                                </div>
+
+                                <!-- Dynamic Difference Amount Card -->
+                                <div class="card border-0 bg-white shadow-sm p-3 mb-3 rounded-3 border-start border-4 border-info">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label fw-bold text-dark mb-0 small">
+                                            <i class="bi bi-calculator me-1 text-primary"></i> Difference Amount Baseline:
+                                        </label>
+                                    </div>
+                                    
+                                    <!-- User Option Selector (Radio Toggle) -->
+                                    <div class="mb-2">
+                                        <div class="btn-group w-100 btn-group-sm" role="group" aria-label="Difference Mode Selector">
+                                            <input type="radio" class="btn-check" name="diffAmountMode" id="diffModeReg" value="reg" checked autocomplete="off">
+                                            <label class="btn btn-outline-primary fw-semibold py-1 small" for="diffModeReg">
+                                                <i class="bi bi-file-earmark-text me-1"></i> As per Regulation
+                                            </label>
+
+                                            <input type="radio" class="btn-check" name="diffAmountMode" id="diffModeAct" value="act" autocomplete="off">
+                                            <label class="btn btn-outline-primary fw-semibold py-1 small" for="diffModeAct">
+                                                <i class="bi bi-journal-text me-1"></i> As per Act
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <!-- Result Card Display -->
+                                    <div class="p-2 px-3 rounded-3 bg-light d-flex align-items-center justify-content-between border">
+                                        <div>
+                                            <small class="text-muted d-block fw-bold xs text-uppercase" id="diffModeLabel">Difference (Regulation - Actual Paid)</small>
+                                            <span class="small text-secondary" style="font-size: 0.75rem;" id="diffSubDetail">Comparing against Gratuity Amount (Regulation)</span>
+                                        </div>
+                                        <div class="text-end">
+                                            <span class="h5 fw-bold mb-0 text-primary" id="diffAmountDisplay">₹ 0.00</span>
+                                            <div id="diffBadgeText" class="badge bg-secondary-subtle text-secondary-emphasis d-block mt-1" style="font-size: 0.7rem;">Balanced</div>
+                                        </div>
+                                                      </div>
+                            </div>
+                        </div>
+
+                        <hr />
+                        <h5 class="fw-bold text-gratuity section-heading"><i class="bi bi-award me-2"></i>Award Details</h5>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-12">
+                                <div class="mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                        <label class="form-label fw-bold text-dark mb-0">
+                                            <i class="bi bi-percent text-danger me-1"></i> Amount Ordered to be Paid (by CA)
+                                        </label>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="input-group input-group-sm" style="max-width: 170px;">
+                                                <span class="input-group-text bg-light fw-bold small">Interest</span>
+                                                <input asp-for="InterestRate" class="form-control text-end fw-bold" placeholder="0.00" step="0.01" aria-label="Interest Rate" />
+                                                <span class="input-group-text bg-light">%</span>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnAddInterestPayment">
+                                                <i class="bi bi-plus-lg me-1"></i> Add Row
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <input asp-for="OrderedAmount_CA" type="hidden" id="OrderedAmount_CA" />
+                                    <div class="table-responsive border rounded-3 bg-white shadow-sm">
+                                        <table class="table table-sm table-hover align-middle mb-0 text-center" id="interestPaymentTable">
+                                            <thead class="table-light">
+                                                <tr class="small text-uppercase text-muted">
+                                                    <th style="width: 40%;">Amount (₹)</th>
+                                                    <th style="width: 25%;">From Date</th>
+                                                    <th style="width: 25%;">To Date</th>
+                                                    <th style="width: 10%;">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (Model.InterestPayments != null && Model.InterestPayments.Count > 0)
+                                                {
+                                                    for (int i = 0; i < Model.InterestPayments.Count; i++)
+                                                    {
+                                                        <tr>
+                                                            <td>
+                                                                <div class="input-group input-group-sm">
+                                                                    <span class="input-group-text">₹</span>
+                                                                    <input type="number" name="InterestPayments[@i].Amount" class="form-control form-control-sm text-end interest-amount-input" value="@Model.InterestPayments[i].Amount" step="0.01" placeholder="0.00" aria-label="Interest Amount" />
+                                                                </div>
+                                                            </td>
+                                                            <td>
+                                                                <input type="date" name="InterestPayments[@i].FromDate" class="form-control form-control-sm" value="@(Model.InterestPayments[i].FromDate?.ToString("yyyy-MM-dd"))" aria-label="From Date" />
+                                                            </td>
+                                                            <td>
+                                                                <input type="date" name="InterestPayments[@i].ToDate" class="form-control form-control-sm" value="@(Model.InterestPayments[i].ToDate?.ToString("yyyy-MM-dd"))" aria-label="To Date" />
+                                                            </td>
+                                                            <td class="text-center">
+                                                                <button type="button" class="btn btn-link text-danger p-0 btnRemoveInterestPayment" aria-label="Remove Interest Row"><i class="bi bi-trash fs-6"></i></button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <div class="input-group input-group-sm">
+                                                                <span class="input-group-text">₹</span>
+                                                                <input type="number" name="InterestPayments[0].Amount" class="form-control form-control-sm text-end interest-amount-input" placeholder="0.00" step="0.01" aria-label="Interest Amount" />
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <input type="date" name="InterestPayments[0].FromDate" class="form-control form-control-sm" aria-label="From Date" />
+                                                        </td>
+                                                        <td>
+                                                            <input type="date" name="InterestPayments[0].ToDate" class="form-control form-control-sm" aria-label="To Date" />
+                                                        </td>
+                                                        <td class="text-center">
+                                                            <button type="button" class="btn btn-link text-danger p-0 btnRemoveInterestPayment" aria-label="Remove Interest Row"><i class="bi bi-trash fs-6"></i></button>
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label asp-for="Remarks" class="form-label">AWARD DETAILS</label>
+                                    <textarea asp-for="Remarks" class="form-control" rows="2" placeholder="Enter award details..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <hr />
+                        <h5 class="fw-bold text-gratuity section-heading"><i class="bi bi-file-earmark-medical me-2"></i>Evidence Details</h5>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-12">
+                                <label asp-for="EvidenceRemarks" class="form-label">Evidence Remarks / Details</label>
+                                <textarea asp-for="EvidenceRemarks" class="form-control" rows="2" placeholder="Enter evidence details or summary of testimonies..."></textarea>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="EvidenceWitnessName" class="form-label">Witness/Official Name</label>
+                                <input asp-for="EvidenceWitnessName" class="form-control" placeholder="Enter name" />
+                                    <div class="col-md-6">
+                                <label for="WitnessDesignationSelect" class="form-label">Witness/Official Designation</label>
+                                <select id="WitnessDesignationSelect" class="form-select others-dropdown"
+                                        data-others-target="WitnessDesignationManual"
+                                        data-others-hidden="WitnessDesignationHidden"
+                                        asp-items="Model.DesignationList">
+                                    <option value="">-- Select Designation --</option>
+                                </select>
+                                <input type="text" id="WitnessDesignationManual" class="form-control mt-2"
+                                        placeholder="Enter designation" aria-label="Enter Custom Witness Designation" style="display:none;" />
+                                <input type="hidden" asp-for="EvidenceWitnessDesignation" id="WitnessDesignationHidden" />
+                            </div>
+                        </div>
+
+                        <hr />
+                        <h6 class="fw-bold text-gratuity section-heading">Certified Copy & Opinions</h6>
+                        <div class="row g-3">
+                             <div class="col-md-4">
+                                <label for="DisposalDate_Copy" class="form-label">Case Disposed On</label>
+                                <input type="date" class="form-control" id="DisposalDate_Copy" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="CopyAppliedDate" class="form-label">Copy Applied On</label>
+                                <input asp-for="CopyAppliedDate" type="date" class="form-control" />
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="CopyIssuedDate" class="form-label">Copy Ready On</label>
+                                <input asp-for="CopyIssuedDate" type="date" class="form-control" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="CopyDeliveredDate" class="form-label">Copy Delivered On</label>
+                                <input asp-for="CopyDeliveredDate" type="date" class="form-control" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="CopyReceivedDate" class="form-label">Copy Received at Division</label>
+                                <input asp-for="CopyReceivedDate" type="date" class="form-control" />
+                            </div>
+                        </div>
+                        <div class="row g-3 mt-2">
+                             <div class="col-md-12">
+                                 <label asp-for="DelayRemarks" class="form-label">Delay Remarks (if any)</label>
+                                 <textarea asp-for="DelayRemarks" class="form-control" rows="2" placeholder="Enter remarks for any delay in receiving certified copy..."></textarea>
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AdvocateOpinion" class="form-label">Opinion of Advocate</label>
+                                 <input asp-for="AdvocateOpinion" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="LOOpinion" class="form-label">Opinion of ALO/LO</label>
+                                 <input asp-for="LOOpinion" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="DCOpinion" class="form-label">Opinion of DC</label>
+                                 <input asp-for="DCOpinion" class="form-control" />
+                             </div>
+                        </div>
+
+                        <hr />
+                        <h6 class="fw-bold text-gratuity section-heading"><i class="bi bi-send me-2"></i>CLOSURE / FORWARDING</h6>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="forwardStatusSelect" class="form-label">Forwarding Status</label>
+                                <select asp-for="ForwardingStatus" class="form-select" id="forwardStatusSelect">
+                                    <option value="">-- Select Status --</option>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Appeal before Appellant Authority">Appeal before Appellant Authority</option>
+                                    <option value="Sent to Central Office">Sent to Central Office</option>
+                                    <option value="Case Closed">Case Closed</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="AdverseJudgmentFile" class="form-label">Upload Judgment Copy</label>
+                                <input asp-for="AdverseJudgmentFile" type="file" id="AdverseJudgmentFile" class="form-control" />
+                                @if(!string.IsNullOrEmpty(Model.AdverseJudgmentPath))
+                                {
+                                    <div class="mt-2 small">
+                                        <a href="@Model.AdverseJudgmentPath" target="_blank" class="text-primary">
+                                            <i class="bi bi-file-earmark-pdf me-1"></i> View Existing Judgment
+                                        </a>
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-6 co-only">
+                                <label asp-for="OutwardNumber" class="form-label">CO Outward Number</label>
+                                <input asp-for="OutwardNumber" class="form-control" />
+                            </div>
+                            <div class="col-md-6 co-only">
+                                <label asp-for="OutwardDate" class="form-label">CO Outward Date</label>
+                                <input asp-for="OutwardDate" class="form-control" type="date" />
+                            </div>
+                            <div class="col-md-6 closure-fields">
+                                <label asp-for="ClosureDate" class="form-label">Closure Date</label>
+                                <input asp-for="ClosureDate" class="form-control" type="date" />
+                            </div>
+                            <div class="col-md-6 closure-fields">
+                                <label asp-for="ClosureRemarks" class="form-label">Closure Remarks</label>
+                                <input asp-for="ClosureRemarks" class="form-control" />
+                            </div>
+                            <div class="col-md-6 appeal-fields">
+                                <label asp-for="AppealDate" class="form-label">Appeal Recommendation Date</label>
+                                <input asp-for="AppealDate" class="form-control" type="date" />
+                            </div>
+                            <div class="col-md-6 appeal-fields">
+                                <label asp-for="AppealRemarks" class="form-label">Appeal Remarks / Recommendations</label>
+                                <input asp-for="AppealRemarks" class="form-control" />
+                            </div>
+                        </div>
+
+                        <!-- Supporting Documents -->
+                        <div class="mt-4 p-3 border rounded-3 bg-light">
+                            <div class="d-flex justify-content-between align-items-center mb-4">
+                                <h6 class="fw-bold small mb-0 text-secondary text-uppercase"><i class="bi bi-paperclip me-2 text-primary"></i>Enclose Documents</h6>
+                                <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm btn-add-enclosed-doc">
+                                    <i class="bi bi-plus-lg me-1"></i> ADD NEW DOCUMENT
+                                </button>
+                            </div>
+                            <div id="enclosedDocsContainer">
+                                @if (Model.EnclosedDocuments != null && Model.EnclosedDocuments.Any())
+                                {
+                                    for (int i = 0; i < Model.EnclosedDocuments.Count; i++)
+                                    {
+                                        <div class="input-group mb-2 enclosed-doc-row">
+                                            <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                                            <input type="text" name="EnclosedDocuments[@i].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record..." value="@Model.EnclosedDocuments[i].DocName">
+                                            <span class="input-group-text bg-white text-muted small">Pages</span>
+                                            <input type="number" name="EnclosedDocuments[@i].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0" value="@Model.EnclosedDocuments[i].PageCount">
+                                            <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <div class="input-group mb-2 enclosed-doc-row">
+                                        <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                                        <input type="text" name="EnclosedDocuments[0].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record...">
+                                        <span class="input-group-text bg-white text-muted small">Pages</span>
+                                        <input type="number" name="EnclosedDocuments[0].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0">
+                                        <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                         @if (Model.CaseID > 0 && (!string.IsNullOrEmpty(Model.ActionTaken) || !string.IsNullOrEmpty(Model.ClaimantWPNumber) || Model.IsClaimantSCAppeal))
+                         {
+                             <div class="card border-0 shadow-sm mt-4 overflow-hidden">
+                                 <div class="card-header bg-dark text-white py-2 d-flex justify-content-between align-items-center">
+                                     <h6 class="mb-0 fw-bold"><i class="bi bi-journal-text me-2"></i>Full Case History & Action Tracking (Read-Only)</h6>
+                                     <span class="badge bg-primary">Fetched All Data</span>
+                                 </div>
+                                 <div class="card-body p-0">
+                                     <div class="accordion accordion-flush" id="historyAccordion">
+                                         <!-- 1. Initial Action -->
+                                         <div class="accordion-item">
+                                             <h2 class="accordion-header">
+                                                 <button class="accordion-button py-2 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne">
+                                                     1. Initial Action & Feasibility
+                                                 </button>
+                                             </h2>
+                                             <div id="collapseOne" class="accordion-collapse collapse show" data-bs-parent="#historyAccordion">
+                                                 <div class="accordion-body small bg-light">
+                                                     <div class="row g-3">
+                                                         <div class="col-md-4"><label class="text-muted d-block">Action Taken</label><div class="fw-bold">@Model.ActionTaken</div></div>
+                                                         <div class="col-md-4"><label class="text-muted d-block">judgement received?</label><div class="fw-bold">@(Model.IsFeasibilityReceived == true ? "Yes" : "No") (@Model.FeasibilityReceiptDate?.ToShortDateString())</div></div>
+                                                         <div class="col-md-4"><label class="text-muted d-block">Initial Remarks</label><div class="fw-bold">@Model.InitialActionRemarks</div></div>
+                                                         <div class="col-md-4"><label class="text-muted d-block">Approval No/Date</label><div class="fw-bold">@Model.ApprovalOutwardNo / @Model.ApprovalDate?.ToShortDateString()</div></div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         </div>
+
+                                         <!-- 2. Corporation WP Details -->
+                                         @if (!string.IsNullOrEmpty(Model.CorpWPNumber) || Model.IsPendingForFiling)
+                                         {
+                                             <div class="accordion-item">
+                                                 <h2 class="accordion-header">
+                                                     <button class="accordion-button collapsed py-2 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo">
+                                                         2. High Court WP (Corporation)
+                                                     </button>
+                                                 </h2>
+                                                 <div id="collapseTwo" class="accordion-collapse collapse" data-bs-parent="#historyAccordion">
+                                                     <div class="accordion-body small bg-white">
+                                                         <div class="row g-3">
+                                                             <div class="col-md-4"><label class="text-muted d-block">WP Number</label><div class="fw-bold">@(Model.IsPendingForFiling ? "Pending for Filing" : Model.CorpWPNumber + " / " + Model.CorpWPYear)</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Bench</label><div class="fw-bold">@Model.HighCourtBench @Model.OtherHighCourtBench</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Advocate</label><div class="fw-bold">@Model.CorpWPAdvocate</div></div>
+                                                             <div class="col-md-3"><label class="text-muted d-block">Stay Granted?</label><div class="fw-bold">@(Model.StayGranted ? "Yes" : "No") (@Model.StayComplianceOutwardNo)</div></div>
+                                                             <div class="col-md-3"><label class="text-muted d-block">Status</label><div class="fw-bold text-primary">@Model.CorpWPStatus</div></div>
+                                                             <div class="col-md-3"><label class="text-muted d-block">Outcome</label><div class="fw-bold">@Model.CorpWPOutcome</div></div>
+                                                             <div class="col-md-3"><label class="text-muted d-block">Decision Action</label><div class="fw-bold">@Model.CorpWPActionTaken</div></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         }
+
+                                         <!-- 3. Supreme Court Appeal -->
+                                         @if (Model.IsClaimantSCAppeal)
+                                         {
+                                             <div class="accordion-item">
+                                                 <h2 class="accordion-header">
+                                                     <button class="accordion-button collapsed py-2 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree">
+                                                         3. Supreme Court Appeal Details
+                                                     </button>
+                                                 </h2>
+                                                 <div id="collapseThree" class="accordion-collapse collapse" data-bs-parent="#historyAccordion">
+                                                     <div class="accordion-body small bg-light">
+                                                         <div class="row g-3">
+                                                             <div class="col-md-4"><label class="text-muted d-block">Diary No/Year</label><div class="fw-bold">@Model.ClaimantSCDiaryNumber / @Model.ClaimantSCYear</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">SLP No/Year</label><div class="fw-bold">@(Model.IsClaimantSCPending ? "Pending" : Model.ClaimantSCNumber + " / " + Model.ClaimantSLPYear)</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Status</label><div class="fw-bold">@Model.ClaimantSCStatus</div></div>
+                                                             <div class="col-md-6"><label class="text-muted d-block">Advocate</label><div class="fw-bold">@Model.ClaimantSCAdvocate</div></div>
+                                                             <div class="col-md-6"><label class="text-muted d-block">Outcome</label><div class="fw-bold">@Model.ClaimantSCOutcome (@Model.ClaimantSCActionTaken)</div></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         }
+
+                                         <!-- 4. Claimant WP Details -->
+                                         @if (!string.IsNullOrEmpty(Model.ClaimantWPNumber))
+                                         {
+                                             <div class="accordion-item">
+                                                 <h2 class="accordion-header">
+                                                     <button class="accordion-button collapsed py-2 small fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseFour">
+                                                         4. High Court WP (Claimant)
+                                                     </button>
+                                                 </h2>
+                                                 <div id="collapseFour" class="accordion-collapse collapse" data-bs-parent="#historyAccordion">
+                                                     <div class="accordion-body small bg-white">
+                                                         <div class="row g-3">
+                                                             <div class="col-md-4"><label class="text-muted d-block">WP Number/Year</label><div class="fw-bold">@Model.ClaimantWPNumber / @Model.ClaimantWPYear</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Bench</label><div class="fw-bold">@Model.ClaimantHighCourtBench</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Advocate</label><div class="fw-bold">@Model.ClaimantWPAdvocate</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Decision</label><div class="fw-bold">@Model.ClaimantWPDecision</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Action Taken</label><div class="fw-bold">@Model.ClaimantActionTaken</div></div>
+                                                             <div class="col-md-4"><label class="text-muted d-block">Approval No/Date</label><div class="fw-bold">@Model.ClaimantApprovalNo / @Model.ClaimantApprovalDate?.ToShortDateString()</div></div>
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         }
+                                     </div>
+                                 </div>
+                             </div>
+                         }
+                        <div class="alert alert-warning mt-4 py-2 small d-flex align-items-center co-only">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <span>Case will automatically reflect in Central Office login as <strong>"Case File Received"</strong>.</span>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3/4: Appeal Details -->
+                    <div class="tab-pane fade @(Model.CaseID > 0 && (Model.ActionTaken == "Appeal" || Model.ForwardingStatus == "Appeal before Appellant Authority") ? "show active" : "")" id="appeal" role="tabpanel">
+                         <h5 class="fw-bold text-gratuity mb-3 section-heading">Appeal Before Appellate Authority (If Any)</h5>
+
+                          <div class="row g-3 mb-4">
+                            <div class="col-md-3">
+                                <label asp-for="AppealNumber" class="form-label">PGA/Appeal /CR number</label>
+                                <input asp-for="AppealNumber" class="form-control" />
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="AppealYear" class="form-label">PGA/Appeal /CR year</label>
+                                <input asp-for="AppealYear" class="form-control" placeholder="YYYY" />
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="AppealArisingNo" class="form-label">Arising Out of PGA/CR No</label>
+                                <input asp-for="AppealArisingNo" class="form-control" />
+                            </div>
+                            <div class="col-md-3">
+                                <label asp-for="AppealArisingYear" class="form-label">PGA/CR year</label>
+                                <input asp-for="AppealArisingYear" class="form-control" placeholder="YYYY" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="AppealCourt" class="form-label">Court (Appellate Auth)</label>
+                                <select asp-for="AppealCourt" asp-items="Model.GratuityCourtList" class="form-select">
+                                     <option value="">-- Select Court --</option>
+                                </select>
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="AppealEntrustmentNo" class="form-label">Appeal Entrustment No</label>
+                                <input asp-for="AppealEntrustmentNo" class="form-control" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="AppealEntrustmentDate" class="form-label">Appeal Entrustment Date</label>
+                                <input asp-for="AppealEntrustmentDate" type="date" class="form-control" />
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="AppealAdvocate" class="form-label">Appeal Advocate Name</label>
+                                <select asp-for="AppealAdvocate" asp-items="Model.GratuityAdvocateList" class="form-select">
+                                     <option value="">-- Select Advocate Name --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                         <h5 class="fw-bold text-gratuity mb-3 section-heading">Compliance for Appeal</h5>
+                         <div class="row g-3 mb-4">
+                             <div class="col-md-4">
+                                 <label asp-for="AppealComplianceAmount" class="form-label">Compliance Amount</label>
+                                 <div class="input-group">
+                                     <span class="input-group-text">₹</span>
+                                     <input asp-for="AppealComplianceAmount" class="form-control" placeholder="0.00" />
+                                 </div>
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealComplianceChequeNumber" class="form-label">Cheque Number</label>
+                                 <input asp-for="AppealComplianceChequeNumber" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealComplianceChequeDate" class="form-label">Cheque Date</label>
+                                 <input asp-for="AppealComplianceChequeDate" type="date" class="form-control" />
+                             </div>
+                         </div>
+
+                         <h5 class="fw-bold text-gratuity mb-3 section-heading">After Disposal of Appeal</h5>
+                         <div class="row g-3">
+                             <div class="col-md-8">
+                                <label asp-for="AppealAwardDetails" class="form-label">Award Details</label>
+                                <textarea asp-for="AppealAwardDetails" class="form-control" rows="2"></textarea>
+                            </div>
+                             <div class="col-md-4">
+                                <label asp-for="AppealJudgmentFile" class="form-label">Upload Appeal Judgment Copy</label>
+                                <input asp-for="AppealJudgmentFile" class="form-control" type="file" />
+                                @if (!string.IsNullOrEmpty(Model.AppealJudgmentPath))
+                                {
+                                    <div class="mt-1">
+                                        <a href="@Model.AppealJudgmentPath" target="_blank" class="small text-decoration-none">
+                                            <i class="bi bi-file-earmark-pdf"></i> View Judgment
+                                        </a>
+                                    </div>
+                                }
+                            </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealDisposalDate" class="form-label">Case Disposed On</label>
+                                 <input asp-for="AppealDisposalDate" type="date" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealCopyAppliedDate" class="form-label">Copy Applied On</label>
+                                 <input asp-for="AppealCopyAppliedDate" type="date" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealCopyReadyDate" class="form-label">Copy Ready On</label>
+                                 <input asp-for="AppealCopyReadyDate" type="date" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealCopyDeliveredDate" class="form-label">Copy Delivered On</label>
+                                 <input asp-for="AppealCopyDeliveredDate" type="date" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealCopyReceivedDate" class="form-label">Copy Received at Division</label>
+                                 <input asp-for="AppealCopyReceivedDate" type="date" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealDelayRemarks" class="form-label">Delay Remarks (if any)</label>
+                                 <input asp-for="AppealDelayRemarks" class="form-control" placeholder="Enter remarks for any delay..." />
+                             </div>
+
+                             <div class="col-md-4">
+                                 <label asp-for="AppealAdvocateOpinion" class="form-label">Opinion of Advocate</label>
+                                 <input asp-for="AppealAdvocateOpinion" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealLOOpinion" class="form-label">Opinion of ALO/LO</label>
+                                 <input asp-for="AppealLOOpinion" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                 <label asp-for="AppealDCOpinion" class="form-label">Opinion of DC</label>
+                                 <input asp-for="AppealDCOpinion" class="form-control" />
+                             </div>
+                             <div class="col-md-4">
+                                <label asp-for="ForwardingStatus_Appeal" class="form-label">Forwarding Status</label>
+                                <select asp-for="ForwardingStatus_Appeal" class="form-select" onchange="toggleOutwardFields(this)">
+                                     <option value="">-- Select Status --</option>
+                                     <option value="Sent to Central Office">Sent to Central Office</option>
+                                     <option value="Pending">Pending</option>
+                                </select>
+                            </div>
+                             <div class="col-md-4 outward-fields">
+                                <label asp-for="OutwardNumber_Appeal" class="form-label">Outward Number</label>
+                                <input asp-for="OutwardNumber_Appeal" class="form-control" />
+                            </div>
+                             <div class="col-md-4 outward-fields">
+                                <label asp-for="OutwardDate_Appeal" class="form-label">Outward Date</label>
+                                <input asp-for="OutwardDate_Appeal" type="date" class="form-control" />
+                            </div>
+                         </div>
+                    </div>
+
+                    </div>
+                </div>
+            <div class="card-footer bg-light p-3 text-end">
+                <button type="submit" class="btn btn-gratuity px-5 rounded-pill shadow-sm">
+                    <i class="bi bi-save me-2"></i> Save Gratuity Case
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            function toggleDeductionDetails() {
+                if ($('#chkDeduction').is(':checked')) {
+                    $('#divDeductionDetails').slideDown();
+                } else {
+                    $('#divDeductionDetails').slideUp();
+                }
+            }
+
+            function toggleDeductionDetailsCA() {
+                if ($('#chkDeduction_CA').is(':checked')) {
+                    $('#divDeductionDetails_CA').slideDown();
+                } else {
+                    $('#divDeductionDetails_CA').slideUp();
+                }
+            }
+
+
+
+            // Function to handle PGA Label based on Court selection
+            function updatePGALabel() {
+                var court = $('#CourtType option:selected').text();
+                if (court && court.indexOf('Appellate Authority') !== -1) {
+                     $('label[for="PGANumber"]').text('PGA / Appeal CR Number');
+                } else {
+                     $('label[for="PGANumber"]').text('PGA / CR Number');
+                }
+            }
+
+            // Initial check
+            toggleDeductionDetails();
+            toggleDeductionDetailsCA();
+            updatePGALabel();
+
+            // Sync Disposal Date between Basic Details (Tab 1) and Certified Copy (Tab 2)
+            $('#DisposalDate').on('input change', function() {
+                $('#DisposalDate_Copy').val($(this).val());
+            });
+            $('#DisposalDate_Copy').on('input change', function() {
+                $('#DisposalDate').val($(this).val());
+            });
+            if ($('#DisposalDate').val()) {
+                $('#DisposalDate_Copy').val($('#DisposalDate').val());
+            }
+
+            // On change
+            $('#chkDeduction').change(toggleDeductionDetails);
+            $('#chkDeduction_CA').change(toggleDeductionDetailsCA);
+            $('#CourtType').change(updatePGALabel);
+
+            // Ensure all sections remain visible without arbitrary collapse
+            function toggleForwardingDetails() {
+                var status = $('#forwardStatusSelect').val();
+                if (status === "Sent to Central Office") {
+                    $('.co-only').addClass('border-primary');
+                } else {
+                    $('.co-only').removeClass('border-primary');
+                }
+            }
+
+            $('#forwardStatusSelect').change(toggleForwardingDetails);
+            
+            function toggleVRSBenefits() {
+                var status = $('#WorkingStatusSelect').val();
+                if (status === "VRS") {
+                    $('#vrsBenefitSection').fadeIn(200);
+                }
+            }
+
+            $('#WorkingStatusSelect').change(toggleVRSBenefits);
+
+            // Initial call
+            toggleForwardingDetails();
+            toggleVRSBenefits();
+
+            // Populate Breakdown Fields from Saved String (Edit Mode)
+            function populateServiceBreakdown(val, yrsId, monId, daysId) {
+                if (!val || val === '-' || val === '') return;
+                const yMatch = val.match(/(\d+)\s*Yrs/i);
+                const mMatch = val.match(/(\d+)\s*Mon/i);
+                const dMatch = val.match(/(\d+)\s*Days/i);
+                if (yMatch) $('#' + yrsId).val(yMatch[1]);
+                if (mMatch) $('#' + monId).val(mMatch[1]);
+                if (dMatch) $('#' + daysId).val(dMatch[1]);
+            }
+
+            const corpBreak = $('#Period_SPE_LWA_ABS').val();
+            const corpQS = $('#QualifyingService_Corp').val();
+            const caBreak = $('#Period_SPE_LWA_ABS_CA').val();
+            const caQS = $('#QualifyingService_CA').val();
+
+            populateServiceBreakdown(corpBreak, 'break_years', 'break_months', 'break_days');
+            populateServiceBreakdown(corpQS, 'qs_years', 'qs_months', 'qs_days');
+            populateServiceBreakdown(caBreak, 'break_years_ca', 'break_months_ca', 'break_days_ca');
+            populateServiceBreakdown(caQS, 'qs_years_ca', 'qs_months_ca', 'qs_days_ca');
+
+            // Trigger initial calculations
+            calculateGratuity();
+
+            // Dynamic Payment Rows
+            $('#btnAddPayment').click(function() {
+                var index = $('#paymentTable tbody tr').length;
+                var newRow = `
+                    <tr>
+                        <td>
+                            <input type="number" name="Payments[${index}].Amount" class="form-control form-control-sm" placeholder="0.00" step="0.01" required />
+                        </td>
+                        <td>
+                            <input type="text" name="Payments[${index}].ChequeNumber" class="form-control form-control-sm" placeholder="Cheque No" />
+                        </td>
+                        <td>
+                            <input type="date" name="Payments[${index}].ChequeDate" class="form-control form-control-sm" />
+                        </td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-link text-danger p-0 btnRemovePayment"><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>`;
+                $('#paymentTable tbody').append(newRow);
+            });
+
+            $(document).on('click', '.btnRemovePayment', function() {
+                $(this).closest('tr').remove();
+                reindexPayments();
+            });
+
+            function reindexPayments() {
+                $('#paymentTable tbody tr').each(function(index) {
+                    $(this).find('input').each(function() {
+                        var name = $(this).attr('name');
+                        if (name) {
+                            var newName = name.replace(/\[\d+\]/, '[' + index + ']');
+                            $(this).attr('name', newName);
+                        }
+                    });
+                });
+            }
+
+
+
+            // Retirement Date Auto-calculation
+            $('#DateOfBirth').change(function() {
+                var dobValue = $(this).val();
+                if (dobValue) {
+                    var dob = new Date(dobValue);
+                    if (!isNaN(dob.getTime())) {
+                        var retirementDate = new Date(dob);
+                        retirementDate.setFullYear(dob.getFullYear() + 60);
+                        
+                        // Modified logic for date of retirement calculation:
+                        // 1. If date of retirement is the 1st of any month, the retirement date is the last date of the previous month.
+                        // 2. If it is after the 1st of any month, the retirement date is the last date of that same month.
+                        var day = retirementDate.getDate();
+                        if (day === 1) {
+                            // Set to last day of previous month
+                            retirementDate.setDate(0); 
+                        } else {
+                            // Set to last day of current month
+                            retirementDate.setMonth(retirementDate.getMonth() + 1);
+                            retirementDate.setDate(0);
+                        }
+
+                        // Format to YYYY-MM-DD for date input
+                        var year = retirementDate.getFullYear();
+                        var month = ('0' + (retirementDate.getMonth() + 1)).slice(-2);
+                        var dayFormatted = ('0' + retirementDate.getDate()).slice(-2);
+                        var formattedDate = year + '-' + month + '-' + dayFormatted;
+                        
+                        $('#RetirementDate').val(formattedDate).trigger('change');
+                        $('#RetirementDate_CA').val(formattedDate).trigger('change');
+                    }
+                }
+            });
+
+            function calculateService(startId, endId, bYId, bMId, bDId, tYId, tMId, tDId) {
+                const startStr = $('#' + startId).val();
+                const endStr = $('#' + endId).val();
+                
+                if (!startStr || !endStr) return;
+
+                let start = new Date(startStr);
+                let end = new Date(endStr);
+
+                if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+                    $('#' + tYId).val(0);
+                    $('#' + tMId).val(0);
+                    $('#' + tDId).val(0);
+                    return;
+                }
+
+                // Calculate initial difference
+                let years = end.getFullYear() - start.getFullYear();
+                let months = end.getMonth() - start.getMonth();
+                let days = end.getDate() - start.getDate();
+
+                if (days < 0) {
+                    months--;
+                    let prevMonth = new Date(end.getFullYear(), end.getMonth(), 0);
+                    days += prevMonth.getDate();
+                }
+
+                if (months < 0) {
+                    years--;
+                    months += 12;
+                }
+
+                // Subtract Break in Service
+                const breakY = parseInt($('#' + bYId).val()) || 0;
+                const breakM = parseInt($('#' + bMId).val()) || 0;
+                const breakD = parseInt($('#' + bDId).val()) || 0;
+
+                years -= breakY;
+                months -= breakM;
+                days -= breakD;
+
+                if (days < 0) {
+                    months--;
+                    days += 30; // Approximation for normalized subtraction
+                }
+
+                if (months < 0) {
+                    years--;
+                    months += 12;
+                }
+                
+                if (years < 0) { years = 0; months = 0; days = 0; }
+
+                $('#' + tYId).val(years);
+                $('#' + tMId).val(months);
+                $('#' + tDId).val(days);
+                
+                calculateGratuity();
+            }
+
+            // Bind calculation to relevant inputs
+            const fieldsToBind = [
+                '#AppointmentDate', '#RetirementDate', '#break_years', '#break_months', '#break_days',
+                '#AppointmentDate_CA', '#RetirementDate_CA', '#break_years_ca', '#break_months_ca', '#break_days_ca'
+            ];
+
+            $(fieldsToBind.join(',')).on('input change', function() {
+                if (this.id.includes('_ca') || this.id.includes('_CA')) {
+                    calculateService('AppointmentDate_CA', 'RetirementDate_CA', 'break_years_ca', 'break_months_ca', 'break_days_ca', 'qs_years_ca', 'qs_months_ca', 'qs_days_ca');
+                } else {
+                    calculateService('AppointmentDate', 'RetirementDate', 'break_years', 'break_months', 'break_days', 'qs_years', 'qs_months', 'qs_days');
+                }
+            });
+
+            // Gratuity Calculation Logic (Act & Regulation)
+
+
+
+            function calculateGratuity() {
+                // --- 1. Corporation Assessment ---
+                const basic = parseFloat($('#LastDrawnBasic').val()) || 0;
+                const bda = parseFloat($('#LastDrawnBDA').val()) || 0;
+                const da = parseFloat($('#LastDrawnDA').val()) || 0;
+                
+                const qsYears = parseInt($('#qs_years').val()) || 0;
+                const qsMonths = parseInt($('#qs_months').val()) || 0;
+
+                // A. Act Calculation
+                // Rule: If > 6 months, count as next year
+                let actYears = qsYears;
+                if (qsMonths > 6) {
+                    actYears += 1;
+                }
+                const totalPayAct = basic + bda + da;
+                
+                if (totalPayAct > 0 && actYears > 0) {
+                    // Formula: (Basic+BDA+DA) * 15 * (Years / 26)
+                    const gratuityAct = totalPayAct * 15 * (actYears / 26);
+                    $('#GratuityAmount_Corp_Act').val(gratuityAct.toFixed(2));
+                }
+
+                // B. Regulation Calculation
+                // Formula: (Basic + BDA) * (Years + Months / 12)
+                const totalPayReg = basic + bda;
+                if (totalPayReg > 0) {
+                    const gratuityReg = (totalPayReg * qsYears) + (totalPayReg * qsMonths / 12.0);
+                    $('#GratuityAmount_Corp_Reg').val(gratuityReg.toFixed(2));
+                }
+
+
+                // --- 2. ALC (Controlling Authority) Assessment ---
+                const basicCA = parseFloat($('#LastDrawnBasic_CA').val()) || 0;
+                const bdaCA = parseFloat($('#LastDrawnBDA_CA').val()) || 0;
+                const daCA = parseFloat($('#LastDrawnDA_CA').val()) || 0;
+                
+                const qsYearsCA = parseInt($('#qs_years_ca').val()) || 0;
+                const qsMonthsCA = parseInt($('#qs_months_ca').val()) || 0;
+
+                // A. Act Calculation (CA)
+                let actYearsCA = qsYearsCA;
+                if (qsMonthsCA > 6) {
+                    actYearsCA += 1;
+                }
+                const totalPayActCA = basicCA + bdaCA + daCA;
+
+                if (totalPayActCA > 0 && actYearsCA > 0) {
+                     const gratuityActCA = totalPayActCA * 15 * (actYearsCA / 26);
+                     $('#GratuityAmount_CA_Act').val(gratuityActCA.toFixed(2));
+                }
+
+                // B. Regulation Calculation (CA)
+                // Formula: (Basic + BDA) * (Years + Months / 12)
+                const totalPayRegCA = basicCA + bdaCA;
+                if (totalPayRegCA > 0) {
+                    const gratuityRegCA = (totalPayRegCA * qsYearsCA) + (totalPayRegCA * qsMonthsCA / 12.0);
+                    $('#GratuityAmount_CA_Reg').val(gratuityRegCA.toFixed(2));
+                }
+                updateDifferenceAmount();
+            }
+
+            function updateDifferenceAmount() {
+                let actualPaid = parseFloat($('#ActualPaidAmount_CA').val()) || 0;
+                if (actualPaid === 0 && $('#paymentTable').length > 0) {
+                    let sumPayments = 0;
+                    $('#paymentTable tbody tr input[name*=".Amount"]').each(function() {
+                        sumPayments += parseFloat($(this).val()) || 0;
+                    });
+                    if (sumPayments > 0) {
+                        actualPaid = sumPayments;
+                    }
+                }
+
+                let selectedMode = $('input[name="diffAmountMode"]:checked').val() || 'reg';
+
+                let baselineGratuity = 0;
+                let labelTitle = "";
+                let subDetail = "";
+
+                if (selectedMode === 'reg') {
+                    let caReg = parseFloat($('#GratuityAmount_CA_Reg').val()) || 0;
+                    let corpReg = parseFloat($('#GratuityAmount_Corp_Reg').val()) || 0;
+                    baselineGratuity = caReg > 0 ? caReg : corpReg;
+                    
+                    labelTitle = "Difference (Regulation - Actual Paid)";
+                    subDetail = caReg > 0 
+                        ? "Comparing against Controlling Auth Regulation (₹ " + caReg.toLocaleString('en-IN', {minimumFractionDigits: 2}) + ")" 
+                        : "Comparing against Corporation Regulation (₹ " + corpReg.toLocaleString('en-IN', {minimumFractionDigits: 2}) + ")";
+                } else {
+                    let caAct = parseFloat($('#GratuityAmount_CA_Act').val()) || 0;
+                    let corpAct = parseFloat($('#GratuityAmount_Corp_Act').val()) || 0;
+                    baselineGratuity = caAct > 0 ? caAct : corpAct;
+
+                    labelTitle = "Difference (Act - Actual Paid)";
+                    subDetail = caAct > 0 
+                        ? "Comparing against Controlling Auth Act (₹ " + caAct.toLocaleString('en-IN', {minimumFractionDigits: 2}) + ")" 
+                        : "Comparing against Corporation Act (₹ " + corpAct.toLocaleString('en-IN', {minimumFractionDigits: 2}) + ")";
+                }
+
+                let diff = baselineGratuity - actualPaid;
+
+                $('#diffModeLabel').text(labelTitle);
+                $('#diffSubDetail').text(subDetail);
+                $('#diffAmountDisplay').text("₹ " + Math.abs(diff).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+
+                let $display = $('#diffAmountDisplay');
+                let $badge = $('#diffBadgeText');
+
+                if (diff > 0) {
+                    $display.removeClass('text-success text-dark text-primary').addClass('text-danger');
+                    $badge.removeClass('bg-secondary-subtle text-secondary-emphasis bg-success-subtle text-success-emphasis')
+                          .addClass('bg-danger-subtle text-danger-emphasis')
+                          .text("Shortage / Excess Liability: ₹ " + diff.toLocaleString('en-IN', {minimumFractionDigits: 2}));
+                } else if (diff < 0) {
+                    $display.removeClass('text-danger text-dark text-primary').addClass('text-success');
+                    $badge.removeClass('bg-secondary-subtle text-secondary-emphasis bg-danger-subtle text-danger-emphasis')
+                          .addClass('bg-success-subtle text-success-emphasis')
+                          .text("Overpaid: ₹ " + Math.abs(diff).toLocaleString('en-IN', {minimumFractionDigits: 2}));
+                } else {
+                    $display.removeClass('text-danger text-success text-primary').addClass('text-dark');
+                    $badge.removeClass('bg-danger-subtle text-danger-emphasis bg-success-subtle text-success-emphasis')
+                          .addClass('bg-secondary-subtle text-secondary-emphasis')
+                          .text("Fully Settled (₹ 0.00)");
+                }
+            }
+
+            // Bind calculation to relevant inputs
+            $('#LastDrawnBasic, #LastDrawnBDA, #LastDrawnDA, #qs_years, #qs_months').on('input change', calculateGratuity);
+            $('#LastDrawnBasic_CA, #LastDrawnBDA_CA, #LastDrawnDA_CA, #qs_years_ca, #qs_months_ca').on('input change', calculateGratuity);
+            $(document).on('input change', '#ActualPaidAmount_CA, #GratuityAmount_CA_Reg, #GratuityAmount_CA_Act, #GratuityAmount_Corp_Reg, #GratuityAmount_Corp_Act, input[name="diffAmountMode"], #paymentTable input', updateDifferenceAmount);
+            $(document).ready(updateDifferenceAmount);
+
+            // Interest Payments Table Logic
+            $('#btnAddInterestPayment').click(function() {
+                var index = $('#interestPaymentTable tbody tr').length;
+                var row = '<tr>' +
+                    '<td><div class="input-group input-group-sm"><span class="input-group-text">₹</span><input type="number" name="InterestPayments[' + index + '].Amount" class="form-control form-control-sm text-end interest-amount-input" placeholder="0.00" step="0.01" /></div></td>' +
+                    '<td><input type="date" name="InterestPayments[' + index + '].FromDate" class="form-control form-control-sm" /></td>' +
+                    '<td><input type="date" name="InterestPayments[' + index + '].ToDate" class="form-control form-control-sm" /></td>' +
+                    '<td class="text-center"><button type="button" class="btn btn-link text-danger p-0 btnRemoveInterestPayment"><i class="bi bi-trash fs-6"></i></button></td>' +
+                    '</tr>';
+                $('#interestPaymentTable tbody').append(row);
+                updateInterestTotal();
+            });
+
+            $(document).on('click', '.btnRemoveInterestPayment', function() {
+                if ($('#interestPaymentTable tbody tr').length > 1) {
+                    $(this).closest('tr').remove();
+                    reindexInterestPayments();
+                    updateInterestTotal();
+                } else {
+                    $(this).closest('tr').find('input').val('');
+                    updateInterestTotal();
+                }
+            });
+
+            function reindexInterestPayments() {
+                $('#interestPaymentTable tbody tr').each(function(i, tr) {
+                    $(tr).find('input[name*="InterestPayments"]').each(function() {
+                        var name = $(this).attr('name');
+                        if (name) {
+                            var newName = name.replace(/InterestPayments\[\d+\]/, 'InterestPayments[' + i + ']');
+                            $(this).attr('name', newName);
+                        }
+                    });
+                });
+            }
+
+            function updateInterestTotal() {
+                var total = 0;
+                $('#interestPaymentTable tbody tr .interest-amount-input').each(function() {
+                    var val = parseFloat($(this).val()) || 0;
+                    total += val;
+                });
+                if (total > 0) {
+                    $('#OrderedAmount_CA').val(total.toFixed(2));
+                }
+            }
+
+            $(document).on('input change', '#interestPaymentTable tbody input', updateInterestTotal);
+            $(document).ready(updateInterestTotal);
+
+            // Auto-populate Year from Case Number fields (e.g., 123/2023 -> 2023)
+            function setupYearAutoPopulate(numberId, yearId, stripFromSource) {
+                $('#' + numberId).on('input blur', function(e) {
+                    let val = $(this).val();
+                    if (val) {
+                        // Match separator and 4-digit year at the end
+                        const match = val.match(/([\/\-]?(20\d{2}|19\d{2}))$/);
+                        if (match) {
+                            const yearMatch = match[0];
+                            const year = yearMatch.replace(/[\/\-]/, '');
+                            $('#' + yearId).val(year);
+                            
+                            // Optional: Strip year from source (e.g., for Arising No)
+                            // Only strip on blur or automated trigger to prevent typing issues
+                            if (stripFromSource && (e.type === 'blur' || e.isTrigger)) {
+                                $(this).val(val.replace(yearMatch, '').trim());
+                            }
+                        }
+                    }
+                });
+            }
+
+            setupYearAutoPopulate('AppealNumber', 'AppealYear');
+            setupYearAutoPopulate('AppealArisingNo', 'AppealArisingYear', true);
+            
+            // Auto-populate Arising Out of PGA/CR No from the original PGA / CR Number field
+            $('#PGANumber').on('input blur', function() {
+                $('#AppealArisingNo').val($(this).val()).trigger('input');
+            });
+
+            // Initial Triggers for Edit Mode / Prefilled values
+            $(document).ready(function() {
+                // If Arising Number is empty, mirror from main PGA field
+                if (!$('#AppealArisingNo').val() && $('#PGANumber').val()) {
+                    $('#AppealArisingNo').val($('#PGANumber').val());
+                }
+                
+                // Trigger year extraction for all relevant fields on load
+                $('#AppealNumber').trigger('input');
+                $('#AppealArisingNo').trigger('input');
+            });
+
+            // --- Others Dropdown: Witness Designation ---
+            (function() {
+                var $select = $('#WitnessDesignationSelect');
+                var $manual = $('#WitnessDesignationManual');
+                var $hidden = $('#WitnessDesignationHidden');
+
+                function syncWitnessDesignation() {
+                    var val = $select.val();
+                    if (val === 'Others') {
+                        $manual.slideDown(200);
+                        $hidden.val($manual.val());
+                    } else {
+                        $manual.slideUp(200);
+                        $hidden.val(val);
+                    }
+                }
+
+                // On load: if saved value is not in the list, treat as 'Others'
+                var savedVal = $hidden.val();
+                var inList = $select.find('option').filter(function() {
+                    return $(this).val() === savedVal && $(this).val() !== '';
+                }).length > 0;
+
+                if (savedVal && !inList) {
+                    $select.val('Others');
+                    $manual.val(savedVal).show();
+                } else if (savedVal) {
+                    $select.val(savedVal);
+                }
+
+                $select.on('change', syncWitnessDesignation);
+                $manual.on('input', function() {
+                    $hidden.val($(this).val());
+                });
+            })();
+
+        });
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.querySelector('.needs-validation');
+            if (form) {
+                form.addEventListener('submit', function(event) {
+                    if (!form.checkValidity()) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        
+                        // If invalid, show the first tab with an error
+                        const firstInvalid = form.querySelector(':invalid');
+                        if (firstInvalid) {
+                            const tabPane = firstInvalid.closest('.tab-pane');
+                            if (tabPane) {
+                                const tabId = tabPane.id;
+                                const tabButton = document.querySelector(`[data-bs-target="#${tabId}"]`);
+                                if (tabButton) {
+                                    bootstrap.Tab.getOrCreateInstance(tabButton).show();
+                                }
+                            }
+                        }
+                    }
+                    form.classList.add('was-validated');
+                    updateHiddenServiceFields();
+                }, false);
+
+                function updateHiddenServiceFields() {
+                    // Combine Corporation Break in Service
+                    const breakYears = document.getElementById('break_years')?.value || '0';
+                    const breakMonths = document.getElementById('break_months')?.value || '0';
+                    const breakDays = document.getElementById('break_days')?.value || '0';
+                    let breakValue = '';
+                    if (breakYears != '0') breakValue += breakYears + ' Yrs ';
+                    if (breakMonths != '0') breakValue += breakMonths + ' Mon ';
+                    if (breakDays != '0') breakValue += breakDays + ' Days';
+                    const periodField = document.getElementById('Period_SPE_LWA_ABS');
+                    if(periodField) periodField.value = breakValue.trim() || '-';
+                    
+                    // Combine Corporation Qualifying Service
+                    const qsYears = document.getElementById('qs_years')?.value || '0';
+                    const qsMonths = document.getElementById('qs_months')?.value || '0';
+                    const qsDays = document.getElementById('qs_days')?.value || '0';
+                    let qsValue = '';
+                    if (qsYears != '0') qsValue += qsYears + ' Yrs ';
+                    if (qsMonths != '0') qsValue += qsMonths + ' Mon ';
+                    if (qsDays != '0') qsValue += qsDays + ' Days';
+                    const qsField = document.getElementById('QualifyingService_Corp');
+                    if(qsField) qsField.value = qsValue.trim() || '-';
+                    
+                    // Combine CA Break in Service
+                    const breakYearsCa = document.getElementById('break_years_ca')?.value || '0';
+                    const breakMonthsCa = document.getElementById('break_months_ca')?.value || '0';
+                    const breakDaysCa = document.getElementById('break_days_ca')?.value || '0';
+                    let breakValueCa = '';
+                    if (breakYearsCa != '0') breakValueCa += breakYearsCa + ' Yrs ';
+                    if (breakMonthsCa != '0') breakValueCa += breakMonthsCa + ' Mon ';
+                    if (breakDaysCa != '0') breakValueCa += breakDaysCa + ' Days';
+                    const periodFieldCa = document.getElementById('Period_SPE_LWA_ABS_CA');
+                    if(periodFieldCa) periodFieldCa.value = breakValueCa.trim() || '-';
+                    
+                    // Combine CA Qualifying Service
+                    const qsYearsCa = document.getElementById('qs_years_ca')?.value || '0';
+                    const qsMonthsCa = document.getElementById('qs_months_ca')?.value || '0';
+                    const qsDaysCa = document.getElementById('qs_days_ca')?.value || '0';
+                    let qsValueCa = '';
+                    if (qsYearsCa != '0') qsValueCa += qsYearsCa + ' Yrs ';
+                    if (qsMonthsCa != '0') qsValueCa += qsMonthsCa + ' Mon ';
+                    if (qsDaysCa != '0') qsValueCa += qsDaysCa + ' Days';
+                    const qsFieldCa = document.getElementById('QualifyingService_CA');
+                    if(qsFieldCa) qsFieldCa.value = qsValueCa.trim() || '-';
+                }
+
+                // Attach listeners to update hidden fields on change
+                const serviceInputs = document.querySelectorAll('#break_years, #break_months, #break_days, #qs_years, #qs_months, #qs_days, #break_years_ca, #break_months_ca, #break_days_ca, #qs_years_ca, #qs_months_ca, #qs_days_ca');
+                serviceInputs.forEach(input => {
+                    input.addEventListener('input', updateHiddenServiceFields);
+                    input.addEventListener('change', updateHiddenServiceFields);
+                });
+
+                // Claimant Appeal Toggles
+                function toggleClaimantOutcome() {
+                    const status = $("#claimantWPStatus").val();
+                    if (status === "Pending" || !status) {
+                        $("#claimantOutcomeMainSection").slideUp(300);
+                        $("#claimantClosureSection").slideUp(300);
+                    } else {
+                        $("#claimantOutcomeMainSection").slideDown(300);
+                        toggleClaimantClosureSection();
+                    }
+                }
+
+                function toggleClaimantClosureSection() {
+                    const actionTaken = $("#claimantActionTaken").val();
+                    if (actionTaken === 'Close') {
+                        $("#claimantClosureSection").slideDown(300);
+                    } else {
+                        $("#claimantClosureSection").slideUp(300);
+                    }
+                }
+
+                $("#claimantWPStatus").on("change", toggleClaimantOutcome);
+                $("#claimantActionTaken").on("change", toggleClaimantClosureSection);
+                
+                // Initial call
+                toggleClaimantOutcome();
+            }
+        });
+
+        // Standardized Document Management
+        $(document).on('click', '.btn-add-enclosed-doc', function() {
+            var container = $('#enclosedDocsContainer');
+            var row = `
+                <div class="input-group mb-2 enclosed-doc-row" style="display:none;">
+                    <span class="input-group-text bg-white"><i class="bi bi-file-earmark-text text-primary"></i></span>
+                    <input type="text" name="EnclosedDocuments[X].DocName" class="form-control" placeholder="e.g. Appointment Letter, Service Record...">
+                    <span class="input-group-text bg-white text-muted small">Pages</span>
+                    <input type="number" name="EnclosedDocuments[X].PageCount" class="form-control" style="max-width:80px;" min="1" placeholder="0">
+                    <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row"><i class="bi bi-trash"></i></button>
+                </div>`;
+            var $row = $(row);
+            container.append($row);
+            $row.slideDown(200);
+            reindexDocs();
+        });
+
+        $(document).on('click', '.remove-doc-row', function() {
+            var $row = $(this).closest('.enclosed-doc-row');
+            if ($('#enclosedDocsContainer .enclosed-doc-row').length > 1) {
+                $row.slideUp(200, function() {
+                    $(this).remove();
+                    reindexDocs();
+                });
+            } else {
+                $row.find('input').val('');
+            }
+        });
+
+        function reindexDocs() {
+            $('#enclosedDocsContainer .enclosed-doc-row').each(function(i) {
+                $(this).find('input[name*="DocName"]').attr('name', 'EnclosedDocuments[' + i + '].DocName');
+                $(this).find('input[name*="PageCount"]').attr('name', 'EnclosedDocuments[' + i + '].PageCount');
+            });
+        }
+
+        function toggleOutwardFields(selectElement) {
+            // Outward fields remain visible and permanently accessible in responsive grid
+        }
+
+        // Initialize on load & setup guaranteed tab navigation
+        $(document).ready(function() {
+             // Robust tab switching handler supporting Bootstrap 5 & jQuery
+             $('#gratuityTabs button[data-bs-toggle="tab"]').on('click', function(e) {
+                 e.preventDefault();
+                 var targetSelector = $(this).attr('data-bs-target');
+                 if (targetSelector) {
+                     if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+                         var tabTrigger = new bootstrap.Tab(this);
+                         tabTrigger.show();
+                     }
+                     $('#gratuityTabs button').removeClass('active').attr('aria-selected', 'false');
+                     $(this).addClass('active').attr('aria-selected', 'true');
+                     $('#gratuityTabsContent > .tab-pane').removeClass('show active').css('display', '');
+                     $(targetSelector).addClass('show active').fadeIn(150);
+                 }
+             });
+        });
+    </script>
+}
+
+<style>
+     /* Premium Design Tokens */
+     :root {
+         --gratuity-primary: #C2185B;
+         --gratuity-gradient: linear-gradient(135deg, #C2185B 0%, #E91E63 100%);
+         --gratuity-bg-soft: #fdf2f8;
+         --glass-shadow: 0 10px 30px rgba(194, 24, 91, 0.12);
+     }
+
+     .fade-in { animation: fadeIn 0.5s ease-out; }
+     @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+     /* Modern Card Styling */
+     .main-form-card {
+         border-radius: 20px !important;
+         border: 1px solid rgba(194, 24, 91, 0.1);
+         overflow: hidden;
+         box-shadow: var(--glass-shadow) !important;
+     }
+     
+     .card-body {
+         background: #ffffff;
+         padding: 2.5rem !important;
+     }
+     
+     /* Navigation Tabs Enhancements */
+     .modern-tabs {
+         background-color: #f8fafc;
+         border: none;
+     }
+     
+     .modern-tabs .nav-link {
+         border: none;
+         padding: 1.25rem;
+         font-weight: 700;
+         color: #64748b;
+         text-transform: uppercase;
+         font-size: 0.85rem;
+         letter-spacing: 0.5px;
+         transition: all 0.3s;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         border-bottom: 3px solid transparent;
+     }
+     
+     .modern-tabs .nav-link:hover {
+         color: var(--gratuity-primary);
+         background-color: var(--gratuity-bg-soft);
+     }
+     
+     .modern-tabs .nav-link.active {
+         background-color: #fff;
+         color: var(--gratuity-primary) !important;
+         border-bottom-color: var(--gratuity-primary) !important;
+     }
+
+     /* Section Headings */
+     .section-heading {
+         font-size: 1rem;
+         font-weight: 800;
+         color: var(--gratuity-primary);
+         border-left: 5px solid var(--gratuity-primary);
+         padding: 0.75rem 1.25rem;
+         background: linear-gradient(90deg, var(--gratuity-bg-soft) 0%, rgba(255,255,255,0) 100%);
+         margin: 2rem 0 1.5rem 0;
+         border-radius: 0 8px 8px 0;
+         display: flex;
+         align-items: center;
+     }
+
+     .section-heading::after {
+         content: '';
+         flex-grow: 1;
+         height: 1px;
+         background: linear-gradient(90deg, rgba(194, 24, 91, 0.2) 0%, transparent 100%);
+         margin-left: 1rem;
+     }
+
+     /* Form Controls Styling */
+     .form-label {
+         font-weight: 700;
+         color: #334155;
+         font-size: 0.8rem;
+         text-transform: uppercase;
+         letter-spacing: 0.5px;
+         margin-bottom: 0.5rem;
+     }
+
+     .form-control, .form-select {
+         border: 2px solid #e2e8f0;
+         border-radius: 12px;
+         padding: 0.75rem 1rem;
+         font-weight: 500;
+         font-size: 0.95rem;
+         transition: all 0.3s;
+         background-color: #fff;
+     }
+
+     .form-control:focus, .form-select:focus {
+         border-color: var(--gratuity-primary);
+         box-shadow: 0 0 0 4px rgba(194, 24, 91, 0.1);
+         transform: translateY(-2px);
+     }
+
+     .form-control[readonly] {
+         background-color: #f8fafc;
+         border-style: dashed;
+     }
+
+     /* Stats & Highlighting */
+     .bg-soft-gratuity { background-color: var(--gratuity-bg-soft); }
+     .border-gratuity { border-color: var(--gratuity-primary) !important; }
+     
+     /* Compact Tables */
+     .table { font-size: 0.85rem; }
+     .table th { font-weight: 700; color: #64748b; background-color: #f8fafc; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #f1f5f9; }
+     
+     /* Assessment Box */
+     .assessment-box {
+         padding: 1.75rem;
+         border-radius: 18px;
+         transition: all 0.3s;
+         border: 2px solid transparent;
+     }
+     
+     .assessment-box.corp { background-color: #fff9fc; border-color: #fce7f3; }
+     .assessment-box.ca { background-color: #f0f7ff; border-color: #e0f2fe; }
+     
+     .assessment-box:hover {
+         transform: scale(1.01);
+         box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+     }
+
+     /* Action Buttons */
+     .btn-gratuity {
+         background: var(--gratuity-gradient);
+         color: white;
+         border: none;
+         font-weight: 700;
+         padding: 1rem 2.5rem;
+         transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+         box-shadow: 0 5px 15px rgba(194, 24, 91, 0.3);
+     }
+
+     .btn-gratuity:hover {
+         transform: scale(1.05) translateY(-2px);
+         box-shadow: 0 8px 25px rgba(194, 24, 91, 0.4);
+         color: white;
+     }
+
+     .btn-outline-gratuity {
+         color: var(--gratuity-primary);
+         border: 2px solid var(--gratuity-primary);
+         background: transparent;
+         font-weight: 600;
+     }
+
+     .btn-outline-gratuity:hover {
+         background: var(--gratuity-primary);
+         color: white;
+     }
+
+     /* Radio/Checkbox Improvements */
+     .form-check-input:checked { background-color: var(--gratuity-primary); border-color: var(--gratuity-primary); }
+
+     /* Remove green highlight for valid fields */
+     .was-validated .form-control:valid, 
+     .was-validated .form-select:valid {
+         border-color: #e2e8f0 !important;
+         background-image: none !important;
+         padding-right: 1rem !important; /* Reset padding to normal */
+     }
+
+     .was-validated .form-control:valid:focus, 
+     .was-validated .form-select:valid:focus {
+         border-color: var(--gratuity-primary) !important;
+         box-shadow: 0 0 0 4px rgba(194, 24, 91, 0.1) !important;
+     }
+
+     /* Remove green highlight from checkboxes and radios */
+     .was-validated .form-check-input:valid:checked {
+         background-color: var(--gratuity-primary) !important;
+         border-color: var(--gratuity-primary) !important;
+     }
+     .was-validated .form-check-input:valid:focus {
+         box-shadow: 0 0 0 0.25rem rgba(194, 24, 91, 0.25) !important;
+     }
+     .was-validated .form-check-input:valid ~ .form-check-label {
+         color: inherit !important;
+     }
+</style>
+
+

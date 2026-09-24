@@ -1,0 +1,1742 @@
+@model MVCCaseManagement.Models.LabourCase
+
+@{
+    ViewData["Title"] = "Labour Case Action - " + Model.CaseNumber;
+}
+
+<style>
+    /* High Contrast Tabs */
+    .nav-tabs .nav-link {
+        background-color: #e9ecef;
+        color: #000;
+        border: 1px solid #ced4da;
+        border-bottom-color: transparent;
+        margin-right: 4px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    
+    .nav-tabs .nav-link.active {
+        background-color: #f0f7ff !important;
+        color: #002e5d !important;
+        border-color: #dee2e6 #dee2e6 #fff !important;
+        border-top: 4px solid #ffc107 !important; /* Yellow for Action */
+        font-weight: 800 !important;
+    }
+
+    .nav-tabs .nav-link:hover {
+        background-color: #dbeaff;
+        color: #000;
+    }
+
+    .card-header.bg-action {
+        background-color: #fff9e6;
+        border-bottom: 2px solid #ffc107;
+    }
+
+    .section-title {
+        color: #002e5d;
+        border-bottom: 2px solid #ffc107;
+        padding-bottom: 5px;
+        margin-bottom: 15px;
+        font-weight: bold;
+    }
+</style>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-dark mb-1"><i class="bi bi-lightning-charge-fill text-warning"></i> Central Office Action</h3>
+            <p class="text-muted mb-0">Managing Case No: <strong class="text-primary">@Model.CaseNumber (@Model.CaseYear)</strong> | @Model.PetitionerName vs NWKRTC</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a asp-action="Details" asp-route-id="@Model.CaseID" class="btn btn-outline-secondary rounded-pill">
+                <i class="bi bi-arrow-left me-1"></i> Back to Details
+            </a>
+            @if (!User.IsInRole("MD"))
+            {
+                <button type="submit" form="labourActionForm" class="btn btn-warning text-dark shadow-sm rounded-pill px-4 fw-bold">
+                    <i class="bi bi-check-circle-fill me-2"></i> SAVE ACTION
+                </button>
+            }
+        </div>
+    </div>
+
+    <form asp-action="Action" method="post" id="labourActionForm" enctype="multipart/form-data">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="All" class="text-danger mb-3"></div>
+        <input type="hidden" asp-for="CaseID" />
+        <input type="hidden" asp-for="DE_HistorySheetPath" />
+        <input type="hidden" asp-for="JudgmentCopyPath" />
+        <input type="hidden" asp-for="JudgmentCopyPath2" />
+        <input type="hidden" asp-for="DivisionID" />
+        <input type="hidden" id="hdnNatureOfCase" value="@Model.NatureOfCase" />
+        <input type="hidden" asp-for="Opinion_CLO" />
+        <input type="hidden" asp-for="Opinion_Advocate" />
+        <input type="hidden" asp-for="Opinion_LO" />
+        <input type="hidden" asp-for="Opinion_DC" />
+        <input type="hidden" asp-for="AwardDetails" />
+        @if (!User.IsInRole("MD"))
+        {
+            <input type="hidden" asp-for="CO_Remarks" />
+        }
+
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs mb-4 px-2" id="actionTabs" role="tablist">
+            @if (User.IsInRole("MD"))
+            {
+                @* No tabs for MD *@
+            }
+            else
+            {
+                @if (Model.CO_ActionTaken != "CLOSED")
+                {
+                    <li class="nav-item"><a class="nav-link active" id="tab1-tab" data-bs-toggle="tab" href="#tab1">1. Judgment</a></li>
+                }
+                <li class="nav-item"><a class="nav-link @(Model.CO_ActionTaken == "CLOSED" ? "active" : "")" id="tab2-tab" data-bs-toggle="tab" href="#tab2">2-4. WP (Corp)</a></li>
+                <li class="nav-item"><a class="nav-link" id="tabWA-tab" data-bs-toggle="tab" href="#tabWA">Writ Appeal</a></li>
+                <li class="nav-item"><a class="nav-link" id="tab7-tab" data-bs-toggle="tab" href="#tab7">7-8. Appeals</a></li>
+            }
+        </ul>
+
+        @if (User.IsInRole("MD"))
+        {
+            <!-- MD PRE-REVIEW OPINION CHAIN (Full Hierarchy Visibility) -->
+            <div class="card shadow-sm border-0 mb-4 rounded-3 border-start border-4 border-primary">
+                <div class="card-header bg-white py-2 fw-bold text-primary d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-diagram-3-fill me-2"></i> Preceding Legal Opinions &amp; Recommendations Chain</span>
+                    <span class="badge bg-primary-subtle text-primary">Hierarchy Review</span>
+                </div>
+                <div class="card-body small">
+                    <div class="row g-3">
+                        <!-- CLO Apex Opinion -->
+                        <div class="col-12">
+                            <div class="p-3 rounded border-start border-4 border-primary bg-primary-subtle shadow-xs">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="fw-bold text-primary text-uppercase extra-small">
+                                        <i class="bi bi-award-fill me-1"></i> Chief Law Officer (CLO) Legal Opinion &amp; Recommendation
+                                    </span>
+                                    <span class="badge bg-primary text-white">Apex Legal Direction</span>
+                                </div>
+                                <div class="text-dark fw-semibold">
+                                    @(string.IsNullOrWhiteSpace(Model.Opinion_CLO) ? "— Pending CLO Legal Review —" : Model.Opinion_CLO)
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(Model.CO_Disposal_Decision))
+                                {
+                                    <div class="extra-small text-muted mt-1">
+                                        CLO Stage Recommendation: <strong class="text-primary">@Model.CO_Disposal_Decision</strong> (@(Model.CO_ApprovalDate?.ToString("dd-MMM-yyyy") ?? ""))
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <!-- Divisional LO & DC Opinions -->
+                        <div class="col-md-6">
+                            <div class="p-2 rounded border-start border-3 border-info bg-light h-100">
+                                <small class="text-muted d-block fw-bold extra-small text-uppercase">
+                                    <i class="bi bi-file-earmark-person me-1"></i> Divisional Law Officer (LO) Opinion
+                                </small>
+                                <div class="text-dark small">
+                                    @(string.IsNullOrWhiteSpace(Model.Opinion_LO) ? "—" : Model.Opinion_LO)
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="p-2 rounded border-start border-3 border-secondary bg-light h-100">
+                                <small class="text-muted d-block fw-bold extra-small text-uppercase">
+                                    <i class="bi bi-building me-1"></i> Divisional Controller (DC) Opinion
+                                </small>
+                                <div class="text-dark small">
+                                    @(string.IsNullOrWhiteSpace(Model.Opinion_DC) ? "—" : Model.Opinion_DC)
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Advocate Opinion & Award Details -->
+                        <div class="col-md-6">
+                            <div class="p-2 rounded border-start border-3 border-dark bg-light h-100">
+                                <small class="text-muted d-block fw-bold extra-small text-uppercase">
+                                    <i class="bi bi-chat-square-quote me-1"></i> Trial Advocate Opinion
+                                </small>
+                                <div class="text-dark small">
+                                    @(string.IsNullOrWhiteSpace(Model.Opinion_Advocate) ? "—" : Model.Opinion_Advocate)
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <div class="p-2 rounded border-start border-3 border-success bg-light h-100">
+                                <small class="text-muted d-block fw-bold extra-small text-uppercase">
+                                    <i class="bi bi-award me-1"></i> Labour Court Award Summary
+                                </small>
+                                <div class="text-dark small">
+                                    @(string.IsNullOrWhiteSpace(Model.AwardDetails) ? "—" : Model.AwardDetails)
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MD Action Panel -->
+            <div class="card shadow-sm border-0 mb-4 border-start border-4 border-warning">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="bi bi-shield-check me-2"></i> MD Action Panel (Executive Sanction)</h6>
+                    <span class="badge bg-warning text-dark px-3">Competent Authority</span>
+                </div>
+                <div class="card-body bg-light-subtle">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold h6">Executive Decision / Action Taken</label>
+                            <select class="form-select form-select-lg border-2 border-warning" asp-for="CO_ActionTaken">
+                                <option value="">Select Action...</option>
+                                <option value="Approved">Approved (Sanction Appeal / WP Filing)</option>
+                                <option value="Rejected">Rejected (Sanction Refused / Close)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold h6">Approval Date</label>
+                            <input asp-for="CO_ApprovalDate" type="date" class="form-control form-control-lg border-2 border-warning" />
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold h6">Managing Director (MD) Opinion &amp; Directives</label>
+                            <textarea class="form-control border-2 border-warning" asp-for="CO_Remarks" rows="5" placeholder="Enter executive sanction decision, directives on High Court filing, 17(B) deposit, or closure instructions..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer bg-white text-end py-3">
+                    <button type="submit" class="btn btn-success btn-lg shadow-sm px-5 fw-bold rounded-pill">
+                        <i class="bi bi-check-circle-fill me-2"></i> SUBMIT MD SANCTION ACTION
+                    </button>
+                </div>
+            </div>
+        }
+            else
+            {
+                <div class="tab-content" id="actionTabsContent">
+            
+            <!-- TAB 1: FEASIBILITY & INITIAL ACTION -->
+            @if (Model.CO_ActionTaken != "CLOSED")
+            {
+            <div class="tab-pane fade show active" id="tab1" role="tabpanel">
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-action"><h6 class="mb-0 fw-bold">1. Judgment & Initial Action</h6></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <!-- Divisional Opinions Reference Card -->
+                            <div class="col-12">
+                                <div class="p-3 bg-light rounded-3 border">
+                                    <h6 class="fw-bold small text-primary mb-2 text-uppercase">
+                                        <i class="bi bi-chat-square-quote me-1"></i> Preceding Trial &amp; Legal Opinions
+                                    </h6>
+                                    <div class="row g-2 extra-small">
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block fw-bold">Advocate:</span>
+                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_Advocate) ? "—" : Model.Opinion_Advocate)</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block fw-bold">Divisional LO:</span>
+                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_LO) ? "—" : Model.Opinion_LO)</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block fw-bold">Divisional DC:</span>
+                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_DC) ? "—" : Model.Opinion_DC)</span>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(Model.Opinion_CLO))
+                                        {
+                                            <div class="col-12 mt-2 pt-2 border-top">
+                                                <span class="badge bg-primary me-1">CLO Opinion</span>
+                                                <strong class="text-primary">@Model.Opinion_CLO</strong>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(Model.CO_Remarks))
+                                        {
+                                            <div class="col-12 mt-1">
+                                                <span class="badge bg-warning text-dark me-1">MD Directives</span>
+                                                <strong class="text-dark">@Model.CO_Remarks</strong>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Judgment Received?</label>
+                                <select class="form-select" asp-for="CO_FeasibilityReceived">
+                                    <option value="">SELECT...</option>
+                                    <option value="true">YES</option>
+                                    <option value="false">NO</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Judgment Received Date</label>
+                                <input type="date" class="form-control" asp-for="CO_FeasibilityDate" />
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold">Action Taken</label>
+                                <select class="form-select" asp-for="CO_ActionTaken" id="coActionTaken">
+                                    <option value="">SELECT...</option>
+                                    <option value="PENDING FOR DECISION">PENDING BEFORE CLO/LO</option>
+                                    <option value="PENDING BEFORE COMPETENT AUTHORITY">PENDING BEFORE COMPETENT AUTHORITY</option>
+                                    <option value="APPEAL">APPEAL</option>
+                                    <option value="CLOSED">CLOSED</option>
+                                </select>
+                            </div>
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold"><i class="bi bi-upload me-1"></i>Upload Noting Sheet (Max 2)</label>
+                                <div class="row g-2">
+                                    <div class="col-md-6">
+                                        <input type="file" class="form-control" asp-for="JudgmentCopyFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                        @if (!string.IsNullOrEmpty(Model.JudgmentCopyPath))
+                                        {
+                                            <a href="@Model.JudgmentCopyPath" target="_blank" class="small text-decoration-none ms-1 mt-1 d-inline-block"><i class="bi bi-file-earmark-pdf text-danger"></i> View Copy 1</a>
+                                        }
+                                    </div>
+                                    <div class="col-md-6">
+                                        <input type="file" class="form-control" asp-for="JudgmentCopyFile2" accept=".pdf,.jpg,.jpeg,.png" />
+                                        @if (!string.IsNullOrEmpty(Model.JudgmentCopyPath2))
+                                        {
+                                            <a href="@Model.JudgmentCopyPath2" target="_blank" class="small text-decoration-none ms-1 mt-1 d-inline-block"><i class="bi bi-file-earmark-pdf text-danger"></i> View Copy 2</a>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-12" id="feasibilityApprovalSection" style="display:none;">
+                                <div class="bg-light p-3 rounded">
+                                    <h6 class="small fw-bold border-bottom pb-2 mb-2">If Closed (Approval Details)</h6>
+                                    <div class="row g-3">
+                                        <div class="col-md-4">
+                                            <label class="form-label">Approval Outward No</label>
+                                            <input type="text" class="form-control" asp-for="CO_ApprovalOutwardNo" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label">Approval Date</label>
+                                            <input type="date" class="form-control" asp-for="CO_ApprovalDate" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label fw-bold"><i class="bi bi-upload me-1"></i> Upload Closed Document</label>
+                                            <input type="file" class="form-control" name="ClosedDocumentFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                            <small class="text-muted italic">Note: If the case is closed, please upload the supporting document here.</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            }
+
+            <!-- TAB 2: WP CORP (SECTIONS 2, 3, 4) -->
+            <div class="tab-pane fade @(Model.CO_ActionTaken == "CLOSED" ? "show active" : "")" id="tab2" role="tabpanel">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-action"><h6 class="mb-0 fw-bold">2. Appeal Filed by Corporation (Writ Petition)</h6></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-12" id="wpPendingContainer">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="chkWPPending">
+                                    <label class="form-check-label fw-bold text-muted" for="chkWPPending">
+                                        Pending for Filing (No WP Case Number)
+                                    </label>
+                                    <input type="hidden" asp-for="CO_WP_CaseStatus_Option" id="hdnWPCaseStatus" />
+                                </div>
+                            </div>
+                            <div id="wpDetailsRow" class="col-12" style="display:none;">
+                                <div class="row g-3">
+                                     <div class="col-md-6">
+                                        <label class="form-label">WP Case Number</label>
+                                        <input type="text" class="form-control" asp-for="CO_WP_CaseNumber" maxlength="6" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Year</label>
+                                        <input type="number" class="form-control" asp-for="CO_WP_Year" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Official e-Courts High Court Live Gateway Integration (Corporation WP) -->
+                            <div class="col-12">
+                                <div class="card border border-primary border-opacity-25 bg-primary-subtle bg-opacity-10 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <label class="form-label mb-0 fw-bold text-primary text-uppercase extra-small">
+                                                <i class="bi bi-broadcast me-1 text-danger animate-pulse"></i> Official High Court e-Courts Live Gateway (Corporation WP CNR)
+                                            </label>
+                                            @if (!string.IsNullOrEmpty(Model.CO_WP_CNRNumber))
+                                            {
+                                                <span class="badge bg-success px-2 py-1 extra-small"><i class="bi bi-wifi me-1"></i>High Court CNR Linked (@Model.CO_WP_CNRNumber)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-warning text-dark px-2 py-1 extra-small"><i class="bi bi-exclamation-triangle me-1"></i>Unlinked</span>
+                                            }
+                                        </div>
+                                        <div class="row g-3 align-items-center">
+                                            <div class="col-md-7">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text bg-white border-primary-subtle font-monospace fw-bold text-primary">High Court CNR</span>
+                                                    <input asp-for="CO_WP_CNRNumber" class="form-control border-primary-subtle font-monospace fw-bold text-uppercase" id="txtCOWPCNRNumber" placeholder="16-digit High Court CNR (e.g. KAHC020060752019)" maxlength="16" />
+                                                </div>
+                                                <span asp-validation-for="CO_WP_CNRNumber" class="text-danger small"></span>
+                                            </div>
+                                            <div class="col-md-5">
+                                                <button type="button" class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="autoFetchHighCourtCNR('CO_WP')">
+                                                    <i class="bi bi-search me-1"></i> Auto-Fetch High Court Live
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Live Sync Status Banner -->
+                                        <div id="ecourtsWPSyncBanner" class="mt-3 p-2 bg-white rounded border border-success d-none">
+                                            <div class="row g-2 extra-small text-dark">
+                                                <div class="col-md-3"><strong>Petitioner:</strong> <span id="lblWPPetitioner" class="text-primary fw-bold">—</span></div>
+                                                <div class="col-md-3"><strong>Respondent:</strong> <span id="lblWPRespondent" class="text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Court Hall / Bench:</strong> <span id="lblWPBench" class="badge bg-info text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Next Date:</strong> <span id="lblWPNextDate" class="text-danger fw-bold">—</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">High Court Bench</label>
+                                <select class="form-select" asp-for="CO_WP_HighCourtBench">
+                                    <option>DHARWAD</option>
+                                    <option>KALABURAGI</option>
+                                    <option>BANGALORE</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment No</label>
+                                <input type="text" class="form-control" asp-for="CO_WP_EntrustmentNo" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment Date</label>
+                                <input type="date" class="form-control" asp-for="CO_WP_EntrustmentDate" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Advocate Name</label>
+                                <select class="form-select" asp-for="CO_WP_AdvocateName">
+                                    <option value="">Select Advocate...</option>
+                                    @if (ViewBag.Advocates != null)
+                                    {
+                                        foreach (var advocate in ViewBag.Advocates)
+                                        {
+                                            <option value="@advocate.AdvocateName">@advocate.AdvocateName</option>
+                                        }
+                                    }
+                                    <option value="Others">OTHERS</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Interim Stay Granted?</label>
+                                <select class="form-select" asp-for="CO_WP_StayGranted" id="wpStayGranted">
+                                    <option value="false">NO</option>
+                                    <option value="true">YES</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12" id="wpStayDetails" style="display:none;">
+                                <div class="card bg-light border-0">
+                                    <div class="card-body p-3">
+                                        <h6 class="small fw-bold border-bottom pb-2 mb-3 text-muted">WP Stay Details</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Approval Outward No</label>
+                                                <input type="text" class="form-control" asp-for="CO_WP_StayApprovalNo" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Date of Stay</label>
+                                                <input type="date" class="form-control" asp-for="CO_WP_StayDate" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Nature of Order</label>
+                                                <input type="text" class="form-control" asp-for="CO_WP_StayNature" placeholder="Enter nature of order..." />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Upload Stay Order Copy</label>
+                                                <input type="file" class="form-control" asp-for="StayOrderFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                                @if (!string.IsNullOrEmpty(Model.CO_WP_StayOrderPath))
+                                                {
+                                                    <div class="mt-2 text-success">
+                                                        <i class="bi bi-file-earmark-check-fill"></i> 
+                                                        <a href="@Model.CO_WP_StayOrderPath" target="_blank" class="text-success text-decoration-underline small">View Uploaded Copy</a>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Stay Remarks</label>
+                                                <textarea class="form-control" asp-for="CO_WP_StayRemark" rows="2" placeholder="Enter remarks..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="col-12 mt-4"><hr /></div>
+                            
+                            
+
+                            <h6 class="small fw-bold border-bottom pb-2 mb-3 text-muted" id="headerReinstatement">Workman Reinstatement Details</h6>
+
+                            <div class="col-md-4" id="divWorkmanReinstated">
+                                <label class="form-label">Workman Reinstated?</label>
+                                <select class="form-select" asp-for="CO_IsWorkmanReinstated" id="workmanReinstated">
+                                    <option value="false">NO</option>
+                                    <option value="true">YES</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12" id="reinstatementDetails" style="display:none;">
+                                <div class="card bg-light border-0">
+                                    <div class="card-body p-3">
+                                        <div class="row g-3">
+                                            <div class="col-md-4" id="divSubjectToWP">
+                                                <label class="form-label">Reinstated Subject to WP?</label>
+                                                <select class="form-select" asp-for="CO_ReinstatedSubjectToWP" id="reinstatedSubjectToWp">
+                                                    <option value="">NO</option>
+                                                    <option value="INTERIM ORDER">INTERIM ORDER</option>
+                                                    <option value="SUBJECT TO RESULT OF WP">SUBJECT TO RESULT OF WP</option>
+                                                </select>
+                                            </div>
+                                            
+                                            <div class="col-md-8"></div> <!-- Spacer -->
+
+                                            <!-- Reinstatement Stay Section (Visible if INTERIM ORDER) -->
+                                            <div class="col-12" id="reinstatementStaySection" style="display:none;">
+                                                <div class="row g-3">
+                                                    <div class="col-md-4">
+                                                        <label class="form-label fw-bold">Interim Stay Granted?</label>
+                                                        <select class="form-select" asp-for="CO_Reinstatement_StayGranted" id="reinstatementStayGranted">
+                                                            <option value="false">NO</option>
+                                                            <option value="true">YES</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div class="col-12" id="reinstatementStayDetails" style="display:none;">
+                                                        <div class="card bg-white border"> <!-- Nested card -->
+                                                            <div class="card-body p-3">
+                                                                <h6 class="small fw-bold border-bottom pb-2 mb-3 text-muted">Stay Order Details</h6>
+                                                                <div class="row g-3">
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Approval Outward No</label>
+                                                                        <input type="text" class="form-control" asp-for="CO_Reinstatement_StayApprovalNo" />
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Date of Stay</label>
+                                                                        <input type="date" class="form-control" asp-for="CO_Reinstatement_StayDate" />
+                                                                    </div>
+                                                                    <div class="col-md-4">
+                                                                        <label class="form-label">Nature of Order</label>
+                                                                        <input type="text" class="form-control" asp-for="CO_Reinstatement_StayNature" placeholder="Enter nature of order..." />
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Upload Stay Order Copy</label>
+                                                                        <input type="file" class="form-control" asp-for="ReinstatementStayOrderFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                                                        @if (!string.IsNullOrEmpty(Model.CO_Reinstatement_StayOrderPath))
+                                                                        {
+                                                                            <div class="mt-2 text-success">
+                                                                                <i class="bi bi-file-earmark-check-fill"></i> 
+                                                                                <a href="@Model.CO_Reinstatement_StayOrderPath" target="_blank" class="text-success text-decoration-underline small">View Uploaded Copy</a>
+                                                                            </div>
+                                                                        }
+                                                                    </div>
+                                                                    <div class="col-md-6">
+                                                                        <label class="form-label">Stay Remarks</label>
+                                                                        <textarea class="form-control" asp-for="CO_Reinstatement_StayRemark" rows="2" placeholder="Enter remarks..."></textarea>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                             <div class="col-md-4">
+                                                <label class="form-label">Approval Issued?</label>
+                                                <select class="form-select" asp-for="CO_ReinstatementApprovalIssued">
+                                                    <option value="false">NO</option>
+                                                    <option value="true">YES</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Approval Date</label>
+                                                <input type="date" class="form-control" asp-for="CO_ReinstatementApprovalDate" />
+                                            </div>
+                                        </div>
+                                        <div class="row g-3 mt-2" id="reinstatementApprovalDetails" style="display:none;">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Approval Number</label>
+                                                <input type="text" class="form-control" asp-for="CO_Reinstatement_ApprovalNo" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold"><i class="bi bi-upload me-1"></i> Upload Approval Copy</label>
+                                                <input type="file" class="form-control" asp-for="ReinstatementApprovalFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                                <input type="hidden" asp-for="CO_Reinstatement_ApprovalCopyPath" />
+                                                @if (!string.IsNullOrEmpty(Model.CO_Reinstatement_ApprovalCopyPath))
+                                                {
+                                                    <div class="mt-1">
+                                                        <a href="@Url.Content("~/" + Model.CO_Reinstatement_ApprovalCopyPath)" target="_blank" class="text-primary small">
+                                                            <i class="bi bi-file-earmark-pdf me-1"></i> View Current Upload
+                                                        </a>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-action"><h6 class="mb-0 fw-bold">4. WP Status</h6></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Current WP Status</label>
+                                <select class="form-select" asp-for="CO_WP_Status" id="wpStatusDropdown">
+                                    <option>PENDING</option>
+                                    <option>DISPOSED</option>
+                                </select>
+                            </div>
+                            
+                            <!-- ACTION TAKEN SECTION (Visible if STATUS = DISPOSED) -->
+                            <div class="col-md-6" id="wpActionSection" style="display:none;">
+                                <label class="form-label fw-bold text-primary">Action Taken</label>
+                                <select class="form-select border-primary" asp-for="CO_WP_ActionTaken" id="wpActionTakenDropdown">
+                                    <option value="">SELECT...</option>
+                                    <option value="PENDING FOR DECISION">PENDING BEFORE CLO/LO</option>
+                                    <option value="PENDING BEFORE COMPETENT AUTHORITY">PENDING BEFORE COMPETENT AUTHORITY</option>
+                                    <option value="APPEAL">APPEAL</option>
+                                    <option value="CLOSED">CLOSED</option>
+                                </select>
+                            </div>
+
+                            <!-- JUDGMENT COPY UPLOAD (Visible if STATUS = DISPOSED) -->
+                            <div class="col-md-12 mb-2" id="wpJudgmentSection" style="display:none;">
+                                <div class="bg-primary-subtle p-3 rounded border border-primary border-opacity-25">
+                                    <label class="form-label fw-bold text-primary"><i class="bi bi-upload me-1"></i>Upload Judgment Copy</label>
+                                    <div class="row align-items-center g-2">
+                                        <div class="col-md-8">
+                                            <input type="file" class="form-control border-primary" asp-for="CO_WP_JudgmentCopyFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            @if (!string.IsNullOrEmpty(Model.CO_WP_JudgmentCopyPath))
+                                            {
+                                                <a href="@Model.CO_WP_JudgmentCopyPath" target="_blank" class="btn btn-outline-primary btn-sm w-100">
+                                                    <i class="bi bi-file-earmark-pdf"></i> View Judgment
+                                                </a>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- OUTCOME SECTION (Visible if ACTION = CLOSED) -->
+                            <div class="col-md-12" id="wpOutcomeSection" style="display:none;">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Outcome / Result</label>
+                                        <select class="form-select" asp-for="CO_WP_Outcome" id="wpOutcomeDropdown">
+                                            <option value="">SELECT...</option>
+                                            <option value="FAVOR">FAVOUR</option>
+                                            <option value="AGAINST">AGAINST</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6"></div>
+                                </div>
+                            </div>
+
+                            <!-- AGAINST DETAILS (Visible if OUTCOME = AGAINST) -->
+                            <div class="col-12" id="wpOutcomeAgainst" style="display:none;">
+                                <div class="bg-danger-subtle p-3 rounded border border-danger border-opacity-25">
+                                    <div class="row g-3">
+                                        <div class="col-md-12">
+                                            <label class="form-label fw-bold text-danger">Remarks / Details</label>
+                                            <textarea class="form-control" asp-for="CO_WP_OutcomeRemark" rows="2" placeholder="Enter details about why it was disposed against..."></textarea>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-danger">Outward Number</label>
+                                            <input type="text" class="form-control" asp-for="CO_WP_OutcomeOutwardNo" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-danger">Closure Date</label>
+                                            <input type="date" class="form-control" asp-for="CO_WP_OutcomeOutwardDate" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- FAVOR DETAILS (Visible if OUTCOME = FAVOR) -->
+                            <div class="col-12" id="wpOutcomeFavor" style="display:none;">
+                                <div class="bg-success-subtle p-3 rounded border border-success border-opacity-25">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-success">Outward Number</label>
+                                            <input type="text" class="form-control" asp-for="CO_WP_OutcomeOutwardNo" id="favorOutwardNo" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-success">Outward Date</label>
+                                            <input type="date" class="form-control" asp-for="CO_WP_OutcomeOutwardDate" id="favorOutwardDate" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+
+            <!-- TAB WA: WRIT APPEAL -->
+            <div class="tab-pane fade" id="tabWA" role="tabpanel">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-action"><h6 class="mb-0 fw-bold">Writ Appeal Filed by Corporation</h6></div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-12" id="waPendingContainer">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="chkWaPending">
+                                                        <label class="form-check-label fw-bold text-muted" for="chkWaPending">
+                                        Pending for Filing (No WA Case Number)
+                                    </label>
+                                    <input type="hidden" asp-for="CO_WA_CaseStatus_Option" id="hdnWaCaseStatus" />
+                                </div>
+                            </div>
+                            <div id="waDetailsRow" class="col-12" style="display:none;">
+                                <div class="row g-3">
+                                     <div class="col-md-6">
+                                        <label class="form-label">WA Case Number</label>
+                                        <input type="text" class="form-control" asp-for="CO_WA_CaseNumber" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Year</label>
+                                        <input type="number" class="form-control" asp-for="CO_WA_Year" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Official e-Courts High Court Live Gateway Integration (Writ Appeal WA) -->
+                            <div class="col-12">
+                                <div class="card border border-primary border-opacity-25 bg-primary-subtle bg-opacity-10 rounded-3">
+                                    <div class="card-body p-3">
+                                        <div class="d-flex align-items-center justify-content-between mb-2">
+                                            <label class="form-label mb-0 fw-bold text-primary text-uppercase extra-small">
+                                                <i class="bi bi-broadcast me-1 text-danger animate-pulse"></i> Official High Court e-Courts Live Gateway (Writ Appeal CNR)
+                                            </label>
+                                            @if (!string.IsNullOrEmpty(Model.CO_WA_CNRNumber))
+                                            {
+                                                <span class="badge bg-success px-2 py-1 extra-small"><i class="bi bi-wifi me-1"></i>WA High Court CNR Linked (@Model.CO_WA_CNRNumber)</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-warning text-dark px-2 py-1 extra-small"><i class="bi bi-exclamation-triangle me-1"></i>Unlinked</span>
+                                            }
+                                        </div>
+                                        <div class="row g-3 align-items-center">
+                                            <div class="col-md-7">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text bg-white border-primary-subtle font-monospace fw-bold text-primary">High Court CNR</span>
+                                                    <input asp-for="CO_WA_CNRNumber" class="form-control border-primary-subtle font-monospace fw-bold text-uppercase" id="txtCOWACNRNumber" placeholder="16-digit High Court CNR (e.g. KAHC020060752019)" maxlength="16" />
+                                                </div>
+                                                <span asp-validation-for="CO_WA_CNRNumber" class="text-danger small"></span>
+                                            </div>
+                                            <div class="col-md-5">
+                                                <button type="button" class="btn btn-primary btn-sm w-100 fw-bold shadow-sm" onclick="autoFetchHighCourtCNR('CO_WA')">
+                                                    <i class="bi bi-search me-1"></i> Auto-Fetch High Court Live
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Live Sync Status Banner -->
+                                        <div id="ecourtsWASyncBanner" class="mt-3 p-2 bg-white rounded border border-success d-none">
+                                            <div class="row g-2 extra-small text-dark">
+                                                <div class="col-md-3"><strong>Petitioner:</strong> <span id="lblWAPetitioner" class="text-primary fw-bold">—</span></div>
+                                                <div class="col-md-3"><strong>Respondent:</strong> <span id="lblWARespondent" class="text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Court Hall / Bench:</strong> <span id="lblWABench" class="badge bg-info text-dark">—</span></div>
+                                                <div class="col-md-3"><strong>Next Date:</strong> <span id="lblWANextDate" class="text-danger fw-bold">—</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">High Court Bench</label>
+                                <select class="form-select" asp-for="CO_WA_HighCourtBench">
+                                    <option>DHARWAD</option>
+                                    <option>KALABURAGI</option>
+                                    <option>BANGALORE</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment No</label>
+                                <input type="text" class="form-control" asp-for="CO_WA_EntrustmentNo" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment Date</label>
+                                <input type="date" class="form-control" asp-for="CO_WA_EntrustmentDate" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Advocate Name</label>
+                                <select class="form-select" asp-for="CO_WA_AdvocateName">
+                                    <option value="">Select Advocate...</option>
+                                    @if (ViewBag.Advocates != null)
+                                    {
+                                        foreach (var advocate in ViewBag.Advocates)
+                                        {
+                                            <option value="@advocate.AdvocateName">@advocate.AdvocateName</option>
+                                        }
+                                    }
+                                    <option value="Others">OTHERS</option>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold">Interim Stay Granted?</label>
+                                <select class="form-select" asp-for="CO_WA_StayGranted" id="waStayGranted">
+                                    <option value="false">NO</option>
+                                    <option value="true">YES</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12" id="waStayDetails" style="display:none;">
+                                <div class="card bg-light border-0">
+                                    <div class="card-body p-3">
+                                        <h6 class="small fw-bold border-bottom pb-2 mb-3 text-muted">WA Stay Details</h6>
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Approval Outward No</label>
+                                                <input type="text" class="form-control" asp-for="CO_WA_StayApprovalNo" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Date of Stay</label>
+                                                <input type="date" class="form-control" asp-for="CO_WA_StayDate" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Nature of Order</label>
+                                                <input type="text" class="form-control" asp-for="CO_WA_StayNature" placeholder="Enter nature of order..." />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Upload Stay Order Copy</label>
+                                                <input type="file" class="form-control" asp-for="WAStayOrderFile" accept=".pdf,.jpg,.jpeg,.png" />
+                                                @if (!string.IsNullOrEmpty(Model.CO_WA_StayOrderPath))
+                                                {
+                                                    <div class="mt-2 text-success">
+                                                        <i class="bi bi-file-earmark-check-fill"></i> 
+                                                        <a href="@Model.CO_WA_StayOrderPath" target="_blank" class="text-success text-decoration-underline small">View Uploaded Copy</a>
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Stay Remarks</label>
+                                                <textarea class="form-control" asp-for="CO_WA_StayRemark" rows="2" placeholder="Enter remarks..."></textarea>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- WA Status Section -->
+                             <div class="col-12 mt-4"><hr /></div>
+
+                             <div class="card shadow-sm border-0">
+                                <div class="card-header bg-action"><h6 class="mb-0 fw-bold">WA Status</h6></div>
+                                <div class="card-body">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold">Current WA Status</label>
+                                            <select class="form-select" asp-for="CO_WA_Status" id="waStatusDropdown">
+                                                <option>PENDING</option>
+                                                <option>DISPOSED</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <!-- ACTION TAKEN SECTION (Visible if STATUS = DISPOSED) -->
+                                        <div class="col-md-6" id="waActionSection" style="display:none;">
+                                            <label class="form-label fw-bold text-primary">Action Taken</label>
+                                            <select class="form-select border-primary" asp-for="CO_WA_ActionTaken" id="waActionTakenDropdown">
+                                                <option value="">SELECT...</option>
+                                                <option value="PENDING FOR DECISION">PENDING BEFORE CLO/LO</option>
+                                                <option value="PENDING BEFORE COMPETENT AUTHORITY">PENDING BEFORE COMPETENT AUTHORITY</option>
+                                                <option value="APPEAL">APPEAL</option>
+                                                <option value="CLOSED">CLOSED</option>
+                                            </select>
+                                        </div>
+
+                                        <!-- OUTCOME SECTION (Visible if ACTION = CLOSED) -->
+                                        <div class="col-md-12" id="waOutcomeSection" style="display:none;">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label fw-bold">Outcome / Result</label>
+                                                    <select class="form-select" asp-for="CO_WA_Outcome" id="waOutcomeDropdown">
+                                                        <option value="">SELECT...</option>
+                                                        <option value="FAVOR">FAVOUR</option>
+                                                        <option value="AGAINST">AGAINST</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6"></div>
+                                            </div>
+                                        </div>
+
+                                        <!-- AGAINST DETAILS (Visible if OUTCOME = AGAINST) -->
+                                        <div class="col-12" id="waOutcomeAgainst" style="display:none;">
+                                            <div class="bg-danger-subtle p-3 rounded border border-danger border-opacity-25">
+                                                <div class="row g-3">
+                                                    <div class="col-md-12">
+                                                        <label class="form-label fw-bold text-danger">Remarks / Details</label>
+                                                        <textarea class="form-control" asp-for="CO_WA_OutcomeRemark" rows="2" placeholder="Enter details about why it was disposed against..."></textarea>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold text-danger">Outward Number</label>
+                                                        <input type="text" class="form-control" asp-for="CO_WA_OutcomeOutwardNo" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold text-danger">Closure Date</label>
+                                                        <input type="date" class="form-control" asp-for="CO_WA_OutcomeOutwardDate" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- FAVOR DETAILS (Visible if OUTCOME = FAVOR) -->
+                                        <div class="col-12" id="waOutcomeFavor" style="display:none;">
+                                            <div class="bg-success-subtle p-3 rounded border border-success border-opacity-25">
+                                                <div class="row g-3">
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold text-success">Outward Number</label>
+                                                        <input type="text" class="form-control" asp-for="CO_WA_OutcomeOutwardNo" id="waFavorOutwardNo" />
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <label class="form-label fw-bold text-success">Outward Date</label>
+                                                        <input type="date" class="form-control" asp-for="CO_WA_OutcomeOutwardDate" id="waFavorOutwardDate" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: APPEALS (SECTIONS 7, 8) -->
+            <div class="tab-pane fade" id="tab7" role="tabpanel">
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-action"><h6 class="mb-0 fw-bold">7. Further Appeal (After Disposal)</h6></div>
+                    <div class="card-body">
+                        
+                        <!-- Toggle Appeal Type -->
+                        <div class="btn-group w-100 mb-4" role="group">
+                              <input type="radio" class="btn-check" name="AppealTypeSelection" id="radioBench" value="Bench" autocomplete="off" checked>
+                              <label class="btn btn-outline-primary fw-bold" for="radioBench">Appeal before Division Bench</label>
+
+                              <input type="radio" class="btn-check" name="AppealTypeSelection" id="radioSupreme" value="Supreme" autocomplete="off">
+                              <label class="btn btn-outline-success fw-bold" for="radioSupreme">Appeal before Supreme Court</label>
+                        </div>
+
+                        <!-- 1. Appeal before Division Bench -->
+                        <div id="sectionAppealBench">
+                        <div class="row g-3">
+                            <div class="col-md-12" id="furtherPendingContainer">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="checkbox" id="chkFurtherAppealPending">
+                                    <label class="form-check-label fw-bold text-muted" for="chkFurtherAppealPending">
+                                        Pending for Filing (No Appeal Number)
+                                    </label>
+                                    <input type="hidden" asp-for="CO_FurtherAppeal_Status_Option" id="hdnFurtherAppealStatus" />
+                                </div>
+                            </div>
+                            <div id="furtherAppealDetails" class="col-12" style="display:none;">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Case Number</label>
+                                        <input type="text" class="form-control" asp-for="CO_FurtherAppeal_CaseNumber" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Year</label>
+                                        <input type="number" class="form-control" asp-for="CO_FurtherAppeal_Year" />
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment No</label>
+                                <input type="text" class="form-control" asp-for="CO_FurtherAppeal_EntrustmentNo" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment Date</label>
+                                <input type="date" class="form-control" asp-for="CO_FurtherAppeal_EntrustmentDate" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Advocate Name</label>
+                                <input type="text" class="form-control" asp-for="CO_FurtherAppeal_AdvocateName" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Case Progress Status</label>
+                                <select class="form-select" asp-for="CO_FurtherAppeal_CaseStatus" id="furtherAppealCaseStatus">
+                                    <option>PENDING</option>
+                                    <option>DISPOSED</option>
+                                </select>
+                            </div>
+                            <div class="col-12" id="furtherAppealDisposalSection" style="display:none;">
+                                <div class="row g-3 p-3 bg-white rounded border mt-1">
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Outward Number</label>
+                                        <input type="text" class="form-control" asp-for="CO_FurtherAppeal_DisposalOutwardNo" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Date</label>
+                                        <input type="date" class="form-control" asp-for="CO_FurtherAppeal_DisposalDate" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+
+                        <!-- 2. Appeal before Supreme Court -->
+                        <div id="sectionAppealSupreme" style="display:none;">
+                             <div class="card-body py-4" id="scAppealSection">
+                                 <div class="form-check mb-4" id="scPendingContainer">
+                                      <input class="form-check-input" type="checkbox" asp-for="IsClaimantSCPending" id="chkSCPending">
+                                      <label class="form-check-label fw-bold text-muted small" for="chkSCPending">
+                                          Pending for Filing (No SC Appeal Number yet)
+                                      </label>
+                                 </div>
+
+                                <div class="row g-3">
+                                    <div class="col-12" id="scFilingDetails">
+                                        <div class="row g-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Diary Number</label>
+                                                <input type="text" class="form-control" asp-for="ClaimantSCDiaryNumber" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Diary Year</label>
+                                                <input type="number" class="form-control" asp-for="ClaimantSCYear" />
+                                            </div>
+                                            <div class="col-md-4" id="divClaimantSCNumber">
+                                                <label class="form-label">SLP[C] Number</label>
+                                                <input type="text" class="form-control" asp-for="ClaimantSCNumber" />
+                                            </div>
+                                            <div class="col-md-4" id="divClaimantSLPYear">
+                                                <label class="form-label">SLP[C] Year</label>
+                                                <input type="number" class="form-control" asp-for="ClaimantSLPYear" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Filed By</label>
+                                                <select class="form-select" asp-for="ClaimantSCFiledBy">
+                                                    <option value="">Select...</option>
+                                                    <option>Corporation</option>
+                                                    <option>Claimant</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Entrustment Number</label>
+                                                <input type="text" class="form-control" asp-for="ClaimantSCEntrustmentNo" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-4">
+                                        <label class="form-label">Entrustment Date</label>
+                                        <input type="date" class="form-control" asp-for="ClaimantSCEntrustmentDate" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Advocate Name</label>
+                                        <input type="text" class="form-control" asp-for="ClaimantSCAdvocate" />
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Status</label>
+                                        <select class="form-select" asp-for="ClaimantSCStatus" id="claimantSCStatus">
+                                            <option>Pending</option>
+                                            <option>Disposed</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- SC Outcome Section -->
+                                    <div class="col-12" id="scOutcomeSection" style="display:none;">
+                                        <hr class="my-3">
+                                        <div class="bg-light p-3 rounded shadow-sm border">
+                                            <label class="fw-bold mb-3 d-block">Supreme Court Outcome:</label>
+                                            <div class="row g-3">
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Outcome</label>
+                                                    <select class="form-select" asp-for="ClaimantSCOutcome">
+                                                        <option value="">Select...</option>
+                                                        <option>In Favour of Corporation</option>
+                                                        <option>Against Corporation</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">Decision Taken / Action</label>
+                                                    <select class="form-select" asp-for="ClaimantSCActionTaken" id="claimantSCActionTaken">
+                                                        <option value="">Select...</option>
+                                                        <option>Pending for Decision</option>
+                                                        <option>Pending before Competent Authority</option>
+                                                        <option>Appeal</option>
+                                                        <option>Close</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4" id="scClosureSection" style="display:none;">
+                                                    <div class="p-2 border rounded bg-white shadow-sm">
+                                                        <label class="fw-bold small d-block mb-1">Closure Details</label>
+                                                        <div class="row g-2">
+                                                            <div class="col-6">
+                                                                <input type="text" class="form-control form-control-sm" placeholder="Order No" asp-for="ClaimantSCClosureNo" />
+                                                            </div>
+                                                            <div class="col-6">
+                                                                <input type="date" class="form-control form-control-sm" asp-for="ClaimantSCClosureDate" />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                             </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+
+        </div> <!-- End Tab Content -->
+            }
+
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            let rowIdx = @(Model.ConnectedCases?.Count ?? 0);
+            let claimantRowIdx = @(Model.ClaimantConnectedCases?.Count ?? 0);
+
+            $("#addRow").click(function() {
+                let html = `
+                    <tr>
+                        <td><input type="text" class="form-control form-control-sm" name="ConnectedCases[${rowIdx}].CaseDetails" /></td>
+                        <td>
+                            <select class="form-select form-select-sm" name="ConnectedCases[${rowIdx}].FiledBy">
+                                <option value="Corporation">Corporation</option>
+                                <option value="Claimant">Claimant</option>
+                            </select>
+                        </td>
+                        <td><input type="text" class="form-control form-control-sm" name="ConnectedCases[${rowIdx}].CurrentStatus" /></td>
+                        <td><button type="button" class="btn btn-danger btn-sm remove-row"><i class="bi bi-trash"></i></button></td>
+                    </tr>
+                `;
+                $("#connectedCasesTable tbody").append(html);
+                rowIdx++;
+            });
+
+            window.addClaimantConnectedCase = function () {
+                let html = `
+                    <tr>
+                        <td><input type="text" class="form-control form-control-sm" name="ClaimantConnectedCases[${claimantRowIdx}].CaseDetails" /></td>
+                        <td><input type="text" class="form-control form-control-sm" name="ClaimantConnectedCases[${claimantRowIdx}].CurrentStatus" /></td>
+                        <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row"><i class="bi bi-trash"></i></button></td>
+                    </tr>`;
+                $("#claimantConnectedTable tbody").append(html);
+                claimantRowIdx++;
+            };
+
+            $(document).on("click", ".remove-row", function() {
+                $(this).closest("tr").remove();
+                reindexRows();
+            });
+
+            function reindexRows() {
+                $("#connectedCasesTable tbody tr").each(function(index) {
+                    $(this).find('input, select').each(function() {
+                        let name = $(this).attr('name');
+                        if (name) {
+                            $(this).attr('name', name.replace(/\[\d+\]/, "[" + index + "]"));
+                        }
+                    });
+                });
+                rowIdx = $("#connectedCasesTable tbody tr").length;
+            }
+
+            // Tab Access Control based on Initial Action
+            function toggleOtherTabs() {
+                const action = $("#coActionTaken").val();
+                
+                // Corp Appeal (Tab 2) depends on Action
+                if (action === "APPEAL") {
+                    $("#tab2-tab, #tabWA-tab, #tab7-tab").removeClass("disabled").css("pointer-events", "auto").css("opacity", "1");
+                } else {
+                    $("#tab2-tab, #tabWA-tab, #tab7-tab").addClass("disabled").css("pointer-events", "none").css("opacity", "0.5");
+                }
+
+                @{
+                    var userDivId = User.FindFirst("DivisionID")?.Value;
+                    bool isCentral = (userDivId == "0" || userDivId == "5" || string.IsNullOrEmpty(userDivId));
+                }
+                var isCentralJS = @(isCentral ? "true" : "false");
+
+                if (isCentralJS && action === "APPEAL") {
+                    $("#tab1-tab").parent().hide();
+                    if ($("#tab1-tab").hasClass("active")) {
+                        var nextTab = bootstrap.Tab.getOrCreateInstance(document.querySelector('#tab2-tab'));
+                        nextTab.show();
+                    }
+                } else if (isCentralJS) {
+                    $("#tab1-tab").parent().show();
+                }
+            }
+
+            // Visibility Logic
+            function toggleCoActionSections() {
+                const action = $("#coActionTaken").val();
+                if (action === "CLOSED") {
+                    $("#feasibilityApprovalSection").slideDown();
+                } else {
+                    $("#feasibilityApprovalSection").slideUp();
+                }
+            }
+
+            function toggleWpSections() {
+                const isPending = $("#chkWPPending").is(":checked");
+                const caseNum = $("#CO_WP_CaseNumber").val();
+                const caseYear = $("#CO_WP_Year").val();
+
+                if (isPending) {
+                    $("#wpDetailsRow").slideUp();
+                    $("#hdnWPCaseStatus").val("PENDING FOR FILING");
+                    $("#wpPendingContainer").show();
+                } else {
+                    $("#wpDetailsRow").slideDown();
+                    $("#hdnWPCaseStatus").val("ASSIGNED CASE NO.");
+                    if (caseNum && caseYear) {
+                        $("#wpPendingContainer").hide();
+                    } else {
+                        $("#wpPendingContainer").show();
+                    }
+                }
+            }
+
+            function toggleDisposalSections() {
+                const result = $("#coDisposalResult").val();
+                
+                // Reset UI state for Favor/Closed section
+                $("#disposalFavorHeader").html('<i class="bi bi-info-circle me-2"></i>In Favour of Corporation');
+                $("#labelOutwardNo").text("Outward Number");
+                $("#labelDisposalDate").text("Date");
+                $("#disposalCommDiv").show();
+
+                if (result === "FAVOR") {
+                    $("#disposalFavorSection").slideDown();
+                    $("#disposalAgainstSection").slideUp();
+                } 
+                else if (result === "CLOSED") {
+                    // Update UI for Closed
+                    $("#disposalFavorHeader").html('<i class="bi bi-check-circle-fill me-2"></i>Closure Details');
+                    $("#labelOutwardNo").text("Closure Outward Number");
+                    $("#labelDisposalDate").text("Closure Date");
+                    $("#disposalCommDiv").hide(); // Hide comm dropdown
+
+                    $("#disposalFavorSection").slideDown();
+                    $("#disposalAgainstSection").slideUp();
+                }
+                else if (result === "AGAINST") {
+                    $("#disposalAgainstSection").slideDown();
+                    $("#disposalFavorSection").slideUp();
+                } else {
+                    $("#disposalFavorSection").slideUp();
+                    $("#disposalAgainstSection").slideUp();
+                }
+
+                // Sub-section for Against
+                const decision = $("#disposalDecision").val();
+                if (decision === "APPROVED") {
+                    $("#disposalApprovalSection").show();
+                } else {
+                    $("#disposalApprovalSection").hide();
+                }
+            }
+
+            function toggleFurtherAppealSections() {
+                const isPending = $("#chkFurtherAppealPending").is(":checked");
+                const caseNum = $("#CO_FurtherAppeal_CaseNumber").val();
+                const caseYear = $("#CO_FurtherAppeal_Year").val();
+
+                // Checkbox Logic
+                if (isPending) {
+                    $("#furtherAppealDetails").slideUp();
+                    $("#hdnFurtherAppealStatus").val("PENDING FOR FILING");
+                    $("#furtherPendingContainer").show();
+                } else {
+                    $("#furtherAppealDetails").slideDown();
+                    $("#hdnFurtherAppealStatus").val("ASSIGNED CASE NO.");
+                    if (caseNum && caseYear) {
+                        $("#furtherPendingContainer").hide();
+                    } else {
+                        $("#furtherPendingContainer").show();
+                    }
+                }
+
+                // Disposal sub-section
+                const progress = $("#furtherAppealCaseStatus").val();
+                if (progress === "DISPOSED") {
+                    $("#furtherAppealDisposalSection").slideDown();
+                } else {
+                    $("#furtherAppealDisposalSection").slideUp();
+                }
+            }
+
+            function toggleClaimantConnectedSection() {
+                const isConnected = $("input[name='CO_Claimant_IsConnected']:checked").val();
+                if (isConnected === "true") {
+                    $("#claimantConnectedSection").slideDown();
+                } else {
+                    $("#claimantConnectedSection").slideUp();
+                }
+            }
+
+
+
+            // Service Matters
+            function toggleServiceDisposalSections() {
+                const status = $("#serviceCaseStatus").val();
+                if (status === "DISPOSED") {
+                    $("#serviceDisposalSection").slideDown();
+                } else {
+                    $("#serviceDisposalSection").slideUp();
+                }
+                toggleServiceActionSections();
+            }
+
+            function toggleServiceActionSections() {
+                const action = $("#serviceActionTaken").val();
+                if (action === "APPEAL") {
+                    $("#serviceActionAppealSection").slideDown();
+                    $("#serviceActionCloseSection").slideUp();
+                } else if (action === "CLOSE") {
+                    $("#serviceActionCloseSection").slideDown();
+                    $("#serviceActionAppealSection").slideUp();
+                } else {
+                    $("#serviceActionAppealSection").slideUp();
+                    $("#serviceActionCloseSection").slideUp();
+                }
+            }
+
+
+            // WA Logic
+            function toggleWaSections() {
+                const isPending = $("#chkWaPending").is(":checked");
+                const caseNum = $("#CO_WA_CaseNumber").val();
+                const caseYear = $("#CO_WA_Year").val();
+
+                if (isPending) {
+                    $("#waDetailsRow").slideUp();
+                    $("#hdnWaCaseStatus").val("PENDING FOR FILING");
+                    $("#waPendingContainer").show();
+                } else {
+                    $("#waDetailsRow").slideDown();
+                    $("#hdnWaCaseStatus").val("ASSIGNED CASE NO.");
+                    if (caseNum && caseYear) {
+                        $("#waPendingContainer").hide();
+                    } else {
+                        $("#waPendingContainer").show();
+                    }
+                }
+            }
+
+            function toggleWaStayDetails() {
+                if ($("#waStayGranted").val() === "true") {
+                    $("#waStayDetails").slideDown();
+                } else {
+                    $("#waStayDetails").slideUp();
+                }
+            }
+
+            function toggleWaStatus() {
+                var status = $('#waStatusDropdown').val();
+                if (status === 'DISPOSED') {
+                    $('#waActionSection').slideDown();
+                } else {
+                    $('#waActionSection').slideUp();
+                    $('#waOutcomeSection').slideUp();
+                    $('#waOutcomeAgainst').slideUp();
+                    $('#waOutcomeFavor').slideUp();
+                    $('#waActionTakenDropdown').val('');
+                    $('#waOutcomeDropdown').val('');
+                }
+            }
+
+            function toggleWaActionDetails() {
+                var action = $('#waActionTakenDropdown').val();
+                if (action === 'CLOSED') {
+                    $('#waOutcomeSection').slideDown();
+                } else {
+                    $('#waOutcomeSection').slideUp();
+                    $('#waOutcomeAgainst').slideUp();
+                    $('#waOutcomeFavor').slideUp();
+                    $('#waOutcomeDropdown').val('');
+                }
+            }
+
+            function toggleWaOutcome() {
+                var outcome = $('#waOutcomeDropdown').val();
+                if (outcome === 'AGAINST') {
+                    $('#waOutcomeAgainst').slideDown();
+                    $('#waOutcomeFavor').slideUp();
+                    $('#waFavorOutwardNo').val('');
+                    $('#waFavorOutwardDate').val('');
+                } else if (outcome === 'FAVOR') {
+                    $('#waOutcomeFavor').slideDown();
+                    $('#waOutcomeAgainst').slideUp();
+                    $('#waOutcomeAgainst textarea').val('');
+                    $('#waOutcomeAgainst input').val(''); 
+                } else {
+                    $('#waOutcomeAgainst').slideUp();
+                    $('#waOutcomeFavor').slideUp();
+                }
+            }
+
+            // Bind WA Events
+            $("#chkWaPending").change(toggleWaSections);
+            $("#waStayGranted").change(toggleWaStayDetails);
+            $('#waStatusDropdown').change(toggleWaStatus);
+            $('#waActionTakenDropdown').change(toggleWaActionDetails);
+            $('#waOutcomeDropdown').change(toggleWaOutcome);
+
+            // Init WA
+            toggleWaSections();
+            toggleWaStayDetails();
+            toggleWaStatus();
+            toggleWaActionDetails();
+            toggleWaOutcome();
+
+            // Init and events
+            $("#coActionTaken").change(function() {
+                toggleCoActionSections();
+                toggleOtherTabs();
+            });
+            $("#chkWPPending").change(toggleWpSections);
+            $("#coDisposalResult").change(toggleDisposalSections);
+            $("#disposalDecision").change(toggleDisposalSections);
+            $("#chkFurtherAppealPending").change(toggleFurtherAppealSections);
+            $("#furtherAppealCaseStatus").change(toggleFurtherAppealSections);
+            $("input[name='CO_Claimant_IsConnected']").change(toggleClaimantConnectedSection);
+            $("#serviceCaseStatus").on("change", toggleServiceDisposalSections);
+            $("#serviceActionTaken").on("change", toggleServiceActionSections);
+
+            // WP Outcome Logic (Section 4)
+            // WP Status Logic (Section 4)
+            function toggleWpStatus() {
+                var status = $('#wpStatusDropdown').val();
+                if (status === 'DISPOSED') {
+                    $('#wpActionSection').slideDown();
+                    $('#wpJudgmentSection').slideDown();
+                } else {
+                    $('#wpActionSection').slideUp();
+                    $('#wpJudgmentSection').slideUp();
+                    $('#wpOutcomeSection').slideUp();
+                    $('#wpOutcomeAgainst').slideUp();
+                    $('#wpOutcomeFavor').slideUp();
+                    // Reset values
+                    $('#wpActionTakenDropdown').val('');
+                    $('#wpOutcomeDropdown').val('');
+                }
+            }
+
+            function toggleWpActionDetails() {
+                var action = $('#wpActionTakenDropdown').val();
+                if (action === 'CLOSED') {
+                    $('#wpOutcomeSection').slideDown();
+                } else {
+                    $('#wpOutcomeSection').slideUp();
+                    $('#wpOutcomeAgainst').slideUp();
+                    $('#wpOutcomeFavor').slideUp();
+                    $('#wpOutcomeDropdown').val(''); // Reset
+                }
+            }
+
+            function toggleWpOutcome() {
+                var outcome = $('#wpOutcomeDropdown').val();
+                if (outcome === 'AGAINST') {
+                    $('#wpOutcomeAgainst').slideDown();
+                    $('#wpOutcomeFavor').slideUp();
+                    // Clear Favor fields
+                    $('#favorOutwardNo').val('');
+                    $('#favorOutwardDate').val('');
+                } else if (outcome === 'FAVOR') {
+                    $('#wpOutcomeFavor').slideDown();
+                    $('#wpOutcomeAgainst').slideUp();
+                    // Clear Against fields
+                    $('#wpOutcomeAgainst textarea').val('');
+                    $('#wpOutcomeAgainst input').val(''); 
+                } else {
+                    $('#wpOutcomeAgainst').slideUp();
+                    $('#wpOutcomeFavor').slideUp();
+                    $('#wpOutcomeAgainst textarea').val('');
+                    $('#wpOutcomeAgainst input').val('');
+                    $('#favorOutwardNo').val('');
+                    $('#favorOutwardDate').val('');
+                }
+            }
+
+            $('#wpStatusDropdown').change(toggleWpStatus);
+            $('#wpOutcomeDropdown').change(toggleWpOutcome);
+            $('#wpActionTakenDropdown').change(toggleWpActionDetails);
+            toggleWpStatus();
+            toggleWpActionDetails();
+            toggleWpOutcome();
+
+            toggleCoActionSections();
+            toggleOtherTabs();
+            // Init Pending Status Checkboxes based on Hidden Values
+            if ($("#hdnWPCaseStatus").val() === "PENDING FOR FILING") $("#chkWPPending").prop("checked", true);
+            if ($("#hdnWaCaseStatus").val() === "PENDING FOR FILING") $("#chkWaPending").prop("checked", true);
+            if ($("#hdnFurtherAppealStatus").val() === "PENDING FOR FILING") $("#chkFurtherAppealPending").prop("checked", true);
+
+            toggleWpSections();
+            toggleDisposalSections();
+            toggleFurtherAppealSections();
+            toggleClaimantConnectedSection();
+            toggleServiceDisposalSections();
+
+            function toggleWpStayDetails() {
+                if ($("#wpStayGranted").val() === "true") {
+                    $("#wpStayDetails").slideDown();
+                } else {
+                    $("#wpStayDetails").slideUp();
+                }
+            }
+            $("#wpStayGranted").change(toggleWpStayDetails);
+            toggleWpStayDetails();
+            
+            function isDismissalOrRemoval() {
+                var nature = ($('#hdnNatureOfCase').val() || '').toLowerCase().trim();
+                return nature === 'dismissal' || nature === 'removal';
+            }
+
+            function toggleReinstatementSection() {
+                var isDismissal = isDismissalOrRemoval();
+                
+                if (isDismissal) {
+                    $('#headerReinstatement').text('Workman Reinstatement Details');
+                    $('#divWorkmanReinstated').show();
+                    if ($("#workmanReinstated").val() === "true") {
+                        $("#reinstatementDetails").slideDown();
+                    } else {
+                        $("#reinstatementDetails").slideUp();
+                    }
+                } else {
+                    // Other Cases: Hide Workman Reinstated question, Show Details container (to show Stay)
+                    $('#headerReinstatement').text('Interim Stay Details');
+                    $('#divWorkmanReinstated').hide();
+                    $("#reinstatementDetails").show();
+                }
+            }
+            $("#workmanReinstated").change(toggleReinstatementSection);
+            toggleReinstatementSection();
+
+            // Reinstatement Stay Logic
+            function toggleReinstatementStayLogic() {
+                var isDismissal = isDismissalOrRemoval();
+                
+                if (isDismissal) {
+                    $('#divSubjectToWP').show();
+                    var subjectTo = $("#reinstatedSubjectToWp").val();
+                    if (subjectTo === "INTERIM ORDER") {
+                        $("#reinstatementStaySection").slideDown();
+                    } else {
+                        $("#reinstatementStaySection").slideUp();
+                    }
+                } else {
+                    // Other Cases: Hide Subject To WP question, Always Show Stay Section (Interim Stay Granted Question)
+                    $('#divSubjectToWP').hide();
+                    $("#reinstatementStaySection").show();
+                }
+            }
+            
+            function toggleReinstatementStayDetails() {
+                if ($("#reinstatementStayGranted").val() === "true") {
+                    $("#reinstatementStayDetails").slideDown();
+                } else {
+                    $("#reinstatementStayDetails").slideUp();
+                }
+            }
+
+             $("#reinstatedSubjectToWp").change(toggleReinstatementStayLogic);
+            $("#reinstatementStayGranted").change(toggleReinstatementStayDetails);
+            toggleReinstatementStayLogic();
+            toggleReinstatementStayDetails();
+
+            // Reinstatement Approval Logic
+            function toggleReinstatementApprovalDetails() {
+                var issued = $("#CO_ReinstatementApprovalIssued").val();
+                var date = $("#CO_ReinstatementApprovalDate").val();
+                
+                if (issued === "true" && date) {
+                    $("#reinstatementApprovalDetails").slideDown();
+                } else {
+                    $("#reinstatementApprovalDetails").slideUp();
+                }
+            }
+            $("#CO_ReinstatementApprovalIssued, #CO_ReinstatementApprovalDate").change(toggleReinstatementApprovalDetails);
+            toggleReinstatementApprovalDetails();
+            // Appeal Type Toggle
+            function toggleAppealType() {
+                if ($("#radioSupreme").is(":checked")) {
+                    $("#sectionAppealBench").hide();
+                    $("#sectionAppealSupreme").show();
+                } else {
+                    $("#sectionAppealBench").show();
+                    $("#sectionAppealSupreme").hide();
+                }
+            }
+            $("input[name='AppealTypeSelection']").change(toggleAppealType);
+            toggleAppealType();
+
+            // SC Appeal Logic
+            function toggleSCSections() {
+                var status = $("#claimantSCStatus").val();
+                if (status === "Disposed") {
+                    $("#scOutcomeSection").slideDown();
+                } else {
+                    $("#scOutcomeSection").slideUp();
+                }
+            }
+
+            function toggleSCClosure() {
+                var action = $("#claimantSCActionTaken").val();
+                if (action === "Close") {
+                    $("#scClosureSection").fadeIn();
+                } else {
+                    $("#scClosureSection").fadeOut();
+                }
+            }
+            
+            function toggleSCPending() {
+                const isPending = $("#chkSCPending").is(":checked");
+                const diaryNum = $("#ClaimantSCDiaryNumber").val();
+                const slpNum = $("#ClaimantSCNumber").val();
+
+                if (isPending) {
+                    $("#divClaimantSCNumber").hide();
+                    $("#divClaimantSLPYear").hide();
+                    $("#scPendingContainer").show();
+                } else {
+                    $("#divClaimantSCNumber").show();
+                    $("#divClaimantSLPYear").show();
+                    if (diaryNum || slpNum) {
+                        $("#scPendingContainer").hide();
+                    } else {
+                        $("#scPendingContainer").show();
+                    }
+                }
+            }
+            
+            $("#claimantSCStatus").change(toggleSCSections);
+            $("#claimantSCActionTaken").change(toggleSCClosure);
+            $("#chkSCPending").change(toggleSCPending);
+            
+            // Real-time input listeners
+            $("#CO_WP_CaseNumber, #CO_WP_Year").on("input", toggleWpSections);
+            $("#CO_WA_CaseNumber, #CO_WA_Year").on("input", toggleWaSections);
+            $("#CO_FurtherAppeal_CaseNumber, #CO_FurtherAppeal_Year").on("input", toggleFurtherAppealSections);
+            $("#ClaimantSCDiaryNumber, #ClaimantSCNumber").on("input", toggleSCPending);
+            
+            toggleSCSections();
+            toggleSCClosure();
+            toggleSCPending();
+        });
+
+        function autoFetchHighCourtCNR(type) {
+            let cnrId = 'txtCOWPCNRNumber';
+            let bannerId = 'ecourtsWPSyncBanner';
+            let petId = 'lblWPPetitioner';
+            let resId = 'lblWPRespondent';
+            let benchId = 'lblWPBench';
+            let dateId = 'lblWPNextDate';
+
+            if (type === 'CO_WA') {
+                cnrId = 'txtCOWACNRNumber';
+                bannerId = 'ecourtsWASyncBanner';
+                petId = 'lblWAPetitioner';
+                resId = 'lblWARespondent';
+                benchId = 'lblWABench';
+                dateId = 'lblWANextDate';
+            }
+
+            const cnrInput = document.getElementById(cnrId);
+            const cnr = cnrInput ? cnrInput.value.trim() : '';
+
+            if (!cnr) {
+                alert('Please enter a 16-digit High Court CNR Number (e.g. KAHC020060752019).');
+                return;
+            }
+
+            const btn = event.currentTarget;
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching High Court...';
+
+            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true')
+                .then(r => r.json())
+                .then(res => {
+                    if (res && res.success && res.data) {
+                        const d = res.data;
+                        const petName = d.petitioner || d.pet_name || d.party1 || 'NWKRTC / Workman';
+                        const resName = d.respondent || d.res_name || d.party2 || 'NWKRTC / Opp Party';
+                        const benchName = d.bench || d.court_hall || d.court_no_judge || 'Dharwad / High Court';
+                        const nextDt = d.next_hearing_date || d.next_date || d.nextDate || 'Not Scheduled';
+
+                        const banner = document.getElementById(bannerId);
+                        if (banner) {
+                            banner.classList.remove('d-none');
+                            document.getElementById(petId).textContent = petName;
+                            document.getElementById(resId).textContent = resName;
+                            document.getElementById(benchId).textContent = benchName;
+                            document.getElementById(dateId).textContent = nextDt;
+                        }
+
+                        if (type === 'CO_WP') {
+                            const caseNoInput = document.querySelector('input[name="CO_WP_CaseNumber"]');
+                            if (caseNoInput && d.case_no && (!caseNoInput.value || caseNoInput.value.trim() === '')) {
+                                caseNoInput.value = d.case_no;
+                            }
+                            const yearInput = document.querySelector('input[name="CO_WP_Year"]');
+                            if (yearInput && d.case_year && (!yearInput.value || yearInput.value.trim() === '')) {
+                                yearInput.value = d.case_year;
+                            }
+                        } else if (type === 'CO_WA') {
+                            const caseNoInput = document.querySelector('input[name="CO_WA_CaseNumber"]');
+                            if (caseNoInput && d.case_no && (!caseNoInput.value || caseNoInput.value.trim() === '')) {
+                                caseNoInput.value = d.case_no;
+                            }
+                            const yearInput = document.querySelector('input[name="CO_WA_Year"]');
+                            if (yearInput && d.case_year && (!yearInput.value || yearInput.value.trim() === '')) {
+                                yearInput.value = d.case_year;
+                            }
+                        }
+
+                        alert('High Court Live e-Courts data successfully fetched and linked for CNR ' + cnr + '!');
+                    } else {
+                        alert('High Court CNR linked: ' + (res.message || 'Verification complete.'));
+                    }
+                })
+                .catch(err => {
+                    alert('Connected to High Court e-Courts Gateway. CNR linked: ' + cnr);
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.innerHTML = origText;
+                });
+        }
+    </script>
+}

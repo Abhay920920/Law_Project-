@@ -1,0 +1,509 @@
+@model MVCCaseManagement.Models.DashboardStatsViewModel
+@{
+    ViewData["Title"] = "NWKRTC Legal Management";
+    
+    var timeOfDay = DateTime.Now.Hour;
+    var greeting = "Good Morning";
+    if (timeOfDay >= 12 && timeOfDay < 17) { greeting = "Good Afternoon"; }
+    else if (timeOfDay >= 17) { greeting = "Good Evening"; }
+}
+
+<div class="legal-dashboard-wrapper">
+    <!-- Ambient Background Elements -->
+    <div class="legal-bg-pattern"></div>
+    <div class="legal-court-watermark"></div>
+
+    <div class="container-fluid h-100 p-0">
+        <div class="row h-100 g-0">
+            <!-- LEFT SIDE: Greeting & Intro -->
+            <div class="col-lg-5 col-md-12 d-flex align-items-center justify-content-center justify-content-lg-start ps-lg-5 position-relative z-index-20">
+                <div class="p-5 dashboard-controls-stack">
+                    <div class="mb-4">
+                        <h1 class="display-6 greeting-header mb-1 animate-slide-right">
+                            @greeting, <br />
+                            <span class="greeting-user">User</span>
+                        </h1>
+                    </div>
+
+
+                    
+
+
+
+                </div>
+            </div>
+
+            <!-- RIGHT SIDE: Circular Navigation (The "Orbit") -->
+            <div class="col-lg-7 col-md-12 position-relative d-flex align-items-center justify-content-center orbit-section">
+                <!-- The Circular Nav -->
+                <div class="circular-nav-hub">
+                    <div class="nav-center-hub">
+                        <div class="hub-content">
+                            <i class="bi bi-bank display-4 text-primary opacity-50"></i>
+                            <h6 class="m-0 fw-bold text-dark mt-2">NWKRTC</h6>
+                            <small class="text-uppercase fw-bold text-muted" style="font-size: 0.65rem;">NYAYA PATHA</small>
+                        </div>
+                        <div class="hub-ripple"></div>
+                    </div>
+
+                    <!-- Satellite Modules -->
+                    <div class="nav-orbit">
+                        <!-- MVC Cases -->
+                        <a href="@Url.Action("Index", "Dashboard")" class="nav-satellite" style="--angle: 270deg;">
+                            <div class="satellite-icon bg-primary-gradient">
+                                <i class="bi bi-truck-front-fill"></i>
+                            </div>
+                            <span class="satellite-label">MVC</span>
+                        </a>
+
+                        <!-- Gratuity -->
+                        <a href="@Url.Action("Index", "Gratuity")" class="nav-satellite" style="--angle: 342deg;">
+                            <div class="satellite-icon bg-gratuity-gradient">
+                                <i class="bi bi-cash-coin"></i>
+                            </div>
+                            <span class="satellite-label">Gratuity</span>
+                        </a>
+
+                        <!-- Labour -->
+                        <a href="@Url.Action("Index", "Labour")" class="nav-satellite" style="--angle: 54deg;">
+                            <div class="satellite-icon bg-secondary-gradient">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                            <span class="satellite-label">Labour</span>
+                        </a>
+
+
+
+                        <!-- Other Cases -->
+                        <a href="@Url.Action("OtherCourts", "Home")" class="nav-satellite" style="--angle: 126deg;">
+                            <div class="satellite-icon bg-warning-gradient">
+                                <i class="bi bi-folder2-open"></i>
+                            </div>
+                            <span class="satellite-label">OTHER</span>
+                        </a>
+
+                        <!-- Reports -->
+                        @if (User.FindFirst("DivisionID")?.Value == "0" || User.FindFirst("DivisionID")?.Value == "5" || string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                        {
+                            <a href="@Url.Action("CentralOffice", "Report")" class="nav-satellite" style="--angle: 198deg;">
+                                <div class="satellite-icon bg-success-gradient">
+                                    <i class="bi bi-file-earmark-bar-graph-fill"></i>
+                                </div>
+                                <span class="satellite-label">Reports</span>
+                            </a>
+                        }
+                        else
+                        {
+                            <a href="@Url.Action("Index", "Report")" class="nav-satellite" style="--angle: 198deg;">
+                                <div class="satellite-icon bg-success-gradient">
+                                    <i class="bi bi-file-earmark-bar-graph-fill"></i>
+                                </div>
+                                <span class="satellite-label">Reports</span>
+                            </a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* VARIABLES */
+    :root {
+        --orbit-size: 420px;
+        --hub-size: 140px;
+    }
+
+    /* LAYOUT WRAPPER */
+    .legal-dashboard-wrapper {
+        position: fixed; /* Lock to viewport */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100vh;
+        background: linear-gradient(135deg, #f3f7ff 0%, #e2eafc 50%, #d1d9e6 100%);
+        overflow: hidden;
+        z-index: 900; /* Above standard nav */
+        padding-top: 50px;
+    }
+
+    /* BACKGROUND ELEMENTS */
+    .legal-bg-pattern {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: radial-gradient(rgba(37, 99, 235, 0.08) 2px, transparent 2px);
+        background-size: 40px 40px;
+        z-index: 1;
+        pointer-events: none;
+    }
+
+    .legal-court-watermark {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: url('/images/high-court.jpg');
+        background-size: 110% auto;
+        background-position: center 20%;
+        opacity: 0.35;
+        filter: grayscale(0%) contrast(110%) brightness(0.95);
+        z-index: 0;
+        pointer-events: none;
+    }
+
+    /* ORBIT SECTION */
+    .orbit-section {
+        background: radial-gradient(circle at center, rgba(37, 99, 235, 0.02) 0%, transparent 60%);
+        /* Offset to right slightly to balance layout */
+        padding-left: 2rem; 
+    }
+
+    .circular-nav-hub {
+        position: relative;
+        width: var(--orbit-size);
+        height: var(--orbit-size);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .nav-center-hub {
+        width: var(--hub-size);
+        height: var(--hub-size);
+        background: #ffffff;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
+        z-index: 20;
+        position: relative;
+        border: 4px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .hub-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .hub-ripple {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        animation: ripple 3s infinite linear;
+        z-index: 10;
+        pointer-events: none;
+    }
+
+    /* SATELLITES */
+    .nav-orbit {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        border: 1px dashed rgba(30, 41, 59, 0.1);
+        animation: spin-intro 1.5s cubic-bezier(0.19, 1, 0.22, 1) forwards, rotate-orbit 80s linear infinite 1.5s;
+    }
+
+    .nav-satellite {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        text-decoration: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100px;
+        transform-origin: center;
+        /* Start with initial placement */
+        transform: translate(-50%, -50%) rotate(var(--angle)) translate(calc(var(--orbit-size) / 2)) rotate(calc(var(--angle) * -1));
+        animation: maintain-upright 80s linear infinite 1.5s;
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        z-index: 30;
+    }
+
+    /* Hover effect needs to pause or handle the transform nicely. 
+       Simplifying for robust animation: On hover, we just scale the loose icon, not the whole satellite wrapper which is rotating.
+    */
+    .nav-satellite:hover .satellite-icon {
+        transform: scale(1.2);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.4);
+        border-color: rgba(255, 255, 255, 0.6);
+        z-index: 40;
+    }
+
+    .satellite-icon {
+        width: 60px;
+        height: 60px;
+        border-radius: 20px; /* Squircle */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+        color: white;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        transition: all 0.3s;
+        background: white;
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .satellite-label {
+        color: #0f172a;
+        font-weight: 900;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        background: rgba(255, 255, 255, 0.75);
+        padding: 5px 12px;
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    /* TODAY SNAPSHOT CARD */
+    .today-snapshot-card {
+        width: 320px;
+        background: rgba(255, 255, 255, 0.45);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 20px;
+        padding: 20px;
+        z-index: 100;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05), inset 0 0 15px rgba(255, 255, 255, 0.1);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .relative-snapshot {
+        position: relative;
+        bottom: auto;
+        right: auto;
+        left: auto;
+        margin-bottom: 20px;
+    }
+
+    .today-snapshot-card:hover {
+        transform: translateY(-5px);
+        border-color: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
+    }
+
+    .card-header-snapshot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #0f172a;
+        font-weight: 900;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin-bottom: 15px;
+        padding-bottom: 12px;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.08);
+    }
+
+    /* Bolder Soft Backgrounds */
+    .bg-info-soft { background: rgba(37, 99, 235, 0.15); color: #2563eb; }
+    .bg-success-soft { background: rgba(16, 185, 129, 0.15); color: #059669; }
+    .bg-warning-soft { background: rgba(217, 119, 6, 0.15); color: #d97706; }
+    .bg-danger-soft { background: rgba(220, 38, 38, 0.15); color: #dc2626; }
+    .bg-grad-teal-soft { background: rgba(20, 184, 166, 0.15); color: #0d9488; }
+
+    .snapshot-body {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .snapshot-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px;
+        border-radius: 12px;
+        transition: background 0.2s;
+    }
+
+    .clickable-row {
+        cursor: pointer;
+    }
+
+    .clickable-row:hover {
+        background: rgba(37, 99, 235, 0.08) !important;
+        transform: translateX(5px);
+    }
+
+    .snapshot-icon {
+        width: 32px;
+        height: 32px;
+        background: white;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .snapshot-label {
+        flex-grow: 1;
+        color: #1e293b;
+        font-size: 0.85rem;
+        font-weight: 800;
+    }
+
+    .snapshot-value {
+        color: #2563eb;
+        font-weight: 900;
+        font-size: 1.1rem;
+    }
+
+    .greeting-header {
+        color: #0f172a;
+        font-weight: 900;
+    }
+
+    .greeting-user {
+        color: #e67e22; /* Strong Orange */
+    }
+
+    .command-center-subtitle {
+        color: #334155;
+        font-weight: 800;
+        font-size: 0.95rem;
+        letter-spacing: 0.5px;
+    }
+
+    .real-time-badge {
+        background: #2563eb;
+        color: white;
+        font-weight: 900;
+        font-size: 0.65rem;
+        box-shadow: 0 0 10px rgba(37, 99, 235, 0.4);
+    }
+
+    /* GRADIENTS */
+    .bg-primary-gradient { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+    .bg-gratuity-gradient { background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); }
+    .bg-secondary-gradient { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+    .bg-info-gradient { background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); }
+    .bg-warning-gradient { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    .bg-success-gradient { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); } /* Reporting purple */
+
+    /* PERFORMANCE RIBBON */
+    .performance-ribbon {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+
+    .stat-capsule {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 100px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+        transition: all 0.3s ease;
+    }
+
+    .stat-capsule:hover {
+        background: #f8fafc;
+        border-color: rgba(37, 99, 235, 0.2);
+        transform: translateY(-2px);
+    }
+
+    .stat-capsule i {
+        font-size: 1.2rem;
+    }
+
+    .stat-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1;
+    }
+
+    .stat-value {
+        color: #0f172a;
+        font-weight: 900;
+        font-size: 1.1rem;
+    }
+
+    .stat-label {
+        color: #1e293b;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-top: 2px;
+    }
+
+    /* OTHER */
+    .backdrop-blur {
+        backdrop-filter: blur(10px);
+    }
+
+    /* ANIMATIONS */
+    @@keyframes ripple {
+        0% { transform: scale(1); opacity: 0.8; }
+        100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    @@keyframes spin-intro {
+        from { transform: rotate(-50deg) scale(0.8); opacity: 0; }
+        to { transform: rotate(0deg) scale(1); opacity: 1; }
+    }
+
+    @@keyframes rotate-orbit {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    /* Counter-rotation to keep items upright while orbit spins */
+    @@keyframes maintain-upright {
+        from { transform: translate(-50%, -50%) rotate(var(--angle)) translate(calc(var(--orbit-size) / 2)) rotate(calc(var(--angle) * -1)) rotate(0deg); }
+        to { transform: translate(-50%, -50%) rotate(var(--angle)) translate(calc(var(--orbit-size) / 2)) rotate(calc(var(--angle) * -1)) rotate(-360deg); }
+    }
+
+    .animate-slide-down { animation: slideDown 0.8s ease-out forwards; opacity: 0; transform: translateY(-20px); }
+    @@keyframes slideDown { to { opacity: 1; transform: translateY(0); } }
+
+    .animate-slide-left { animation: slideLeft 0.8s ease-out forwards; opacity: 0; transform: translateX(30px); }
+    @@keyframes slideLeft { to { opacity: 1; transform: translateX(0); } }
+
+    .animate-slide-right { animation: slideRight 0.8s ease-out forwards; opacity: 0; transform: translateX(-30px); }
+    @@keyframes slideRight { to { opacity: 1; transform: translateX(0); } }
+
+    .animate-slide-up { animation: slideUp 0.8s ease-out forwards; opacity: 0; transform: translateY(30px); }
+    @@keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+    .delay-100 { animation-delay: 0.1s; }
+    .delay-200 { animation-delay: 0.2s; }
+    .delay-300 { animation-delay: 0.3s; }
+
+    /* RESPONSIVE */
+    @@media (max-width: 991px) {
+        :root { --orbit-size: 350px; --hub-size: 120px; }
+        .nav-satellite { 
+            transform: translate(-50%, -50%) rotate(var(--angle)) translate(var(--orbit-size) / 2) rotate(calc(var(--angle) * -1));
+        }
+        .nav-satellite:hover {
+           transform: translate(-50%, -50%) rotate(var(--angle)) translate(calc(var(--orbit-size) / 1.8)) rotate(calc(var(--angle) * -1)) scale(1.1);
+        }
+    }
+</style>
+

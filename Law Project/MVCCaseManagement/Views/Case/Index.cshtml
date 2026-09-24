@@ -1,0 +1,931 @@
+@model IEnumerable<MVCCaseManagement.Models.MVCCaseViewModel>
+
+@{
+    ViewData["Title"] = "Digital MVC Case Files";
+    ViewData["HidePageHeader"] = true;
+    
+    var globalDivIdString = User.FindFirst("DivisionID")?.Value;
+    bool globalIsCentralOffice = globalDivIdString == "0" || string.IsNullOrEmpty(globalDivIdString) || globalDivIdString == "5";
+    string globalCurrentStatus = ViewBag.CurrentStatus ?? "";
+    
+    bool isInboxStatus = globalCurrentStatus == "SentToCO" || globalCurrentStatus == "PendingDecision" || globalCurrentStatus == "PendingAtCA";
+    
+    bool globalShowMFA = false;
+    if (globalIsCentralOffice) {
+        globalShowMFA = !isInboxStatus;
+    } else {
+        globalShowMFA = globalCurrentStatus == "MFAPending" || globalCurrentStatus == "SLPPending";
+    }
+    if (globalIsCentralOffice && (string.IsNullOrEmpty(globalCurrentStatus) || globalCurrentStatus == "all")) {
+        globalShowMFA = true;
+    }
+}
+
+<div class="container-fluid py-4">
+
+    @if (ViewBag.RecentTransfers != null)
+    {
+        foreach (var transfer in (IEnumerable<MVCCaseManagement.Models.MVCCaseViewModel>)ViewBag.RecentTransfers)
+        {
+             <div class="alert alert-info alert-dismissible fade show shadow-sm border-0 mb-4" role="alert" style="background: linear-gradient(to right, #e0f2fe, #fff); border-left: 4px solid #0ea5e9 !important;">
+                <div class="d-flex align-items-center">
+                    <div class="bg-white p-2 rounded-circle me-3 shadow-sm text-info">
+                        <i class="bi bi-arrow-left-right fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="alert-heading fw-bold mb-1 text-dark">New Case Transferred</h6>
+                        <p class="mb-0 text-secondary small">
+                            MVC Case <strong>@transfer.MVCNo/@transfer.MVCYear</strong> has been transferred to your division from 
+                            <strong>@transfer.TransferredFromDivisionName</strong> on @(transfer.TransferDate?.ToString("dd-MM-yyyy")).
+                        </p>
+                    </div>
+                    <div class="ms-auto d-flex gap-2">
+                        <a href="@Url.Action("Details", "Case", new { id = transfer.CaseID })" class="btn btn-sm btn-light fw-bold text-primary shadow-sm">View Case</a>
+                        <button type="button" class="btn btn-sm btn-outline-secondary border-0" onclick="dismissTransfer(@transfer.CaseID, this)" aria-label="Close">
+                            <i class="bi bi-x-lg"></i> Dismiss
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="glass-filter-card mb-4 p-4 shadow-sm border-0">
+        <!-- Top Row: Search Input -->
+        <div class="row g-3 align-items-center mb-3">
+            <div class="col-12 col-md-6 col-lg-5">
+                <form method="get" asp-action="Index" class="m-0">
+                    <input type="hidden" name="status" value="@ViewBag.CurrentStatus" />
+                    <label for="tableSearch" class="visually-hidden">Search Cases</label>
+                    <div class="input-group">
+                        <span class="input-group-text border-end-0 ps-3 text-primary border-2" style="border-radius: 6px 0 0 6px;"><i class="bi bi-search"></i></span>
+                        <input type="text" name="search" id="tableSearch" value="@ViewBag.CurrentSearch" class="form-control border-start-0 ps-2 py-2 search-input" style="border-radius: 0 6px 6px 0;" placeholder="Search MVC No, Vehicle, Year...">
+                        <button class="btn btn-primary ms-2 px-4 fw-bold shadow-sm" style="border-radius: 6px;" type="submit">Search</button>
+                    </div>
+                </form>
+            </div>
+            @if (!string.IsNullOrEmpty(ViewBag.CurrentSearch as string))
+            {
+                <div class="col-12 col-md-6 col-lg-7 d-flex align-items-center justify-content-md-end">
+                    <a href="@Url.Action("Index", new { status = ViewBag.CurrentStatus })" class="btn btn-sm btn-outline-secondary rounded-pill px-3 shadow-sm">
+                        <i class="bi bi-x-circle me-1"></i> Clear Search: "@ViewBag.CurrentSearch"
+                    </a>
+                </div>
+            }
+        </div>
+
+        <!-- Filter Ribbon: Full width & perfectly aligned -->
+        <div class="d-flex flex-wrap align-items-center gap-2 pt-3 border-top" style="border-color: #e2e8f0 !important;">
+            <span class="text-secondary small fw-bold text-uppercase d-flex align-items-center me-2 text-nowrap" style="letter-spacing: 0.04em;">
+                <i class="bi bi-filter-circle me-1 text-primary fs-6"></i> Status:
+            </span>
+            <div class="d-flex flex-wrap align-items-center gap-2" id="statusFilterGroup">
+                @if (!User.IsInRole("MD"))
+                {
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "all" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "all" ? "active" : "")">All</a>
+                }
+                @{
+                    var userDivId = User.FindFirst("DivisionID")?.Value;
+                    bool isCentralView = userDivId == "0" || userDivId == "5" || string.IsNullOrEmpty(userDivId);
+                }
+                @if (isCentralView)
+                {
+                    string inboxStatus = "SentToCO";
+                    if (User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) inboxStatus = "PendingDecision";
+                    else if (User.IsInRole("MD")) inboxStatus = "PendingAtCA";
+
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = inboxStatus })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == inboxStatus ? "active" : "")">Inbox</a>
+                    @if (!User.IsInRole("MD") && !User.IsInRole("CLO") && !User.IsInRole("Dy CLO") && !User.IsInRole("DyCLO"))
+                    {
+                        <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "PendingDecision" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingDecision" ? "active" : "")">Pending Decision at LO/CLO</a>
+                    }
+                    @if (!User.IsInRole("MD"))
+                    {
+                        <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "PendingAtCA" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingAtCA" ? "active" : "")">Pending at Competent Authority</a>
+                    }
+                }
+                else
+                {
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "Pending" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Pending" ? "active" : "")">Pending</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "SentToCO" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "SentToCO" ? "active" : "")">Sent to CO</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "PendingDecision" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingDecision" ? "active" : "")">Pending Decision at LO/CLO</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "PendingAtCA" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingAtCA" ? "active" : "")">Pending at Competent Authority</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "Favor" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Favor" ? "active" : "")">Favor</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "Against" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Against" ? "active" : "")">Against</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "MFAPending" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "MFAPending" ? "active" : "")">MFA Pending</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "SLPPending" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "SLPPending" ? "active" : "")">SLP Pending</a>
+                    <a href="@Url.Action("Index", new { search = ViewBag.CurrentSearch, status = "CompliancePending" })" class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "CompliancePending" ? "active" : "")">Compliance Pending</a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="table-card mb-4">
+        <div class="table-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="registry-title"><i class="bi bi-folder2-open me-1"></i> MVC Case Registry</div>
+            <div class="d-flex align-items-center gap-3">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold shadow-sm d-flex align-items-center gap-2" id="btnSyncAllLive" onclick="syncAllVisibleCases()" title="Live sync hearing dates and case statuses for all visible cases from eCourts NAPIX">
+                    <i class="bi bi-broadcast"></i> Sync Live NAPIX Status
+                </button>
+                <div class="text-secondary small fw-bold"><span class="badge bg-light text-dark border">Records: @Model.Count()</span></div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0" id="casesTable">
+                    <thead>
+                        <tr class="align-top">
+                            @if (globalShowMFA)
+                            {
+                                <th class="ps-4 align-top" style="width: 13%; min-width: 125px;">MFA No<br>&amp; Year</th>
+                                <th class="align-top" style="width: 13%; min-width: 120px;">MVC No<br>&amp; Year</th>
+                            }
+                            else
+                            {
+                                <th class="ps-4 align-top" style="width: 13%; min-width: 120px;">MVC No<br>&amp; Year</th>
+                            }
+                            @if (globalIsCentralOffice)
+                            {
+                                <th class="align-top" style="width: 14%; min-width: 120px;">Division</th>
+                                <th class="align-top" style="width: 22%; min-width: 180px;">Court</th>
+                            }
+                            else
+                            {
+                                <th class="align-top" style="width: 17%; min-width: 160px;">Division<br>&amp; Court</th>
+                            }
+                            @if (!globalIsCentralOffice)
+                            {
+                                <th class="align-top" style="width: 15%; min-width: 140px;">Accident Vehicle<br>No &amp; Date</th>
+                                <th class="align-top" style="width: 12%; min-width: 115px;">Nature of<br>Claim</th>
+                            }
+                            <th class="align-top" style="width: 13%; min-width: 125px;">Current<br>Stage</th>
+                            <th class="align-top" style="width: 17%; min-width: 150px;">Next Date<br>of Hearing</th>
+                            <th class="text-end pe-4 align-top" style="width: 10%; min-width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                            <tbody>
+                                @if (!Model.Any())
+                                {
+                                    <tr>
+                                        @{
+                                            int colspan = 1; // MVC No & Year
+                                            if (globalShowMFA) { colspan++; }
+                                            if (globalIsCentralOffice) { colspan += 2; }
+                                            else { colspan += 3; }
+                                            colspan += 3; // Current Stage, Next Date of Hearing, Actions
+                                        }
+                                        <td colspan="@colspan" class="text-center py-5 text-muted">
+                                            <div class="bg-light rounded-circle d-inline-flex p-3 mb-3">
+                                                <i class="bi bi-inbox fs-1 text-secondary opacity-50"></i>
+                                            </div>
+                                            <h6 class="fw-bold text-dark">No cases found</h6>
+                                            <p class="small text-muted">Try adjusting your filters or search terms.</p>
+                                        </td>
+                                    </tr>
+                                }
+                                else
+                                {
+                                    foreach (var item in Model)
+                                    {
+                                        <tr class="@(item.IsAllegedAccident ? "alleged-accident-row" : "")">
+                                            @if (globalShowMFA)
+                                            {
+                                                <td class="ps-4">
+                                                      @if (!string.IsNullOrEmpty(item.CorpMFANo))
+                                                      {
+                                                          <div class="data-id text-primary mb-1" title="Corporation MFA">
+                                                              <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 me-1" style="font-size: 0.6rem; vertical-align: middle;">CORP</span>@(item.CorpMFANo)@(item.CorpMFAYear.HasValue && item.CorpMFAYear > 0 ? $"/{item.CorpMFAYear}" : "")
+                                                          </div>
+                                                      }
+                                                      @if (!string.IsNullOrEmpty(item.ClaimantMFANo))
+                                                      {
+                                                          <div class="data-id text-danger mb-1" title="Claimant MFA">
+                                                              <span class="badge bg-danger-subtle text-danger border border-danger border-opacity-25 me-1" style="font-size: 0.6rem; vertical-align: middle;">CLM</span>@(item.ClaimantMFANo)@(item.ClaimantMFAYear.HasValue && item.ClaimantMFAYear > 0 ? $"/{item.ClaimantMFAYear}" : "")
+                                                          </div>
+                                                      }
+                                                      
+                                                      @if (string.IsNullOrEmpty(item.CorpMFANo) && string.IsNullOrEmpty(item.ClaimantMFANo))
+                                                      {
+                                                           @if (!string.IsNullOrEmpty(item.MFAEntrustmentNo))
+                                                           {
+                                                               <div class="data-id text-info mb-1" title="Entrustment Details">
+                                                                   <i class="bi bi-clock-history"></i> @item.MFAEntrustmentNo 
+                                                                   @if (item.MFAEntrustmentDate.HasValue)
+                                                                   {
+                                                                       <span>(@item.MFAEntrustmentDate.Value.ToString("dd-MM-yyyy"))</span>
+                                                                   }
+                                                               </div>
+                                                               <span class="text-muted small">Not Filed</span>
+                                                           }
+                                                           else
+                                                           {
+                                                               <span class="text-muted small opacity-50">Not Filed</span>
+                                                           }
+                                                      }
+                                                </td>
+                                                <td>
+                                                    <div class="data-id">@item.MVCNo/@item.MVCYear</div>
+                                                    @if (item.IsAllegedAccident)
+                                                    {
+                                                        <div class="mt-1">
+                                                            <span class="badge bg-warning text-dark border border-warning-subtle shadow-xs d-inline-flex align-items-center gap-1" style="font-size: 0.67rem; font-weight: 700; letter-spacing: 0.02em; padding: 2px 6px;" title="Special Defense: Alleged Accident - Claim filed without any actual accident involving Corporation bus">
+                                                                <i class="bi bi-shield-exclamation text-dark"></i> ALLEGED ACCIDENT
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <td class="ps-4">
+                                                    <div class="data-id">@item.MVCNo/@item.MVCYear</div>
+                                                    @if (item.IsAllegedAccident)
+                                                    {
+                                                        <div class="mt-1">
+                                                            <span class="badge bg-warning text-dark border border-warning-subtle shadow-xs d-inline-flex align-items-center gap-1" style="font-size: 0.67rem; font-weight: 700; letter-spacing: 0.02em; padding: 2px 6px;" title="Special Defense: Alleged Accident - Claim filed without any actual accident involving Corporation bus">
+                                                                <i class="bi bi-shield-exclamation text-dark"></i> ALLEGED ACCIDENT
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </td>
+                                            }
+                                            @if (globalIsCentralOffice)
+                                            {
+                                                <td>
+                                                    <div class="location-text fw-bold text-secondary">@item.DivisionName</div>
+                                                    @if (globalIsCentralOffice && item.ForwardingStatus == "Sent to Central Office" && !item.HasCentralOfficeAction)
+                                                    {
+                                                        <span class="badge bg-success-subtle text-success border border-success border-opacity-25 mt-1" style="font-size: 0.65rem; letter-spacing: 0.02em;">
+                                                            <i class="bi bi-file-earmark-check me-1"></i>JUDGEMENT RECEIVED
+                                                        </span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <div class="location-text fw-bold text-dark">@item.MACTName</div>
+                                                </td>
+                                            }
+                                            else
+                                            {
+                                                <td>
+                                                    <div class="location-text fw-bold text-secondary">@item.DivisionName</div>
+                                                    <div class="location-text fw-bold text-dark">@item.MACTName</div>
+                                                </td>
+                                            }
+                                            @if (!globalIsCentralOffice)
+                                            {
+                                                <td>
+                                                    <div class="data-id">@(string.IsNullOrEmpty(item.VehicleNo) ? "N/A" : item.VehicleNo)</div>
+                                                    <div class="text-muted smaller"><i class="bi bi-calendar-event me-1"></i>@(item.AccidentDate?.ToString("dd-MM-yyyy") ?? "N/A")</div>
+                                                    @if (item.IsAllegedAccident)
+                                                    {
+                                                        <div class="mt-1">
+                                                            <span class="badge bg-warning-subtle text-dark border border-warning border-opacity-50 d-inline-flex align-items-center gap-1" style="font-size: 0.64rem;" title="Special Defense: No actual accident took place involving this vehicle">
+                                                                <i class="bi bi-shield-slash text-warning-emphasis"></i>No Actual Accident
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(item.ClaimType))
+                                                    {
+                                                        var ct = item.ClaimType.Trim();
+                                                        var ctLower = ct.ToLowerInvariant();
+                                                        string badgeClass;
+                                                        string iconClass;
+
+                                                        if (ctLower.Contains("death"))
+                                                        {
+                                                            badgeClass = "bg-danger-subtle text-danger border border-danger-subtle";
+                                                            iconClass = "bi bi-heart-pulse-fill";
+                                                        }
+                                                        else if (ctLower.Contains("injur"))
+                                                        {
+                                                            badgeClass = "bg-warning-subtle text-warning-emphasis border border-warning-subtle";
+                                                            iconClass = "bi bi-bandaid-fill";
+                                                        }
+                                                        else if (ctLower.Contains("property") || ctLower.Contains("vehicle"))
+                                                        {
+                                                            badgeClass = "bg-info-subtle text-info-emphasis border border-info-subtle";
+                                                            iconClass = "bi bi-truck-front-fill";
+                                                        }
+                                                        else
+                                                        {
+                                                            badgeClass = "bg-primary-subtle text-primary border border-primary-subtle";
+                                                            iconClass = "bi bi-tag-fill";
+                                                        }
+
+                                                        <span class="badge @badgeClass px-2 py-1 fw-semibold d-inline-flex align-items-center gap-1" style="font-size: 0.78rem;">
+                                                            <i class="@iconClass"></i>
+                                                            <span>@ct</span>
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted small fst-italic">Not Specified</span>
+                                                    }
+                                                </td>
+                                            }
+                                            <td style="min-width: 140px;">
+                                                <div class="d-flex align-items-center gap-1 flex-wrap" id="badge-wrapper-@item.CaseID">
+                                                    @if (!string.IsNullOrEmpty(item.CaseStatus) && item.CaseStatus.Equals("Disposed", StringComparison.OrdinalIgnoreCase))
+                                                    {
+                                                        <span class="badge bg-danger text-white border border-danger px-2 py-1 fw-bold">
+                                                            <i class="bi bi-check-circle-fill me-1"></i>Disposed
+                                                        </span>
+                                                    }
+                                                    else if (item.DisposalResult == "Favor")
+                                                    {
+                                                        <span class="badge bg-success-subtle text-success border border-success border-opacity-25 px-2 py-1 fw-bold">
+                                                            <i class="bi bi-shield-check me-1"></i>Favor
+                                                        </span>
+                                                    }
+                                                    else if (item.DisposalResult == "Against")
+                                                    {
+                                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning border-opacity-25 px-2 py-1 fw-bold">
+                                                            <i class="bi bi-exclamation-triangle-fill me-1"></i>Against
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-2 py-1 fw-bold">
+                                                            <i class="bi bi-hourglass-split me-1"></i>@(string.IsNullOrEmpty(item.CaseStatus) ? "Pending" : item.CaseStatus)
+                                                        </span>
+                                                    }
+
+                                                    @if (!string.IsNullOrEmpty(item.CurrentStage))
+                                                    {
+                                                        <span class="badge bg-light text-dark border px-2 py-1 text-truncate" style="max-width: 140px;" title="Current Stage: @item.CurrentStage">
+                                                            @item.CurrentStage
+                                                        </span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td style="min-width: 160px;">
+                                                <div class="d-flex flex-column gap-1 status-container" id="status-container-@item.CaseID" data-case-id="@item.CaseID" data-cnr="@(item.CNRNumber ?? "")">
+                                                    <!-- Live Hearing Date -->
+                                                    <div class="hearing-date-box" id="hearing-date-@item.CaseID">
+                                                        @if (item.NextHearingDate.HasValue)
+                                                        {
+                                                            <div class="small fw-bold text-dark d-flex align-items-center gap-1">
+                                                                <i class="bi bi-calendar-week-fill text-primary"></i>
+                                                                <span>@item.NextHearingDate.Value.ToString("dd-MM-yyyy")</span>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="small text-muted d-flex align-items-center gap-1">
+                                                                <i class="bi bi-calendar-x text-secondary"></i>
+                                                                <span>No Hearing Date</span>
+                                                            </div>
+                                                        }
+                                                    </div>
+
+                                                    <!-- CNR Number & Live Sync Button -->
+                                                    <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+                                                        @if (!string.IsNullOrEmpty(item.CNRNumber))
+                                                        {
+                                                            <button type="button" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 fw-bold sync-live-btn" style="font-size: 0.72rem; height: 22px;" onclick="fetchLiveCaseStatus(@item.CaseID, '@item.CNRNumber', this)" id="sync-btn-@item.CaseID" title="Sync live status and hearing date from eCourts NAPIX">
+                                                                <i class="bi bi-arrow-repeat"></i> Live Sync
+                                                            </button>
+                                                            <span class="text-muted font-monospace smaller" style="font-size: 0.7rem;" title="16-Digit eCourts CNR Number">@item.CNRNumber</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button type="button" class="btn btn-xs btn-outline-secondary py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 fw-bold sync-live-btn" style="font-size: 0.72rem; height: 22px;" onclick="fetchLiveCaseStatus(@item.CaseID, '', this)" id="sync-btn-@item.CaseID" title="Auto-discover CNR and fetch live hearing date from eCourts NAPIX">
+                                                                <i class="bi bi-search"></i> Discover & Sync
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </td>
+                                    <td class="text-end pe-4">
+                                        <div class="d-flex justify-content-end gap-2">
+                                            @if (ViewBag.CurrentStatus == "CompliancePending")
+                                            {
+                                                <button type="button" class="btn btn-success btn-sm rounded-pill px-3 fw-bold shadow-sm" onclick="openComplianceModal(@item.CaseID, '@item.MVCNo', @item.MVCYear)">
+                                                    <i class="bi bi-check-square me-1"></i> Compliance
+                                                </button>
+                                            }
+                                            <a asp-action="Details" asp-route-id="@item.CaseID" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold shadow-sm" title="View Details">
+                                                View <i class="bi bi-arrow-right ms-1"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            
+            @if (ViewBag.TotalPages > 1)
+            {
+                <div class="card-footer py-3">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center mb-0">
+                            <li class="page-item @(ViewBag.CurrentPage == 1 ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index", new { page = ViewBag.CurrentPage - 1, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })" aria-label="Previous">
+                                    <span aria-hidden="true">&laquo; Previous</span>
+                                </a>
+                            </li>
+                            
+                            @{
+                                int startPage = Math.Max(1, ViewBag.CurrentPage - 5);
+                                int endPage = Math.Min(ViewBag.TotalPages, startPage + 9);
+                                if (endPage - startPage < 9)
+                                {
+                                    startPage = Math.Max(1, endPage - 9);
+                                }
+                            }
+                            
+                            @for (int i = startPage; i <= endPage; i++)
+                            {
+                                <li class="page-item @(ViewBag.CurrentPage == i ? "active" : "")">
+                                    <a class="page-link" href="@Url.Action("Index", new { page = i, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">@i</a>
+                                </li>
+                            }
+                            
+                            <li class="page-item @(ViewBag.CurrentPage == ViewBag.TotalPages ? "disabled" : "")">
+                                <a class="page-link" href="@Url.Action("Index", new { page = ViewBag.CurrentPage + 1, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })" aria-label="Next">
+                                    <span aria-hidden="true">Next &raquo;</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Compliance Modal -->
+<div class="modal fade" id="complianceModal" tabindex="-1" aria-hidden="true" style="backdrop-filter: blur(5px);">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 1rem; overflow: hidden;">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-shield-check me-2"></i>Add Compliance Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="complianceForm" onsubmit="submitCompliance(event)">
+                @Html.AntiForgeryToken()
+                <div class="modal-body p-4 bg-light">
+                    <input type="hidden" id="compCaseId" name="caseId" />
+                    
+                    <div class="card border-0 shadow-sm mb-4">
+                        <div class="card-body py-2 px-3 d-flex align-items-center">
+                            <i class="bi bi-file-earmark-text text-primary fs-4 me-3"></i>
+                            <div>
+                                <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">MVC Number</small>
+                                <div class="fw-bold fs-5 text-dark" id="compMVCNoDisplay"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="date" class="form-control" name="complianceDate" required max="@DateTime.Now.ToString("yyyy-MM-dd")" id="complianceDate" placeholder="Date">
+                        <label for="complianceDate">Compliance Date</label>
+                    </div>
+
+                    <div class="form-floating mb-3">
+                        <input type="number" step="0.01" class="form-control" name="amount" required id="compAmount" placeholder="Amount">
+                        <label for="compAmount">Amount Deposited (₹)</label>
+                    </div>
+
+                    <div class="form-floating">
+                        <input type="text" class="form-control" name="chequeDetails" required id="compCheque" placeholder="Cheque Details">
+                        <label for="compCheque">Cheque Number / Reference Details</label>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white p-3">
+                    <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success px-4 fw-bold">Save Details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function dismissTransfer(caseId, btnElement) {
+        var alertEl = $(btnElement).closest('.alert');
+        alertEl.fadeOut(200, function() { $(this).remove(); });
+        $.post('/Case/DismissTransferNotification', { caseId: caseId });
+    }
+
+    function openComplianceModal(caseId, mvcNo, mvcYear) {
+        document.getElementById('compCaseId').value = caseId;
+        document.getElementById('compMVCNoDisplay').innerText = mvcNo + "/" + mvcYear;
+        var modal = new bootstrap.Modal(document.getElementById('complianceModal'));
+        modal.show();
+    }
+
+    function submitCompliance(e) {
+        e.preventDefault();
+        var form = document.getElementById('complianceForm');
+        var formData = new FormData(form);
+        
+        // Ensure amount is handled correctly as a number if needed by backend binding, usually FormData handles strings fine
+        // Retrieve token directly from the form we just added
+        var token = form.querySelector('input[name="__RequestVerificationToken"]').value;
+
+        fetch('/Appeal/SaveCompliance', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'RequestVerificationToken': token
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                // Return text to see the error page content if not JSON
+                return response.text().then(text => { throw new Error(text || response.statusText) });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // Show success message nicely
+                var modalEl = document.getElementById('complianceModal');
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                modal.hide();
+                
+                // Show toast or alert
+                alert(data.message);
+                
+                // Reload page to reflect status change
+                location.reload();
+            } else {
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while saving. Please check console for details.');
+        });
+    }
+
+    function fetchLiveCaseStatus(caseId, cnr, btn) {
+        if (!btn) btn = document.getElementById('sync-btn-' + caseId);
+        if (btn) {
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-1" role="status"></span> Syncing...';
+            btn.classList.add('disabled');
+        }
+
+        var url = `/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr || '')}&caseId=${caseId}`;
+
+        return fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.data) {
+                    var d = data.data;
+                    var stage = d.stage || 'Pending';
+                    var status = d.case_status || (stage && stage.toLowerCase().includes('disposed') ? 'Disposed' : 'Pending');
+                    var hearingDate = d.next_hearing_date || 'No Hearing Date';
+                    var activeCnr = data.cnr || cnr || '';
+
+                    // Update Status & Stage badges
+                    var badgeWrapper = document.getElementById('badge-wrapper-' + caseId);
+                    if (badgeWrapper) {
+                        var statusBadgeHtml = '';
+                        if (status.toLowerCase().includes('disposed')) {
+                            statusBadgeHtml = `<span class="badge bg-danger text-white border border-danger px-2 py-1 fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`;
+                        } else {
+                            statusBadgeHtml = `<span class="badge bg-primary-subtle text-primary border border-primary border-opacity-25 px-2 py-1 fw-bold"><i class="bi bi-broadcast text-success me-1"></i>${status}</span>`;
+                        }
+                        if (stage && stage !== status) {
+                            statusBadgeHtml += ` <span class="badge bg-light text-dark border px-2 py-1 text-truncate" style="max-width: 140px;" title="Live Stage: ${stage}">${stage}</span>`;
+                        }
+                        badgeWrapper.innerHTML = statusBadgeHtml;
+                    }
+
+                    // Update Hearing Date
+                    var dateBox = document.getElementById('hearing-date-' + caseId);
+                    if (dateBox) {
+                        if (hearingDate && hearingDate !== 'No Hearing Date' && !hearingDate.toLowerCase().includes('disposed')) {
+                            var displayDate = hearingDate;
+                            var parts = hearingDate.trim().split(/[-/]/);
+                            if (parts.length === 3) {
+                                if (parts[0].length === 4) {
+                                    displayDate = `${parts[2].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[0]}`;
+                                } else if (parts[2].length === 4) {
+                                    displayDate = `${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}-${parts[2]}`;
+                                }
+                            } else {
+                                var parsed = new Date(hearingDate);
+                                if (!isNaN(parsed.getTime())) {
+                                    displayDate = `${String(parsed.getDate()).padStart(2, '0')}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${parsed.getFullYear()}`;
+                                }
+                            }
+                            dateBox.innerHTML = `<div class="small fw-bold text-success d-flex align-items-center gap-1"><i class="bi bi-calendar-check-fill text-success"></i><span>${displayDate}</span> <span class="badge bg-success-subtle text-success border border-success border-opacity-25" style="font-size: 0.65rem;">LIVE</span></div>`;
+                        } else if (hearingDate && hearingDate.toLowerCase().includes('disposed')) {
+                            dateBox.innerHTML = `<div class="small text-muted d-flex align-items-center gap-1"><i class="bi bi-check-circle text-secondary"></i><span>Case Disposed</span></div>`;
+                        } else {
+                            dateBox.innerHTML = `<div class="small text-muted d-flex align-items-center gap-1"><i class="bi bi-calendar-x text-secondary"></i><span>No Hearing Date</span></div>`;
+                        }
+                    }
+
+                    // Update Sync Button & CNR display
+                    if (btn) {
+                        btn.className = 'btn btn-xs btn-outline-success py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 fw-bold';
+                        btn.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Synced';
+                        btn.onclick = function() { fetchLiveCaseStatus(caseId, activeCnr, btn); };
+                        btn.classList.remove('disabled');
+
+                        var parentDiv = btn.parentElement;
+                        if (parentDiv && activeCnr) {
+                            var cnrSpan = parentDiv.querySelector('.font-monospace');
+                            if (cnrSpan) {
+                                cnrSpan.textContent = activeCnr;
+                            } else {
+                                var newSpan = document.createElement('span');
+                                newSpan.className = 'text-muted font-monospace smaller';
+                                newSpan.style.fontSize = '0.7rem';
+                                newSpan.title = '16-Digit eCourts CNR Number';
+                                newSpan.textContent = activeCnr;
+                                parentDiv.appendChild(newSpan);
+                            }
+                        }
+                    }
+                } else {
+                    if (btn) {
+                        var msg = (data && data.message) ? data.message : 'Not Found';
+                        btn.className = 'btn btn-xs btn-outline-danger py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 fw-bold';
+                        btn.innerHTML = '<i class="bi bi-exclamation-triangle text-danger"></i> Not Found';
+                        btn.title = msg;
+                        btn.classList.remove('disabled');
+                    }
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                if (btn) {
+                    btn.className = 'btn btn-xs btn-outline-danger py-0 px-2 rounded-pill d-inline-flex align-items-center gap-1 fw-bold';
+                    btn.innerHTML = '<i class="bi bi-x-circle text-danger"></i> Error';
+                    btn.classList.remove('disabled');
+                }
+            });
+    }
+
+    function syncAllVisibleCases() {
+        var syncBtns = document.querySelectorAll('.sync-live-btn');
+        if (!syncBtns || syncBtns.length === 0) {
+            alert('No cases found on this page to sync.');
+            return;
+        }
+
+        var btnSyncAll = document.getElementById('btnSyncAllLive');
+        if (btnSyncAll) {
+            btnSyncAll.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing Visible Cases...';
+            btnSyncAll.classList.add('disabled');
+        }
+
+        var delay = 0;
+        var completed = 0;
+        syncBtns.forEach(function(b, idx) {
+            setTimeout(function() {
+                var container = b.closest('.status-container');
+                if (container) {
+                    var caseId = container.getAttribute('data-case-id');
+                    var cnr = container.getAttribute('data-cnr');
+                    fetchLiveCaseStatus(caseId, cnr, b).finally(function() {
+                        completed++;
+                        if (completed >= syncBtns.length && btnSyncAll) {
+                            btnSyncAll.innerHTML = '<i class="bi bi-check-all text-success"></i> All Synced';
+                            btnSyncAll.classList.remove('disabled');
+                            setTimeout(function() {
+                                btnSyncAll.innerHTML = '<i class="bi bi-broadcast"></i> Sync Live NAPIX Status';
+                            }, 4000);
+                        }
+                    });
+                }
+            }, delay);
+            delay += 350;
+        });
+    }
+</script>
+
+@section Styles {
+    <style>
+        :root {
+            --gov-blue-dark: #0f172a;
+            --gov-blue: #2563eb;
+            --gov-bg-light: #f8fafc;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --border-color: #e2e8f0;
+            --table-header-bg: #f1f5f9;
+        }
+
+        /* Container & Structure */
+        .container-fluid {
+            background-color: #d5d8db;
+            min-height: 100vh;
+        }
+
+        /* Filter Card - Professional/Clean */
+        .glass-filter-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Main Table Card - Official Registry Style */
+        .table-card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .table-card-header {
+            background-color: #ffffff;
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .registry-title {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--gov-blue-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+        }
+        
+        .registry-title i {
+            color: var(--gov-blue);
+            margin-right: 0.5rem;
+        }
+
+        /* Inputs & Controls */
+        .search-input {
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            padding: 0.5rem 0.75rem;
+        }
+        .search-input:focus {
+            border-color: var(--gov-blue);
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+            outline: none;
+        }
+
+        .input-group-text {
+            border-color: #cbd5e1;
+            background-color: #f8fafc;
+        }
+
+        .filter-btn {
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 0.45rem 1rem;
+            color: #475569;
+            background-color: #ffffff;
+            border: 1px solid #cbd5e1;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+            transition: all 0.2s ease-in-out;
+            line-height: 1.25;
+        }
+
+        .filter-btn.active {
+            background-color: var(--gov-blue-dark) !important;
+            color: #ffffff !important;
+            border-color: var(--gov-blue-dark) !important;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, 0.25) !important;
+        }
+
+        .filter-btn:hover:not(.active) {
+            background-color: #f8fafc;
+            border-color: #94a3b8;
+            color: #0f172a;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        /* DATA TABLE - The Core Registry View */
+        .table-responsive {
+            scrollbar-width: thin;
+        }
+
+        .table {
+            margin-bottom: 0;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table thead th {
+            background-color: var(--table-header-bg);
+            color: var(--gov-blue-dark); /* Changed from red for a more professional look */
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid var(--border-color);
+            vertical-align: top !important;
+            line-height: 1.35;
+            white-space: normal;
+        }
+
+        .table tbody td {
+            padding: 0.75rem 1rem;
+            vertical-align: middle;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: #f9fafb; /* Very subtle stripe */
+        }
+
+        .table tbody tr:hover {
+            background-color: #f0f9ff !important; /* Highlight on hover */
+        }
+
+        /* ID Columns - Monospace for Data Precision */
+        .data-id {
+            font-family: 'Roboto Mono', 'SF Mono', Consolas, monospace;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .location-text {
+            font-size: 0.8rem;
+            line-height: 1.3;
+        }
+
+        /* Status Badges - Pill Style */
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            line-height: 1;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-favor { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .badge-against { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .badge-pending { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+        /* Pagination */
+        .card-footer {
+            background-color: #ffffff;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .page-link {
+            border: 1px solid #e2e8f0;
+            color: var(--text-secondary);
+            margin: 0 3px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        
+        .page-item.active .page-link {
+            background-color: var(--gov-blue-dark);
+            border-color: var(--gov-blue-dark);
+            color: white;
+        }
+
+        /* Action Buttons */
+        .btn-action {
+            font-size: 0.75rem;
+            padding: 0.35rem 0.85rem;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+        }
+
+        /* Alleged Accident Row Highlight */
+        .alleged-accident-row {
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.09) 0%, rgba(254, 243, 199, 0.04) 35%, transparent 100%) !important;
+            border-left: 4.5px solid #f59e0b !important;
+        }
+        .alleged-accident-row:hover {
+            background: linear-gradient(90deg, rgba(245, 158, 11, 0.16) 0%, rgba(254, 243, 199, 0.09) 45%, rgba(240, 249, 255, 0.5) 100%) !important;
+        }
+    </style>
+}

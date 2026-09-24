@@ -1,0 +1,1245 @@
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    ViewData["Title"] = "O.S Claimant Registration";
+}
+
+<div class="container-fluid py-4" style="max-width: 1600px;">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 col-xl-2 d-print-none">
+            @await Html.PartialAsync("_OtherCourtsSidebar")
+        </div>
+
+        <!-- Main Form Area -->
+        <div class="col-lg-9 col-xl-10">
+            <div id="osClaimantForm" class="text-start">
+
+
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <div class="alert alert-success alert-dismissible fade show rounded-pill px-4 shadow-sm" role="alert">
+                <i class="bi bi-check-circle-fill me-2"></i> @TempData["SuccessMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+        @if (TempData["ErrorMessage"] != null)
+        {
+            <div class="alert alert-danger alert-dismissible fade show rounded-pill px-4 shadow-sm" role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i> @TempData["ErrorMessage"]
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        }
+
+        <form id="claimantForm" enctype="multipart/form-data" method="post" action="@Url.Action("SaveOtherCourtsCase", "Home")">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="CaseType" value="OS" />
+            <input type="hidden" name="LitigantType" value="Claimant" />
+            <input type="hidden" name="IsPendingForFiling" value="false" />
+            
+            <!-- Section 1: Basic Case Information -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header bg-white py-3 border-bottom">
+                    <h6 class="text-primary fw-bold mb-0"><i class="bi bi-person-badge-fill me-2"></i>SECTION 1: BASIC CASE INFORMATION</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+
+                        <div class="col-md-4">
+                            <label class="form-label">Division</label>
+                            <input type="text" class="form-control bg-light text-muted fw-bold" value="@User.FindFirst("DivisionName")?.Value" readonly tabindex="-1" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Case Type / ಪ್ರಕರಣದ ಹಂತ</label>
+                            <select class="form-select" name="CaseStage">
+                                <option value="">-- Choose Stage --</option>
+                                <option value="pending">pending</option>
+                                <option value="disposed">disposed</option>
+                                <option value="dnp">dnp</option>
+                                <option value="ex-parte">ex-parte</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="osClaimantCaseNumberDiv">
+                            <label class="form-label">Case Number</label>
+                            <input type="text" class="form-control" name="CaseNumber" placeholder="Enter number..." />
+                        </div>
+                        <div class="col-md-4" id="osClaimantCaseYearDiv">
+                            <label class="form-label">Case Year</label>
+                            <input type="number" class="form-control" name="CaseYear" placeholder="YYYY" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Court</label>
+                            <input type="text" class="form-control" name="Court" placeholder="Name of Court" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Case Nature</label>
+                            <select class="form-select" name="CaseNature">
+                                <option value="">Select...</option>
+                                <option>Property Dispute</option>
+                                <option>Recovery</option>
+                                <option>Injunction</option>
+                                <option>Declaration</option>
+                                <option>Others</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Claim Details</label>
+                            <input type="text" class="form-control" name="ClaimDetails" placeholder="Describe specifics..." />
+                        </div>
+
+                        <div class="col-md-12">
+                            <div class="p-3 bg-light rounded border border-primary border-opacity-25 shadow-sm">
+                                <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-people-fill me-1"></i> Petitioner Details</label>
+                                <div id="respondentList">
+                                    <div class="row g-2 mb-2 respondent-row align-items-center">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="Respondents[0].Name" placeholder="Name of petitioner..." />
+                                        </div>
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control" name="Respondents[0].Remark" placeholder="Remark for this name..." />
+                                        </div>
+                                        <div class="col-md-2 text-end">
+                                            <button type="button" class="btn btn-outline-primary add-respondent w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-text mt-1 text-muted small">Add multiple petitioners with individual remarks using the row (+) button.</div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label">Entrustment Number</label>
+                            <input type="text" class="form-control" name="EntrustmentNumber" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Entrustment Date</label>
+                            <input type="date" class="form-control" name="EntrustmentDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Advocate Name</label>
+                            <select class="form-select" name="AdvocateName">
+                                <option value="">Select Advocate...</option>
+                                @if (ViewBag.Advocates != null)
+                                {
+                                    foreach (var advocate in ViewBag.Advocates)
+                                    {
+                                        <option value="@advocate.AdvocateName">@advocate.AdvocateName</option>
+                                    }
+                                }
+                                <option value="Others">Others</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CASE PROGRESS -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header bg-white py-3 border-bottom">
+                    <h6 class="text-primary fw-bold mb-0"><i class="bi bi-graph-up-arrow me-2"></i>CASE PROGRESS</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Document Sent?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="DocumentSent" id="docSentYes" value="Yes">
+                                    <label class="form-check-label" for="docSentYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="DocumentSent" id="docSentNo" value="No" checked>
+                                    <label class="form-check-label" for="docSentNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for Document Sent = Yes -->
+                        <div class="col-md-8" id="docSentFields" style="display:none;">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Outward Number</label>
+                                    <input type="text" class="form-control doc-sent-input" name="InitialOutwardNumber" placeholder="Enter no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Outward Date</label>
+                                    <input type="date" class="form-control doc-sent-input" name="InitialOutwardDate" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Objection verified and sent?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="ObjectionVerified" id="objYes" value="Yes">
+                                    <label class="form-check-label" for="objYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="ObjectionVerified" id="objNo" value="No" checked>
+                                    <label class="form-check-label" for="objNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for Objection Verified = Yes -->
+                        <div class="col-md-8" id="objVerifiedFields" style="display:none;">
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Objection Outward Number</label>
+                                    <input type="text" class="form-control obj-verified-input" name="ObjectionOutwardNumber" placeholder="Enter no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold">Objection Filed Date</label>
+                                    <input type="date" class="form-control obj-verified-input" name="ObjectionFiledDate" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold">Evidence Filed?</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="EvidenceFiled" id="evYes" value="Yes">
+                                    <label class="form-check-label" for="evYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="EvidenceFiled" id="evNo" value="No" checked>
+                                    <label class="form-check-label" for="evNo">No</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Current Stage</label>
+                            <input type="text" class="form-control" name="CaseStatus" placeholder="Current stage..." />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">Next Date of Hearing</label>
+                            <input type="date" class="form-control" name="NextDateOfHearing" />
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Disposal & Closure -->
+            <div class="gov-card shadow-sm mb-4">
+                <div class="gov-card-header bg-white py-3 border-bottom">
+                    <h6 class="text-primary fw-bold mb-0"><i class="bi bi-check-circle-fill me-2"></i>SECTION 3: DISPOSAL & CLOSURE</h6>
+                </div>
+                <div class="gov-card-body p-4">
+                    <div class="row g-3">
+
+                        <div class="col-md-4">
+                            <label class="form-label">Disposal Status</label>
+                            <select class="form-select fw-bold border-primary" name="DisposalStatus" id="disposalStatusSelect">
+                                <option value="">Select Status...</option>
+                                <option value="DISPOSED">DISPOSED</option>
+                                <option value="DNP">DNP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4" id="resultSection" style="display:none;">
+                            <label class="form-label">Result</label>
+                            <select class="form-select fw-bold border-info" name="Result" id="resultSelect">
+                                <option value="">Select Result...</option>
+                                <option value="FAVOR">FAVOR</option>
+                                <option value="AGAINST">AGAINST</option>
+                            </select>
+                        </div>
+
+                        <!-- Fields for FAVOR -->
+                        <div class="col-md-12" id="favorSection" style="display:none;">
+                            <div class="row g-3 p-3 bg-light rounded border border-success">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-bold text-success">Disposal Remarks</label>
+                                    <textarea class="form-control favor-input" name="ClosureRemark" rows="2" placeholder="Provide details about the favor..."></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-success">Closure Date</label>
+                                    <input type="date" class="form-control favor-input" name="ClosureDate" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-success"><i class="bi bi-file-earmark-pdf me-1"></i>Upload Judgment Copy</label>
+                                    <input type="file" class="form-control favor-input" name="FinalJudgmentFile" accept=".pdf" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for CLOSED AT DIVISION LEVEL -->
+                        <div class="col-md-12" id="closedDivisionSection" style="display:none;">
+                            <div class="row g-3 p-3 bg-light rounded border">
+                                <div class="col-md-6">
+                                    <label class="form-label">Closure Date</label>
+                                    <input type="date" class="form-control division-input" name="ClosureDate" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Closure Remark</label>
+                                    <input type="text" class="form-control division-input" name="ClosureRemark" placeholder="Enter reason for closure..." />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Fields for SENT TO CENTRAL OFFICE -->
+                        <div class="col-md-12" id="sentCentralOfficeSection" style="display:none;">
+                            <div class="row g-3 p-3 bg-light rounded border">
+                                <div class="col-md-6">
+                                    <label class="form-label">Outward Number</label>
+                                    <input type="text" class="form-control central-input" name="OutwardNumber" placeholder="Enter official outward no..." />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Outward Date</label>
+                                    <input type="date" class="form-control central-input" name="OutwardDate" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- Section: Evidence (Conditional for AGAINST) -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0" id="evidenceSection" style="display:none; background-color: #fcfcfc;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-journal-text fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">C. EVIDENCE DETAILS</h4>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-12 mb-4 border-bottom pb-4">
+                        <label class="form-label fw-bold d-block text-primary"><i class="bi bi-question-circle me-1"></i> Objection Filed?</label>
+                        <div class="d-flex gap-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="IsObjectionFiled" id="objFiledYes" value="Yes">
+                                <label class="form-check-label fw-bold" for="objFiledYes">Yes</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="IsObjectionFiled" id="objFiledNo" value="No" checked>
+                                <label class="form-check-label fw-bold" for="objFiledNo">No</label>
+                            </div>
+                        </div>
+
+                        <!-- If NO then show Yes/No fields -->
+                        <div class="mt-3 p-3 bg-white rounded border border-warning" id="objNoFields" style="display:none;">
+                            <label class="form-label small fw-bold text-warning mb-2">If NO, then:</label>
+                            <div class="row g-3">
+
+                                <div class="col-md-12">
+                                    <label class="form-label small fw-bold">Objection Remarks</label>
+                                    <textarea class="form-control obj-no-remarks" name="ObjectionRemarks" rows="1" placeholder="Provide details for no objection..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="p-3 bg-white rounded border mb-3 shadow-sm">
+                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-people me-1"></i> 1. Petitioner Evidence</label>
+                            <div id="respEvidenceList">
+                                <div class="row g-2 mb-2 resp-evidence-row align-items-center">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="RespondentEvidence[0].Name" placeholder="Petitioner Name(s)..." />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="RespondentEvidence[0].Remark" placeholder="Remark..." />
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button type="button" class="btn btn-outline-primary add-resp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-building me-1"></i> 2. Corporation Evidence</label>
+                            <div id="corpEvidenceList">
+                                <div class="row g-2 mb-2 corp-evidence-row align-items-center">
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="CorpEvidence[0].Name" placeholder="Corporation Witness Name..." />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <input type="text" class="form-control" name="CorpEvidence[0].Designation" placeholder="Designation..." />
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <button type="button" class="btn btn-outline-primary add-corp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: Certified Copy Details (Conditional for AGAINST) -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0" id="ccDetailsSection" style="display:none; background-color: #f8fdf8;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-file-earmark-check fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">CERTIFIED COPY DETAILS</h4>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Disposed On</label>
+                        <input type="date" class="form-control" name="CopyDisposedOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Applied On</label>
+                        <input type="date" class="form-control" name="CopyAppliedOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Ready On</label>
+                        <input type="date" class="form-control" name="CopyReadyOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Delivered On</label>
+                        <input type="date" class="form-control" name="CopyDeliveredOn" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Copy Received at Division</label>
+                        <input type="date" class="form-control" name="CopyReceivedAtDivision" />
+                    </div>
+                    <div class="col-md-12 mt-3">
+                        <label class="form-label small fw-bold">Certified Copy Remarks</label>
+                        <textarea class="form-control" name="CertifiedCopyRemarks" rows="2" placeholder="Enter notes regarding certified copies..."></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Opinions & Final Status -->
+            <div class="gov-card p-4 mb-4 shadow-sm border-0 bg-white" id="opinionsSection" style="display:none;">
+                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                    <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                        <i class="bi bi-chat-left-text-fill fs-5"></i>
+                    </div>
+                    <h4 class="mb-0 text-dark fw-bold">I. OPINIONS & FINAL STATUS</h4>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-12">
+                        <label class="form-label fw-bold">Award Details</label>
+                        <textarea class="form-control" rows="3" name="AwardDetails" placeholder="Enter findings, award amount, or general context..."></textarea>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Advocate's Opinion</label>
+                        <textarea class="form-control" name="AdvocateOpinion" rows="3" placeholder="PROVIDE DETAILED LEGAL OPINION..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Law Officer's Opinion</label>
+                        <textarea class="form-control" name="LawOfficerOpinion" rows="3" placeholder="PROVIDE LO COMMENTS..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">DC's Final Decision</label>
+                        <textarea class="form-control" name="DCFinalDecision" rows="3" placeholder="PROVIDE DC REMARKS..."></textarea>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Final Forwarding Status</label>
+                        <select class="form-select border-secondary" name="FinalForwardingStatus" id="finalForwardSelect">
+                            <option value="PENDING" selected>PENDING</option>
+                            <option value="FORWARDED TO CO">FORWARDED TO CO</option>
+                            <option value="APPEAL">APPEAL</option>
+                            <option value="CLOSED">CLOSED</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold"><i class="bi bi-file-earmark-pdf me-1 text-danger"></i>Upload Final Judgment</label>
+                        <input type="file" class="form-control opinion-input" name="FinalJudgmentFile" accept=".pdf" />
+                    </div>
+
+                    <!-- Fields for FORWARDED TO CO under Final Status -->
+                    <div class="col-md-12" id="finalForwardCOFields" style="display:none;">
+                        <div class="row g-3 p-3 bg-light rounded border border-warning">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-warning">Outward Number</label>
+                                <input type="text" class="form-control forwarded-input" name="OutwardNumber" placeholder="Enter official outward no..." />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-warning">Outward Date</label>
+                                <input type="date" class="form-control forwarded-input" name="OutwardDate" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fields for CLOSED under Final Status -->
+                    <div class="col-md-12" id="finalClosedFields" style="display:none;">
+                        <div class="row g-3 p-3 bg-light rounded border border-danger">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-danger">Closure Number</label>
+                                <input type="text" class="form-control final-closed-input" name="ClosureNumber" placeholder="Enter closure id..." />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-danger">Closure Date</label>
+                                <input type="date" class="form-control final-closed-input" name="ClosureDate" />
+                            </div>
+                    <div class="col-md-12 mt-4">
+                        <div class="p-3 bg-white rounded border shadow-sm">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <label class="form-label fw-bold text-primary mb-0"><i class="bi bi-file-earmark-plus me-1"></i> Required Supporting Documents</label>
+                                <button type="button" class="btn btn-outline-primary btn-sm btn-add-enclosed-doc"><i class="bi bi-plus-lg me-1"></i>Add new document</button>
+                            </div>
+                            <div id="enclosedDocsList">
+                                <div class="row g-2 mb-2 doc-row align-items-center">
+                                    <div class="col-md-8">
+                                        <input type="text" class="form-control" name="EnclosedDocuments[0].DocName" placeholder="Document Description...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="number" class="form-control" name="EnclosedDocuments[0].PageCount" placeholder="Pages...">
+                                    </div>
+                                    <div class="col-md-1 text-end">
+                                        <i class="bi bi-check2-circle text-success fs-5"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>    </div>
+                    </div>
+
+
+                </div>
+            </div>
+
+            <div id="appealSection" class="mb-4" style="display:none;">
+                <div class="p-4 bg-light rounded border border-primary">
+                    <h6 class="text-primary fw-bold mb-3"><i class="bi bi-box-arrow-up-right me-2"></i>Appeal Details</h6>
+                    <div class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label">Appeal Number</label>
+                                    <input type="text" class="form-control appeal-input" name="AppealNumber">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Appeal Year</label>
+                                    <input type="number" class="form-control appeal-input" name="AppealYear" placeholder="YYYY">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Arising Out OS Number</label>
+                                    <input type="text" class="form-control appeal-input" name="ArisingOutOSNumber">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">OS Year</label>
+                                    <input type="number" class="form-control appeal-input" name="OSYear" placeholder="YYYY">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Appeal Entrustment Number</label>
+                                    <input type="text" class="form-control appeal-input" name="AppealEntrustmentNumber">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Appeal Entrustment Date</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealEntrustmentDate">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Court (Appellate Auth)</label>
+                                    <input type="text" class="form-control appeal-input" name="CourtAppellateAuth">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Appeal Advocate Name</label>
+                                    <select class="form-select appeal-input" name="AppealAdvocateName">
+                                        <option value="">Select Advocate...</option>
+                                                <option value="A B Shintre">A B Shintre</option>
+                                                <option value="A G Huddar">A G Huddar</option>
+                                                <option value="A M Vantamuri">A M Vantamuri</option>
+                                                <option value="A N Deshapande">A N Deshapande</option>
+                                                <option value="A N INGALAGI">A N INGALAGI</option>
+                                                <option value="A PRATHVIRAJ HEGDE">A PRATHVIRAJ HEGDE</option>
+                                                <option value="A R ATHANI">A R ATHANI</option>
+                                                <option value="A R Kudalkar">A R Kudalkar</option>
+                                                <option value="A S Jagatap">A S Jagatap</option>
+                                                <option value="A S Malipatil">A S Malipatil</option>
+                                                <option value="A S NACHAMNAIKAR">A S NACHAMNAIKAR</option>
+                                                <option value="A SHANMUKH">A SHANMUKH</option>
+                                                <option value="A. S. Patil (HVR)">A. S. Patil (HVR)</option>
+                                                <option value="A. S. Wali (Mundargi)">A. S. Wali (Mundargi)</option>
+                                                <option value="A. Shanmukhangouda">A. Shanmukhangouda</option>
+                                                <option value="A.L.Heggannavar">A.L.Heggannavar</option>
+                                                <option value="AANAJE RADHAKRISHNA RAI">AANAJE RADHAKRISHNA RAI</option>
+                                                <option value="ABHISHEK K B">ABHISHEK K B</option>
+                                                <option value="Ashok V. (CTG)">Ashok V. (CTG)</option>
+                                                <option value="ASHWINI .R.S (BELAGAVI)">ASHWINI .R.S (BELAGAVI)</option>
+                                                <option value="Ashwini Jagadi">Ashwini Jagadi</option>
+                                                <option value="ASHWINI SHANKARGOUDAR">ASHWINI SHANKARGOUDAR</option>
+                                                <option value="B B Bisalapur">B B Bisalapur</option>
+                                                <option value="B B Bislapur">B B Bislapur</option>
+                                                <option value="B B Saradesai">B B Saradesai</option>
+                                                <option value="B D Patil">B D Patil</option>
+                                                <option value="B M MOHANKUMAR">B M MOHANKUMAR</option>
+                                                <option value="B N Patil">B N Patil</option>
+                                                <option value="B R Kattimani">B R Kattimani</option>
+                                                <option value="B S Tavashi">B S Tavashi</option>
+                                                <option value="B. D. KHOLE">B. D. KHOLE</option>
+                                                <option value="B. D. Shrinath">B. D. Shrinath</option>
+                                                <option value="B. KUMAR">B. KUMAR</option>
+                                                <option value="B. M. Shirur (Yelburga)">B. M. Shirur (Yelburga)</option>
+                                                <option value="B.S.Bidarkundi">B.S.Bidarkundi</option>
+                                                <option value="BASAVARAJ SANNUR">BASAVARAJ SANNUR</option>
+                                                <option value="Basavaraju ( CN. Halli)">Basavaraju ( CN. Halli)</option>
+                                                <option value="BASAVRAJ DHANGI">BASAVRAJ DHANGI</option>
+                                                <option value="BHASKAR HOLLA">BHASKAR HOLLA</option>
+                                                <option value="C B KOLIWAD">C B KOLIWAD</option>
+                                                <option value="C Mahadevahi">C Mahadevahi</option>
+                                                <option value="C V Badari">C V Badari</option>
+                                                <option value="C V Badri">C V Badri</option>
+                                                <option value="C V Turamari">C V Turamari</option>
+                                                <option value="C. K. Koliwad (NVD)">C. K. Koliwad (NVD)</option>
+                                                <option value="C. Y. HUNAGUND">C. Y. HUNAGUND</option>
+                                                <option value="C.B.Naik">C.B.Naik</option>
+                                                <option value="C.B.Patil">C.B.Patil</option>
+                                                <option value="CHINNU ALEX">CHINNU ALEX</option>
+                                                <option value="D P Halappannavar">D P Halappannavar</option>
+                                                <option value="D S Bongale">D S Bongale</option>
+                                                <option value="D S Bongale">D S Bongale</option>
+                                                <option value="Deepa Halappanavr">Deepa Halappanavr</option>
+                                                <option value="E VENKATAREDDY">E VENKATAREDDY</option>
+                                                <option value="G K SATHISH ">G K SATHISH </option>
+                                                <option value="G P SHINDE">G P SHINDE</option>
+                                                <option value="G R Joshi">G R Joshi</option>
+                                                <option value="G S Bhat">G S Bhat</option>
+                                                <option value="G V Joshi">G V Joshi</option>
+                                                <option value="G V Joshi">G V Joshi</option>
+                                                <option value="G. B. Hanamanhal">G. B. Hanamanhal</option>
+                                                <option value="G. N. GOUDAR">G. N. GOUDAR</option>
+                                                <option value="G. N. GOUDAR">G. N. GOUDAR</option>
+                                                <option value="G. V. Naik">G. V. Naik</option>
+                                                <option value="G.H.Naik">G.H.Naik</option>
+                                                <option value="G.S.Matagar">G.S.Matagar</option>
+                                                <option value="GIRISH KANASOGI">GIRISH KANASOGI</option>
+                                                <option value="GOTTI GAJENDRA ">GOTTI GAJENDRA </option>
+                                                <option value="H. BIDDAPPA">H. BIDDAPPA</option>
+                                                <option value="H. M. Nagabhushan (TMK)">H. M. Nagabhushan (TMK)</option>
+                                                <option value="H. Venkatesh (KDG)">H. Venkatesh (KDG)</option>
+                                                <option value="Harish K B">Harish K B</option>
+                                                <option value="J DATTATREYA BHAT">J DATTATREYA BHAT</option>
+                                                <option value="J S Hiremath">J S Hiremath</option>
+                                                <option value="J SOMASHEKAR">J SOMASHEKAR</option>
+                                                <option value="J.M.Mulla">J.M.Mulla</option>
+                                                <option value="JAGADEESH HIREMATH">JAGADEESH HIREMATH</option>
+                                                <option value="JAGADISH G S ">JAGADISH G S </option>
+                                                <option value="Jayalalilata">Jayalalilata</option>
+                                                <option value="Jyothi. M. Patil">Jyothi. M. Patil</option>
+                                                <option value="K C Basavaraj">K C Basavaraj</option>
+                                                <option value="K C Shetty">K C Shetty</option>
+                                                <option value="K G SANNAMANI">K G SANNAMANI</option>
+                                                <option value="K M MANVI">K M MANVI</option>
+                                                <option value="K N MANJUNATH">K N MANJUNATH</option>
+                                                <option value="K R RANGASWAMI">K R RANGASWAMI</option>
+                                                <option value="K T Jambagi">K T Jambagi</option>
+                                                <option value="K V Keruru">K V Keruru</option>
+                                                <option value="K. P. Kotigoudar (Gadag)">K. P. Kotigoudar (Gadag)</option>
+                                                <option value="KHAKANDKI">KHAKANDKI</option>
+                                                <option value="KOTRESH MALLIMATH">KOTRESH MALLIMATH</option>
+                                                <option value="Krishnamurty">Krishnamurty</option>
+                                                <option value="L D Kulkarani">L D Kulkarani</option>
+                                                <option value="L S Bandi">L S Bandi</option>
+                                                <option value="L. G. DESAI">L. G. DESAI</option>
+                                                <option value="L. G. DESAI">L. G. DESAI</option>
+                                                <option value="L.M.Heggannavar">L.M.Heggannavar</option>
+                                                <option value="M A Bidarakundi">M A Bidarakundi</option>
+                                                <option value="M A Bijapur">M A Bijapur</option>
+                                                <option value="M A Hudli">M A Hudli</option>
+                                                <option value="M A Hudli">M A Hudli</option>
+                                                <option value="M A Kakhandaki">M A Kakhandaki</option>
+                                                <option value="M A Kakhandaki">M A Kakhandaki</option>
+                                                <option value="M A MEDDEBIHAL">M A MEDDEBIHAL</option>
+                                                <option value="M A Patil">M A Patil</option>
+                                                <option value="M B Mastiholli">M B Mastiholli</option>
+                                                <option value="M B Patil">M B Patil</option>
+                                                <option value="M B Patil">M B Patil</option>
+                                                <option value="M C Anegundi">M C Anegundi</option>
+                                                <option value="M G Patil">M G Patil</option>
+                                                <option value="M G Patil">M G Patil</option>
+                                                <option value="M G Patil">M G Patil</option>
+                                                <option value="M I Katti">M I Katti</option>
+                                                <option value="M M Tate">M M Tate</option>
+                                                <option value="M M YALIGAR">M M YALIGAR</option>
+                                                <option value="M R SOMANNAVAR">M R SOMANNAVAR</option>
+                                                <option value="M V Ghooli">M V Ghooli</option>
+                                                <option value="M Y APPANNAVAR">M Y APPANNAVAR</option>
+                                                <option value="M. A. Kakhandki (VJP)">M. A. Kakhandki (VJP)</option>
+                                                <option value="M. G. Patil">M. G. Patil</option>
+                                                <option value="M. JAGADISH CHANDRA">M. JAGADISH CHANDRA</option>
+                                                <option value="M. SUDHAKAR">M. SUDHAKAR</option>
+                                                <option value="M.A.Deshapande">M.A.Deshapande</option>
+                                                <option value="M.A.Kakhandaki(VJP)">M.A.Kakhandaki(VJP)</option>
+                                                <option value="Mahadevaiah (BNG)">Mahadevaiah (BNG)</option>
+                                                <option value="Mahadevayya">Mahadevayya</option>
+                                                <option value="MAHADEVI P ANGADI">MAHADEVI P ANGADI</option>
+                                                <option value="MAHENDRA V DESAI">MAHENDRA V DESAI</option>
+                                                <option value="Mallikarjun Gooli">Mallikarjun Gooli</option>
+                                                <option value="Manoj. S. Tailor">Manoj. S. Tailor</option>
+                                                <option value="Manoraj">Manoraj</option>
+                                                <option value="Meer Nadaf">Meer Nadaf</option>
+                                                <option value="N Devaraj">N Devaraj</option>
+                                                <option value="N M Yadavannavar">N M Yadavannavar</option>
+                                                <option value="N M Yadavannavar">N M Yadavannavar</option>
+                                                <option value="N S Patil">N S Patil</option>
+                                                <option value="N. I. Bellad (Laxmeshwar)">N. I. Bellad (Laxmeshwar)</option>
+                                                <option value="N. S. Hegde">N. S. Hegde</option>
+                                                <option value="N. V. Kamath">N. V. Kamath</option>
+                                                <option value="N.Rangaraju">N.Rangaraju</option>
+                                                <option value="Nagaraj Jawali (GVT)">Nagaraj Jawali (GVT)</option>
+                                                <option value="Nagaraj Kamat">Nagaraj Kamat</option>
+                                                <option value="Nagarathana Mugalishetar">Nagarathana Mugalishetar</option>
+                                                <option value="NARAYAN B SANNALLIMANI">NARAYAN B SANNALLIMANI</option>
+                                                <option value="P A Jadava">P A Jadava</option>
+                                                <option value="P B Kuchabal">P B Kuchabal</option>
+                                                <option value="P B Madivalar">P B Madivalar</option>
+                                                <option value="P B Madiwalar">P B Madiwalar</option>
+                                                <option value="P B MADIWALAR">P B MADIWALAR</option>
+                                                <option value="P B MANJUNATH">P B MANJUNATH</option>
+                                                <option value="P G KATTIMANI">P G KATTIMANI</option>
+                                                <option value="P G KORI">P G KORI</option>
+                                                <option value="P R Tukkappanavar">P R Tukkappanavar</option>
+                                                <option value="P. B. MANJUNATH">P. B. MANJUNATH</option>
+                                                <option value="P. M. WALI (LAXMESHWAR)">P. M. WALI (LAXMESHWAR)</option>
+                                                <option value="P. N. GUJAMAGADI">P. N. GUJAMAGADI</option>
+                                                <option value="Prashant Jadhav">Prashant Jadhav</option>
+                                                <option value="Prashanthkumar J. (HBL)">Prashanthkumar J. (HBL)</option>
+                                                <option value="PRASHANYKUMAR">PRASHANYKUMAR</option>
+                                                <option value="PRATHIBA NAIK">PRATHIBA NAIK</option>
+                                                <option value="PREMACHANDRA G POLEKAR">PREMACHANDRA G POLEKAR</option>
+                                                <option value="R  G Tukkappanavar">R  G Tukkappanavar</option>
+                                                <option value="R B Malli">R B Malli</option>
+                                                <option value="R B Pawar">R B Pawar</option>
+                                                <option value="R G Tukkappanavar">R G Tukkappanavar</option>
+                                                <option value="R KIRAN">R KIRAN</option>
+                                                <option value="R M Patil">R M Patil</option>
+                                                <option value="R P Kumbar">R P Kumbar</option>
+                                                <option value="R. K. Bhat Kichupal">R. K. Bhat Kichupal</option>
+                                                <option value="RAMESH S. ARAHUNASI">RAMESH S. ARAHUNASI</option>
+                                                <option value="RAVIKUMAR">RAVIKUMAR</option>
+                                                <option value="S B Mathad">S B Mathad</option>
+                                                <option value="S B Pagad">S B Pagad</option>
+                                                <option value="S B ROTTI">S B ROTTI</option>
+                                                <option value="S D Kadi">S D Kadi</option>
+                                                <option value="S G Chougala">S G Chougala</option>
+                                                <option value="S G UPPIN">S G UPPIN</option>
+                                                <option value="S L SHIVANNAVAR">S L SHIVANNAVAR</option>
+                                                <option value="S M Danappanavar">S M Danappanavar</option>
+                                                <option value="S M Patankar">S M Patankar</option>
+                                                <option value="S P Kamate">S P Kamate</option>
+                                                <option value="S P Kamate">S P Kamate</option>
+                                                <option value="S PRAVEEN">S PRAVEEN</option>
+                                                <option value="S R  Shinde">S R  Shinde</option>
+                                                <option value="S R Hiremath">S R Hiremath</option>
+                                                <option value="S S Aladakatti">S S Aladakatti</option>
+                                                <option value="S S Aladakatti">S S Aladakatti</option>
+                                                <option value="S S Angadi">S S Angadi</option>
+                                                <option value="S S Dongre">S S Dongre</option>
+                                                <option value="S S Jamagoudar">S S Jamagoudar</option>
+                                                <option value="S S Mankani">S S Mankani</option>
+                                                <option value="S SIDDAVEERAPPA">S SIDDAVEERAPPA</option>
+                                                <option value="S T Kamanalli">S T Kamanalli</option>
+                                                <option value="S. A. Sanganal">S. A. Sanganal</option>
+                                                <option value="S. B. HIREMATH">S. B. HIREMATH</option>
+                                                <option value="S. G. TOPANGOUDAR">S. G. TOPANGOUDAR</option>
+                                                <option value="S. M. Bhagwat">S. M. Bhagwat</option>
+                                                <option value="S. M. Deshbhandari">S. M. Deshbhandari</option>
+                                                <option value="S. R. Hiremath (Koppal)">S. R. Hiremath (Koppal)</option>
+                                                <option value="S. R. PATIL">S. R. PATIL</option>
+                                                <option value="S. S. Dongre">S. S. Dongre</option>
+                                                <option value="S. S. Naik">S. S. Naik</option>
+                                                <option value="S. S. NAYAK">S. S. NAYAK</option>
+                                                <option value="S. S. PATIL">S. S. PATIL</option>
+                                                <option value="S. V. Manjunath (Sira)">S. V. Manjunath (Sira)</option>
+                                                <option value="S.G.Uppin">S.G.Uppin</option>
+                                                <option value="S.S.Aladakatti(bailghl)">S.S.Aladakatti(bailghl)</option>
+                                                <option value="S.S.Aladakatti(bailghl)">S.S.Aladakatti(bailghl)</option>
+                                                <option value="S.S.Angadi">S.S.Angadi</option>
+                                                <option value="S.S.Pattar">S.S.Pattar</option>
+                                                <option value="S.T. Kamanhalli (HGL)">S.T. Kamanhalli (HGL)</option>
+                                                <option value="Sampuran ananda">Sampuran ananda</option>
+                                                <option value="Santosh Angai(Belagavi)">Santosh Angai(Belagavi)</option>
+                                                <option value="SANTOSH G HEGDE">SANTOSH G HEGDE</option>
+                                                <option value="Sateesha G Toppannanavar">Sateesha G Toppannanavar</option>
+                                                <option value="SAVITA MD">SAVITA MD</option>
+                                                <option value="Shankargoud (Sindnur)">Shankargoud (Sindnur)</option>
+                                                <option value="SHANKARGOUDA PATIL">SHANKARGOUDA PATIL</option>
+                                                <option value="SHEEBA RANI. S">SHEEBA RANI. S</option>
+                                                <option value="SHIVAJI BHOSALE">SHIVAJI BHOSALE</option>
+                                                <option value="Shubha. R. Gaonkar">Shubha. R. Gaonkar</option>
+                                                <option value="Smt M P Ronad">Smt M P Ronad</option>
+                                                <option value="Smt Sumangala Kognur">Smt Sumangala Kognur</option>
+                                                <option value="Smt Veena Gasti">Smt Veena Gasti</option>
+                                                <option value="SMT. B. S. ROOPARAO">SMT. B. S. ROOPARAO</option>
+                                                <option value="Smt: Chetana Kulkarni (HBL)">Smt: Chetana Kulkarni (HBL)</option>
+                                                <option value="Smt: G. Sneha (BLR)">Smt: G. Sneha (BLR)</option>
+                                                <option value="Smt: K. M. Manvi">Smt: K. M. Manvi</option>
+                                                <option value="Smt: S. B. Hiremath (GDG)">Smt: S. B. Hiremath (GDG)</option>
+                                                <option value="Sri Anand S Patil">Sri Anand S Patil</option>
+                                                <option value="Sri B N Patil">Sri B N Patil</option>
+                                                <option value="Sri B S Kulkarni">Sri B S Kulkarni</option>
+                                                <option value="Sri C V Badri">Sri C V Badri</option>
+                                                <option value="Sri C V Turumari">Sri C V Turumari</option>
+                                                <option value="Sri D S Bongale">Sri D S Bongale</option>
+                                                <option value="Sri Deepak Banarji">Sri Deepak Banarji</option>
+                                                <option value="Sri F I Sidlingannavar">Sri F I Sidlingannavar</option>
+                                                <option value="Sri G H Naik">Sri G H Naik</option>
+                                                <option value="Sri G V Bhagavat">Sri G V Bhagavat</option>
+                                                <option value="Sri G V Joshi">Sri G V Joshi</option>
+                                                <option value="Sri H S Jadhav">Sri H S Jadhav</option>
+                                                <option value="Sri J M Mulla">Sri J M Mulla</option>
+                                                <option value="Sri K G Sannamani">Sri K G Sannamani</option>
+                                                <option value="Sri Kumar D Madivalar">Sri Kumar D Madivalar</option>
+                                                <option value="Sri L M Heggannavar">Sri L M Heggannavar</option>
+                                                <option value="Sri M A Hudali">Sri M A Hudali</option>
+                                                <option value="Sri M B Patil">Sri M B Patil</option>
+                                                <option value="Sri M G Patil">Sri M G Patil</option>
+                                                <option value="Sri M H Walikar">Sri M H Walikar</option>
+                                                <option value="Sri M M Yaligar">Sri M M Yaligar</option>
+                                                <option value="Sri M P Lakkannanavar">Sri M P Lakkannanavar</option>
+                                                <option value="Sri M Pampangouda">Sri M Pampangouda</option>
+                                                <option value="Sri Mahadevaiah">Sri Mahadevaiah</option>
+                                                <option value="Sri Maruthi Jokanal">Sri Maruthi Jokanal</option>
+                                                <option value="Sri Mohd Sultan">Sri Mohd Sultan</option>
+                                                <option value="Sri N Devaraj">Sri N Devaraj</option>
+                                                <option value="Sri P B Madiwalar">Sri P B Madiwalar</option>
+                                                <option value="Sri Pradeep G Kori">Sri Pradeep G Kori</option>
+                                                <option value="Sri R C Shidenur">Sri R C Shidenur</option>
+                                                <option value="Sri R H Huchappanavar">Sri R H Huchappanavar</option>
+                                                <option value="Sri S A Sanganal">Sri S A Sanganal</option>
+                                                <option value="Sri S B Rotti">Sri S B Rotti</option>
+                                                <option value="Sri S B Venkatgiri">Sri S B Venkatgiri</option>
+                                                <option value="Sri S G Topannavar">Sri S G Topannavar</option>
+                                                <option value="Sri S M Deshabhandari">Sri S M Deshabhandari</option>
+                                                <option value="Sri S M Sangreshkop">Sri S M Sangreshkop</option>
+                                                <option value="Sri S R Hegade">Sri S R Hegade</option>
+                                                <option value="Sri S S Khazi">Sri S S Khazi</option>
+                                                <option value="Sri S S Pattar">Sri S S Pattar</option>
+                                                <option value="Sri S T Kamanahalli">Sri S T Kamanahalli</option>
+                                                <option value="Sri S T Kamanhalli">Sri S T Kamanhalli</option>
+                                                <option value="Sri Savita M Dannappanavar">Sri Savita M Dannappanavar</option>
+                                                <option value="Sri Srinivas Aital">Sri Srinivas Aital</option>
+                                                <option value="Sri V B Dhavaleshwar">Sri V B Dhavaleshwar</option>
+                                                <option value="Sri V G Biradar Patil">Sri V G Biradar Patil</option>
+                                                <option value="SRINIVAS AITAL">SRINIVAS AITAL</option>
+                                                <option value="SRINIVAS AITHAL">SRINIVAS AITHAL</option>
+                                                <option value="SUDHIR E TARI">SUDHIR E TARI</option>
+                                                <option value="Sujat  S Nidoni">Sujat  S Nidoni</option>
+                                                <option value="Sumangala">Sumangala</option>
+                                                <option value="SUMANGALA KOGANUR">SUMANGALA KOGANUR</option>
+                                                <option value="SUREKHA UPPIN">SUREKHA UPPIN</option>
+                                                <option value="T R KONGATTI">T R KONGATTI</option>
+                                                <option value="UDAYKUMAR SHETTY">UDAYKUMAR SHETTY</option>
+                                                <option value="URKUNDAPPA">URKUNDAPPA</option>
+                                                <option value="V B Dhavaleshawar">V B Dhavaleshawar</option>
+                                                <option value="V B DHAVALESHWAR">V B DHAVALESHWAR</option>
+                                                <option value="V B Dhavaleshwar">V B Dhavaleshwar</option>
+                                                <option value="V B Dhavaleshwar">V B Dhavaleshwar</option>
+                                                <option value="V G B.Patil">V G B.Patil</option>
+                                                <option value="V G Biradarapatil">V G Biradarapatil</option>
+                                                <option value="V T Kulkarni">V T Kulkarni</option>
+                                                <option value="V. B. Dhavaleshwar (DWR)">V. B. Dhavaleshwar (DWR)</option>
+                                                <option value="V. G. PRAKASHGOUDA">V. G. PRAKASHGOUDA</option>
+                                                <option value="Veena Ghasti">Veena Ghasti</option>
+                                                <option value="Veenapattanashety">Veenapattanashety</option>
+                                                <option value="Vinod. A. Todurkar">Vinod. A. Todurkar</option>
+                                                <option value="Y F Niralakeri">Y F Niralakeri</option>
+                                                <option value="YASHODA DODAMANI">YASHODA DODAMANI</option>
+                                        <option value="Others">Others</option>
+                                    </select>
+                                </div>
+
+                                <!-- Compliance for Appeal -->
+                                <div class="col-md-12 mt-4">
+                                    <h6 class="text-primary fw-bold border-bottom pb-2 mb-3"><i class="bi bi-cash-stack me-2"></i>Compliance for Appeal</h6>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Compliance Amount</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-light fw-bold text-success">₹</span>
+                                        <input type="number" step="0.01" class="form-control appeal-input" name="AppealComplianceAmount" placeholder="0.00" />
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Cheque Number</label>
+                                    <input type="text" class="form-control appeal-input" name="AppealChequeNumber" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Cheque Date</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealChequeDate" />
+                                </div>
+
+                                <!-- After Disposal of Appeal -->
+                                <div class="col-md-12 mt-4">
+                                    <h6 class="text-primary fw-bold border-bottom pb-2 mb-3"><i class="bi bi-file-earmark-check me-2"></i>After Disposal of Appeal</h6>
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label">Award Details</label>
+                                    <textarea class="form-control appeal-input" name="AppealAwardDetails" rows="2" placeholder="Enter award details..."></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Case Disposed On</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealCaseDisposedOn" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Copy Applied On</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealCopyAppliedOn" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Copy Ready On</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealCopyReadyOn" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Copy Delivered On</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealCopyDeliveredOn" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Copy Received at Division</label>
+                                    <input type="date" class="form-control appeal-input" name="AppealCopyReceivedAtDivision" />
+                                </div>
+                                <div class="col-md-12">
+                                    <label class="form-label">Delay Remarks (if any)</label>
+                                    <textarea class="form-control appeal-input" name="AppealDelayRemarks" rows="2" placeholder="Enter remarks for any delay..."></textarea>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Opinion of Advocate</label>
+                                    <textarea class="form-control appeal-input" name="AppealAdvocateOpinion" rows="2" placeholder="Advocate's opinion..."></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Opinion of ALO/LO</label>
+                                    <textarea class="form-control appeal-input" name="AppealALOOpinion" rows="2" placeholder="ALO/LO's opinion..."></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Opinion of DC</label>
+                                    <textarea class="form-control appeal-input" name="AppealDCOpinion" rows="2" placeholder="DC's opinion..."></textarea>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Forwarding Status</label>
+                                    <select class="form-select appeal-input border-secondary" name="AppealForwardingStatus" id="appealForwardSelect">
+                                        <option value="PENDING" selected>PENDING</option>
+                                        <option value="FORWARDED TO CO">FORWARDED TO CO</option>
+                                        <option value="CLOSED">CLOSED</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Upload Appeal Judgment Copy</label>
+                                    <input type="file" class="form-control appeal-input" name="AppealJudgmentCopy" accept=".pdf" />
+                                </div>
+                                
+                                <!-- Fields for FORWARDED TO CO under Appeal -->
+                                <div class="col-md-12" id="appealForwardCOFields" style="display:none;">
+                                    <div class="row g-3 p-3 bg-light rounded border border-warning">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-warning">Outward Number</label>
+                                            <input type="text" class="form-control appeal-forwarded-input" name="AppealOutwardNumber" placeholder="Enter official outward no..." />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-warning">Outward Date</label>
+                                            <input type="date" class="form-control appeal-forwarded-input" name="AppealOutwardDate" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Fields for CLOSED under Appeal -->
+                                <div class="col-md-12" id="appealClosedFields" style="display:none;">
+                                    <div class="row g-3 p-3 bg-light rounded border border-danger">
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-danger">Closure Number</label>
+                                            <input type="text" class="form-control appeal-closed-input" name="AppealClosureNumber" placeholder="Enter closure id..." />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label fw-bold text-danger">Closure Date</label>
+                                            <input type="date" class="form-control appeal-closed-input" name="AppealClosureDate" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                </div>
+            </div>
+
+            <div class="col-12 text-center mt-4">
+                <button type="submit" class="btn btn-primary px-5 shadow-sm">
+                    <i class="bi bi-save2 me-2"></i>SAVE CASE DETAILS
+                </button>
+            </div>
+        </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+
+
+            // Case Progress: Document Sent Radio Toggle
+            $('input[name="DocumentSent"]').change(function() {
+                if ($(this).val() === 'Yes') {
+                    $('.doc-sent-input').prop('disabled', false);
+                    $('#docSentFields').slideDown(300);
+                } else {
+                    $('#docSentFields').slideUp(300);
+                    $('.doc-sent-input').prop('disabled', true).val('');
+                }
+            });
+
+            // Objection Verified Radio Toggle
+            $('input[name="ObjectionVerified"]').change(function() {
+                if ($(this).val() === 'Yes') {
+                    $('.obj-verified-input').prop('disabled', false);
+                    $('#objVerifiedFields').slideDown(300);
+                } else {
+                    $('#objVerifiedFields').slideUp(300);
+                    $('.obj-verified-input').prop('disabled', true).val('');
+                }
+            });
+
+            // Objection Filed Toggle
+            $('input[name="IsObjectionFiled"]').change(function() {
+                if ($(this).val() === 'No') {
+                    $('.obj-no-remarks').prop('disabled', false);
+                    $('#objNoFields').slideDown(300);
+                } else {
+                    $('#objNoFields').slideUp(300);
+                    $('.obj-no-remarks').prop('disabled', true).val('');
+                }
+            });
+
+            // Disposal Status dropdown conditional fields toggle logic
+            $('#disposalStatusSelect').change(function() {
+                var selectedStatus = $(this).val();
+                
+                // Hide all sections first
+                $('#closedDivisionSection').slideUp(200);
+                $('#sentCentralOfficeSection').slideUp(200);
+                $('#resultSection').slideUp(200);
+                $('#favorSection').slideUp(200);
+                $('#evidenceSection').slideUp(200);
+                $('#ccDetailsSection').slideUp(200);
+                $('#opinionsSection').slideUp(200);
+                
+                // Reset Result dropdown
+                $('#resultSelect').val('');
+                $('#finalForwardSelect').val('PENDING').trigger('change');
+                
+                // Disable all duplicate inputs to prevent form collison tracking
+                $('.division-input, .favor-input, .opinion-input, .central-input, .forwarded-input, .final-closed-input').prop('disabled', true);
+                
+                // Show specific section based on selection
+                if (selectedStatus === 'DISPOSED' || selectedStatus === 'DNP') {
+                    $('#resultSection').slideDown(300);
+                }
+            });
+
+            // Final Forwarding Status dropdown conditional logic
+            $('#finalForwardSelect').change(function() {
+                var selectedFinal = $(this).val();
+                
+                $('#finalForwardCOFields').slideUp(200);
+                $('#finalClosedFields').slideUp(200);
+                $('#appealSection').slideUp(200);
+                
+                // Disable conflict inputs
+                $('.forwarded-input, .final-closed-input, .appeal-input').prop('disabled', true);
+                
+                if (selectedFinal === 'FORWARDED TO CO') {
+                    $('.forwarded-input').prop('disabled', false);
+                    $('#finalForwardCOFields').slideDown(300);
+                } else if (selectedFinal === 'CLOSED') {
+                    $('.final-closed-input').prop('disabled', false);
+                    $('#finalClosedFields').slideDown(300);
+                } else if (selectedFinal === 'APPEAL') {
+                    $('.appeal-input').prop('disabled', false);
+                    $('#appealSection').slideDown(300);
+                }
+            });
+
+            // Result dropdown conditional logic (FAVOR/AGAINST)
+            $('#resultSelect').change(function() {
+                var selectedResult = $(this).val();
+                
+                // Reset everything under result first
+                $('#favorSection').slideUp(200);
+                $('#evidenceSection').slideUp(200);
+                $('#ccDetailsSection').slideUp(200);
+                $('#opinionsSection').slideUp(200);
+                
+                // Disable conflict inputs
+                $('.favor-input, .opinion-input').prop('disabled', true);
+                
+                if (selectedResult === 'AGAINST') {
+                    $('.opinion-input').prop('disabled', false); // Enable opinion inputs
+                    $('#evidenceSection').slideDown(300);
+                    $('#ccDetailsSection').slideDown(300);
+                    $('#opinionsSection').slideDown(300);
+                } else if (selectedResult === 'FAVOR') {
+                    $('.favor-input').prop('disabled', false); // Enable favor inputs
+                    $('#favorSection').slideDown(300);
+                }
+            });
+
+            // Dynamic Respondent List Management
+            let respondentIndex = 1;
+            $(document).on('click', '.add-respondent', function() {
+                const row = `
+                    <div class="row g-2 mb-2 respondent-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="Respondents[${respondentIndex}].Name" placeholder="Name of petitioner..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="Respondents[${respondentIndex}].Remark" placeholder="Remark for this name..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-respondent w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#respondentList').append(row);
+                respondentIndex++;
+            });
+
+            $(document).on('click', '.remove-respondent', function() {
+                $(this).closest('.respondent-row').remove();
+                reindexRespondents();
+            });
+
+            function reindexRespondents() {
+                respondentIndex = 0;
+                $('#respondentList .respondent-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `Respondents[${respondentIndex}].Name`);
+                    $(this).find('input[name*=".Remark"]').attr('name', `Respondents[${respondentIndex}].Remark`);
+                    respondentIndex++;
+                });
+            }
+
+            // Dynamic Respondent Evidence Management
+            let respEvIndex = 1;
+            $(document).on('click', '.add-resp-ev', function() {
+                const row = `
+                    <div class="row g-2 mb-2 resp-evidence-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Name" placeholder="Petitioner Name(s)..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Remark" placeholder="Remark..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-resp-ev w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#respEvidenceList').append(row);
+                respEvIndex++;
+            });
+
+            $(document).on('click', '.remove-resp-ev', function() {
+                $(this).closest('.resp-evidence-row').remove();
+                reindexRespEvidence();
+            });
+
+            function reindexRespEvidence() {
+                respEvIndex = 0;
+                $('#respEvidenceList .resp-evidence-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `RespondentEvidence[${respEvIndex}].Name`);
+                    $(this).find('input[name*=".Remark"]').attr('name', `RespondentEvidence[${respEvIndex}].Remark`);
+                    respEvIndex++;
+                });
+            }
+
+            // Dynamic Corporation Evidence Management
+            let corpEvIndex = 1;
+            $(document).on('click', '.add-corp-ev', function() {
+                const row = `
+                    <div class="row g-2 mb-2 corp-evidence-row align-items-center">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Name" placeholder="Corporation Witness Name..." />
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Designation" placeholder="Designation..." />
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-corp-ev w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#corpEvidenceList').append(row);
+                corpEvIndex++;
+            });
+
+            $(document).on('click', '.remove-corp-ev', function() {
+                $(this).closest('.corp-evidence-row').remove();
+                reindexCorpEvidence();
+            });
+
+            function reindexCorpEvidence() {
+                corpEvIndex = 0;
+                $('#corpEvidenceList .corp-evidence-row').each(function() {
+                    $(this).find('input[name*=".Name"]').attr('name', `CorpEvidence[${corpEvIndex}].Name`);
+                    $(this).find('input[name*=".Designation"]').attr('name', `CorpEvidence[${corpEvIndex}].Designation`);
+                    corpEvIndex++;
+                });
+            }
+
+            // Next Date of Hearing logic
+            // Standardized Document Management
+            let docIndex = 1;
+            $(document).on('click', '.btn-add-enclosed-doc', function() {
+                const row = `
+                    <div class="row g-2 mb-2 doc-row align-items-center" style="display:none;">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" name="EnclosedDocuments[${docIndex}].DocName" placeholder="Document Description...">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control" name="EnclosedDocuments[${docIndex}].PageCount" placeholder="Pages...">
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <button type="button" class="btn btn-outline-danger btn-sm remove-doc-row w-100"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                var $row = $(row);
+                $('#enclosedDocsList').append($row);
+                $row.slideDown(200);
+                docIndex++;
+                reindexDocs();
+            });
+
+            $(document).on('click', '.remove-doc-row', function() {
+                var $row = $(this).closest('.doc-row');
+                $row.slideUp(200, function() {
+                    $(this).remove();
+                    reindexDocs();
+                });
+            });
+
+            function reindexDocs() {
+                let idx = 0;
+                $('#enclosedDocsList .doc-row').each(function() {
+                    $(this).find('input[name*=".DocName"]').attr('name', `EnclosedDocuments[${idx}].DocName`);
+                    $(this).find('input[name*=".PageCount"]').attr('name', `EnclosedDocuments[${idx}].PageCount`);
+                    idx++;
+                });
+                docIndex = idx;
+            }
+
+            // Appeal Forwarding Status Toggle
+            $('#appealForwardSelect').change(function() {
+                var status = $(this).val();
+                
+                // Hide both initially
+                $('#appealForwardCOFields').slideUp(300);
+                $('#appealClosedFields').slideUp(300);
+                
+                // Disable inputs initially
+                $('.appeal-forwarded-input').prop('disabled', true).val('');
+                $('.appeal-closed-input').prop('disabled', true).val('');
+                
+                if (status === 'FORWARDED TO CO') {
+                    $('#appealForwardCOFields').slideDown(300);
+                    $('.appeal-forwarded-input').prop('disabled', false);
+                } else if (status === 'CLOSED') {
+                    $('#appealClosedFields').slideDown(300);
+                    $('.appeal-closed-input').prop('disabled', false);
+                }
+            });
+            
+            // Trigger initially
+            $('#appealForwardSelect').trigger('change');
+        });
+    </script>
+}

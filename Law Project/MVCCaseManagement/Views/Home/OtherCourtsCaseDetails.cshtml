@@ -1,0 +1,278 @@
+@model MVCCaseManagement.Models.OtherCourtsCase
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    string courtName = Model.CaseType switch {
+        "PSC" => "P & SC",
+        "CC" => "Criminal Case",
+        "Consumer" => "Consumer Complaint",
+        "LAC" => "Land Acquisition",
+        "OS" => "Original Suit",
+        "ECA" => "ECA Case",
+        _ => Model.CaseType
+    };
+    ViewData["Title"] = $"{courtName} Details - {Model.CaseNumber}";
+}
+
+<style>
+    .card {
+        border-radius: 24px !important;
+        border: 1px solid rgba(232, 219, 179, 0.4) !important;
+        background: #fff !important;
+        transition: all 0.3s ease;
+    }
+    .card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 35px -5px rgba(191, 70, 70, 0.2) !important;
+    }
+    .card-header {
+        background: linear-gradient(135deg, #3D45AA 0%, #2D3380 100%) !important;
+        padding: 1.25rem 1.5rem !important;
+        border-radius: 24px 24px 0 0 !important;
+    }
+    .card-header h6 {
+        color: white !important;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin: 0;
+    }
+    .bg-light-premium {
+        background-color: #FFFDEB !important;
+        border: 1px solid rgba(232, 219, 179, 0.5) !important;
+    }
+    .label-bold {
+        font-weight: 800 !important;
+        color: #2c3e50 !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+</style>
+
+<div class="container-fluid py-4" style="max-width: 1600px;">
+    <div class="row g-4">
+        <!-- Sidebar Navigation -->
+        <div class="col-lg-3 col-xl-2 d-print-none">
+            @await Html.PartialAsync("_OtherCourtsSidebar")
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="col-lg-9 col-xl-10">
+            <!-- Header Section -->
+            <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
+                <div>
+                    <h4 class="fw-bold text-dark mb-0">
+                        <i class="bi bi-file-earmark-text text-primary me-2"></i>@courtName Case Details
+                    </h4>
+                    <p class="text-muted small mb-0">Case ID: #@Model.CaseID | Registered on @Model.CreatedDate.ToString("dd MMM yyyy")</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = Model.CaseID })" class="btn btn-warning rounded-pill px-4 shadow-sm">
+                        <i class="bi bi-pencil-square me-2"></i>Edit Case
+                    </a>
+                    <button onclick="window.print()" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm">
+                        <i class="bi bi-printer me-2"></i>Print
+                    </button>
+                    <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = Model.CaseType, litigantType = Model.LitigantType })" class="btn btn-light rounded-pill px-4 shadow-sm">
+                        <i class="bi bi-arrow-left me-2"></i>Back to List
+                    </a>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <!-- Left Column: Case Information -->
+                <div class="col-lg-8">
+                    <!-- Basic Information Card -->
+                    <div class="card shadow-sm mb-4 overflow-hidden">
+                        <div class="card-header">
+                            <h6><i class="bi bi-info-circle me-2"></i>Basic Case Information</h6>
+                        </div>
+                        <div class="card-body p-4 pt-0">
+                            <div class="row g-4">
+                                <div class="col-md-6">
+                                    <label class="label-bold">Case Number & Year</label>
+                                    <p class="fw-bold text-dark mb-0 fs-5">@(string.IsNullOrEmpty(Model.CaseNumber) ? "NOT FILED" : $"{Model.CaseNumber} / {Model.CaseYear}")</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="label-bold">Court Name</label>
+                                    <p class="fw-bold text-dark mb-0 fs-5">@Model.Court</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="label-bold">Nature of Case</label>
+                                    <p class="text-dark mb-0">@Model.CaseNature</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="label-bold">Current Stage</label>
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 rounded-pill">@Model.CaseStage</span>
+                                </div>
+                                <div class="col-12">
+                                    <label class="label-bold">Claim Details</label>
+                                    <p class="text-dark mb-0 bg-light-premium p-3 rounded-3">@Model.ClaimDetails</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Parties Involved -->
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header">
+                            <h6><i class="bi bi-people me-2"></i>Parties Involved</h6>
+                        </div>
+                        <div class="card-body p-4 pt-0">
+                            <div class="row g-4">
+                                <div class="col-md-6">
+                                    <div class="p-3 bg-light rounded-4 border border-light h-100">
+                                        <label class="small text-muted text-uppercase fw-bold d-block mb-2">Petitioner(s) / ಇತರ ಪಾರ್ಟಿಗಳು</label>
+                                        @if (Model.Respondents != null && Model.Respondents.Any())
+                                        {
+                                            @foreach (var pet in Model.Respondents)
+                                            {
+                                                <div class="d-flex align-items-center mb-2">
+                                                    <i class="bi bi-person-circle text-primary me-2"></i>
+                                                    <div>
+                                                        <div class="fw-bold small">@pet.Name</div>
+                                                        @if (!string.IsNullOrEmpty(pet.Remark)) { <div class="xsmall text-muted">@pet.Remark</div> }
+                                                    </div>
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <div class="fw-bold">@Model.PetitionerName</div>
+                                            <small class="text-muted">Relationship: @Model.PetitionerRelationship</small>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="p-3 bg-light rounded-4 border border-light h-100">
+                                        <label class="small text-muted text-uppercase fw-bold d-block mb-2">Corporation / Respondent</label>
+                                        <div class="fw-bold text-dark">
+                                            <i class="bi bi-building text-secondary me-2"></i>
+                                            @(Model.DivisionName ?? "Corporation")
+                                        </div>
+                                        <div class="xsmall text-muted mt-1">Litigant Type: @Model.LitigantType</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Disposal & Final Outcome -->
+                    @if (Model.DisposalStatus == "DISPOSED" || Model.DisposalStatus == "DNP")
+                    {
+                        <div class="card shadow-sm mb-4 border-start border-4 border-success">
+                            <div class="card-header">
+                                <h6><i class="bi bi-check-circle-fill me-2"></i>Disposal & Outcome</h6>
+                            </div>
+                            <div class="card-body p-4 pt-0">
+                                <div class="row g-4">
+                                    <div class="col-md-4">
+                                        <label class="small text-muted text-uppercase fw-bold d-block">Status</label>
+                                        <span class="badge bg-success px-3 rounded-pill">@Model.DisposalStatus</span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="small text-muted text-uppercase fw-bold d-block">Result</label>
+                                        <span class="badge @(Model.Result == "FAVOR" ? "bg-success" : "bg-danger") px-3 rounded-pill">@Model.Result</span>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="small text-muted text-uppercase fw-bold d-block">Closure Date</label>
+                                        <p class="fw-bold text-dark mb-0">@(Model.ClosureDate?.ToString("dd-MM-yyyy") ?? "-")</p>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="label-bold">Award Details / Remarks</label>
+                                        <p class="text-dark mb-0 bg-light-premium p-3 rounded-3 border">@Model.ClosureRemark</p>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(Model.FinalJudgmentFilePath))
+                                    {
+                                        <div class="col-12">
+                                            <a href="@Model.FinalJudgmentFilePath" target="_blank" class="btn btn-outline-success btn-sm rounded-pill px-4">
+                                                <i class="bi bi-file-earmark-pdf-fill me-2"></i>View Final Judgment
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <!-- Right Column: Status & Timeline -->
+                <div class="col-lg-4">
+                    <!-- Status Card -->
+                    <div class="card shadow-sm mb-4 overflow-hidden">
+                        <div class="p-4 text-white text-center" style="background: linear-gradient(135deg, #3D45AA 0%, #2D3380 100%) !important;">
+                            <div class="display-6 fw-bold mb-0">@Model.CaseStatus</div>
+                            <p class="mb-0 opacity-75">Current Case Status</p>
+                        </div>
+                        <div class="card-body p-4">
+                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                                <span class="text-muted">Next Hearing</span>
+                                <span class="fw-bold @(Model.NextDateOfHearing == DateTime.Today ? "text-danger" : "text-dark")">
+                                    @(Model.NextDateOfHearing?.ToString("dd MMM yyyy") ?? "Not Scheduled")
+                                </span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                                <span class="text-muted">Advocate</span>
+                                <span class="fw-bold text-dark">@Model.AdvocateName</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                                <span class="text-muted">Entrustment No.</span>
+                                <span class="fw-bold text-dark">@Model.EntrustmentNumber</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted">Entrustment Date</span>
+                                <span class="fw-bold text-dark">@(Model.EntrustmentDate?.ToString("dd-MM-yyyy") ?? "-")</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress Tracking -->
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header">
+                            <h6><i class="bi bi-activity me-2"></i>Progress Tracking</h6>
+                        </div>
+                        <div class="card-body p-4 pt-0">
+                            <ul class="list-group list-group-flush small">
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <span>Document Sent</span>
+                                    <span class="badge @(Model.DocumentSent == "Yes" ? "bg-success" : "bg-light text-dark") rounded-pill">@Model.DocumentSent</span>
+                                </li>
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <span>Objection Verified</span>
+                                    <span class="badge @(Model.ObjectionVerified == "Yes" ? "bg-success" : "bg-light text-dark") rounded-pill">@Model.ObjectionVerified</span>
+                                </li>
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <span>Evidence Filed</span>
+                                    <span class="badge @(Model.EvidenceFiled == "Yes" ? "bg-success" : "bg-light text-dark") rounded-pill">@Model.EvidenceFiled</span>
+                                </li>
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-center">
+                                    <span>Interim Order</span>
+                                    <span class="badge @(Model.InterimOrder == "Yes" ? "bg-info" : "bg-light text-dark") rounded-pill">@Model.InterimOrder</span>
+                                </li>
+                            </ul>
+                            @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
+                            {
+                                <a href="@Model.InterimOrderFilePath" target="_blank" class="btn btn-outline-primary btn-sm w-100 rounded-pill mt-3">
+                                    <i class="bi bi-file-earmark-text-fill me-2"></i>View Interim Order
+                                </a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .xsmall { font-size: 0.75rem; }
+    .bg-primary-subtle { background-color: #eff6ff !important; }
+    .bg-success-subtle { background-color: #f0fdf4 !important; }
+    @@media print {
+        .d-print-none { display: none !important; }
+        .col-lg-3, .col-xl-2 { display: none !important; }
+        .col-lg-9, .col-xl-10 { width: 100% !important; flex: 0 0 100% !important; max-width: 100% !important; }
+        .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; }
+    }
+</style>

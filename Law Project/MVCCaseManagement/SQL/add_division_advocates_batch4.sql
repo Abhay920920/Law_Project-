@@ -1,0 +1,46 @@
+-- Insert Data for Hubli-City Division
+INSERT INTO [dbo].[MVC_DIVISION_ADVOCATES] (DivisionName, AdvocateName) VALUES 
+('Hubli-City Division', N'N Devaraj'),
+('Hubli-City Division', N'Prashant Jadhav'),
+('Hubli-City Division', N'C.B.Patil'),
+('Hubli-City Division', N'G.H.Naik'),
+('Hubli-City Division', N'V B Dhavaleshwar'),
+('Hubli-City Division', N'Sumangala'),
+('Hubli-City Division', N'S.S.Aladakatti(bailghl)'),
+('Hubli-City Division', N'M.A.Kakhandaki(VJP)'),
+('Hubli-City Division', N'S.S.Aladakatti(bailghl)'),
+('Hubli-City Division', N'B.S.Bidarkundi'),
+('Hubli-City Division', N'Santosh Angai(Belagavi)');
+
+-- Insert Data for Gadag Division
+INSERT INTO [dbo].[MVC_DIVISION_ADVOCATES] (DivisionName, AdvocateName) VALUES 
+('Gadag Division', N'Ashok V. (CTG)'),
+('Gadag Division', N'Smt: G. Sneha (BLR)'),
+('Gadag Division', N'A. N. Ingalagi (Shiggaon)'),
+('Gadag Division', N'H. Venkatesh (KDG)'),
+('Gadag Division', N'S. V. Manjunath (Sira)'),
+('Gadag Division', N'M. A. Kakhandki (VJP)'),
+('Gadag Division', N'N. I. Bellad (Laxmeshwar)'),
+('Gadag Division', N'Mahadevaiah (BNG)'),
+('Gadag Division', N'H. M. Nagabhushan (TMK)'),
+('Gadag Division', N'Nagaraj Jawali (GVT)'),
+('Gadag Division', N'V. B. Dhavaleshwar (DWR)'),
+('Gadag Division', N'C. K. Koliwad (NVD)'),
+('Gadag Division', N'Prashanthkumar J. (HBL)'),
+('Gadag Division', N'A. S. Patil (HVR)'),
+('Gadag Division', N'A. S. Wali (Mundargi)'),
+('Gadag Division', N'K. P. Kotigoudar (Gadag)'),
+('Gadag Division', N'Shankargoud (Sindnur)'),
+('Gadag Division', N'B. M. Shirur (Yelburga)'),
+('Gadag Division', N'A. Shanmukhangouda'),
+('Gadag Division', N'S. R. Hiremath (Koppal)'),
+('Gadag Division', N'Smt: Chetana Kulkarni (HBL)'),
+('Gadag Division', N'Basavaraju ( CN. Halli)'),
+('Gadag Division', N'S.T. Kamanhalli (HGL)'),
+('Gadag Division', N'Smt: K. M. Manvi'),
+('Gadag Division', N'S. A. Sanganal'),
+('Gadag Division', N'G. B. Hanamanhal'),
+('Gadag Division', N'Smt: S. B. Hiremath (GDG)'),
+('Gadag Division', N'M. G. Patil'),
+('Gadag Division', N'S. S. Dongre');
+GO

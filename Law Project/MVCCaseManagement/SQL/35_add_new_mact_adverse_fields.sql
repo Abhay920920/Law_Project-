@@ -1,0 +1,26 @@
+-- Add new fields to MVC_CASE_ADVERSE_DETAILS table
+ALTER TABLE MVC_CASE_ADVERSE_DETAILS ADD 
+    IsFIRFiledAgainstDriver BIT NULL,
+    IsBusCameraInstalled BIT NULL,
+    IsCameraFootageProduced BIT NULL,
+    IsPhotographProduced BIT NULL,
+    PhotographNotProducedReason NVARCHAR(500) NULL,
+    PoliceSketchExhibitNo NVARCHAR(100) NULL,
+    IsPoliceSketchEnclosed BIT NULL,
+    IsEvidenceBasedOnSecurityReport BIT NULL,
+    SecurityReportNoEvidenceReason NVARCHAR(500) NULL,
+    IsImpleadingAppFiled BIT NULL,
+    ImpleadingAppNotFiledReason NVARCHAR(500) NULL,
+    IsVictimSalaried BIT NULL,
+    IsIncomeCrossVerified BIT NULL,
+    DoesIncomeTallyWithDocuments BIT NULL,
+    IsAmountDepositedInEP BIT NULL,
+    FutureProspectsPercentage DECIMAL(18, 2) NULL,
+    PersonalExpensesDeduction DECIMAL(18, 2) NULL,
+    Multiplier DECIMAL(18, 2) NULL,
+    LossOfDependency DECIMAL(18, 2) NULL,
+    LossOfConsortium DECIMAL(18, 2) NULL,
+    LossOfEstate DECIMAL(18, 2) NULL,
+    FuneralExpenses DECIMAL(18, 2) NULL,
+    LossOfLoveAffection DECIMAL(18, 2) NULL;
+GO

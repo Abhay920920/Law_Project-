@@ -1,0 +1,245 @@
+@model IEnumerable<MVCCaseManagement.Models.AppealViewModel>
+
+@{
+    ViewData["Title"] = "Claimant Appeals Registry";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-primary mb-0"><i class="bi bi-person-badge me-2"></i>Claimant Appeal Registry</h2>
+            <p class="text-muted mb-0">Register and manage appeals filed by claimants / petitioners</p>
+        </div>
+    </div>
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm mb-4" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+
+
+    <!-- Registry Table Section -->
+    <div class="card shadow-sm border-0 table-card">
+        <div class="card-header bg-white border-bottom py-4 d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold text-dark text-uppercase" style="letter-spacing: 1px;">
+                <i class="bi bi-person-badge-fill me-2 text-primary"></i>Claimant Appeals Registry
+            </h5>
+            <a asp-action="Register" class="btn btn-primary btn-lg px-5 fw-bold shadow-lg border-2">
+                <i class="bi bi-plus-circle-fill me-2"></i>New Registration
+            </a>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0" id="appealsTable">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">MVC Case No</th>
+                            <th>Division</th>
+                            <th>MACT</th>
+                            <th>MFA Number</th>
+                            <th>Year</th>
+                            <th>Status</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var item in Model)
+                            {
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="data-id">@item.MVCNo</div>
+                                    </td>
+                                    <td>
+                                        <div class="location-text fw-bold text-secondary">@item.DivisionName</div>
+                                    </td>
+                                    <td>
+                                        <div class="location-text text-dark">@item.MACTName</div>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(item.ClaimantMFANumber))
+                                        {
+                                            <span class="badge bg-primary bg-opacity-10 text-primary fw-bold border border-primary border-opacity-25">@item.ClaimantMFANumber</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.ClaimantMFAYear.HasValue)
+                                        {
+                                            <span class="fw-bold">@item.ClaimantMFAYear</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="badge-status @(item.ClaimantMFAStatus == "Pending" ? "badge-pending" : "badge-favor")">
+                                            @item.ClaimantMFAStatus
+                                        </span>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="btn-group shadow-sm">
+                                            <a href="/Appeal/ViewClaimant/@item.CaseID" class="btn btn-sm btn-outline-info fw-bold" title="View Claimant Appeal Details">
+                                                <i class="bi bi-eye"></i> View
+                                            </a>
+                                            <a href="/Appeal/ManageClaimant/@item.CaseID" class="btn btn-sm btn-outline-primary fw-bold">
+                                                <i class="bi bi-pencil-square"></i> Manage
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7" class="text-center py-5 text-muted">
+                                    <div class="bg-light rounded-circle d-inline-flex p-3 mb-3">
+                                        <i class="bi bi-inbox fs-1 text-secondary opacity-50"></i>
+                                    </div>
+                                    <h6 class="fw-bold text-dark">No claimant appeals found</h6>
+                                    <p class="small text-muted">Use the search form above or click "New Registration" to add appeals.</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        :root {
+            --gov-blue-dark: #0f172a;
+            --gov-blue: #2563eb;
+            --gov-bg-light: #f8fafc;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --border-color: #e2e8f0;
+            --table-header-bg: #f1f5f9;
+        }
+
+        /* Container & Structure */
+        .container-fluid {
+            background-color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        /* Card Styling */
+        .search-card, .table-card {
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background-color: #ffffff !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+
+        /* Form Controls */
+        .form-control, .form-select {
+            border-radius: 4px;
+            font-size: 0.875rem;
+            padding: 0.5rem 0.75rem;
+        }
+
+        .form-control:focus, .form-select:focus {
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+            outline: none;
+        }
+
+        /* Table Styling */
+        .table-responsive {
+            scrollbar-width: thin;
+        }
+
+        .table {
+            margin-bottom: 0;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table thead th {
+            background-color: var(--table-header-bg);
+            color: #475569;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            padding: 0.75rem 1rem;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        .table tbody td {
+            padding: 0.75rem 1rem;
+            vertical-align: middle;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: #f9fafb;
+        }
+
+        .table tbody tr:hover {
+            background-color: #f0f9ff !important;
+        }
+
+        /* Data ID - Monospace */
+        .data-id {
+            font-family: 'Roboto Mono', 'SF Mono', Consolas, monospace;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+        }
+
+        .location-text {
+            font-size: 0.8rem;
+            line-height: 1.3;
+        }
+
+        /* Status Badges */
+        .badge-status {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.6rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            line-height: 1;
+            border-radius: 9999px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .badge-favor { 
+            background-color: #d1fae5; 
+            color: #065f46; 
+            border: 1px solid #a7f3d0; 
+        }
+
+        .badge-pending { 
+            background-color: #fef3c7; 
+            color: #92400e; 
+            border: 1px solid #fde68a; 
+        }
+
+        /* Button Group */
+        .btn-group {
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .btn-sm {
+            font-size: 0.75rem;
+            padding: 0.35rem 0.85rem;
+        }
+    </style>
+}

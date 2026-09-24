@@ -1,0 +1,12 @@
+bin/
+obj/
+*.user
+*.log
+*.bak
+*.tmp
+*.suo
+Publish_Output*/
+Final_Publish/
+*.zip
+*.html
+!MVCCaseManagement/Views/**/*.html

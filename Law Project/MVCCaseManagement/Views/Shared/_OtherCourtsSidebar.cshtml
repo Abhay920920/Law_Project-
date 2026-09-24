@@ -1,0 +1,86 @@
+@using Microsoft.AspNetCore.Http
+@{
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+}
+
+<div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4 overflow-hidden">
+    <div class="card-header bg-white border-bottom-0 py-3">
+        <h6 class="fw-bold text-primary mb-0"><i class="bi bi-list-task me-2"></i>NAVIGATION</h6>
+    </div>
+    <div class="list-group list-group-flush sideboard-nav">
+        @{
+            string activeCourt = ViewBag.ActiveCourt?.ToString() ?? "OS";
+            string dashboardAction = activeCourt switch {
+                "OS" => (ViewBag.LitigantType == "Corporation" ? "OSCorporation" : "OSClaimant"),
+                _ => activeCourt
+            };
+            string formAction = activeCourt switch {
+                "OS" => (ViewBag.LitigantType == "Corporation" ? "OSCorporationForm" : "OSClaimantForm"),
+                _ => activeCourt + "Form"
+            };
+        }
+
+        <a href="@Url.Action(dashboardAction, "Home")" 
+           class="list-group-item list-group-item-action border-0 py-3 px-4 @(currentAction == dashboardAction ? "active bg-primary text-white" : "text-muted")">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-speedometer2 me-3 fs-5"></i>
+                <div>
+                    <div class="fw-bold small">Dashboard</div>
+                    <div class="xsmall @(currentAction == dashboardAction ? "text-white-50" : "text-muted")">Overview & Stats</div>
+                </div>
+            </div>
+        </a>
+
+        <a href="@Url.Action(formAction, "Home")" 
+           class="list-group-item list-group-item-action border-0 py-3 px-4 @(currentAction == formAction ? "active bg-primary text-white" : "text-muted")">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-file-earmark-plus me-3 fs-5"></i>
+                <div>
+                    <div class="fw-bold small">Registration</div>
+                    <div class="xsmall @(currentAction == formAction ? "text-white-50" : "text-muted")">New Case Form</div>
+                </div>
+            </div>
+        </a>
+
+        <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = ViewBag.ActiveCourt, litigantType = ViewBag.LitigantType })" 
+           class="list-group-item list-group-item-action border-0 py-3 px-4 @(currentAction == "OtherCourtsCaseList" ? "active bg-primary text-white" : "text-muted")">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-table me-3 fs-5"></i>
+                <div>
+                    <div class="fw-bold small">Case List</div>
+                    <div class="xsmall @(currentAction == "OtherCourtsCaseList" ? "text-white-50" : "text-muted")">View All Records</div>
+                </div>
+            </div>
+        </a>
+
+        @if (activeCourt == "OS")
+        {
+            <div class="border-top mx-3"></div>
+
+            <a href="@Url.Action("OtherCourts", "Home", new { activeCourt = "OS" })" 
+               class="list-group-item list-group-item-action border-0 py-3 px-4 text-muted mt-1">
+                <div class="d-flex align-items-center text-primary-hover">
+                    <i class="bi bi-arrow-left-circle me-3 fs-5"></i>
+                    <div>
+                        <div class="fw-bold small">Change Court</div>
+                        <div class="xsmall text-muted">Back to Selection</div>
+                    </div>
+                </div>
+            </a>
+        }
+    </div>
+</div>
+
+<style>
+    .sideboard-nav .list-group-item {
+        transition: all 0.2s ease;
+    }
+    .sideboard-nav .list-group-item:not(.active):hover {
+        background-color: #f8fafc;
+        color: var(--court-primary) !important;
+        padding-left: 1.75rem !important;
+    }
+    .xsmall {
+        font-size: 0.75rem;
+    }
+</style>
