@@ -207,7 +207,7 @@ namespace MVCCaseManagement.DAL
                                 @CNRNumber, @EstCode, @CaseTypeCode
                             )";
 
-                        var cmd = new SqlCommand(query, conn, trans);
+                        using var cmd = new SqlCommand(query, conn, trans);
                         cmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                         cmd.Parameters.AddWithValue("@EPNumber", effectiveEPNo);
                         cmd.Parameters.AddWithValue("@EPYear", (object?)model.EPYear ?? DBNull.Value);
@@ -293,7 +293,7 @@ namespace MVCCaseManagement.DAL
                                     INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, IsEPFiled, EPNumber, EPCourt, EPStage, EPNextHearingDate) 
                                     VALUES (@CaseID, 1, @EPNumber, @EPCourt, @EPStatus, @NextHearingDate)
                                 END";
-                            var syncCmd = new SqlCommand(syncQuery, conn, trans);
+                            using var syncCmd = new SqlCommand(syncQuery, conn, trans);
                             syncCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                             syncCmd.Parameters.AddWithValue("@EPNumber", effectiveEPNo);
                             syncCmd.Parameters.AddWithValue("@EPCourt", (object?)model.EPCourt ?? DBNull.Value);
@@ -447,31 +447,34 @@ namespace MVCCaseManagement.DAL
                             cmd.ExecuteNonQuery();
                         }
 
-                        // Sync Payments atomically
-                        string deletePayments = "DELETE FROM MVC_EP_PAYMENTS WHERE EPID = @EPID";
-                        using (var delCmd = new SqlCommand(deletePayments, conn, trans))
+                        // Sync Payments atomically (only if provided in payload)
+                        if (model.Payments != null)
                         {
-                            delCmd.Parameters.AddWithValue("@EPID", model.EPID);
-                            delCmd.ExecuteNonQuery();
-                        }
-
-                        if (model.Payments != null && model.Payments.Count > 0)
-                        {
-                            foreach (var p in model.Payments.Where(x => x.Amount > 0))
+                            string deletePayments = "DELETE FROM MVC_EP_PAYMENTS WHERE EPID = @EPID";
+                            using (var delCmd = new SqlCommand(deletePayments, conn, trans))
                             {
-                                string insertPayment = @"
-                                    INSERT INTO MVC_EP_PAYMENTS (EPID, Amount, PaymentDate, ChequeNumber, ChequeDate, Remarks)
-                                    VALUES (@EPID, @Amount, @Date, @Cheque, @CDate, @Rem)";
-                                using (var pCmd = new SqlCommand(insertPayment, conn, trans))
+                                delCmd.Parameters.AddWithValue("@EPID", model.EPID);
+                                delCmd.ExecuteNonQuery();
+                            }
+
+                            if (model.Payments.Count > 0)
+                            {
+                                foreach (var p in model.Payments.Where(x => x.Amount > 0))
                                 {
-                                    pCmd.Parameters.AddWithValue("@EPID", model.EPID);
-                                    pCmd.Parameters.AddWithValue("@Amount", p.Amount);
-                                    DateTime pDate = p.ChequeDate ?? (p.PaymentDate != default ? p.PaymentDate : DateTime.Today);
-                                    pCmd.Parameters.AddWithValue("@Date", pDate);
-                                    pCmd.Parameters.AddWithValue("@Cheque", (object?)p.ChequeNumber ?? DBNull.Value);
-                                    pCmd.Parameters.AddWithValue("@CDate", (object?)p.ChequeDate ?? DBNull.Value);
-                                    pCmd.Parameters.AddWithValue("@Rem", (object?)p.Remarks ?? DBNull.Value);
-                                    pCmd.ExecuteNonQuery();
+                                    string insertPayment = @"
+                                        INSERT INTO MVC_EP_PAYMENTS (EPID, Amount, PaymentDate, ChequeNumber, ChequeDate, Remarks)
+                                        VALUES (@EPID, @Amount, @Date, @Cheque, @CDate, @Rem)";
+                                    using (var pCmd = new SqlCommand(insertPayment, conn, trans))
+                                    {
+                                        pCmd.Parameters.AddWithValue("@EPID", model.EPID);
+                                        pCmd.Parameters.AddWithValue("@Amount", p.Amount);
+                                        DateTime pDate = p.ChequeDate ?? (p.PaymentDate != default ? p.PaymentDate : DateTime.Today);
+                                        pCmd.Parameters.AddWithValue("@Date", pDate);
+                                        pCmd.Parameters.AddWithValue("@Cheque", (object?)p.ChequeNumber ?? DBNull.Value);
+                                        pCmd.Parameters.AddWithValue("@CDate", (object?)p.ChequeDate ?? DBNull.Value);
+                                        pCmd.Parameters.AddWithValue("@Rem", (object?)p.Remarks ?? DBNull.Value);
+                                        pCmd.ExecuteNonQuery();
+                                    }
                                 }
                             }
                         }

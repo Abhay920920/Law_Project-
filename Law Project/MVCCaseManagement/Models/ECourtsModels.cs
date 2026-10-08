@@ -4,18 +4,6 @@ using System.Text.Json.Serialization;
 
 namespace MVCCaseManagement.Models
 {
-    public class ECourtsSettings
-    {
-        public string ApiKey { get; set; } = string.Empty;
-        public string SecretKey { get; set; } = string.Empty;
-        public string DeptId { get; set; } = string.Empty;
-        public string HmacKey { get; set; } = string.Empty;
-        public string AuthKey { get; set; } = string.Empty;
-        public string IV { get; set; } = string.Empty;
-        public string Version { get; set; } = "v1.0";
-        public string GatewayUrl { get; set; } = string.Empty;
-        public string OAuthTokenUrl { get; set; } = string.Empty;
-    }
 
     public class ECourtsState
     {

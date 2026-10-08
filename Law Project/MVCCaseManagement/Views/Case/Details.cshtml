@@ -518,8 +518,34 @@
 
 <!-- ========================================== -->
 <!-- WEB VIEW (Hidden in Print)                 -->
-<!-- ========================================== -->
 <div class="container-fluid px-3 px-md-4 px-xl-5 py-4 d-print-none">
+    @{
+        var aiDivId = User.FindFirst("DivisionID")?.Value;
+        bool isAICentral = aiDivId == "0" || aiDivId == "5";
+        bool isAIRole = User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("CLO") || User.IsInRole("MD");
+    }
+    @if (isAICentral && isAIRole)
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-3 p-3" style="background: linear-gradient(135deg, rgba(13, 110, 253, 0.08), rgba(111, 66, 193, 0.08)); border-left: 4px solid #0d6efd !important;">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center">
+                    <div class="p-2 bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                        <i class="bi bi-robot fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0 text-dark">Analyze Case with Nyaya Patha AI</h6>
+                        <small class="text-muted">Instant strength/weakness analysis, contradiction detection, and precedent matching for MVC/@Model.MVCNo/@Model.MVCYear.</small>
+                    </div>
+                </div>
+                <div>
+                    <a href="/NyayaPatha?caseType=MVC&caseId=@Model.CaseID" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold">
+                        <i class="bi bi-cpu me-1"></i> Open in Nyaya Patha AI
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+
     <partial name="_DetailsContent" model="Model" />
 
     @{
@@ -600,6 +626,53 @@
         .bg-info-subtle { background-color: #cff4fc !important; color: #055160 !important; }
         .bg-secondary-subtle { background-color: #f8f9fa !important; color: #6c757d !important; }
 
+        /* eCourts & Dossier Table Layout Stabilization */
+        #live-history-container table, #live-orders-container table,
+        [id^="tabHistory_"] table, [id^="tabOrders_"] table, [id^="tabIA_"] table {
+            width: 100% !important;
+            min-width: 760px !important;
+            table-layout: fixed !important;
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+        }
+        #live-history-container th, #live-orders-container th,
+        [id^="tabHistory_"] th, [id^="tabOrders_"] th, [id^="tabIA_"] th {
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 5 !important;
+            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.15) !important;
+        }
+        #live-history-container td, #live-orders-container td,
+        [id^="tabHistory_"] td, [id^="tabOrders_"] td, [id^="tabIA_"] td {
+            vertical-align: middle !important;
+            word-break: break-word !important;
+        }
+        [id^="tabHistory_"] .badge, [id^="tabOrders_"] .badge {
+            white-space: normal !important;
+            text-align: left !important;
+            display: inline-block !important;
+            max-width: 100% !important;
+            line-height: 1.4 !important;
+        }
+        .dossier-tab-nav {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+        }
+        .dossier-tab-nav .nav-item {
+            flex: 1 1 auto !important;
+        }
+        .dossier-tab-nav .nav-link {
+            white-space: nowrap !important;
+            text-align: center !important;
+            padding: 0.45rem 0.75rem !important;
+            font-size: 0.82rem !important;
+        }
+
         /* PRINT STYLES */
         @@media print {
             @@page { size: A4; margin: 2cm; }
@@ -628,7 +701,7 @@
 }
 
 @section Scripts {
-    <script src="~/js/ecourts-details.js"></script>
+    <script src="~/js/ecourts-details.js" asp-append-version="true"></script>
     <script>
         // Advance Payment Logic
         const caseId = @Model.CaseID;
@@ -638,7 +711,6 @@
             loadPayments();
 
             const cnr = '@(Model.CNRNumber ?? "")'.trim();
-            let caseNapixLoaded = false;
 
             const caseCollapseEl = document.getElementById('collapseCaseNapixSection');
             if (caseCollapseEl) {
@@ -647,12 +719,6 @@
                     const text = document.getElementById('textToggleCaseNapix');
                     if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
                     if (text) { text.textContent = 'Hide NAPIX Details'; }
-
-                    const activeCnr = (window.currentActiveCnr || cnr || '').trim();
-                    if (!caseNapixLoaded && activeCnr && activeCnr.length >= 5) {
-                        caseNapixLoaded = true;
-                        fetchLiveCnrDetails(activeCnr, @Model.CaseID);
-                    }
                 });
 
                 caseCollapseEl.addEventListener('hide.bs.collapse', function () {
@@ -660,6 +726,18 @@
                     const text = document.getElementById('textToggleCaseNapix');
                     if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
                     if (text) { text.textContent = 'View NAPIX Details'; }
+                });
+            }
+
+            // If user selects the Orders tab, ensure orders are loaded/rendered
+            const ordersTabBtn = document.getElementById('orders-tab');
+            if (ordersTabBtn) {
+                ordersTabBtn.addEventListener('shown.bs.tab', function () {
+                    const activeCnr = (window.currentActiveCnr || cnr || '').trim();
+                    const container = document.getElementById('live-orders-container');
+                    if (container && (!container.querySelector('table') || container.innerText.includes('Querying'))) {
+                        refreshCaseOrdersLive(activeCnr, @Model.CaseID);
+                    }
                 });
             }
 
@@ -697,25 +775,7 @@
                 if (text) { text.textContent = 'View NAPIX Details'; }
             });
 
-            // Auto-fetch High Court MFA Live eCourts details if linked
-            @if (Model.LinkedAppeal != null && !string.IsNullOrEmpty(Model.LinkedAppeal.CorpMFACNRNumber))
-            {
-                <text>
-                const mfaCnr = '@(Model.LinkedAppeal.CorpMFACNRNumber.Trim().ToUpperInvariant())';
-                if (mfaCnr && mfaCnr.length >= 12) {
-                    fetchLiveMfaDetails(mfaCnr, @Model.CaseID, @Model.LinkedAppeal.AppealID, true);
-                }
-                </text>
-            }
-            @if (Model.LinkedAppeal != null && !string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMFACNRNumber))
-            {
-                <text>
-                const clmMfaCnr = '@(Model.LinkedAppeal.ClaimantMFACNRNumber.Trim().ToUpperInvariant())';
-                if (clmMfaCnr && clmMfaCnr.length >= 12) {
-                    fetchLiveMfaDetails(clmMfaCnr, @Model.CaseID, '@(Model.LinkedAppeal.AppealID)_claimant', true);
-                }
-                </text>
-            }
+            // Manual MFA Live eCourts details are triggered via user button click (Rule 7: Database-only page load)
             
             // Show add payment modal
             $('#btnAddPayment').click(function() {
@@ -1069,8 +1129,8 @@
         }
 
         function triggerFetchCaseLiveStatus() {
-            const cnr = window.currentActiveCnr || '@(Model.CNRNumber ?? "")';
-            if (!cnr || cnr.trim() === '') {
+            const cnr = (window.currentActiveCnr || '@(Model.CNRNumber ?? "")').trim();
+            if (!cnr || cnr === '') {
                 openUpdateCnrModal();
                 return;
             }
@@ -1079,7 +1139,75 @@
                 const bsCollapse = bootstrap.Collapse.getOrCreateInstance(caseCollapseEl, { toggle: false });
                 bsCollapse.show();
             }
-            fetchLiveCnrDetails(cnr, @Model.CaseID);
+            // 1. Immediately fetch live CNR details to dynamically update top card, hearing history, and orders
+            if (typeof fetchLiveCnrDetails === 'function') {
+                fetchLiveCnrDetails(cnr, @Model.CaseID);
+            }
+            // 2. Also register priority sync in background engine
+            queueManualSync(cnr, @Model.CaseID, 'MVC');
+        }
+
+        function queueManualSync(cnr, caseId, module) {
+            const msgElem = document.getElementById('live-sync-msg');
+            if (msgElem) {
+                msgElem.innerHTML = '<span class="text-primary"><span class="spinner-border spinner-border-sm me-1"></span> Queuing sync with priority...</span>';
+            }
+
+            const formData = new FormData();
+            formData.append('caseId', caseId);
+            formData.append('cnrNumber', cnr);
+            formData.append('module', module || 'MVC');
+
+            fetch('/ECourts/QueueCaseSync', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i> ' + (data.message || 'Failed to queue sync') + '</span>';
+                    return;
+                }
+
+                if (msgElem) {
+                    msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> Sync queued (' + data.status + '). Processing in background...</span>';
+                }
+
+                let attempts = 0;
+                const pollInterval = setInterval(() => {
+                    attempts++;
+                    if (attempts > 30) {
+                        clearInterval(pollInterval);
+                        if (msgElem) msgElem.innerHTML = '<span class="text-warning"><i class="bi bi-clock-history me-1"></i> Sync is taking longer than expected. Refresh page later.</span>';
+                        return;
+                    }
+
+                    fetch('/ECourts/GetQueueStatus?queueId=' + (data.queueId || 0) + '&caseId=' + caseId + '&module=' + (module || 'MVC'))
+                    .then(r => r.json())
+                    .then(statusData => {
+                        if (statusData.status === 'Success') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Synced with e-Courts Gateway!</span>';
+                            }
+                            if (typeof fetchLiveCnrDetails === 'function') {
+                                fetchLiveCnrDetails(cnr, caseId);
+                            }
+                        } else if (statusData.status === 'Failed') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> Sync Failed: ' + (statusData.error || 'e-Courts error') + '</span>';
+                            }
+                        } else if (msgElem) {
+                            msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> ' + statusData.status + '... (Attempt ' + attempts + ')</span>';
+                        }
+                    })
+                    .catch(() => {});
+                }, 2000);
+            })
+            .catch(err => {
+                if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i> Error connecting to sync queue</span>';
+            });
         }
 
         function ensureMfaSectionOpen(appealId) {

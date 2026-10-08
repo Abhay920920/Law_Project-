@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -7,21 +8,29 @@ namespace NapixEcourtsApi.Services;
 
 public interface INapixAuthService
 {
-    /// <summary>Returns a valid bearer token, fetching a new one only if the cached one expired.</summary>
+    /// <summary>Returns a valid bearer token for the default/MVC module.</summary>
     Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Invalidates the cached token to force a fresh fetch on next call.</summary>
-    void InvalidateToken();
+    /// <summary>Returns a valid bearer token for the specified module ("MVC" or "Labour").</summary>
+    Task<string> GetAccessTokenAsync(string? module, CancellationToken cancellationToken = default);
+
+    /// <summary>Invalidates cached token for a specific module or all modules.</summary>
+    void InvalidateToken(string? module = null);
 }
 
 public class NapixAuthService : INapixAuthService
 {
     private readonly HttpClient _httpClient;
     private readonly NapixOptions _options;
-    private readonly SemaphoreSlim _lock = new(1, 1);
 
-    private string? _cachedToken;
-    private DateTimeOffset _expiresAtUtc = DateTimeOffset.MinValue;
+    private class ModuleTokenState
+    {
+        public readonly SemaphoreSlim Lock = new(1, 1);
+        public string? CachedToken;
+        public DateTimeOffset ExpiresAtUtc = DateTimeOffset.MinValue;
+    }
+
+    private readonly ConcurrentDictionary<string, ModuleTokenState> _states = new(StringComparer.OrdinalIgnoreCase);
 
     // Refresh a little early so a long-running request never gets caught mid-expiry.
     private static readonly TimeSpan SafetyMargin = TimeSpan.FromSeconds(30);
@@ -32,26 +41,54 @@ public class NapixAuthService : INapixAuthService
         _options = options.Value;
     }
 
-    public void InvalidateToken()
+    private string NormalizeModule(string? module)
     {
-        _cachedToken = null;
-        _expiresAtUtc = DateTimeOffset.MinValue;
+        if (string.IsNullOrWhiteSpace(module)) return "MVC";
+        return module.Trim().Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "Labour" : "MVC";
     }
 
-    public async Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+    public void InvalidateToken(string? module = null)
     {
-        if (_cachedToken is not null && DateTimeOffset.UtcNow < _expiresAtUtc - SafetyMargin)
+        if (string.IsNullOrWhiteSpace(module))
         {
-            return _cachedToken;
+            foreach (var state in _states.Values)
+            {
+                state.CachedToken = null;
+                state.ExpiresAtUtc = DateTimeOffset.MinValue;
+            }
+        }
+        else
+        {
+            var norm = NormalizeModule(module);
+            if (_states.TryGetValue(norm, out var state))
+            {
+                state.CachedToken = null;
+                state.ExpiresAtUtc = DateTimeOffset.MinValue;
+            }
+        }
+    }
+
+    public Task<string> GetAccessTokenAsync(CancellationToken cancellationToken = default)
+        => GetAccessTokenAsync("MVC", cancellationToken);
+
+    public async Task<string> GetAccessTokenAsync(string? module, CancellationToken cancellationToken = default)
+    {
+        string norm = NormalizeModule(module);
+        var creds = _options.GetModuleCredentials(norm);
+        var state = _states.GetOrAdd(norm, _ => new ModuleTokenState());
+
+        if (state.CachedToken is not null && DateTimeOffset.UtcNow < state.ExpiresAtUtc - SafetyMargin)
+        {
+            return state.CachedToken;
         }
 
-        await _lock.WaitAsync(cancellationToken);
+        await state.Lock.WaitAsync(cancellationToken);
         try
         {
-            // Re-check after acquiring the lock in case another request already refreshed it.
-            if (_cachedToken is not null && DateTimeOffset.UtcNow < _expiresAtUtc - SafetyMargin)
+            // Re-check after acquiring the lock
+            if (state.CachedToken is not null && DateTimeOffset.UtcNow < state.ExpiresAtUtc - SafetyMargin)
             {
-                return _cachedToken;
+                return state.CachedToken;
             }
 
             HttpResponseMessage? response = null;
@@ -62,16 +99,23 @@ public class NapixAuthService : INapixAuthService
             {
                 try
                 {
-                    using var request = new HttpRequestMessage(HttpMethod.Post, _options.TokenUrl);
+                    // As per NAPIX Subscriber Manual (Annexure A & Section 14):
+                    // Token URL: https://delhigw.napix.gov.in/nic/ecourts//oauth2/token
+                    // Headers: ONLY Basic Auth and Content-Type: application/x-www-form-urlencoded
+                    // Body: ONLY grant_type=client_credentials and scope=napix
+                    string tokenUrl = _options.TokenUrl;
+                    if (!tokenUrl.Contains("//oauth2"))
+                    {
+                        tokenUrl = tokenUrl.Replace("/oauth2", "//oauth2");
+                    }
+
+                    using var request = new HttpRequestMessage(HttpMethod.Post, tokenUrl);
 
                     var credentials = Convert.ToBase64String(
-                        System.Text.Encoding.ASCII.GetBytes($"{_options.ClientId}:{_options.ClientSecret}"));
+                        System.Text.Encoding.ASCII.GetBytes($"{creds.ClientId}:{creds.ClientSecret}"));
                     request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-                    request.Headers.Add("X-IBM-Client-Id", _options.ClientId);
-                    if (!string.IsNullOrWhiteSpace(_options.ClientSecret))
-                    {
-                        request.Headers.Add("X-IBM-Client-Secret", _options.ClientSecret);
-                    }
+                    request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
                     request.Content = new FormUrlEncodedContent(new Dictionary<string, string>
                     {
@@ -97,8 +141,8 @@ public class NapixAuthService : INapixAuthService
 
             if (response == null || !response.IsSuccessStatusCode)
             {
-                throw new NapixApiException(
-                    $"NAPIX token request failed ({(int)(response?.StatusCode ?? 0)}): {body}", lastEx);
+                var msg = $"NAPIX token request failed for {norm} ({(int)(response?.StatusCode ?? 0)}): {body}";
+                throw lastEx != null ? new NapixApiException(msg, lastEx) : new NapixApiException(msg);
             }
 
             using (response)
@@ -112,15 +156,15 @@ public class NapixAuthService : INapixAuthService
                     ? expiresInEl.GetInt32()
                     : 3600;
 
-                _cachedToken = accessToken;
-                _expiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(expiresIn);
+                state.CachedToken = accessToken;
+                state.ExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(expiresIn);
 
-                return _cachedToken;
+                return state.CachedToken;
             }
         }
         finally
         {
-            _lock.Release();
+            state.Lock.Release();
         }
     }
 }
@@ -128,13 +172,12 @@ public class NapixAuthService : INapixAuthService
 public class NapixApiException : Exception
 {
     public NapixApiException(string message) : base(message) { }
-    public NapixApiException(string message, Exception? inner = null) : base(message, inner) { }
+    public NapixApiException(string message, Exception inner) : base(message, inner) { }
 }
 
 public class NapixNotFoundException : NapixApiException
 {
     public NapixNotFoundException(string message) : base(message) { }
-    public NapixNotFoundException(string message, Exception? inner = null) : base(message, inner) { }
+    public NapixNotFoundException(string message, Exception inner) : base(message, inner) { }
 }
-
 

@@ -3,6 +3,7 @@ using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -70,54 +71,101 @@ namespace MVCCaseManagement.Services
                                 {
                                     _logger.LogInformation("Acquired background sync lock. Executing daily alerts and e-Courts sync...");
 
-                                    var notificationRepo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
-                                    notificationRepo.GenerateDailyAlerts();
-                                    _logger.LogInformation("Daily notifications generated successfully at {Time}", DateTime.UtcNow);
-
-                                    var ecourtsRepo = scope.ServiceProvider.GetRequiredService<IECourtsRepository>();
-                                    var napixService = scope.ServiceProvider.GetRequiredService<IECourtsNapixService>();
-
-                                    // Sync registered CNR tracked cases next hearing date & current status
-                                    var trackedCases = await ecourtsRepo.GetAllTrackedCasesAsync();
-                                    int syncedCount = 0;
-
-                                    foreach (var c in trackedCases)
+                                    try
                                     {
-                                        if (stoppingToken.IsCancellationRequested) break;
-
-                                        var cleanCnr = !string.IsNullOrEmpty(c.CNRNumber) 
-                                            ? System.Text.RegularExpressions.Regex.Replace(c.CNRNumber.Trim(), @"[^A-Za-z0-9]", "").ToUpperInvariant() 
-                                            : null;
-
-                                        if (!string.IsNullOrEmpty(cleanCnr) && cleanCnr.Length >= 12 && cleanCnr.Length <= 18)
-                                        {
-                                            try
-                                            {
-                                                var liveStatus = await napixService.GetCnrDetailsAsync(cleanCnr, c.IsHighCourt);
-                                                if (liveStatus.HasValue && liveStatus.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
-                                                {
-                                                    if (liveStatus.Value.TryGetProperty("next_date", out var nextDateProp) && DateTime.TryParse(nextDateProp.GetString(), out DateTime nextDt))
-                                                    {
-                                                        c.NextHearingDate = nextDt;
-                                                    }
-                                                    if (liveStatus.Value.TryGetProperty("stage", out var stageProp))
-                                                    {
-                                                        c.CurrentStage = stageProp.GetString();
-                                                    }
-                                                    await ecourtsRepo.SaveTrackedCaseAsync(c);
-                                                    syncedCount++;
-                                                }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                _logger.LogWarning("Error syncing tracked CNR {CNR}: {Msg}", cleanCnr, ex.Message);
-                                            }
-
-                                            await Task.Delay(1000, stoppingToken);
-                                        }
+                                        var notificationRepo = scope.ServiceProvider.GetRequiredService<INotificationRepository>();
+                                        notificationRepo.GenerateDailyAlerts();
+                                        _logger.LogInformation("Daily notifications generated successfully at {Time}", DateTime.UtcNow);
+                                    }
+                                    catch (Exception alertEx)
+                                    {
+                                        _logger.LogWarning(alertEx, "Daily alert generation encountered a non-fatal error: {Msg}", alertEx.Message);
                                     }
 
-                                    _logger.LogInformation("Completed background sync: {Count} cases synchronized with e-Courts.", syncedCount);
+                                    var config = scope.ServiceProvider.GetService<IConfiguration>();
+                                    bool enableSync = config?.GetValue<bool>("eCourts:EnableBackgroundSync") ?? true;
+
+                                    if (enableSync)
+                                    {
+                                        var ecourtsRepo = scope.ServiceProvider.GetRequiredService<IECourtsRepository>();
+                                        var napixService = scope.ServiceProvider.GetRequiredService<IECourtsNapixService>();
+
+                                        // Sync registered CNR tracked cases next hearing date & current status
+                                        var trackedCases = await ecourtsRepo.GetAllTrackedCasesAsync();
+                                        int syncedCount = 0;
+                                        int throttleSeconds = Math.Max(1, config?.GetValue<int>("eCourts:SyncThrottleSeconds") ?? 2);
+
+                                        foreach (var c in trackedCases)
+                                        {
+                                            if (stoppingToken.IsCancellationRequested) break;
+
+                                            var cleanCnr = !string.IsNullOrEmpty(c.CNRNumber) 
+                                                ? System.Text.RegularExpressions.Regex.Replace(c.CNRNumber.Trim(), @"[^A-Za-z0-9]", "").ToUpperInvariant() 
+                                                : null;
+
+                                            if (!string.IsNullOrEmpty(cleanCnr) && cleanCnr.Length >= 12 && cleanCnr.Length <= 18)
+                                            {
+                                                try
+                                                {
+                                                    string module = !string.IsNullOrWhiteSpace(c.RelatedModule) ? c.RelatedModule : "MVC";
+                                                    bool isHighCourt = cleanCnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || (cleanCnr.Length >= 4 && cleanCnr.Substring(2, 2).Equals("HC", StringComparison.OrdinalIgnoreCase));
+
+                                                    var liveStatus = await napixService.GetCnrDetailsAsync(cleanCnr, isHighCourt, module);
+
+                                                    // 626 = dept-level auth failure — all CNRs will fail, abort the sync batch
+                                                    string? lastErr = napixService.GetLastModuleError(module);
+                                                    if (lastErr != null && lastErr.Contains("626"))
+                                                    {
+                                                        _logger.LogWarning("[eCourts Sync] eCourts CIS returned 626 INVALID_TOKEN for dept_id. Background CNR sync aborted until dept mapping is activated on NAPIX portal.");
+                                                        break;
+                                                    }
+                                                    if (liveStatus.HasValue && liveStatus.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+                                                    {
+                                                        string? nextDateStr = GetJsonString(liveStatus.Value, "date_next_list")
+                                                            ?? GetJsonString(liveStatus.Value, "next_date")
+                                                            ?? GetJsonString(liveStatus.Value, "next_hearing_date");
+
+                                                        if (!string.IsNullOrWhiteSpace(nextDateStr) && DateTime.TryParse(nextDateStr, out DateTime nextDt))
+                                                        {
+                                                            c.NextHearingDate = nextDt;
+                                                        }
+
+                                                        string? stageStr = GetJsonString(liveStatus.Value, "purpose_name")
+                                                            ?? GetJsonString(liveStatus.Value, "stage")
+                                                            ?? GetJsonString(liveStatus.Value, "current_stage");
+
+                                                        if (!string.IsNullOrWhiteSpace(stageStr))
+                                                        {
+                                                            c.CurrentStage = stageStr;
+                                                        }
+
+                                                        string? courtNo = GetJsonString(liveStatus.Value, "court_no");
+                                                        if (!string.IsNullOrWhiteSpace(courtNo)) c.CourtNo = courtNo;
+
+                                                        string? judge = GetJsonString(liveStatus.Value, "desgname");
+                                                        if (!string.IsNullOrWhiteSpace(judge)) c.JudgeName = judge;
+
+                                                        string? petName = GetJsonString(liveStatus.Value, "pet_name");
+                                                        if (!string.IsNullOrWhiteSpace(petName)) c.PetitionerName = petName;
+
+                                                        string? resName = GetJsonString(liveStatus.Value, "res_name");
+                                                        if (!string.IsNullOrWhiteSpace(resName)) c.RespondentName = resName;
+
+                                                        await ecourtsRepo.SaveTrackedCaseAsync(c);
+                                                        syncedCount++;
+                                                    }
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    _logger.LogWarning("Error syncing tracked CNR {CNR}: {Msg}", cleanCnr, ex.Message);
+                                                }
+
+                                                await Task.Delay(throttleSeconds * 1000, stoppingToken);
+                                            }
+                                        }
+
+                                        _logger.LogInformation("Completed background sync: {Count} cases synchronized with e-Courts.", syncedCount);
+                                    }
                                 }
                             }
                             finally
@@ -154,6 +202,18 @@ namespace MVCCaseManagement.Services
             {
                 _logger.LogInformation("Notification & eCourts Background Service stopped gracefully.");
             }
+        }
+
+        private static string? GetJsonString(System.Text.Json.JsonElement elem, string propName)
+        {
+            if (elem.TryGetProperty(propName, out var p))
+            {
+                if (p.ValueKind == System.Text.Json.JsonValueKind.String)
+                    return p.GetString()?.Trim();
+                if (p.ValueKind == System.Text.Json.JsonValueKind.Number || p.ValueKind == System.Text.Json.JsonValueKind.True || p.ValueKind == System.Text.Json.JsonValueKind.False)
+                    return p.GetRawText().Trim();
+            }
+            return null;
         }
     }
 }

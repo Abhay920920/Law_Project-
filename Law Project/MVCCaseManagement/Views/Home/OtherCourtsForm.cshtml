@@ -37,16 +37,23 @@
     }
 </style>
 
-<div class="container-fluid py-4" style="max-width: 1600px;">
-    <div class="row g-4">
-        <!-- Sidebar Navigation -->
-        <div class="col-lg-3 col-xl-2 d-print-none">
-            @await Html.PartialAsync("_OtherCourtsSidebar")
+<div class="container-fluid fade-in">
+    <!-- Official Header Banner -->
+    <div class="glass-header shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h4 class="fw-bold text-dark mb-1">
+                    <i class="bi bi-file-earmark-plus text-primary me-2"></i>New @courtName Registration
+                </h4>
+                <p class="text-secondary small mb-0">Legal Dossier & Proceedings Record | @User.FindFirst("DivisionName")?.Value</p>
+            </div>
+            <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = ViewBag.ActiveCourt, litigantType = ViewBag.LitigantType })" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm">
+                <i class="bi bi-arrow-left me-1"></i> Back to Registry
+            </a>
         </div>
+    </div>
 
-        <!-- Main Form Area -->
-        <div class="col-lg-9 col-xl-10">
-            <div id="otherCourtsForm" class="text-start">
+    <div id="otherCourtsForm" class="text-start">
 
 
         @if (TempData["SuccessMessage"] != null)
@@ -77,6 +84,40 @@
                 </div>
                 <div class="gov-card-body p-4">
                     <div class="row g-3">
+
+                        <!-- e-Courts NAPIX Integration Field -->
+                        <div class="col-md-12 mb-2">
+                            <div class="p-3 bg-primary bg-opacity-10 rounded border border-primary border-opacity-25 shadow-sm">
+                                <div class="row g-2 align-items-center">
+                                    <div class="col-md-5">
+                                        <label class="form-label fw-bold text-primary mb-1">
+                                            <i class="bi bi-bank2 me-1"></i>e-Courts 16-Digit CNR Number
+                                        </label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white"><i class="bi bi-upc-scan text-primary"></i></span>
+                                            <input type="text" class="form-control font-monospace text-uppercase fw-bold" 
+                                                   id="CNRNumber" name="CNRNumber" maxlength="16" placeholder="e.g. KABK010012342023" />
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3 pt-md-4">
+                                        <button type="button" class="btn btn-primary w-100 fw-bold shadow-sm" id="btnFetchFromECourts">
+                                            <i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch from e-Courts
+                                        </button>
+                                    </div>
+                                    <div class="col-md-4 pt-md-4">
+                                        <div id="cnrLookupStatus" class="small text-muted">Enter 16-digit CNR to auto-fill case details.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hidden e-Courts Metadata -->
+                        <input type="hidden" id="EstCode" name="EstCode" />
+                        <input type="hidden" id="CaseTypeCode" name="CaseTypeCode" />
+                        <input type="hidden" id="ECourtsStage" name="ECourtsStage" />
+                        <input type="hidden" id="ECourtsCourtNo" name="ECourtsCourtNo" />
+                        <input type="hidden" id="ECourtsJudge" name="ECourtsJudge" />
+                        <input type="hidden" id="PendDispStatus" name="PendDispStatus" />
 
                         <div class="col-md-4">
                             <label class="form-label">Division</label>
@@ -666,8 +707,6 @@
                 </button>
             </div>
         </form>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -838,6 +877,11 @@
                 }
             });
 
+            // Guaranteed Data Integrity on Submit: re-enable visible inputs to prevent data loss
+            $('form').on('submit', function() {
+                $(this).find(':input:visible').prop('disabled', false);
+            });
+
             // Dynamic Respondent List Management
             let respondentIndex = 1;
             $(document).on('click', '.add-respondent', function() {
@@ -939,7 +983,146 @@
                 });
             }
 
+            // ==========================================
+            // e-Courts NAPIX Live CNR Auto-Fetch for Other Courts
+            // ==========================================
+            function formatToInputDate(dStr) {
+                if (!dStr) return '';
+                dStr = dStr.trim();
+                if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return dStr;
+                const parts = dStr.split(/[-/]/);
+                if (parts.length === 3) {
+                    if (parts[2].length === 4) {
+                        const dd = parts[0].padStart(2, '0');
+                        const mm = parts[1].padStart(2, '0');
+                        const yyyy = parts[2];
+                        return `${yyyy}-${mm}-${dd}`;
+                    } else if (parts[0].length === 4) {
+                        const yyyy = parts[0];
+                        const mm = parts[1].padStart(2, '0');
+                        const dd = parts[2].padStart(2, '0');
+                        return `${yyyy}-${mm}-${dd}`;
+                    }
+                }
+                return '';
+            }
 
+            function fetchOtherCourtCnrDetails() {
+                const cnrInput = $('#CNRNumber');
+                const rawCnr = cnrInput.val() ? cnrInput.val().trim().toUpperCase() : '';
+                const statusDiv = $('#cnrLookupStatus');
+                const btn = $('#btnFetchFromECourts');
+
+                if (!rawCnr || rawCnr.length < 16) {
+                    statusDiv.html('<span class="text-danger fw-bold"><i class="bi bi-exclamation-circle me-1"></i>Please enter a valid 16-character alphanumeric CNR Number.</span>');
+                    cnrInput.focus();
+                    return;
+                }
+
+                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Fetching Live...');
+                statusDiv.html('<span class="text-primary fw-bold"><i class="bi bi-hourglass-split me-1"></i>Connecting to e-Courts NAPIX Gateway...</span>');
+
+                $.ajax({
+                    url: '/ECourts/GetCnrDetails',
+                    type: 'GET',
+                    data: { cnrNumber: rawCnr, module: 'OtherCourts' },
+                    dataType: 'json',
+                    timeout: 25000,
+                    success: function(res) {
+                        btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch from e-Courts');
+                        if (res && res.success && res.data) {
+                            const d = res.data;
+                            statusDiv.html('<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Live details fetched from e-Courts successfully!</span>');
+
+                            // Set Hidden Metadata
+                            $('#EstCode').val(rawCnr.substring(0, 6));
+                            if (d.case_type) $('#CaseTypeCode').val(d.case_type);
+                            if (d.stage) $('#ECourtsStage').val(d.stage);
+                            if (d.court_no) $('#ECourtsCourtNo').val(d.court_no);
+                            if (d.judge || d.court_no_judge) $('#ECourtsJudge').val(d.court_no_judge || d.judge);
+                            if (d.case_status) $('#PendDispStatus').val(d.case_status);
+
+                            // Auto-populate Case Number and Year
+                            if (d.case_number) {
+                                const caseNoParts = d.case_number.split('/');
+                                if (caseNoParts.length >= 2) {
+                                    $('input[name="CaseNumber"]').val(caseNoParts[0].trim());
+                                    if (!$('input[name="CaseYear"]').val()) {
+                                        $('input[name="CaseYear"]').val(caseNoParts[1].trim());
+                                    }
+                                } else {
+                                    $('input[name="CaseNumber"]').val(d.case_number.trim());
+                                }
+                            }
+                            if (d.registration_date) {
+                                const regParts = d.registration_date.split(/[-/]/);
+                                if (regParts.length === 3 && regParts[2].length === 4 && !$('input[name="CaseYear"]').val()) {
+                                    $('input[name="CaseYear"]').val(regParts[2]);
+                                }
+                            }
+
+                            // Auto-populate Court
+                            if (d.establishment_name) {
+                                $('input[name="Court"]').val(d.establishment_name);
+                            } else if (d.court_no_judge) {
+                                $('input[name="Court"]').val(d.court_no_judge);
+                            }
+
+                            // Auto-populate Case Nature
+                            if (d.case_type && !$('input[name="CaseNature"]').val()) {
+                                $('input[name="CaseNature"]').val(d.case_type);
+                            }
+
+                            // Auto-populate Current Stage
+                            if (d.stage) {
+                                $('input[name="CaseStatus"]').val(d.stage);
+                            }
+
+                            // Auto-populate Next Date of Hearing
+                            if (d.next_hearing_date) {
+                                const formattedDate = formatToInputDate(d.next_hearing_date);
+                                if (formattedDate) {
+                                    $('input[name="NextDateOfHearing"]').val(formattedDate);
+                                }
+                            }
+
+                            // Auto-populate Petitioner
+                            if (d.petitioner) {
+                                const petInput = $('input[name="Respondents[0].Name"]');
+                                if (!petInput.val() || petInput.val().trim() === '') {
+                                    petInput.val(d.petitioner);
+                                }
+                            }
+
+                            // Check Pend/Disp Status for Stage dropdown
+                            if (d.case_status && d.case_status.toLowerCase().includes('disp')) {
+                                $('select[name="CaseStage"]').val('disposed');
+                            } else if (d.case_status && d.case_status.toLowerCase().includes('pend')) {
+                                $('select[name="CaseStage"]').val('pending');
+                            }
+                        } else {
+                            const errMsg = (res && res.message) ? res.message : 'No records returned from e-Courts for this CNR.';
+                            statusDiv.html(`<span class="text-warning fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>${errMsg}</span>`);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        btn.prop('disabled', false).html('<i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch from e-Courts');
+                        statusDiv.html('<span class="text-danger fw-bold"><i class="bi bi-x-circle-fill me-1"></i>Gateway request failed or timed out. Please verify CNR and try again.</span>');
+                    }
+                });
+            }
+
+            $('#btnFetchFromECourts').on('click', function(e) {
+                e.preventDefault();
+                fetchOtherCourtCnrDetails();
+            });
+
+            $('#CNRNumber').on('keypress', function(e) {
+                if (e.which === 13) {
+                    e.preventDefault();
+                    fetchOtherCourtCnrDetails();
+                }
+            });
         });
     </script>
 }

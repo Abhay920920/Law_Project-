@@ -1,2 +1,0 @@
--- NOTE: This file has been consolidated into the core SQL migrations directory:
--- Location: Law Project/MVCCaseManagement/SQL/Database_Constraints_MVC_Production.sql

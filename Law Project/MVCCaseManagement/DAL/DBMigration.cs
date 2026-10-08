@@ -2,6 +2,16 @@ using Microsoft.Data.SqlClient;
 
 namespace MVCCaseManagement.DAL
 {
+    /// <summary>
+    /// ARCHITECTURAL NOTICE:
+    /// DBMigration represents the frozen V1.0.0 Baseline Schema Hardening.
+    /// It is invoked solely by DatabaseMigrationRunner.cs as the initial baseline step (MigrationId: "V1_0_0_Baseline_Schema_Hardening").
+    /// Once the baseline is recorded in SCHEMA_MIGRATIONS, this class is intentionally bypassed.
+    /// 
+    /// DO NOT add new schema migrations or index changes here.
+    /// ALL NEW MIGRATIONS MUST be added as versioned migrations (V1_X_X) in DatabaseMigrationRunner.cs
+    /// to benefit from distributed application locking (sp_getapplock), atomic transactions, and execution audit logging.
+    /// </summary>
     public static class DBMigration
     {
         public static void EnsureAll(DBHelper db)
@@ -1299,8 +1309,19 @@ namespace MVCCaseManagement.DAL
                             -- Appeals & Gratuity Indexes
                             IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'APPEAL_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_APPEAL_CASES_DIV')
                                 CREATE INDEX IX_APPEAL_CASES_DIV ON APPEAL_CASES(DivisionID, CaseID);
-                            IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'GRATUITY_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_GRATUITY_CASES_DIV')
-                                CREATE INDEX IX_GRATUITY_CASES_DIV ON GRATUITY_CASES(DivisionID, CaseStatus);
+                            IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'GRA_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_GRA_CASES_DIV_STATUS')
+                            BEGIN
+                                IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('GRA_CASES') AND name = 'DivisionCode')
+                                    CREATE INDEX IX_GRA_CASES_DIV_STATUS ON GRA_CASES(DivisionCode, CaseStatus);
+                                ELSE IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('GRA_CASES') AND name = 'DivisionID')
+                                    CREATE INDEX IX_GRA_CASES_DIV_STATUS ON GRA_CASES(DivisionID, CaseStatus);
+                            END
+                            IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'GRA_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_GRA_CASES_HEARING')
+                                CREATE INDEX IX_GRA_CASES_HEARING ON GRA_CASES(NextHearingDate);
+                            IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OTHER_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OTHER_CASES_DIV_TYPE')
+                                CREATE INDEX IX_OTHER_CASES_DIV_TYPE ON OTHER_CASES(DivisionID, CaseType, LitigantType);
+                            IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'OTHER_CASES') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OTHER_CASES_CNR')
+                                CREATE INDEX IX_OTHER_CASES_CNR ON OTHER_CASES(CNRNumber) WHERE CNRNumber IS NOT NULL;
                             IF EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'PETTY_BILLS') AND NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_PETTY_BILLS_DIV')
                                 CREATE INDEX IX_PETTY_BILLS_DIV ON PETTY_BILLS(DivisionID, Status);
 
@@ -1721,6 +1742,22 @@ namespace MVCCaseManagement.DAL
                     db.EnsureColumn("OTHER_CASES", "AppealClosureNumber", "NVARCHAR(100) NULL");
                     db.EnsureColumn("OTHER_CASES", "AppealClosureDate", "DATE NULL");
                     db.EnsureColumn("OTHER_CASES", "AppealJudgmentCopyPath", "NVARCHAR(MAX) NULL");
+
+                    // e-Courts Gateway Integration Columns
+                    db.EnsureColumn("OTHER_CASES", "CNRNumber", "NVARCHAR(16) NULL");
+                    db.EnsureColumn("OTHER_CASES", "EstCode", "NVARCHAR(50) NULL");
+                    db.EnsureColumn("OTHER_CASES", "CaseTypeCode", "NVARCHAR(20) NULL");
+                    db.EnsureColumn("OTHER_CASES", "OtherCourtDetails", "NVARCHAR(200) NULL");
+                    db.EnsureColumn("OTHER_CASES", "LastNapixSyncAt", "DATETIME2 NULL");
+                    db.EnsureColumn("OTHER_CASES", "LastNapixSyncStatus", "NVARCHAR(100) NULL");
+                    db.EnsureColumn("OTHER_CASES", "LastNapixSyncError", "NVARCHAR(MAX) NULL");
+                    db.EnsureColumn("OTHER_CASES", "NapixSyncAttemptCount", "INT NOT NULL DEFAULT 0");
+                    db.EnsureColumn("OTHER_CASES", "NapixDataHash", "NVARCHAR(64) NULL");
+                    db.EnsureColumn("OTHER_CASES", "PendDispStatus", "NVARCHAR(10) NULL");
+                    db.EnsureColumn("OTHER_CASES", "EstName", "NVARCHAR(200) NULL");
+                    db.EnsureColumn("OTHER_CASES", "ECourtsStage", "NVARCHAR(200) NULL");
+                    db.EnsureColumn("OTHER_CASES", "ECourtsCourtNo", "NVARCHAR(50) NULL");
+                    db.EnsureColumn("OTHER_CASES", "ECourtsJudge", "NVARCHAR(200) NULL");
                 }
 
                 db.EnsureColumn("OTHER_CASES", "OutwardNumber", "NVARCHAR(100) NULL");

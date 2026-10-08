@@ -634,23 +634,25 @@ namespace MVCCaseManagement.DAL
                             ? "SELECT CaseID FROM MVC_CASES WHERE MVCNo = @No AND MVCYear = @Year AND MACTID = @MactID"
                             : "SELECT CaseID FROM MVC_CASES WHERE MVCNo = @No AND MVCYear = @Year";
                         
-                        var cmd = new SqlCommand(query, conn, trans);
-                        cmd.Parameters.AddWithValue("@No", mvcNo);
-                        cmd.Parameters.AddWithValue("@Year", mvcYear);
-                        if (mactId > 0) cmd.Parameters.AddWithValue("@MactID", mactId);
-
-                        var ids = new List<int>();
-                        using (var reader = cmd.ExecuteReader())
+                        using (var cmd = new SqlCommand(query, conn, trans))
                         {
-                            while (reader.Read()) ids.Add(reader.GetInt32(0));
-                        }
+                            cmd.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = mvcNo });
+                            cmd.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = mvcYear });
+                            if (mactId > 0) cmd.Parameters.Add(new SqlParameter("@MactID", SqlDbType.Int) { Value = mactId });
 
-                        foreach (int id in ids)
-                        {
-                            DeleteMVCChildRecords(id, conn, trans);
-                            var delCmd = new SqlCommand("DELETE FROM MVC_CASES WHERE CaseID = @Id", conn, trans);
-                            delCmd.Parameters.AddWithValue("@Id", id);
-                            totalDeleted += delCmd.ExecuteNonQuery();
+                            var ids = new List<int>();
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read()) ids.Add(reader.GetInt32(0));
+                            }
+
+                            foreach (int id in ids)
+                            {
+                                DeleteMVCChildRecords(id, conn, trans);
+                                using var delCmd = new SqlCommand("DELETE FROM MVC_CASES WHERE CaseID = @Id", conn, trans);
+                                delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                                totalDeleted += delCmd.ExecuteNonQuery();
+                            }
                         }
                         trans.Commit();
                     }
@@ -683,23 +685,25 @@ namespace MVCCaseManagement.DAL
                                      WHERE (PGANumber = @No OR PGANumber = @No + '/' + CAST(@Year AS VARCHAR) OR PGANumber LIKE @No + '%' + CAST(@Year AS VARCHAR))";
                         }
                         
-                        var cmd = new SqlCommand(query, conn, trans);
-                        cmd.Parameters.AddWithValue("@No", pgaNumber);
-                        cmd.Parameters.AddWithValue("@Year", caseYear);
-                        if (!string.IsNullOrEmpty(courtName)) cmd.Parameters.AddWithValue("@Court", "%" + courtName + "%");
-
-                        var ids = new List<int>();
-                        using (var reader = cmd.ExecuteReader())
+                        using (var cmd = new SqlCommand(query, conn, trans))
                         {
-                            while (reader.Read()) ids.Add(reader.GetInt32(0));
-                        }
+                            cmd.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = pgaNumber });
+                            cmd.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            if (!string.IsNullOrEmpty(courtName)) cmd.Parameters.Add(new SqlParameter("@Court", SqlDbType.NVarChar, 200) { Value = "%" + courtName + "%" });
 
-                        foreach (int id in ids)
-                        {
-                            DeleteGratuityChildRecords(id, conn, trans);
-                            var delCmd = new SqlCommand("DELETE FROM GRA_CASES WHERE CaseID = @Id", conn, trans);
-                            delCmd.Parameters.AddWithValue("@Id", id);
-                            totalDeleted += delCmd.ExecuteNonQuery();
+                            var ids = new List<int>();
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read()) ids.Add(reader.GetInt32(0));
+                            }
+
+                            foreach (int id in ids)
+                            {
+                                DeleteGratuityChildRecords(id, conn, trans);
+                                using var delCmd = new SqlCommand("DELETE FROM GRA_CASES WHERE CaseID = @Id", conn, trans);
+                                delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                                totalDeleted += delCmd.ExecuteNonQuery();
+                            }
                         }
                         trans.Commit();
                     }
@@ -726,31 +730,35 @@ namespace MVCCaseManagement.DAL
                                AND (ct.CourtName LIKE @Court OR c.OtherCourtDetails LIKE @Court)"
                             : "SELECT CaseID FROM LABOUR_CASES WHERE (CaseNumber = @No OR SerialApp_CaseNumber = @No) AND CaseYear = @Year";
                         
-                        var cmd = new SqlCommand(query, conn, trans);
-                        cmd.Parameters.AddWithValue("@No", caseNumber);
-                        cmd.Parameters.AddWithValue("@Year", caseYear);
-                        if (!string.IsNullOrEmpty(courtName)) cmd.Parameters.AddWithValue("@Court", "%" + courtName + "%");
-
-                        var ids = new List<int>();
-                        using (var reader = cmd.ExecuteReader())
+                        using (var cmd = new SqlCommand(query, conn, trans))
                         {
-                            while (reader.Read()) ids.Add(reader.GetInt32(0));
-                        }
+                            cmd.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            cmd.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            if (!string.IsNullOrEmpty(courtName)) cmd.Parameters.Add(new SqlParameter("@Court", SqlDbType.NVarChar, 200) { Value = "%" + courtName + "%" });
 
-                        foreach (int id in ids)
-                        {
-                            DeleteLabourChildRecords(id, conn, trans);
-                            var delCmd = new SqlCommand("DELETE FROM LABOUR_CASES WHERE CaseID = @Id", conn, trans);
-                            delCmd.Parameters.AddWithValue("@Id", id);
-                            totalDeleted += delCmd.ExecuteNonQuery();
+                            var ids = new List<int>();
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                while (reader.Read()) ids.Add(reader.GetInt32(0));
+                            }
+
+                            foreach (int id in ids)
+                            {
+                                DeleteLabourChildRecords(id, conn, trans);
+                                using var delCmd = new SqlCommand("DELETE FROM LABOUR_CASES WHERE CaseID = @Id", conn, trans);
+                                delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                                totalDeleted += delCmd.ExecuteNonQuery();
+                            }
                         }
 
                         // Also delete from LABOUR_ARISING_APPLICATIONS
-                        var delArisingCmd = new SqlCommand(@"DELETE FROM LABOUR_ARISING_APPLICATIONS 
-                            WHERE (CaseNumber = @No OR ArisingNumber = @No) AND (CaseYear = @Year OR ArisingYear = @Year)", conn, trans);
-                        delArisingCmd.Parameters.AddWithValue("@No", caseNumber);
-                        delArisingCmd.Parameters.AddWithValue("@Year", caseYear);
-                        totalDeleted += delArisingCmd.ExecuteNonQuery();
+                        using (var delArisingCmd = new SqlCommand(@"DELETE FROM LABOUR_ARISING_APPLICATIONS 
+                            WHERE (CaseNumber = @No OR ArisingNumber = @No) AND (CaseYear = @Year OR ArisingYear = @Year)", conn, trans))
+                        {
+                            delArisingCmd.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            delArisingCmd.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            totalDeleted += delArisingCmd.ExecuteNonQuery();
+                        }
 
                         trans.Commit();
                     }
@@ -771,34 +779,76 @@ namespace MVCCaseManagement.DAL
                     try
                     {
                         // 1. MVC
-                        var cmd1 = new SqlCommand("SELECT CaseID FROM MVC_CASES WHERE MVCNo = @No AND MVCYear = @Year", conn, trans);
-                        cmd1.Parameters.AddWithValue("@No", caseNumber);
-                        cmd1.Parameters.AddWithValue("@Year", caseYear);
                         var ids1 = new List<int>();
-                        using (var r = cmd1.ExecuteReader()) { while (r.Read()) ids1.Add(r.GetInt32(0)); }
-                        foreach (int id in ids1) { DeleteMVCChildRecords(id, conn, trans); totalDeleted += new SqlCommand($"DELETE FROM MVC_CASES WHERE CaseID = {id}", conn, trans).ExecuteNonQuery(); }
+                        using (var cmd1 = new SqlCommand("SELECT CaseID FROM MVC_CASES WHERE MVCNo = @No AND MVCYear = @Year", conn, trans))
+                        {
+                            cmd1.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            cmd1.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            using (var r = cmd1.ExecuteReader()) { while (r.Read()) ids1.Add(r.GetInt32(0)); }
+                        }
+                        foreach (int id in ids1)
+                        {
+                            DeleteMVCChildRecords(id, conn, trans);
+                            using var delCmd = new SqlCommand("DELETE FROM MVC_CASES WHERE CaseID = @Id", conn, trans);
+                            delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                            totalDeleted += delCmd.ExecuteNonQuery();
+                        }
 
                         // 2. Gratuity
-                        var cmd2 = new SqlCommand("SELECT CaseID FROM GRA_CASES WHERE PGANumber = @No", conn, trans);
-                        cmd2.Parameters.AddWithValue("@No", caseNumber);
                         var ids2 = new List<int>();
-                        using (var r = cmd2.ExecuteReader()) { while (r.Read()) ids2.Add(r.GetInt32(0)); }
-                        foreach (int id in ids2) { DeleteGratuityChildRecords(id, conn, trans); totalDeleted += new SqlCommand($"DELETE FROM GRA_CASES WHERE CaseID = {id}", conn, trans).ExecuteNonQuery(); }
+                        using (var cmd2 = new SqlCommand("SELECT CaseID FROM GRA_CASES WHERE PGANumber = @No", conn, trans))
+                        {
+                            cmd2.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            using (var r = cmd2.ExecuteReader()) { while (r.Read()) ids2.Add(r.GetInt32(0)); }
+                        }
+                        foreach (int id in ids2)
+                        {
+                            DeleteGratuityChildRecords(id, conn, trans);
+                            using var delCmd = new SqlCommand("DELETE FROM GRA_CASES WHERE CaseID = @Id", conn, trans);
+                            delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                            totalDeleted += delCmd.ExecuteNonQuery();
+                        }
 
                         // 3. Labour
-                        var cmd3 = new SqlCommand("SELECT CaseID FROM LABOUR_CASES WHERE (CaseNumber = @No OR SerialApp_CaseNumber = @No) AND CaseYear = @Year", conn, trans);
-                        cmd3.Parameters.AddWithValue("@No", caseNumber);
-                        cmd3.Parameters.AddWithValue("@Year", caseYear);
                         var ids3 = new List<int>();
-                        using (var r = cmd3.ExecuteReader()) { while (r.Read()) ids3.Add(r.GetInt32(0)); }
-                        foreach (int id in ids3) { DeleteLabourChildRecords(id, conn, trans); totalDeleted += new SqlCommand($"DELETE FROM LABOUR_CASES WHERE CaseID = {id}", conn, trans).ExecuteNonQuery(); }
+                        using (var cmd3 = new SqlCommand("SELECT CaseID FROM LABOUR_CASES WHERE (CaseNumber = @No OR SerialApp_CaseNumber = @No) AND CaseYear = @Year", conn, trans))
+                        {
+                            cmd3.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            cmd3.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            using (var r = cmd3.ExecuteReader()) { while (r.Read()) ids3.Add(r.GetInt32(0)); }
+                        }
+                        foreach (int id in ids3)
+                        {
+                            DeleteLabourChildRecords(id, conn, trans);
+                            using var delCmd = new SqlCommand("DELETE FROM LABOUR_CASES WHERE CaseID = @Id", conn, trans);
+                            delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                            totalDeleted += delCmd.ExecuteNonQuery();
+                        }
 
                         // 3b. Labour Arising Applications
-                        var cmdArising = new SqlCommand(@"DELETE FROM LABOUR_ARISING_APPLICATIONS 
-                            WHERE (CaseNumber = @No OR ArisingNumber = @No) AND (CaseYear = @Year OR ArisingYear = @Year)", conn, trans);
-                        cmdArising.Parameters.AddWithValue("@No", caseNumber);
-                        cmdArising.Parameters.AddWithValue("@Year", caseYear);
-                        totalDeleted += cmdArising.ExecuteNonQuery();
+                        using (var cmdArising = new SqlCommand(@"DELETE FROM LABOUR_ARISING_APPLICATIONS 
+                            WHERE (CaseNumber = @No OR ArisingNumber = @No) AND (CaseYear = @Year OR ArisingYear = @Year)", conn, trans))
+                        {
+                            cmdArising.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            cmdArising.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            totalDeleted += cmdArising.ExecuteNonQuery();
+                        }
+
+                        // 4. Other Cases
+                        var ids4 = new List<int>();
+                        using (var cmd4 = new SqlCommand("IF OBJECT_ID('OTHER_CASES', 'U') IS NOT NULL SELECT CaseID FROM OTHER_CASES WHERE CaseNumber = @No AND CaseYear = @Year", conn, trans))
+                        {
+                            cmd4.Parameters.Add(new SqlParameter("@No", SqlDbType.NVarChar, 100) { Value = caseNumber });
+                            cmd4.Parameters.Add(new SqlParameter("@Year", SqlDbType.Int) { Value = caseYear });
+                            using (var r = cmd4.ExecuteReader()) { while (r.Read()) ids4.Add(r.GetInt32(0)); }
+                        }
+                        foreach (int id in ids4)
+                        {
+                            DeleteOtherCourtsChildRecords(id, conn, trans);
+                            using var delCmd = new SqlCommand("DELETE FROM OTHER_CASES WHERE CaseID = @Id", conn, trans);
+                            delCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                            totalDeleted += delCmd.ExecuteNonQuery();
+                        }
 
                         trans.Commit();
                     }
@@ -810,38 +860,110 @@ namespace MVCCaseManagement.DAL
 
         private void DeleteMVCChildRecords(int id, SqlConnection conn, SqlTransaction trans)
         {
-            string[] tables = { "MVC_CASE_PAYMENTS", "MVC_CASE_ADVERSE_DOCS", "MVC_EP_DETAILS", "APPEAL_CONNECTED", "APPEAL_DETAILS", "CASE_VIEW_TRACKING", "MVC_CASE_ADVERSE_CONNECTED", "MVC_CASE_ADVERSE_DETAILS", "MVC_CASE_ADVERSE_PW", "MVC_CASE_ADVERSE_RW", "MVC_CASE_CONNECTED", "MVC_CASE_PETITIONERS" };
+            string[] tables = { 
+                "MVC_CASE_PAYMENTS", 
+                "MVC_CASE_ADVERSE_DOCS", 
+                "MVC_EP_DETAILS", 
+                "APPEAL_CONNECTED", 
+                "APPEAL_DETAILS", 
+                "CASE_VIEW_TRACKING", 
+                "MVC_CASE_ADVERSE_CONNECTED", 
+                "MVC_CASE_ADVERSE_DETAILS", 
+                "MVC_CASE_ADVERSE_PW", 
+                "MVC_CASE_ADVERSE_RW", 
+                "MVC_CASE_CONNECTED", 
+                "MVC_CASE_PETITIONERS",
+                "MVC_CASE_RESPONDENTS",
+                "MVC_CASE_OPPOSITE_VEHICLES"
+            };
             foreach (var tbl in tables)
             {
-                var cmd = new SqlCommand($"DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
-                cmd.Parameters.AddWithValue("@Id", id);
+                using var cmd = new SqlCommand($"IF OBJECT_ID('{tbl}', 'U') IS NOT NULL DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
+                cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
                 cmd.ExecuteNonQuery();
             }
+            using var notingCmd = new SqlCommand("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType = 'MVC' AND CaseID = @Id", conn, trans);
+            notingCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+            notingCmd.ExecuteNonQuery();
         }
 
         private void DeleteGratuityChildRecords(int id, SqlConnection conn, SqlTransaction trans)
         {
-            string[] tables = { "GRA_INTEREST_PAYMENTS", "GRA_PAYMENTS" };
+            string[] tables = { "GRA_INTEREST_PAYMENTS", "GRA_PAYMENTS", "GRATUITY_ENCLOSED_DOCS" };
             foreach (var tbl in tables)
             {
-                var cmd = new SqlCommand($"DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
-                cmd.Parameters.AddWithValue("@Id", id);
+                using var cmd = new SqlCommand($"IF OBJECT_ID('{tbl}', 'U') IS NOT NULL DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
+                cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
                 cmd.ExecuteNonQuery();
             }
+            using var notingCmd = new SqlCommand("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType IN ('GRA', 'GRATUITY') AND CaseID = @Id", conn, trans);
+            notingCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+            notingCmd.ExecuteNonQuery();
         }
 
         private void DeleteLabourChildRecords(int id, SqlConnection conn, SqlTransaction trans)
         {
-            string[] tables = { "LABOUR_CASE_HISTORY", "LABOUR_CASE_EVIDENCE", "LABOUR_SERVICE_MATTERS", "LABOUR_CONNECTED_CASES", "LABOUR_CASE_VIEW_TRACKING", "LABOUR_REINSTATED_DOCUMENTS" };
+            string[] tables = { 
+                "LABOUR_CASE_HISTORY", 
+                "LABOUR_CASE_EVIDENCE", 
+                "LABOUR_SERVICE_MATTERS", 
+                "LABOUR_CONNECTED_CASES", 
+                "LABOUR_CASE_VIEW_TRACKING", 
+                "LABOUR_REINSTATED_DOCUMENTS",
+                "LABOUR_ENCLOSED_DOCS"
+            };
             foreach (var tbl in tables)
             {
-                var cmd = new SqlCommand($"DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
-                cmd.Parameters.AddWithValue("@Id", id);
+                using var cmd = new SqlCommand($"IF OBJECT_ID('{tbl}', 'U') IS NOT NULL DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
+                cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
                 cmd.ExecuteNonQuery();
             }
-            var arisingCmd = new SqlCommand("DELETE FROM LABOUR_ARISING_APPLICATIONS WHERE ParentCaseID = @Id", conn, trans);
-            arisingCmd.Parameters.AddWithValue("@Id", id);
-            arisingCmd.ExecuteNonQuery();
+
+            using (var epPayCmd = new SqlCommand(@"
+                IF OBJECT_ID('LABOUR_EP_PAYMENTS', 'U') IS NOT NULL AND OBJECT_ID('LABOUR_EP_DETAILS', 'U') IS NOT NULL 
+                DELETE FROM LABOUR_EP_PAYMENTS WHERE EPID IN (SELECT EPID FROM LABOUR_EP_DETAILS WHERE CaseID = @Id)", conn, trans))
+            {
+                epPayCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                epPayCmd.ExecuteNonQuery();
+            }
+
+            using (var epCmd = new SqlCommand("IF OBJECT_ID('LABOUR_EP_DETAILS', 'U') IS NOT NULL DELETE FROM LABOUR_EP_DETAILS WHERE CaseID = @Id", conn, trans))
+            {
+                epCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                epCmd.ExecuteNonQuery();
+            }
+
+            using (var arisingCmd = new SqlCommand("IF OBJECT_ID('LABOUR_ARISING_APPLICATIONS', 'U') IS NOT NULL DELETE FROM LABOUR_ARISING_APPLICATIONS WHERE ParentCaseID = @Id", conn, trans))
+            {
+                arisingCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                arisingCmd.ExecuteNonQuery();
+            }
+
+            using (var notingCmd = new SqlCommand("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType = 'LABOUR' AND CaseID = @Id", conn, trans))
+            {
+                notingCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                notingCmd.ExecuteNonQuery();
+            }
+        }
+
+        private void DeleteOtherCourtsChildRecords(int id, SqlConnection conn, SqlTransaction trans)
+        {
+            string[] tables = { 
+                "OTHER_CASE_PETITIONERS", 
+                "OTHER_CASE_RESPONDENTS", 
+                "OTHER_CASE_EVIDENCE_RESPONDENT", 
+                "OTHER_CASE_EVIDENCE_CORP", 
+                "OTHER_CASE_DOCUMENTS" 
+            };
+            foreach (var tbl in tables)
+            {
+                using var cmd = new SqlCommand($"IF OBJECT_ID('{tbl}', 'U') IS NOT NULL DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans);
+                cmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+                cmd.ExecuteNonQuery();
+            }
+            using var notingCmd = new SqlCommand("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType IN ('OTHER', 'OS', 'ECA', 'CC', 'PSC', 'LAC', 'Consumer') AND CaseID = @Id", conn, trans);
+            notingCmd.Parameters.Add(new SqlParameter("@Id", SqlDbType.Int) { Value = id });
+            notingCmd.ExecuteNonQuery();
         }
     }
 }

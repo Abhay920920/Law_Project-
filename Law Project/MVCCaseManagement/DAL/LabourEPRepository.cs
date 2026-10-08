@@ -203,22 +203,55 @@ namespace MVCCaseManagement.DAL
                 new SqlParameter("@DivisionID", model.DivisionID)
             };
 
-            int epId = Convert.ToInt32(_db.ExecuteQuery(query, parameters).Rows[0][0]);
-
-            if (epId > 0 && model.CaseID > 0)
+            using var connection = _db.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                string syncQuery = @"
-                    UPDATE LABOUR_CASES SET IsEPFiled = 1 WHERE CaseID = @CaseID";
-                _db.ExecuteNonQuery(syncQuery, new[] { new SqlParameter("@CaseID", model.CaseID) });
-            }
+                object? result = _db.ExecuteScalar(query, parameters, connection, transaction);
+                int epId = result != null ? Convert.ToInt32(result) : 0;
 
-            return epId;
+                // Save payments if any
+                if (epId > 0 && model.Payments != null && model.Payments.Count > 0)
+                {
+                    foreach (var p in model.Payments.Where(x => x.Amount > 0))
+                    {
+                        string insertPayment = @"
+                            INSERT INTO LABOUR_EP_PAYMENTS (EPID, Amount, PaymentDate, ChequeNumber, ChequeDate, Remarks)
+                            VALUES (@EPID, @Amount, @Date, @Cheque, @CDate, @Rem)";
+                        _db.ExecuteNonQuery(insertPayment, new[] {
+                            new SqlParameter("@EPID", epId),
+                            new SqlParameter("@Amount", p.Amount),
+                            new SqlParameter("@Date", p.PaymentDate),
+                            new SqlParameter("@Cheque", p.ChequeNumber ?? (object)DBNull.Value),
+                            new SqlParameter("@CDate", p.ChequeDate ?? (object)DBNull.Value),
+                            new SqlParameter("@Rem", p.Remarks ?? (object)DBNull.Value)
+                        }, connection, transaction);
+                    }
+                }
+
+                if (epId > 0 && model.CaseID > 0)
+                {
+                    string syncQuery = @"
+                        UPDATE LABOUR_CASES SET IsEPFiled = 1 WHERE CaseID = @CaseID";
+                    _db.ExecuteNonQuery(syncQuery, new[] { new SqlParameter("@CaseID", model.CaseID) }, connection, transaction);
+                }
+
+                transaction.Commit();
+                return epId;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
 
         public bool UpdateEP(LabourEPViewModel model)
         {
             string query = @"
                 UPDATE LABOUR_EP_DETAILS SET
+                    CaseID = CASE WHEN @CaseID > 0 THEN @CaseID ELSE CaseID END,
                     ArisingFromCaseNo = @CaseNo, 
                     ArisingFromCaseYear = @CaseYearStr, 
                     ArisingFromCourt = @Court,
@@ -260,6 +293,7 @@ namespace MVCCaseManagement.DAL
 
             var parameters = new[]
             {
+                new SqlParameter("@CaseID", model.CaseID),
                 new SqlParameter("@EPNumber", model.EPNumber ?? (object)DBNull.Value),
                 new SqlParameter("@EPYear", model.EPYear ?? (object)DBNull.Value),
                 new SqlParameter("@EPCourt", model.EPCourt ?? (object)DBNull.Value),
@@ -300,37 +334,51 @@ namespace MVCCaseManagement.DAL
                 new SqlParameter("@EPID", model.EPID)
             };
 
-            _db.ExecuteNonQuery(query, parameters);
-
-            // Sync Payments
-            string deletePayments = "DELETE FROM LABOUR_EP_PAYMENTS WHERE EPID = @EPID";
-            _db.ExecuteNonQuery(deletePayments, new[] { new SqlParameter("@EPID", model.EPID) });
-
-            if (model.Payments != null && model.Payments.Count > 0)
+            using var connection = _db.GetConnection();
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                foreach (var p in model.Payments)
+                _db.ExecuteNonQuery(query, parameters, connection, transaction);
+
+                // Sync Payments (Delete and re-insert within transaction only if provided)
+                if (model.Payments != null)
                 {
-                    string insertPayment = @"
-                        INSERT INTO LABOUR_EP_PAYMENTS (EPID, Amount, PaymentDate, ChequeNumber, ChequeDate, Remarks)
-                        VALUES (@EPID, @Amount, @Date, @Cheque, @CDate, @Rem)";
-                    _db.ExecuteNonQuery(insertPayment, new[] {
-                        new SqlParameter("@EPID", model.EPID),
-                        new SqlParameter("@Amount", p.Amount),
-                        new SqlParameter("@Date", p.PaymentDate),
-                        new SqlParameter("@Cheque", p.ChequeNumber ?? (object)DBNull.Value),
-                        new SqlParameter("@CDate", p.ChequeDate ?? (object)DBNull.Value),
-                        new SqlParameter("@Rem", p.Remarks ?? (object)DBNull.Value)
-                    });
-                }
-            }
-            if (model.CaseID > 0)
-            {
-                string syncQuery = @"
-                    UPDATE LABOUR_CASES SET IsEPFiled = 1 WHERE CaseID = @CaseID";
-                _db.ExecuteNonQuery(syncQuery, new[] { new SqlParameter("@CaseID", model.CaseID) });
-            }
+                    string deletePayments = "DELETE FROM LABOUR_EP_PAYMENTS WHERE EPID = @EPID";
+                    _db.ExecuteNonQuery(deletePayments, new[] { new SqlParameter("@EPID", model.EPID) }, connection, transaction);
 
-            return true;
+                    if (model.Payments.Count > 0)
+                    {
+                        foreach (var p in model.Payments)
+                        {
+                            string insertPayment = @"
+                                INSERT INTO LABOUR_EP_PAYMENTS (EPID, Amount, PaymentDate, ChequeNumber, ChequeDate, Remarks)
+                                VALUES (@EPID, @Amount, @Date, @Cheque, @CDate, @Rem)";
+                            _db.ExecuteNonQuery(insertPayment, new[] {
+                                new SqlParameter("@EPID", model.EPID),
+                                new SqlParameter("@Amount", p.Amount),
+                                new SqlParameter("@Date", p.PaymentDate),
+                                new SqlParameter("@Cheque", p.ChequeNumber ?? (object)DBNull.Value),
+                                new SqlParameter("@CDate", p.ChequeDate ?? (object)DBNull.Value),
+                                new SqlParameter("@Rem", p.Remarks ?? (object)DBNull.Value)
+                            }, connection, transaction);
+                        }
+                    }
+                }
+                if (model.CaseID > 0)
+                {
+                    string syncQuery = @"UPDATE LABOUR_CASES SET IsEPFiled = 1 WHERE CaseID = @CaseID";
+                    _db.ExecuteNonQuery(syncQuery, new[] { new SqlParameter("@CaseID", model.CaseID) }, connection, transaction);
+                }
+
+                transaction.Commit();
+                return true;
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
 
         public IEnumerable<LabourEPViewModel> GetEPsByCaseId(int caseId)

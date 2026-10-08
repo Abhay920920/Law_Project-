@@ -470,11 +470,27 @@ namespace MVCCaseManagement.DAL
 
         public async Task<bool> DeleteCase(int id)
         {
-            using (var connection = CreateConnection())
+            using (var connection = new SqlConnection(_connectionString))
             {
-                var query = "DELETE FROM GRA_CASES WHERE CaseID = @Id";
-                var rows = await connection.ExecuteAsync(query, new { Id = id });
-                return rows > 0;
+                await connection.OpenAsync();
+                using (var trans = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        await connection.ExecuteAsync("IF OBJECT_ID('GRA_INTEREST_PAYMENTS', 'U') IS NOT NULL DELETE FROM GRA_INTEREST_PAYMENTS WHERE CaseID = @Id", new { Id = id }, trans);
+                        await connection.ExecuteAsync("IF OBJECT_ID('GRA_PAYMENTS', 'U') IS NOT NULL DELETE FROM GRA_PAYMENTS WHERE CaseID = @Id", new { Id = id }, trans);
+                        await connection.ExecuteAsync("IF OBJECT_ID('GRATUITY_ENCLOSED_DOCS', 'U') IS NOT NULL DELETE FROM GRATUITY_ENCLOSED_DOCS WHERE CaseID = @Id", new { Id = id }, trans);
+                        await connection.ExecuteAsync("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType IN ('GRA', 'GRATUITY') AND CaseID = @Id", new { Id = id }, trans);
+                        var rows = await connection.ExecuteAsync("DELETE FROM GRA_CASES WHERE CaseID = @Id", new { Id = id }, trans);
+                        trans.Commit();
+                        return rows > 0;
+                    }
+                    catch
+                    {
+                        trans.Rollback();
+                        throw;
+                    }
+                }
             }
         }
 
@@ -491,40 +507,37 @@ namespace MVCCaseManagement.DAL
         {
             using (var connection = CreateConnection())
             {
-                var stats = new DashboardStatsViewModel();
                 var param = new { DivisionID = divisionId };
                 string divFilter = (divisionId > 0 && divisionId != 5) ? " AND DivisionCode = @DivisionID" : "";
 
-                stats.TotalCases = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE 1=1" + divFilter, param);
-                stats.PendingCases = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (DisposalResult IS NULL OR DisposalResult = 'Pending')" + divFilter, param);
-                stats.FavorCases = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (DisposalResult = 'Favor' OR DisposalResult = 'Favor (Settled)')" + divFilter, param);
-                stats.AgainstCases = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (DisposalResult = 'Against' OR DisposalResult = 'Dismissed')" + divFilter, param);
-                stats.SentToCOCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE ForwardingStatus = 'Sent to Central Office' AND IsViewedByCO = 0" + divFilter, param);
-                stats.NoActionTakenCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE ForwardingStatus = 'Sent to Central Office' AND (ActionTaken IS NULL OR RTRIM(LTRIM(ActionTaken)) = '')" + divFilter, param);
-                stats.WPPendingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (CorpWPStatus = 'Pending' OR IsPendingForFiling = 1) AND (HighCourtBench IS NULL OR HighCourtBench <> 'Division Bench') AND AppealEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(AppealEntrustmentNo)) <> '' AND AppealEntrustmentDate IS NOT NULL" + divFilter, param);
-                stats.WritAppealPendingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (CorpWPStatus = 'Pending' OR IsPendingForFiling = 1) AND HighCourtBench = 'Division Bench' AND AppealEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(AppealEntrustmentNo)) <> '' AND AppealEntrustmentDate IS NOT NULL" + divFilter, param);
-                stats.SLPPendingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (ClaimantSCStatus = 'Pending' OR IsClaimantSCPending = 1) AND ClaimantSCEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(ClaimantSCEntrustmentNo)) <> '' AND ClaimantSCEntrustmentDate IS NOT NULL" + divFilter, param);
+                string query = $@"
+                    SELECT 
+                        COUNT(*) AS TotalCases,
+                        COUNT(CASE WHEN DisposalResult IS NULL OR DisposalResult = 'Pending' THEN 1 END) AS PendingCases,
+                        COUNT(CASE WHEN DisposalResult = 'Favor' OR DisposalResult = 'Favor (Settled)' THEN 1 END) AS FavorCases,
+                        COUNT(CASE WHEN DisposalResult = 'Against' OR DisposalResult = 'Dismissed' THEN 1 END) AS AgainstCases,
+                        COUNT(CASE WHEN ForwardingStatus = 'Sent to Central Office' AND IsViewedByCO = 0 THEN 1 END) AS SentToCOCount,
+                        COUNT(CASE WHEN ForwardingStatus = 'Sent to Central Office' AND (ActionTaken IS NULL OR RTRIM(LTRIM(ActionTaken)) = '') THEN 1 END) AS NoActionTakenCount,
+                        COUNT(CASE WHEN (CorpWPStatus = 'Pending' OR IsPendingForFiling = 1) AND (HighCourtBench IS NULL OR HighCourtBench <> 'Division Bench') AND AppealEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(AppealEntrustmentNo)) <> '' AND AppealEntrustmentDate IS NOT NULL THEN 1 END) AS WPPendingCount,
+                        COUNT(CASE WHEN (CorpWPStatus = 'Pending' OR IsPendingForFiling = 1) AND HighCourtBench = 'Division Bench' AND AppealEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(AppealEntrustmentNo)) <> '' AND AppealEntrustmentDate IS NOT NULL THEN 1 END) AS WritAppealPendingCount,
+                        COUNT(CASE WHEN (ClaimantSCStatus = 'Pending' OR IsClaimantSCPending = 1) AND ClaimantSCEntrustmentNo IS NOT NULL AND RTRIM(LTRIM(ClaimantSCEntrustmentNo)) <> '' AND ClaimantSCEntrustmentDate IS NOT NULL THEN 1 END) AS SLPPendingCount,
+                        COUNT(CASE WHEN (CourtType = 'Controlling Authority' OR CourtType IS NULL) AND (AppealNumber IS NULL OR RTRIM(LTRIM(AppealNumber)) = '') AND (ClaimantWPNumber IS NULL OR RTRIM(LTRIM(ClaimantWPNumber)) = '') AND (DisposalResult IS NULL OR DisposalResult = 'Pending') THEN 1 END) AS PGACRPendingCount,
+                        COUNT(CASE WHEN ((AppealNumber IS NOT NULL AND RTRIM(LTRIM(AppealNumber)) <> '') OR (ClaimantWPNumber IS NOT NULL AND RTRIM(LTRIM(ClaimantWPNumber)) <> '')) AND (DisposalResult IS NULL OR DisposalResult = 'Pending') THEN 1 END) AS PGAApplCRPendingCount,
+                        COUNT(CASE WHEN CreatedDate >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0) THEN 1 END) AS CasesThisMonth,
+                        COUNT(CASE WHEN NextHearingDate BETWEEN CAST(GETDATE() AS DATE) AND CAST(DATEADD(day, 7, GETDATE()) AS DATE) THEN 1 END) AS UpcomingHearingsCount,
+                        COUNT(CASE WHEN ActionTaken = 'Pending' OR ActionTaken = 'PENDING' THEN 1 END) AS FeasibilityReviewCount,
+                        COUNT(CASE WHEN UPPER(LTRIM(RTRIM(ActionTaken))) LIKE '%PENDING%COMPETENT%AUTHORITY%' OR UPPER(LTRIM(RTRIM(ActionTaken))) = 'PENDING AT CA' THEN 1 END) AS PendingCompetentAuthorityCount,
+                        COUNT(CASE WHEN UPPER(LTRIM(RTRIM(ActionTaken))) LIKE '%PENDING%DECISION%' OR UPPER(LTRIM(RTRIM(ActionTaken))) = 'PENDING FOR ACTION' THEN 1 END) AS PendingCLOLOCount,
+                        ISNULL(SUM(OrderedAmount_CA), 0) AS TotalAwardAmountAgainst,
+                        COUNT(CASE WHEN CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE) THEN 1 END) AS HearingsToday,
+                        COUNT(CASE WHEN CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed') THEN 1 END) AS AwardsReceivedToday,
+                        COUNT(CASE WHEN StayComplianceDate BETWEEN CAST(GETDATE() AS DATE) AND CAST(DATEADD(day, 7, GETDATE()) AS DATE) THEN 1 END) AS ComplianceDueCount,
+                        COUNT(CASE WHEN NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending') THEN 1 END) AS CriticalDelaysCount
+                    FROM GRA_CASES
+                    WHERE 1=1 {divFilter}";
 
-                stats.PGACRPendingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (CourtType = 'Controlling Authority' OR CourtType IS NULL) AND (AppealNumber IS NULL OR RTRIM(LTRIM(AppealNumber)) = '') AND (ClaimantWPNumber IS NULL OR RTRIM(LTRIM(ClaimantWPNumber)) = '') AND (DisposalResult IS NULL OR DisposalResult = 'Pending')" + divFilter, param);
-                stats.PGAApplCRPendingCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE ((AppealNumber IS NOT NULL AND RTRIM(LTRIM(AppealNumber)) <> '') OR (ClaimantWPNumber IS NOT NULL AND RTRIM(LTRIM(ClaimantWPNumber)) <> '')) AND (DisposalResult IS NULL OR DisposalResult = 'Pending')" + divFilter, param);
-                
-                stats.CasesThisMonth = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE CreatedDate >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)" + divFilter, param);
-                stats.UpcomingHearingsCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE NextHearingDate BETWEEN CAST(GETDATE() AS DATE) AND CAST(DATEADD(day, 7, GETDATE()) AS DATE)" + divFilter, param);
-                stats.FeasibilityReviewCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (ActionTaken = 'Pending' OR ActionTaken = 'PENDING')" + divFilter, param);
-                stats.PendingCompetentAuthorityCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (UPPER(LTRIM(RTRIM(ActionTaken))) LIKE '%PENDING%COMPETENT%AUTHORITY%' OR UPPER(LTRIM(RTRIM(ActionTaken))) = 'PENDING AT CA')" + divFilter, param);
-                stats.PendingCLOLOCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE (UPPER(LTRIM(RTRIM(ActionTaken))) LIKE '%PENDING%DECISION%' OR UPPER(LTRIM(RTRIM(ActionTaken))) = 'PENDING FOR ACTION')" + divFilter, param);
-                
-                // Finance Exposure: Sum of OrderedAmount_CA (Liability awarded by Controlling Authority)
-                stats.TotalAwardAmountAgainst = await connection.ExecuteScalarAsync<decimal>("SELECT ISNULL(SUM(OrderedAmount_CA), 0) FROM GRA_CASES WHERE 1=1" + divFilter, param);
-                // stats.TotalClaimedAmount = await connection.ExecuteScalarAsync<decimal>("SELECT ISNULL(SUM(AmountClaimed), 0) FROM GRA_CASES WHERE 1=1" + divFilter, param);
-
-                // Snapshot Metrics
-                stats.HearingsToday = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)" + divFilter, param);
-                stats.AwardsReceivedToday = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed')" + divFilter, param);
-                stats.ComplianceDueCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE StayComplianceDate BETWEEN CAST(GETDATE() AS DATE) AND CAST(DATEADD(day, 7, GETDATE()) AS DATE)" + divFilter, param);
-                stats.CriticalDelaysCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM GRA_CASES WHERE NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending')" + divFilter, param);
-
-                return stats;
+                var stats = await connection.QueryFirstOrDefaultAsync<DashboardStatsViewModel>(query, param);
+                return stats ?? new DashboardStatsViewModel();
             }
         }
 

@@ -832,7 +832,7 @@
             if (tdStage) tdStage.innerHTML = '<span class="text-muted extra-small">Fetching NAPIX...</span>';
 
             try {
-                const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(item.cnr)}&isHighCourt=true`);
+                const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(item.cnr)}&isHighCourt=true&module=Labour`);
                 const json = await res.json();
 
                 if (json && json.success) {
@@ -1028,7 +1028,7 @@
             // If CNR exists, query NAPIX for full history & orders
             if (item.cnr) {
                 try {
-                    const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(item.cnr)}&isHighCourt=true`);
+                    const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(item.cnr)}&isHighCourt=true&module=Labour`);
                     const json = await res.json();
 
                     if (json && json.success) {

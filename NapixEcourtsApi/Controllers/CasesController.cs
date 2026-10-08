@@ -19,79 +19,34 @@ public class CasesController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// POST /api/cases/token/regenerate — clears cached token and fetches a brand-new OAuth2 Bearer token from NAPIX.
-    /// </summary>
+    /// <summary>POST /api/cases/token/regenerate — clears cached token and fetches fresh OAuth2 Bearer token.</summary>
     [HttpPost("token/regenerate")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> RegenerateToken(CancellationToken cancellationToken)
-    {
-        try
+    public Task<IActionResult> RegenerateToken([FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () =>
         {
-            _authService.InvalidateToken();
-            var token = await _authService.GetAccessTokenAsync(cancellationToken);
-            return Ok(new
+            _authService.InvalidateToken(module);
+            var token = await _authService.GetAccessTokenAsync(module, cancellationToken);
+            return (IActionResult)Ok(new
             {
                 success = true,
-                message = "Successfully fetched a fresh OAuth2 Bearer token from NAPIX gateway.",
+                module = module ?? "MVC",
+                message = $"Successfully fetched fresh OAuth2 Bearer token from NAPIX gateway for {module ?? "MVC"}.",
                 tokenPreview = token[..Math.Min(25, token.Length)] + "...",
                 tokenLength = token.Length,
                 fetchedAtUtc = DateTime.UtcNow
             });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to regenerate NAPIX OAuth token");
-            return StatusCode(StatusCodes.Status502BadGateway, new
-            {
-                success = false,
-                error = ex.Message
-            });
-        }
-    }
+        });
 
-    /// <summary>
-    /// GET /api/cases/{cnr} — comprehensive case details:
-    /// basic details, all hearings, all interim orders & judgments with direct PDF download URLs, and the raw payload.
-    /// </summary>
+    /// <summary>GET /api/cases/{cnr} — comprehensive case details with parsed hearings and orders.</summary>
     [HttpGet("{cnr}")]
     [ProducesResponseType(typeof(CaseFullDetails), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetByCnr(string cnr, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _client.GetFullCaseDetailsAsync(cnr, cancellationToken);
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixNotFoundException ex)
-        {
-            _logger.LogInformation("NAPIX CNR not found: {Cnr} - {Msg}", cnr, ex.Message);
-            return NotFound(new { error = ex.Message, cnr });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX CNR lookup failed for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during CNR lookup for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+    public Task<IActionResult> GetByCnr(string cnr, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () => Ok(await _client.GetFullCaseDetailsAsync(cnr, module, cancellationToken)), cnr);
 
     /// <summary>GET /api/cases/{cnr}/raw — complete unadulterated decrypted JSON document directly from eCourts.</summary>
     [HttpGet("{cnr}/raw")]
@@ -99,236 +54,97 @@ public class CasesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetRawByCnr(string cnr, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _client.GetRawCaseDetailsAsync(cnr, cancellationToken);
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixNotFoundException ex)
-        {
-            _logger.LogInformation("NAPIX raw CNR not found: {Cnr} - {Msg}", cnr, ex.Message);
-            return NotFound(new { error = ex.Message, cnr });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX raw CNR lookup failed for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during raw CNR lookup for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+    public Task<IActionResult> GetRawByCnr(string cnr, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () => Ok(await _client.GetRawCaseDetailsAsync(cnr, module, cancellationToken)), cnr);
 
-    /// <summary>GET /api/cases/{cnr}/orders-zip — downloads all interim & final orders/judgments as a single ZIP archive.</summary>
+    /// <summary>GET /api/cases/{cnr}/orders-zip — downloads all interim & final orders/judgments as a ZIP archive.</summary>
     [HttpGet("{cnr}/orders-zip")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> DownloadOrdersZip(string cnr, CancellationToken cancellationToken)
-    {
-        try
+    public Task<IActionResult> DownloadOrdersZip(string cnr, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () =>
         {
-            var (zipBytes, count) = await _client.DownloadAllOrdersZipAsync(cnr, cancellationToken);
-            if (count == 0)
-            {
-                return NotFound(new { message = $"No interim orders or judgments found for CNR {cnr}." });
-            }
-            return File(zipBytes, "application/zip", $"{cnr}_all_orders.zip");
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixNotFoundException ex)
-        {
-            _logger.LogInformation("NAPIX orders-zip not found: {Cnr} - {Msg}", cnr, ex.Message);
-            return NotFound(new { error = ex.Message, cnr });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX orders-zip lookup failed for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error creating orders-zip for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+            var (zipBytes, count) = await _client.DownloadAllOrdersZipAsync(cnr, module, cancellationToken);
+            return count == 0
+                ? (IActionResult)NotFound(new { message = $"No interim orders or judgments found for CNR {cnr}." })
+                : File(zipBytes, "application/zip", $"{cnr}_all_orders.zip");
+        }, cnr);
 
     /// <summary>POST /api/cases/current-status — bulk lightweight status for up to 500 CNRs.</summary>
     [HttpPost("current-status")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetCurrentStatus(
-        [FromBody] CurrentStatusRequest request, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _client.GetCurrentStatusAsync(request.Cnrs, cancellationToken);
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX current-status lookup failed");
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX current-status");
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during current-status lookup");
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+    public Task<IActionResult> GetCurrentStatus([FromBody] CurrentStatusRequest request, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () => Ok(await _client.GetCurrentStatusAsync(request.Cnrs, module, cancellationToken)));
 
     /// <summary>GET /api/cases/{cnr}/business?date=yyyy-MM-dd — business transacted on a given date.</summary>
     [HttpGet("{cnr}/business")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetShowBusiness(
-        string cnr, [FromQuery] DateOnly date, CancellationToken cancellationToken)
-    {
-        try
-        {
-            var result = await _client.GetShowBusinessAsync(cnr, date, cancellationToken);
-            return Ok(result);
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixNotFoundException ex)
-        {
-            _logger.LogInformation("NAPIX business not found for {Cnr}: {Msg}", cnr, ex.Message);
-            return NotFound(new { error = ex.Message, cnr });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX show-business lookup failed for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX show-business for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during show-business lookup for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+    public Task<IActionResult> GetShowBusiness(string cnr, [FromQuery] DateOnly date, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () => Ok(await _client.GetShowBusinessAsync(cnr, date, module, cancellationToken)), cnr);
 
     /// <summary>
-    /// GET /api/cases/{cnr}/order?orderNo=1&amp;date=yyyy-MM-dd — order/judgment as a PDF file.
-    /// If orderNo or date is omitted, automatically auto-detects and downloads the first available order/judgment for the case.
+    /// GET /api/cases/{cnr}/order?orderNo=1&amp;date=yyyy-MM-dd — order/judgment as PDF.
+    /// If orderNo or date is omitted, auto-detects first available order/judgment.
     /// </summary>
     [HttpGet("{cnr}/order")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
-    public async Task<IActionResult> GetOrderPdf(
-        string cnr, [FromQuery] string? orderNo, [FromQuery] DateOnly? date, CancellationToken cancellationToken)
-    {
-        try
+    public Task<IActionResult> GetOrderPdf(string cnr, [FromQuery] string? orderNo, [FromQuery] string? date, [FromQuery] string? module, CancellationToken cancellationToken) =>
+        ExecuteSafeAsync(async () =>
         {
-            if (string.IsNullOrWhiteSpace(orderNo) || date is null)
+            DateOnly? parsedOrderDate = null;
+            if (!string.IsNullOrWhiteSpace(date) && TryParseDate(date, out var dVal))
+                parsedOrderDate = dVal;
+
+            if (string.IsNullOrWhiteSpace(orderNo) || parsedOrderDate is null)
             {
-                var fullCase = await _client.GetFullCaseDetailsAsync(cnr, cancellationToken);
-                var firstOrder = fullCase.FinalOrdersAndJudgments.FirstOrDefault() 
-                              ?? fullCase.InterimOrders.FirstOrDefault();
+                var fullCase = await _client.GetFullCaseDetailsAsync(cnr, module, cancellationToken);
+                var allOrders = fullCase.FinalOrdersAndJudgments.Concat(fullCase.InterimOrders).ToList();
+                var targetOrder = (!string.IsNullOrWhiteSpace(orderNo)
+                    ? allOrders.FirstOrDefault(o => string.Equals(o.OrderNumber, orderNo, StringComparison.OrdinalIgnoreCase))
+                    : null) ?? allOrders.FirstOrDefault();
 
-                if (firstOrder == null || string.IsNullOrEmpty(firstOrder.OrderNumber) || string.IsNullOrEmpty(firstOrder.OrderDate))
-                {
-                    return NotFound(new { error = $"No orders or judgments recorded for CNR '{cnr}'." });
-                }
+                if (targetOrder == null || string.IsNullOrEmpty(targetOrder.OrderNumber) || string.IsNullOrEmpty(targetOrder.OrderDate))
+                    return (IActionResult)NotFound(new { error = $"No orders or judgments recorded for CNR '{cnr}'." });
 
-                orderNo = firstOrder.OrderNumber;
-                if (!TryParseDate(firstOrder.OrderDate, out var parsedDate))
+                orderNo ??= targetOrder.OrderNumber;
+                if (parsedOrderDate is null)
                 {
-                    return BadRequest(new { error = $"Could not parse recorded order date '{firstOrder.OrderDate}'." });
+                    if (!TryParseDate(targetOrder.OrderDate, out var pDate))
+                        return BadRequest(new { error = $"Could not parse recorded order date '{targetOrder.OrderDate}'." });
+                    parsedOrderDate = pDate;
                 }
-                date = parsedDate;
             }
 
-            var pdfBytes = await _client.GetOrderPdfAsync(cnr, orderNo, date.Value, cancellationToken);
+            var pdfBytes = await _client.GetOrderPdfAsync(cnr, orderNo, parsedOrderDate.Value, module, cancellationToken);
             Response.Headers["Content-Disposition"] = $"inline; filename=\"{cnr}_order_{orderNo}.pdf\"";
             return File(pdfBytes, "application/pdf");
-        }
-        catch (ArgumentException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-        catch (NapixNotFoundException ex)
-        {
-            _logger.LogInformation("NAPIX order not found for {Cnr}: {Msg}", cnr, ex.Message);
-            return NotFound(new { error = ex.Message, cnr });
-        }
-        catch (NapixApiException ex)
-        {
-            _logger.LogError(ex, "NAPIX order lookup failed for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "Network/HTTP error communicating with NAPIX order for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error during order lookup for {Cnr}", cnr);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
-        }
-    }
+        }, cnr);
 
-    /// <summary>GET /api/cases/{cnr}/view — interactive in-browser viewer page to view orders and judgments.</summary>
+    /// <summary>GET /api/cases/{cnr}/view — interactive in-browser viewer page for orders and judgments.</summary>
     [HttpGet("{cnr}/view")]
     [Produces("text/html")]
-    public async Task<IActionResult> ViewOrderPage(
-        string cnr, [FromQuery] string? orderNo, [FromQuery] DateOnly? date, CancellationToken cancellationToken)
+    public async Task<IActionResult> ViewOrderPage(string cnr, [FromQuery] string? orderNo, [FromQuery] DateOnly? date, [FromQuery] string? module, CancellationToken cancellationToken)
     {
         try
         {
-            var fullCase = await _client.GetFullCaseDetailsAsync(cnr, cancellationToken);
+            var fullCase = await _client.GetFullCaseDetailsAsync(cnr, module, cancellationToken);
             var b = fullCase.BasicInfo;
             var allOrders = fullCase.InterimOrders.Concat(fullCase.FinalOrdersAndJudgments).ToList();
-
             var selectedOrder = allOrders.FirstOrDefault(o => o.OrderNumber == orderNo) 
                              ?? fullCase.FinalOrdersAndJudgments.FirstOrDefault() 
                              ?? fullCase.InterimOrders.FirstOrDefault();
 
             var pdfSrc = selectedOrder?.ViewUrl ?? $"/api/cases/{cnr}/order";
-
             var orderButtonsHtml = string.Join("", allOrders.Select(o =>
                 $"<a href=\"/api/cases/{cnr}/view?orderNo={Uri.EscapeDataString(o.OrderNumber ?? "")}\" style=\"display:inline-block;margin:4px 6px;padding:6px 12px;background:{(o == selectedOrder ? "#2563eb" : "#334155")};color:#fff;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;\">{o.OrderType} #{o.OrderNumber} ({o.OrderDate})</a>"));
 
@@ -375,11 +191,42 @@ public class CasesController : ControllerBase
         }
     }
 
+    private async Task<IActionResult> ExecuteSafeAsync(Func<Task<IActionResult>> action, string? cnr = null)
+    {
+        try
+        {
+            return await action();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (NapixNotFoundException ex)
+        {
+            _logger.LogInformation("NAPIX record not found: {Cnr} - {Msg}", cnr, ex.Message);
+            return NotFound(new { error = ex.Message, cnr });
+        }
+        catch (NapixApiException ex)
+        {
+            _logger.LogError(ex, "NAPIX API error for {Cnr}", cnr);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = ex.Message });
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Network error communicating with NAPIX for {Cnr}", cnr);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = $"Network error calling NAPIX: {ex.Message}" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error for {Cnr}", cnr);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message, type = ex.GetType().Name });
+        }
+    }
+
     private static bool TryParseDate(string? input, out DateOnly date)
     {
         date = default;
-        if (string.IsNullOrWhiteSpace(input))
-            return false;
+        if (string.IsNullOrWhiteSpace(input)) return false;
 
         var formats = new[] { "yyyy-MM-dd", "dd-MM-yyyy", "dd/MM/yyyy", "yyyy/MM/dd", "yyyy-M-d", "d-M-yyyy" };
         foreach (var fmt in formats)

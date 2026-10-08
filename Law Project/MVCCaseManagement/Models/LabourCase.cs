@@ -44,6 +44,17 @@ namespace MVCCaseManagement.Models
         
         [StringLength(200)]
         public string? OtherCourtDetails { get; set; }
+
+        public DateTime? LastNapixSyncAt { get; set; }
+        public string? LastNapixSyncStatus { get; set; }
+        public string? LastNapixSyncError { get; set; }
+        public int NapixSyncAttemptCount { get; set; }
+        public string? NapixDataHash { get; set; }
+        public string? PendDispStatus { get; set; }
+        public string? EstName { get; set; }
+        public string? ECourtsStage { get; set; }
+        public string? ECourtsCourtNo { get; set; }
+        public string? ECourtsJudge { get; set; }
         
         // --- Customer / Employee / Petitioner Details ---
         

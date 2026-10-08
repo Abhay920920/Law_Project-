@@ -1,44 +1,218 @@
 @{
     Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
-    ViewData["Title"] = "Other Courts";
+    ViewData["Title"] = "Other Courts Gateway";
+    ViewBag.ActiveCourt = "Gateway";
 }
 
-<div class="central-hub mx-auto" id="hubContent">
-    <div class="hub-icon-wrapper">
-        <i class="bi bi-bank2" id="hubIcon"></i>
-    </div>
-    <h2 id="hubTitle">O.S Workspace</h2>
-    <p id="hubDesc">You are currently in the Original Suit Cases (O.S) module. Prepare case files, manage hearings, and monitor progress securely from this workspace.</p>
-    
-    <!-- OS Specific Actions -->
-    <div id="osSelectionArea" class="mt-4 pt-4 border-top">
-        <h5 class="fw-bold text-dark mb-4">Please specify the litigant type to proceed:</h5>
-        <div class="d-flex gap-3 justify-content-center flex-wrap">
-            <a href="@Url.Action("OSClaimant", "Home")" class="btn btn-outline-primary btn-lg fw-bold selection-btn text-decoration-none">
-                <i class="bi bi-person-fill me-2"></i>Claimant
-            </a>
-            <a href="@Url.Action("OSCorporation", "Home")" class="btn btn-primary btn-lg fw-bold selection-btn text-white text-decoration-none">
-                <i class="bi bi-building me-2"></i>Corporation
-            </a>
+<div class="container-fluid fade-in">
+    <!-- Official Header Banner -->
+    <div class="glass-header shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h3 class="fw-bold text-dark mb-1">
+                    <i class="bi bi-bank2 text-primary me-2"></i>Other Courts Judicial Management
+                </h3>
+                <p class="text-secondary mb-0">Select a specialized jurisdiction to view litigation portfolios, upcoming hearings, and manage case files.</p>
+            </div>
+            <div class="d-inline-flex align-items-center bg-white p-2 px-3 rounded-pill shadow-sm border">
+                <i class="bi bi-shield-check text-primary me-2"></i>
+                <span class="small fw-bold text-dark">NWKRTC Legal Division</span>
+            </div>
         </div>
     </div>
 
-    <div class="action-indicator mt-4" id="defaultActionArea" style="display: none;">
-        <i class="bi bi-ui-checks-grid me-2"></i> Workspace Ready
+    <!-- Court Selection Grid -->
+    <div class="row g-4">
+        <!-- 1. O.S - Corporation Filed -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-primary bg-opacity-10 text-primary me-3">
+                        <i class="bi bi-building fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-primary text-white mb-1" style="font-size: 0.65rem;">PLAINTIFF</span>
+                        <h5 class="fw-bold text-dark mb-0">O.S (Corporation)</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Original Suits instituted <strong>by NWKRTC</strong> for property damage, contract recoveries, land encroachment, and corporate disputes.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("OSCorporation", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("OSCorporationForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. O.S - Claimant Filed -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-warning bg-opacity-10 text-warning me-3">
+                        <i class="bi bi-person-fill fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary text-white mb-1" style="font-size: 0.65rem;">DEFENDANT</span>
+                        <h5 class="fw-bold text-dark mb-0">O.S (Claimant)</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Original Suits filed <strong>against NWKRTC</strong> by private contractors, land owners, vendors, and commercial third parties.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("OSClaimant", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("OSClaimantForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. ECA (Employees' Compensation Act) -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-success bg-opacity-10 text-success me-3">
+                        <i class="bi bi-person-workspace fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-success text-white mb-1" style="font-size: 0.65rem;">WORKMEN STATUTORY</span>
+                        <h5 class="fw-bold text-dark mb-0">ECA Cases</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Claims filed under the Employees' Compensation Act for workplace injuries, permanent disability, and fatality indemnities.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("ECA", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("ECA", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. P & SC Cases -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-info bg-opacity-10 text-info me-3">
+                        <i class="bi bi-shield-check fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-info text-dark mb-1" style="font-size: 0.65rem;">PROBATE &amp; SUCCESSION</span>
+                        <h5 class="fw-bold text-dark mb-0">P &amp; SC Cases</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Probate and Succession Certificate petitions determining legal heirs for disbursement of service dues and claims.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("PSC", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("PSCForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. CC (Criminal Cases) -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-danger bg-opacity-10 text-danger me-3">
+                        <i class="bi bi-shield-exclamation fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-danger text-white mb-1" style="font-size: 0.65rem;">MAGISTRATE COURT</span>
+                        <h5 class="fw-bold text-dark mb-0">Criminal Cases (CC)</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Magisterial criminal proceedings, IPC Section 279/304A road accidents, theft, property damage, and staff prosecution.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("CC", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("CCForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Consumer Complaints -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-purple bg-opacity-10 text-purple me-3" style="color: #7c3aed; background-color: rgba(124, 58, 237, 0.1);">
+                        <i class="bi bi-person-badge fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-dark text-white mb-1" style="font-size: 0.65rem;">DCDRC FORUM</span>
+                        <h5 class="fw-bold text-dark mb-0">Consumer Disputes</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Complaints filed before District and State Consumer Disputes Redressal Commissions regarding ticketing and passenger service.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("Consumer", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("ConsumerForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. Land Acquisition (LAC) -->
+        <div class="col-md-6 col-lg-4">
+            <div class="glass-card h-100 p-4 d-flex flex-column transition-hover">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="rounded-3 p-3 bg-teal bg-opacity-10 text-teal me-3" style="color: #0d9488; background-color: rgba(13, 148, 136, 0.1);">
+                        <i class="bi bi-geo-alt fs-3"></i>
+                    </div>
+                    <div>
+                        <span class="badge bg-secondary text-white mb-1" style="font-size: 0.65rem;">REVENUE &amp; CIVIL</span>
+                        <h5 class="fw-bold text-dark mb-0">Land Acquisition (LAC)</h5>
+                    </div>
+                </div>
+                <p class="text-muted small flex-grow-1">
+                    Litigation pertaining to depot and bus station land acquisitions, compensation enhancement references, and title disputes.
+                </p>
+                <div class="d-flex gap-2 pt-3 border-top mt-2">
+                    <a href="@Url.Action("LAC", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
+                        <i class="bi bi-columns-gap me-1"></i> Dashboard
+                    </a>
+                    <a href="@Url.Action("LACForm", "Home")" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="New Registration">
+                        <i class="bi bi-plus-lg"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
-@section Scripts {
-    <script>
-        // Parse query parameter on load to show correct content if landed directly for OS
-        $(document).ready(function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const activeCourtParam = urlParams.get('activeCourt');
-            
-            // If we are on OS hub, ensure visual consistency
-            if(!activeCourtParam || activeCourtParam === 'OS') {
-                // Hub is already showing correctly via server-side rendering
-            }
-        });
-    </script>
-}
+<style>
+    .transition-hover {
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .transition-hover:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 25px rgba(0, 0, 0, 0.08) !important;
+    }
+</style>

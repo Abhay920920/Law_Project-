@@ -685,7 +685,7 @@
 
                 cnrMap.forEach((entry, cnr) => {
                     const isHc = cnr.startsWith('KAHC') || cnr.includes('HC');
-                    fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}`)
+                    fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}&module=Labour`)
                         .then(res => res.json())
                         .then(json => {
                             if (json && json.success && json.data) {

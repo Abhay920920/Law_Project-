@@ -53,6 +53,17 @@
         </div>
         <div class="d-flex align-items-center flex-wrap gap-2 ms-auto d-print-none">
             @{
+                var aiDivId = User.FindFirst("DivisionID")?.Value;
+                bool isAICentral = aiDivId == "0" || aiDivId == "5";
+                bool isAIRole = User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("CLO") || User.IsInRole("MD");
+            }
+            @if (isAICentral && isAIRole)
+            {
+                <a href="/NyayaPatha?caseType=Labour&caseId=@Model.CaseID" class="btn btn-outline-primary shadow-sm rounded-pill px-3 py-2 fw-semibold d-inline-flex align-items-center" title="Analyze case with Nyaya Patha AI">
+                    <i class="bi bi-robot me-1 text-primary"></i> Nyaya Patha AI
+                </a>
+            }
+            @{
                 int targetActionId = (isServiceMatter && Model.ServiceID.HasValue && Model.ServiceID > 0) ? Model.ServiceID.Value : Model.CaseID;
                 var statusClean = (Model.CO_ActionTaken ?? "").Trim().ToUpper();
                 bool isPendingMD = statusClean == "PENDING BEFORE COMPETENT AUTHORITY" || statusClean == "PENDING AT CA";
@@ -94,18 +105,10 @@
                 }
                 else
                 {
-                    <!-- Admin or Central Office general user -->
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold dropdown-toggle d-inline-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-shield-check me-2"></i> Action
-                        </button>
-                        <ul class="dropdown-menu shadow border-0 rounded-3">
-                            <li><a class="dropdown-item py-2" href="@Url.Action("LOAction", "Labour", new { id = targetActionId, isService = isServiceMatter })"><i class="bi bi-person-badge text-info me-2"></i>Law Officer (LO) Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("DyCLOAction", "Labour", new { id = targetActionId, isService = isServiceMatter })"><i class="bi bi-person-check text-secondary me-2"></i>Dy. CLO Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("CLOAction", "Labour", new { id = targetActionId, isService = isServiceMatter })"><i class="bi bi-award text-primary me-2"></i>Chief Law Officer (CLO) Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("MDAction", "Labour", new { id = targetActionId, isService = isServiceMatter })"><i class="bi bi-check-circle text-success me-2"></i>Managing Director (MD) Action</a></li>
-                        </ul>
-                    </div>
+                    <!-- Central Office Action -->
+                    <a href="@Url.Action("Action", "Labour", new { id = targetActionId })" class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center">
+                        <i class="bi bi-shield-check me-2"></i> Central Office Action
+                    </a>
                 }
             }
 
@@ -198,11 +201,11 @@
                         </div>
                         <small class="text-uppercase fw-bold opacity-75" style="font-size: 0.7rem; letter-spacing: 0.05em;">Disposal / Result</small>
                     </div>
-                    <div class="fw-bold h5 mb-1">@displayResultText</div>
+                    <div class="fw-bold h5 mb-1" id="top-card-disposal-status">@displayResultText</div>
                     @if (Model.DisposalDate.HasValue) { 
-                        <div class="small opacity-75"><i class="bi bi-calendar-check me-1"></i>@Model.DisposalDate.Value.ToString("dd MMM yyyy")</div> 
+                        <div class="small opacity-75" id="top-card-disposal-date"><i class="bi bi-calendar-check me-1"></i>@Model.DisposalDate.Value.ToString("dd MMM yyyy")</div> 
                     } else {
-                        <div class="small opacity-75">@(!isPendingMode ? "Disposal Recorded" : "Tracking Active")</div>
+                        <div class="small opacity-75" id="top-card-disposal-date">@(!isPendingMode ? "Disposal Recorded" : "Tracking Active")</div>
                     }
                 </div>
                 <div class="position-absolute end-0 bottom-0 p-3 opacity-25">
@@ -442,31 +445,50 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">First Hearing Date</small>
-                    <div class="fw-semibold text-secondary" id="live-first-date">—</div>
+                    <div class="fw-semibold text-secondary" id="live-first-date">@(Model.EntrustmentDate.HasValue ? Model.EntrustmentDate.Value.ToString("dd-MM-yyyy") : "—")</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Next Hearing Date</small>
-                    <div class="fs-6 fw-bold text-primary" id="live-next-date">—</div>
+                    <div class="fs-6 fw-bold @(Model.PendDispStatus == "D" || Model.CaseStatus == "Disposed" ? "text-danger" : "text-primary")" id="live-next-date">
+                        @if (Model.PendDispStatus == "D" || Model.CaseStatus == "Disposed")
+                        {
+                            <span>Disposed</span>
+                        }
+                        else if (Model.NextHearingDate.HasValue)
+                        {
+                            <span>@Model.NextHearingDate.Value.ToString("dd-MM-yyyy")</span>
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Stage</small>
-                    <div class="fw-bold text-dark" id="live-stage">—</div>
+                    <div class="fw-bold text-dark" id="live-stage">@(!string.IsNullOrWhiteSpace(Model.ECourtsStage) ? Model.ECourtsStage : (!string.IsNullOrWhiteSpace(Model.CurrentStage) ? Model.CurrentStage : "—"))</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Status</small>
-                    <div class="fw-semibold text-dark" id="live-case-status">—</div>
+                    <div class="fw-semibold text-dark" id="live-case-status">@(!string.IsNullOrWhiteSpace(Model.CaseStatus) ? Model.CaseStatus : (Model.PendDispStatus == "D" ? "Disposed" : (Model.PendDispStatus == "P" ? "Pending" : "—")))</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                    <div class="fw-semibold text-dark" id="live-filing-date">—</div>
+                    <div class="fw-semibold text-dark" id="live-filing-date">@(Model.EntrustmentDate.HasValue ? Model.EntrustmentDate.Value.ToString("dd-MM-yyyy") : "—")</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                    <div class="fw-semibold text-dark" id="live-decision-date">—</div>
+                    <div class="fw-semibold text-dark" id="live-decision-date">@(Model.DisposalDate.HasValue ? Model.DisposalDate.Value.ToString("dd-MM-yyyy") : "—")</div>
                 </div>
                 <div class="col-12 col-md-6">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Court Number &amp; Judge</small>
-                    <div class="fw-semibold text-dark" id="live-court-judge" style="word-break: break-word;">—</div>
+                    <div class="fw-semibold text-dark" id="live-court-judge" style="word-break: break-word;">
+                        @{
+                            var lCourtJudgeParts = new[] { Model.ECourtsCourtNo, Model.ECourtsJudge }.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                            var lCourtJudgeDisplay = lCourtJudgeParts.Any() ? string.Join(" — ", lCourtJudgeParts) : (!string.IsNullOrWhiteSpace(Model.OtherCourtDetails) ? Model.OtherCourtDetails : (!string.IsNullOrWhiteSpace(Model.CourtName) ? Model.CourtName : "—"));
+                        }
+                        @lCourtJudgeDisplay
+                    </div>
                 </div>
                 <div class="col-12 col-md-6">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner / Workman</small>
@@ -476,7 +498,7 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner Advocate</small>
-                    <div class="fw-semibold text-dark" id="live-pet-adv" style="word-break: break-word;">—</div>
+                    <div class="fw-semibold text-dark" id="live-pet-adv" style="word-break: break-word;">@(!string.IsNullOrWhiteSpace(Model.AdvocateName) ? Model.AdvocateName : "—")</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Respondent / Management</small>
@@ -613,6 +635,32 @@
                     </div>
                 </div>
             }
+                <div class="col-12 border-top pt-2 d-flex justify-content-between align-items-center">
+                    <div class="small text-muted" id="live-sync-msg">
+                        @if (Model.LastNapixSyncAt.HasValue)
+                        {
+                            <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Synced: @Model.LastNapixSyncAt.Value.ToString("dd MMM yyyy, hh:mm tt") (@(Model.LastNapixSyncStatus ?? "Success"))</span>
+                        }
+                        else
+                        {
+                            <span><i class="bi bi-arrow-repeat me-1"></i> Auto-synced with eCourts Gateway</span>
+                        }
+                    </div>
+                    <div class="d-flex gap-2">
+                        @if (!string.IsNullOrEmpty(activeCnrNumber))
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill" onclick="triggerFetchLabourLiveStatus()">
+                                <i class="bi bi-arrow-clockwise me-1"></i> Refresh Live Status
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-info text-white rounded-pill shadow-sm" onclick="autoLinkCnrInline(@Model.CaseID, 'Labour')">
+                                <i class="bi bi-link-45deg me-1"></i> Auto-Discover &amp; Link CNR
+                            </button>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1001,15 +1049,15 @@
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                                        <div class="fw-semibold text-dark" id="live_filing_date_corp_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_filing_date_corp_wp">@(Model.CO_WP_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WP_Year.HasValue && Model.CO_WP_Year > 1900 ? $"01-01-{Model.CO_WP_Year}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Registration Date</small>
-                                        <div class="fw-semibold text-dark" id="live_reg_date_corp_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_reg_date_corp_wp">@(Model.CO_WP_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WP_Year.HasValue && Model.CO_WP_Year > 1900 ? $"01-01-{Model.CO_WP_Year}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                                        <div class="fw-semibold text-dark" id="live_decision_date_corp_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_decision_date_corp_wp">@(Model.CO_Disposal_Date?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_WP_Status, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</div>
                                     </div>
 
                                     <!-- Row 3: 2 columns -->
@@ -1085,15 +1133,15 @@
                                         <div class="tab-content">
                                             <!-- 1. Hearing History Tab -->
                                             <div class="tab-pane fade show active" id="tabHistory_corp_wp">
-                                                <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                    <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                        <thead class="bg-dark text-white sticky-top">
+                                                <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                    <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                        <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                             <tr>
-                                                                <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                <th class="py-2 px-3 text-nowrap" style="width:140px;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
-                                                                <th class="py-2 px-3" style="width:180px;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-chat-left-text me-1"></i>Business / Cause List</th>
+                                                                <th class="text-center py-2 px-2" style="width:5%; white-space:nowrap;">#</th>
+                                                                <th class="text-start py-2 ps-3 pe-2 text-nowrap" style="width:20%;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
+                                                                <th class="text-start py-2 px-3" style="width:43%;"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
+                                                                <th class="text-center py-2 px-2" style="width:17%;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
+                                                                <th class="text-center py-2 px-2" style="width:15%; white-space:nowrap;"><i class="bi bi-gear me-1"></i>Action</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="tbodyHistory_corp_wp">
@@ -1169,9 +1217,9 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-warning border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-calendar-range-fill text-warning me-1"></i> Milestone Dates</div>
-                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_corp_wp" class="text-dark">—</strong></div>
-                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_corp_wp" class="text-dark">—</strong></div>
-                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_corp_wp" class="text-dark">—</strong></div>
+                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_corp_wp" class="text-dark">@(Model.CO_WP_EntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong></div>
+                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_corp_wp" class="text-dark">@(Model.CO_WP_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WP_Year.HasValue && Model.CO_WP_Year > 1900 ? $"01-01-{Model.CO_WP_Year}" : "—"))</strong></div>
+                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_corp_wp" class="text-dark">@(Model.CO_Disposal_Date?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_WP_Status, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</strong></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1353,15 +1401,15 @@
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                                        <div class="fw-semibold text-dark" id="live_filing_date_corp_wa">—</div>
+                                        <div class="fw-semibold text-dark" id="live_filing_date_corp_wa">@(Model.CO_WA_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WA_Year.HasValue && Model.CO_WA_Year > 1900 ? $"01-01-{Model.CO_WA_Year}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Registration Date</small>
-                                        <div class="fw-semibold text-dark" id="live_reg_date_corp_wa">—</div>
+                                        <div class="fw-semibold text-dark" id="live_reg_date_corp_wa">@(Model.CO_WA_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WA_Year.HasValue && Model.CO_WA_Year > 1900 ? $"01-01-{Model.CO_WA_Year}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                                        <div class="fw-semibold text-dark" id="live_decision_date_corp_wa">—</div>
+                                        <div class="fw-semibold text-dark" id="live_decision_date_corp_wa">@(Model.CO_FurtherAppeal_DisposalDate?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_WA_Status, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</div>
                                     </div>
 
                                     <!-- Row 3: 2 columns -->
@@ -1437,15 +1485,15 @@
                                         <div class="tab-content">
                                             <!-- 1. Hearing History Tab -->
                                             <div class="tab-pane fade show active" id="tabHistory_corp_wa">
-                                                <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                    <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                        <thead class="bg-dark text-white sticky-top">
+                                                <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                    <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                        <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                             <tr>
-                                                                <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                <th class="py-2 px-3 text-nowrap" style="width:140px;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
-                                                                <th class="py-2 px-3" style="width:180px;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-chat-left-text me-1"></i>Business / Cause List</th>
+                                                                <th class="text-center py-2 px-2" style="width:5%; white-space:nowrap;">#</th>
+                                                                <th class="text-start py-2 ps-3 pe-2 text-nowrap" style="width:20%;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
+                                                                <th class="text-start py-2 px-3" style="width:43%;"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
+                                                                <th class="text-center py-2 px-2" style="width:17%;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
+                                                                <th class="text-center py-2 px-2" style="width:15%; white-space:nowrap;"><i class="bi bi-gear me-1"></i>Action</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="tbodyHistory_corp_wa">
@@ -1521,9 +1569,9 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-warning border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-calendar-range-fill text-warning me-1"></i> Milestone Dates</div>
-                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_corp_wa" class="text-dark">—</strong></div>
-                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_corp_wa" class="text-dark">—</strong></div>
-                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_corp_wa" class="text-dark">—</strong></div>
+                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_corp_wa" class="text-dark">@(Model.CO_WA_EntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong></div>
+                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_corp_wa" class="text-dark">@(Model.CO_WA_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_WA_Year.HasValue && Model.CO_WA_Year > 1900 ? $"01-01-{Model.CO_WA_Year}" : "—"))</strong></div>
+                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_corp_wa" class="text-dark">@(Model.CO_FurtherAppeal_DisposalDate?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_WA_Status, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</strong></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1693,15 +1741,15 @@
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                                        <div class="fw-semibold text-dark" id="live_filing_date_claimant_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_filing_date_claimant_wp">@(Model.CO_Claimant_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_Claimant_CaseYear.HasValue && Model.CO_Claimant_CaseYear > 1900 ? $"01-01-{Model.CO_Claimant_CaseYear}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Registration Date</small>
-                                        <div class="fw-semibold text-dark" id="live_reg_date_claimant_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_reg_date_claimant_wp">@(Model.CO_Claimant_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_Claimant_CaseYear.HasValue && Model.CO_Claimant_CaseYear > 1900 ? $"01-01-{Model.CO_Claimant_CaseYear}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                                        <div class="fw-semibold text-dark" id="live_decision_date_claimant_wp">—</div>
+                                        <div class="fw-semibold text-dark" id="live_decision_date_claimant_wp">@(Model.ClaimantSCClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_Claimant_CaseStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</div>
                                     </div>
 
                                     <!-- Row 3: 2 columns -->
@@ -1777,15 +1825,15 @@
                                         <div class="tab-content">
                                             <!-- 1. Hearing History Tab -->
                                             <div class="tab-pane fade show active" id="tabHistory_claimant_wp">
-                                                <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                    <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                        <thead class="bg-dark text-white sticky-top">
+                                                <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                    <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                        <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                             <tr>
-                                                                <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                <th class="py-2 px-3 text-nowrap" style="width:140px;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
-                                                                <th class="py-2 px-3" style="width:180px;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-chat-left-text me-1"></i>Business / Cause List</th>
+                                                                <th class="text-center py-2 px-2" style="width:5%; white-space:nowrap;">#</th>
+                                                                <th class="text-start py-2 ps-3 pe-2 text-nowrap" style="width:20%;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
+                                                                <th class="text-start py-2 px-3" style="width:43%;"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
+                                                                <th class="text-center py-2 px-2" style="width:17%;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
+                                                                <th class="text-center py-2 px-2" style="width:15%; white-space:nowrap;"><i class="bi bi-gear me-1"></i>Action</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="tbodyHistory_claimant_wp">
@@ -1861,9 +1909,9 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-warning border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-calendar-range-fill text-warning me-1"></i> Milestone Dates</div>
-                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_claimant_wp" class="text-dark">—</strong></div>
-                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_claimant_wp" class="text-dark">—</strong></div>
-                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_claimant_wp" class="text-dark">—</strong></div>
+                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_claimant_wp" class="text-dark">@(Model.CO_Claimant_EntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong></div>
+                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_claimant_wp" class="text-dark">@(Model.CO_Claimant_EntrustmentDate?.ToString("dd-MM-yyyy") ?? (Model.CO_Claimant_CaseYear.HasValue && Model.CO_Claimant_CaseYear > 1900 ? $"01-01-{Model.CO_Claimant_CaseYear}" : "—"))</strong></div>
+                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_claimant_wp" class="text-dark">@(Model.ClaimantSCClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(Model.CO_Claimant_CaseStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</strong></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2648,18 +2696,43 @@
         }
 
         /* ============================================================
-           HEARING HISTORY TABLE
+           HEARING HISTORY & DOSSIER TABLES
            ============================================================ */
-        .table.table-hover thead th {
-            font-size: 0.63rem !important;
-            letter-spacing: 0.07em;
+        #live-history-container table, #live-orders-container table,
+        [id^="tabHistory_"] table, [id^="tabOrders_"] table, [id^="tabIA_"] table {
+            width: 100% !important;
+            min-width: 760px !important;
+            table-layout: fixed !important;
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+        }
+        #live-history-container th, #live-orders-container th,
+        [id^="tabHistory_"] thead th, [id^="tabOrders_"] thead th, [id^="tabIA_"] thead th {
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 5 !important;
+            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.15) !important;
+            font-size: 0.72rem !important;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
-            color: #64748b !important;
             font-weight: 700;
-            background: #f8fafd !important;
-            border-bottom: 2px solid #e2e8f0 !important;
-            padding: 0.7rem 1rem;
-            vertical-align: middle;
+            padding: 0.6rem 0.85rem;
+        }
+        #live-history-container td, #live-orders-container td,
+        [id^="tabHistory_"] td, [id^="tabOrders_"] td, [id^="tabIA_"] td {
+            vertical-align: middle !important;
+            word-break: break-word !important;
+        }
+        [id^="tabHistory_"] .badge, [id^="tabOrders_"] .badge {
+            white-space: normal !important;
+            text-align: left !important;
+            display: inline-block !important;
+            max-width: 100% !important;
+            line-height: 1.4 !important;
         }
         .table.table-hover tbody td {
             font-size: 0.8rem;
@@ -2731,7 +2804,7 @@
     </style>
 }
 @section Scripts {
-    <script src="~/js/ecourts-details.js"></script>
+    <script src="~/js/ecourts-details.js" asp-append-version="true"></script>
     <script>
         window.currentCaseId = @Model.CaseID;
         window.lastCaseId = @Model.CaseID;
@@ -2847,28 +2920,71 @@
 
             const ordersSec = document.getElementById('liveEcourtsOrdersSection');
             const ordersList = document.getElementById('listLiveOrders');
-            document.getElementById('lblLiveOrdersCount').textContent = ordersArray.length;
-            ordersList.innerHTML = '';
+            if (document.getElementById('lblLiveOrdersCount')) {
+                document.getElementById('lblLiveOrdersCount').textContent = ordersArray.length;
+            }
+            if (ordersList) ordersList.innerHTML = '';
+
+            const cnr = window.currentActiveCnr || '@(activeCnrNumber ?? "")';
+            const caseId = @Model.CaseID;
 
             ordersArray.forEach((ord, i) => {
                 const orderDt = ord.order_date || ord.orderdate || ord.date || ord.date_of_order || ord.judgment_date || '—';
                 const orderNo = ord.order_number || ord.order_no || ord.order_type || ord.type || ord.title || ord.order_details || ('Order #' + (i + 1));
                 const judgeName = ord.judge_name || ord.judge || ord.court || ord.presiding_officer || '';
-                const pdfUrl = ord.pdf_url || ord.url || ord.link || ord.download_link || ord.order_pdf || ord.pdf || ord.file_path || '#';
+                let rawPdf = ord.pdf_url || ord.url || ord.link || ord.download_link || ord.order_pdf || ord.pdf || ord.file_path || ord.pdf_path || '';
+                let downloadUrl = ord.download_url || '';
+
+                if (!downloadUrl && rawPdf) {
+                    if (rawPdf.startsWith('/ECourts/DownloadOrderPdf')) {
+                        downloadUrl = rawPdf;
+                        if (!downloadUrl.includes('module=')) downloadUrl += '&module=Labour';
+                    } else if (rawPdf.startsWith('/ECourts/ViewOrderPdf')) {
+                        downloadUrl = rawPdf.replace('/ECourts/ViewOrderPdf', '/ECourts/DownloadOrderPdf');
+                        if (!downloadUrl.includes('module=')) downloadUrl += '&module=Labour';
+                    } else {
+                        downloadUrl = `/ECourts/DownloadOrderPdf?pdfPath=${encodeURIComponent(rawPdf)}&cnr=${encodeURIComponent(cnr)}&orderNo=${encodeURIComponent(orderNo)}&date=${encodeURIComponent(orderDt)}&caseId=${caseId}&module=Labour`;
+                    }
+                }
+
+                let viewUrl = rawPdf;
+                if (viewUrl && !viewUrl.startsWith('/ECourts/ViewOrderPdf') && !viewUrl.startsWith('data:')) {
+                    viewUrl = `/ECourts/ViewOrderPdf?url=${encodeURIComponent(rawPdf)}&cnr=${encodeURIComponent(cnr)}&title=${encodeURIComponent(orderNo)}&date=${encodeURIComponent(orderDt)}&caseId=${caseId}&module=Labour`;
+                } else if (viewUrl && viewUrl.startsWith('/ECourts/ViewOrderPdf') && !viewUrl.includes('module=')) {
+                    viewUrl += '&module=Labour';
+                }
+
+                const safeViewUrl = (viewUrl || '').replace(/'/g, "\\'");
+                const safeTitle = (orderNo || '').replace(/'/g, "\\'");
+                const safeDt = (orderDt || '').replace(/'/g, "\\'");
+
+                let actionHtml = '<span class="badge bg-light text-muted border">Certified Copy</span>';
+                if (rawPdf) {
+                    actionHtml = `
+                        <div class="d-inline-flex gap-1 align-items-center">
+                            <button type="button" class="btn btn-sm btn-outline-primary px-2 py-1 fw-bold rounded-pill" onclick="openOrderInModal('${safeViewUrl}', '${safeTitle}', '${cnr}', '${safeDt}', ${caseId}, '${orderNo}')">
+                                <i class="bi bi-eye me-1"></i> View Order
+                            </button>
+                            <a href="${downloadUrl || viewUrl}" target="_blank" class="btn btn-sm btn-outline-danger px-2 py-1 fw-bold rounded-pill" title="Download Order PDF">
+                                <i class="bi bi-download me-1"></i> Download
+                            </a>
+                        </div>
+                    `;
+                }
 
                 const itemHtml = `
-                    <div class="list-group-item bg-light border-0 rounded-2 mb-2 p-2 d-flex justify-content-between align-items-center">
+                    <div class="list-group-item bg-light border-0 rounded-2 mb-2 p-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div>
                             <strong class="text-dark"><i class="bi bi-file-earmark-pdf text-danger me-1"></i> ${orderNo}</strong>
                             <span class="text-muted ms-2">Date: ${orderDt}</span>
                             ${judgeName ? `<span class="badge bg-secondary ms-2">${judgeName}</span>` : ''}
                         </div>
                         <div>
-                            ${pdfUrl && pdfUrl !== '#' ? `<a href="${pdfUrl}" target="_blank" class="btn btn-sm btn-outline-danger px-2 py-1 fw-bold"><i class="bi bi-download me-1"></i> Download Order PDF</a>` : '<span class="badge bg-light text-muted border">Certified Copy</span>'}
+                            ${actionHtml}
                         </div>
                     </div>
                 `;
-                ordersList.insertAdjacentHTML('beforeend', itemHtml);
+                if (ordersList) ordersList.insertAdjacentHTML('beforeend', itemHtml);
             });
 
             if (ordersSec) ordersSec.classList.remove('d-none');
@@ -2934,7 +3050,7 @@
             resultBox.html('<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm text-primary me-1"></span>Checking live eCourts NAPIX Gateway...</div>').slideDown();
 
             try {
-                const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}`);
+                const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}&module=Labour`);
                 const data = await res.json();
                 if (data.success && data.data) {
                     const s = data.data;
@@ -3099,7 +3215,68 @@
             if (!cnr || cnr.trim() === '') {
                 cnr = '@Html.Raw(!string.IsNullOrWhiteSpace(Model.CO_WP_CNRNumber) ? Model.CO_WP_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_WA_CNRNumber) ? Model.CO_WA_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_Claimant_CNRNumber) ? Model.CO_Claimant_CNRNumber : "")';
             }
-            fetchLiveCnrDetails(cnr, @Model.CaseID);
+            queueManualLabourSync(cnr, @Model.CaseID);
+        }
+
+        function queueManualLabourSync(cnr, caseId) {
+            const msgElem = document.getElementById('live-sync-msg');
+            if (msgElem) {
+                msgElem.innerHTML = '<span class="text-primary"><span class="spinner-border spinner-border-sm me-1"></span> Queuing Labour case sync with priority...</span>';
+            }
+
+            const formData = new FormData();
+            formData.append('caseId', caseId);
+            formData.append('cnrNumber', cnr);
+            formData.append('module', 'Labour');
+
+            fetch('/ECourts/QueueCaseSync', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i> ' + (data.message || 'Failed to queue sync') + '</span>';
+                    return;
+                }
+
+                if (msgElem) {
+                    msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> Sync queued (' + data.status + '). Processing in background...</span>';
+                }
+
+                let attempts = 0;
+                const pollInterval = setInterval(() => {
+                    attempts++;
+                    if (attempts > 30) {
+                        clearInterval(pollInterval);
+                        if (msgElem) msgElem.innerHTML = '<span class="text-warning"><i class="bi bi-clock-history me-1"></i> Sync is taking longer than expected. Refresh page later.</span>';
+                        return;
+                    }
+
+                    fetch('/ECourts/GetQueueStatus?queueId=' + (data.queueId || 0) + '&caseId=' + caseId + '&module=Labour')
+                    .then(r => r.json())
+                    .then(statusData => {
+                        if (statusData.status === 'Success') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Synced with e-Courts! Reloading...</span>';
+                            }
+                            setTimeout(() => window.location.reload(), 1200);
+                        } else if (statusData.status === 'Failed') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> Sync Failed: ' + (statusData.error || 'e-Courts error') + '</span>';
+                            }
+                        } else if (msgElem) {
+                            msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> ' + statusData.status + '... (Attempt ' + attempts + ')</span>';
+                        }
+                    })
+                    .catch(() => {});
+                }, 2000);
+            })
+            .catch(err => {
+                if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i> Error connecting to sync queue</span>';
+            });
         }
 
         async function saveAppealCnr(appealType, caseId) {
@@ -3196,10 +3373,12 @@
                 var bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapseEl);
                 bsCollapse.show();
             }
-            labourNapixLoaded = true;
-            var activeCnr = window.currentActiveCnr || '@activeCnrNumber';
-            if (activeCnr && activeCnr.trim() !== '') {
-                fetchLiveCnrDetails(activeCnr.trim(), @Model.CaseID);
+            var activeCnr = (window.currentActiveCnr || '@activeCnrNumber').trim();
+            if (activeCnr && activeCnr !== '') {
+                if (typeof fetchLiveCnrDetails === 'function') {
+                    fetchLiveCnrDetails(activeCnr, @Model.CaseID);
+                }
+                queueManualLabourSync(activeCnr, @Model.CaseID);
             }
         }
 
@@ -3214,12 +3393,6 @@
                     const text = document.getElementById('textToggleLabourNapix');
                     if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
                     if (text) { text.textContent = 'Hide NAPIX Details'; }
-
-                    var activeCnr = window.currentActiveCnr || '@activeCnrNumber';
-                    if (!labourNapixLoaded && activeCnr && activeCnr.trim() !== '') {
-                        labourNapixLoaded = true;
-                        fetchLiveCnrDetails(activeCnr.trim(), @Model.CaseID);
-                    }
                 });
 
                 labourCollapseEl.addEventListener('hide.bs.collapse', function () {

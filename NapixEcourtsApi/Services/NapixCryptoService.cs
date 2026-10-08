@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
@@ -8,37 +7,25 @@ namespace NapixEcourtsApi.Services;
 
 public interface INapixCryptoService
 {
-    /// <summary>
-    /// Builds the pipe-separated key=value request string, encrypts it with AES-128-CBC
-    /// (key = IV = Authentication Key), and base64-encodes it — i.e. the value
-    /// to send as the "request_str" query/body parameter.
-    /// </summary>
-    string BuildEncryptedRequestStr(IDictionary<string, string> parameters);
+    /// <summary>Builds pipe-separated request string, encrypts with AES-128-CBC and base64-encodes.</summary>
+    string BuildEncryptedRequestStr(IDictionary<string, string> parameters, string? authKey = null);
 
-    /// <summary>
-    /// Computes the HMAC-SHA256 hex digest of the (unencrypted) pipe-separated request string,
-    /// using the fixed shared key "15081947" — i.e. the value to send as "request_token".
-    /// </summary>
+    /// <summary>Computes HMAC-SHA256 hex digest of unencrypted pipe-separated string.</summary>
     string ComputeRequestToken(IDictionary<string, string> parameters);
 
-    /// <summary>
-    /// Decrypts a base64-encoded "response_str" received from NAPIX back into plaintext JSON,
-    /// using AES-128-CBC with key = IV = Authentication Key.
-    /// </summary>
-    string DecryptResponseStr(string responseStrBase64);
+    /// <summary>Decrypts base64-encoded response_str back into plaintext JSON with 16-zero-bytes fallback.</summary>
+    string DecryptResponseStr(string responseStrBase64, string? authKey = null);
 
-    /// <summary>
-    /// Recomputes HMAC-SHA256 over the decrypted JSON and compares it (constant-time) against
-    /// the "response_token" NAPIX sent, to verify the payload wasn't tampered with in transit.
-    /// </summary>
+    /// <summary>Recomputes HMAC-SHA256 and constant-time compares against response_token.</summary>
     bool VerifyResponseToken(string decryptedJson, string responseToken);
 
-    /// <summary>Computes the HMAC-SHA256 hex digest using the fixed shared key.</summary>
+    /// <summary>Computes HMAC-SHA256 hex digest using fixed shared key.</summary>
     string ComputeHmacHex(string input);
 }
 
 public class NapixCryptoService : INapixCryptoService
 {
+    private static readonly byte[] ZeroKey = new byte[16];
     private readonly NapixOptions _options;
 
     public NapixCryptoService(IOptions<NapixOptions> options)
@@ -46,59 +33,51 @@ public class NapixCryptoService : INapixCryptoService
         _options = options.Value;
     }
 
-    /// <summary>
-    /// Joins parameters as "k1=v1|k2=v2|..." in the order they're provided.
-    /// Order matters — it must match whatever order the NAPIX endpoint's documentation shows
-    /// for that specific API, since the server reconstructs the same string to verify the hash.
-    /// </summary>
     private static string BuildPipeString(IDictionary<string, string> parameters) =>
         string.Join("|", parameters.Select(kv => $"{kv.Key}={kv.Value}"));
 
-    public string BuildEncryptedRequestStr(IDictionary<string, string> parameters)
+    public string BuildEncryptedRequestStr(IDictionary<string, string> parameters, string? authKey = null)
     {
-        var plainText = BuildPipeString(parameters);
-        var keyBytes = GetKeyOrIvBytes(_options.AuthenticationKey);
-
-        using var aes = Aes.Create();
-        aes.Key = keyBytes;
-        aes.IV = keyBytes; // NAPIX spec: Authentication Key and IV are the same value
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-
-        using var encryptor = aes.CreateEncryptor();
-        var plainBytes = Encoding.UTF8.GetBytes(plainText);
-        var cipherBytes = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
-
-        var base64 = Convert.ToBase64String(cipherBytes);
-        return base64;
+        var keyBytes = GetKeyBytes(authKey ?? _options.AuthenticationKey);
+        using var aes = CreateAes(keyBytes);
+        byte[] plainBytes = Encoding.UTF8.GetBytes(BuildPipeString(parameters));
+        return Convert.ToBase64String(aes.CreateEncryptor().TransformFinalBlock(plainBytes, 0, plainBytes.Length));
     }
 
-    public string ComputeRequestToken(IDictionary<string, string> parameters)
+    public string ComputeRequestToken(IDictionary<string, string> parameters) =>
+        ComputeHmacHex(BuildPipeString(parameters));
+
+    public string DecryptResponseStr(string responseStrBase64, string? authKey = null)
     {
-        var plainText = BuildPipeString(parameters);
-        return ComputeHmacHex(plainText);
-    }
+        if (string.IsNullOrWhiteSpace(responseStrBase64)) return string.Empty;
+        var clean = Uri.UnescapeDataString(responseStrBase64).Trim().Replace("\\/", "/").Replace("-", "+").Replace("_", "/");
+        int mod4 = clean.Length % 4;
+        if (mod4 > 0) clean += new string('=', 4 - mod4);
 
-    public string DecryptResponseStr(string responseStrBase64)
-    {
-        // Response may arrive URL-decoded already (depends on JSON deserializer); decode defensively.
-        var normalized = Uri.UnescapeDataString(responseStrBase64);
-        var cipherBytes = Convert.FromBase64String(normalized);
-        var keyBytes = GetKeyOrIvBytes(_options.AuthenticationKey);
+        byte[] cipherBytes;
+        try { cipherBytes = Convert.FromBase64String(clean); } catch { return string.Empty; }
 
-        using var aes = Aes.Create();
-        aes.Key = keyBytes;
-        aes.IV = keyBytes;
-        aes.Mode = CipherMode.CBC;
-        aes.Padding = PaddingMode.PKCS7;
-
-        using var decryptor = aes.CreateDecryptor();
-        var plainBytes = decryptor.TransformFinalBlock(cipherBytes, 0, cipherBytes.Length);
-        return Encoding.UTF8.GetString(plainBytes);
+        var keyBytes = GetKeyBytes(authKey ?? _options.AuthenticationKey);
+        try
+        {
+            using var aes = CreateAes(keyBytes);
+            return Encoding.UTF8.GetString(aes.CreateDecryptor().TransformFinalBlock(cipherBytes, 0, cipherBytes.Length));
+        }
+        catch
+        {
+            // eCourts 16 zero-bytes error payload fallback (Section 13.2.2 / status 626)
+            try
+            {
+                using var zeroAes = CreateAes(ZeroKey);
+                return Encoding.UTF8.GetString(zeroAes.CreateDecryptor().TransformFinalBlock(cipherBytes, 0, cipherBytes.Length));
+            }
+            catch { return string.Empty; }
+        }
     }
 
     public bool VerifyResponseToken(string decryptedJson, string responseToken)
     {
+        if (string.IsNullOrWhiteSpace(responseToken)) return true;
         var expected = ComputeHmacHex(decryptedJson);
         return CryptographicOperations.FixedTimeEquals(
             Encoding.UTF8.GetBytes(expected.ToLowerInvariant()),
@@ -109,19 +88,22 @@ public class NapixCryptoService : INapixCryptoService
     {
         var keyBytes = Encoding.ASCII.GetBytes(_options.HmacSharedKey);
         var dataBytes = Encoding.UTF8.GetBytes(input);
-
-        using var hmac = new HMACSHA256(keyBytes);
-        var hashBytes = hmac.ComputeHash(dataBytes);
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+        return Convert.ToHexString(HMACSHA256.HashData(keyBytes, dataBytes)).ToLowerInvariant();
     }
 
-    /// <summary>
-    /// AES-128 requires a 16-byte key. NAPIX's own .NET sample resizes/truncates to 16 bytes,
-    /// so we mirror that rather than throwing if e-Committee's key happens to be a different length.
-    /// </summary>
-    private static byte[] GetKeyOrIvBytes(string authenticationKey)
+    private static Aes CreateAes(byte[] key)
     {
-        var bytes = Encoding.ASCII.GetBytes(authenticationKey);
+        var aes = Aes.Create();
+        aes.Key = key;
+        aes.IV = key; // NAPIX spec: Key and IV share identical value
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+        return aes;
+    }
+
+    private static byte[] GetKeyBytes(string key)
+    {
+        var bytes = Encoding.ASCII.GetBytes(key ?? string.Empty);
         Array.Resize(ref bytes, 16);
         return bytes;
     }

@@ -134,7 +134,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.LitigantType = "Claimant";
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
-            var stats = _otherRepo.GetDashboardStats(divisionId, "PSC", "Claimant");
+            var stats = _otherRepo.GetDashboardStats(divisionId, "PSC", null);
             return View("OtherCourtsDashboard", stats);
         }
 
@@ -153,7 +153,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.LitigantType = "Claimant";
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
-            var stats = _otherRepo.GetDashboardStats(divisionId, "CC", "Claimant");
+            var stats = _otherRepo.GetDashboardStats(divisionId, "CC", null);
             return View("OtherCourtsDashboard", stats);
         }
 
@@ -172,7 +172,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.LitigantType = "Claimant";
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
-            var stats = _otherRepo.GetDashboardStats(divisionId, "Consumer", "Claimant");
+            var stats = _otherRepo.GetDashboardStats(divisionId, "Consumer", null);
             return View("OtherCourtsDashboard", stats);
         }
 
@@ -191,7 +191,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.LitigantType = "Claimant";
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
-            var stats = _otherRepo.GetDashboardStats(divisionId, "LAC", "Claimant");
+            var stats = _otherRepo.GetDashboardStats(divisionId, "LAC", null);
             return View("OtherCourtsDashboard", stats);
         }
 
@@ -209,7 +209,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.LitigantType = "Claimant";
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
-            var stats = _otherRepo.GetDashboardStats(divisionId, "ECA", "Claimant");
+            var stats = _otherRepo.GetDashboardStats(divisionId, "ECA", null);
             return View("ECADashboard", stats);
         }
 
@@ -221,15 +221,20 @@ namespace MVCCaseManagement.Controllers
             return View("ECA");
         }
 
-        public IActionResult OtherCourtsCaseList(string activeCourt = "OS", string litigantType = "Claimant")
+        public IActionResult OtherCourtsCaseList(string activeCourt = "OS", string? litigantType = null)
         {
             var divIdString = User.FindFirstValue("DivisionID");
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
 
             ViewBag.ActiveCourt = activeCourt;
-            ViewBag.LitigantType = litigantType;
+            ViewBag.LitigantType = litigantType ?? (activeCourt == "OS" ? "Corporation" : "");
 
-            var cases = _otherRepo.GetAllCases(divisionId, activeCourt, litigantType);
+            // For non-OS courts (ECA, PSC, CC, Consumer, LAC), LitigantType shouldn't filter out cases
+            string? filterLitigantType = (activeCourt == "OS" && !string.IsNullOrEmpty(litigantType) && litigantType != "All") 
+                ? litigantType 
+                : null;
+
+            var cases = _otherRepo.GetAllCases(divisionId, activeCourt, filterLitigantType);
             return View(cases);
         }
 
@@ -295,8 +300,8 @@ namespace MVCCaseManagement.Controllers
                 int newId = _otherRepo.SaveCase(model);
                 if (newId > 0)
                 {
-                    TempData["SuccessMessage"] = "Case details saved successfully.";
-                    return RedirectToAction("OtherCourts", new { activeCourt = model.CaseType });
+                    TempData["SuccessMessage"] = $"Case #{(!string.IsNullOrEmpty(model.CaseNumber) ? model.CaseNumber : newId.ToString())} saved successfully.";
+                    return RedirectToAction("OtherCourtsCaseList", new { activeCourt = model.CaseType, litigantType = model.LitigantType });
                 }
                 
                 TempData["ErrorMessage"] = "Failed to save case. Please check your inputs.";

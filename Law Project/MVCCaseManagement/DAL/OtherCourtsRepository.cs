@@ -1,5 +1,6 @@
 using Microsoft.Data.SqlClient;
 using MVCCaseManagement.Models;
+using MVCCaseManagement.Common;
 using System.Data;
 
 namespace MVCCaseManagement.DAL
@@ -15,6 +16,35 @@ namespace MVCCaseManagement.DAL
 
         public int SaveCase(OtherCourtsCase model)
         {
+            // Ensure PetitionerName and RespondentName are safely populated from collections
+            if (string.IsNullOrWhiteSpace(model.PetitionerName))
+            {
+                if (model.Petitioners != null && model.Petitioners.Any(p => !string.IsNullOrWhiteSpace(p.Name)))
+                {
+                    model.PetitionerName = model.Petitioners.First(p => !string.IsNullOrWhiteSpace(p.Name)).Name;
+                }
+                else if (model.Respondents != null && model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.Name)) && model.LitigantType == "Claimant")
+                {
+                    model.PetitionerName = model.Respondents.First(r => !string.IsNullOrWhiteSpace(r.Name)).Name;
+                }
+                else if (model.LitigantType == "Corporation")
+                {
+                    model.PetitionerName = "NWKRTC / Corporation";
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(model.RespondentName))
+            {
+                if (model.Respondents != null && model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.Name)) && model.LitigantType == "Corporation")
+                {
+                    model.RespondentName = model.Respondents.First(r => !string.IsNullOrWhiteSpace(r.Name)).Name;
+                }
+                else if (model.LitigantType == "Claimant")
+                {
+                    model.RespondentName = "NWKRTC / Corporation";
+                }
+            }
+
             string query = @"
                 INSERT INTO OTHER_CASES (
                     DivisionID, CaseType, LitigantType, IsPendingForFiling, CaseNumber, CaseYear, 
@@ -35,6 +65,8 @@ namespace MVCCaseManagement.DAL
                     AppealCopyReceivedAtDivision, AppealDelayRemarks, AppealAdvocateOpinion, AppealALOOpinion, AppealDCOpinion, 
                     AppealForwardingStatus, AppealOutwardNumber, AppealOutwardDate, AppealClosureNumber, AppealClosureDate, 
                     AppealJudgmentCopyPath,
+                    CNRNumber, EstCode, CaseTypeCode, OtherCourtDetails, LastNapixSyncAt, LastNapixSyncStatus, LastNapixSyncError,
+                    NapixSyncAttemptCount, NapixDataHash, PendDispStatus, EstName, ECourtsStage, ECourtsCourtNo, ECourtsJudge,
                     CreatedBy, CreatedDate
                 ) VALUES (
                     @DivisionID, @CaseType, @LitigantType, @IsPendingForFiling, @CaseNumber, @CaseYear, 
@@ -51,120 +83,165 @@ namespace MVCCaseManagement.DAL
                     @CopyDisposedOn, @CopyAppliedOn, @CopyReadyOn, @CopyDeliveredOn, @CopyReceivedAtDivision, @CertifiedCopyRemarks,
                     @AppealNumber, @AppealYear, @ArisingOutOSNumber, @OSYear, @AppealEntrustmentNumber, @AppealEntrustmentDate, 
                     @CourtAppellateAuth, @AppealAdvocateName, @AppealComplianceAmount, @AppealChequeNumber, @AppealChequeDate, 
-                    @AppealAwardDetails, @AppealCaseDisposedOn, @AppealCopyAppliedOn, @CopyReadyOn, @AppealCopyDeliveredOn, 
+                    @AppealAwardDetails, @AppealCaseDisposedOn, @AppealCopyAppliedOn, @AppealCopyReadyOn, @AppealCopyDeliveredOn, 
                     @AppealCopyReceivedAtDivision, @AppealDelayRemarks, @AppealAdvocateOpinion, @AppealALOOpinion, @AppealDCOpinion, 
                     @AppealForwardingStatus, @AppealOutwardNumber, @AppealOutwardDate, @AppealClosureNumber, @AppealClosureDate, 
                     @AppealJudgmentCopyPath,
+                    @CNRNumber, @EstCode, @CaseTypeCode, @OtherCourtDetails, @LastNapixSyncAt, @LastNapixSyncStatus, @LastNapixSyncError,
+                    @NapixSyncAttemptCount, @NapixDataHash, @PendDispStatus, @EstName, @ECourtsStage, @ECourtsCourtNo, @ECourtsJudge,
                     @CreatedBy, GETDATE()
                 );
                 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
-            var parameters = BuildParameters(model);
-            var result = _db.ExecuteScalar(query, parameters);
-            int caseId = result != null ? Convert.ToInt32(result) : 0;
-
-            if (caseId > 0)
+            using (var conn = new SqlConnection(_db.GetConnectionString()))
             {
-                // Petitioners
-                if (model.Petitioners != null)
+                conn.Open();
+                using (var trans = conn.BeginTransaction())
                 {
-                    foreach (var pet in model.Petitioners)
+                    try
                     {
-                        if (!string.IsNullOrEmpty(pet.Name))
+                        var parameters = BuildParameters(model);
+                        int caseId = 0;
+                        using (var cmd = new SqlCommand(query, conn, trans))
                         {
-                            string petQuery = "INSERT INTO OTHER_CASE_PETITIONERS (CaseID, PetitionerName, PetitionerRemark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(petQuery, new[] { 
-                                new SqlParameter("@CaseID", caseId), 
-                                new SqlParameter("@Name", pet.Name),
-                                new SqlParameter("@Remark", (object?)pet.Remark ?? DBNull.Value)
-                            });
+                            cmd.Parameters.AddRange(parameters);
+                            var result = cmd.ExecuteScalar();
+                            caseId = result != null ? Convert.ToInt32(result) : 0;
                         }
-                    }
-                }
 
-                // Respondents
-                if (model.Respondents != null)
-                {
-                    foreach (var resp in model.Respondents)
-                    {
-                        if (!string.IsNullOrEmpty(resp.Name))
+                        if (caseId > 0)
                         {
-                            string respQuery = "INSERT INTO OTHER_CASE_RESPONDENTS (CaseID, RespondentName, RespondentRemark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(respQuery, new[] { 
-                                new SqlParameter("@CaseID", caseId), 
-                                new SqlParameter("@Name", resp.Name),
-                                new SqlParameter("@Remark", (object?)resp.Remark ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
+                            // Petitioners
+                            if (model.Petitioners != null)
+                            {
+                                foreach (var pet in model.Petitioners)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(pet.Name))
+                                    {
+                                        string petQuery = "INSERT INTO OTHER_CASE_PETITIONERS (CaseID, PetitionerName, PetitionerRemark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var petCmd = new SqlCommand(petQuery, conn, trans))
+                                        {
+                                            petCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            petCmd.Parameters.AddWithValue("@Name", pet.Name);
+                                            petCmd.Parameters.AddWithValue("@Remark", (object?)pet.Remark ?? DBNull.Value);
+                                            petCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
 
-                // Respondent Evidence
-                if (model.RespondentEvidence != null)
-                {
-                    foreach (var resp in model.RespondentEvidence)
-                    {
-                        if (!string.IsNullOrEmpty(resp.Name))
-                        {
-                            string q = "INSERT INTO OTHER_CASE_EVIDENCE_RESPONDENT (CaseID, Name, Remark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", caseId), 
-                                new SqlParameter("@Name", resp.Name),
-                                new SqlParameter("@Remark", (object?)resp.Remark ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
+                            // Respondents
+                            if (model.Respondents != null)
+                            {
+                                foreach (var resp in model.Respondents)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(resp.Name))
+                                    {
+                                        string respQuery = "INSERT INTO OTHER_CASE_RESPONDENTS (CaseID, RespondentName, RespondentRemark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var respCmd = new SqlCommand(respQuery, conn, trans))
+                                        {
+                                            respCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            respCmd.Parameters.AddWithValue("@Name", resp.Name);
+                                            respCmd.Parameters.AddWithValue("@Remark", (object?)resp.Remark ?? DBNull.Value);
+                                            respCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
 
-                // Corp Evidence
-                if (model.CorpEvidence != null)
-                {
-                    foreach (var corp in model.CorpEvidence)
-                    {
-                        if (!string.IsNullOrEmpty(corp.Name))
-                        {
-                            string q = "INSERT INTO OTHER_CASE_EVIDENCE_CORP (CaseID, Name, Designation) VALUES (@CaseID, @Name, @Designation)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", caseId), 
-                                new SqlParameter("@Name", corp.Name),
-                                new SqlParameter("@Designation", (object?)corp.Designation ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
+                            // Respondent Evidence
+                            if (model.RespondentEvidence != null)
+                            {
+                                foreach (var resp in model.RespondentEvidence)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(resp.Name))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_EVIDENCE_RESPONDENT (CaseID, Name, Remark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var respEvCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            respEvCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            respEvCmd.Parameters.AddWithValue("@Name", resp.Name);
+                                            respEvCmd.Parameters.AddWithValue("@Remark", (object?)resp.Remark ?? DBNull.Value);
+                                            respEvCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
 
-                // Enclosed Documents
-                if (model.EnclosedDocuments != null)
-                {
-                    foreach (var doc in model.EnclosedDocuments)
-                    {
-                        if (!string.IsNullOrEmpty(doc.DocName))
-                        {
-                            string q = "INSERT INTO OTHER_CASE_DOCUMENTS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", caseId), 
-                                new SqlParameter("@DocName", doc.DocName),
-                                new SqlParameter("@PageCount", (object?)doc.PageCount ?? DBNull.Value)
-                            });
+                            // Corp Evidence
+                            if (model.CorpEvidence != null)
+                            {
+                                foreach (var corp in model.CorpEvidence)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(corp.Name))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_EVIDENCE_CORP (CaseID, Name, Designation) VALUES (@CaseID, @Name, @Designation)";
+                                        using (var corpEvCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            corpEvCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            corpEvCmd.Parameters.AddWithValue("@Name", corp.Name);
+                                            corpEvCmd.Parameters.AddWithValue("@Designation", (object?)corp.Designation ?? DBNull.Value);
+                                            corpEvCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Enclosed Documents
+                            if (model.EnclosedDocuments != null)
+                            {
+                                foreach (var doc in model.EnclosedDocuments)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(doc.DocName))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_DOCUMENTS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)";
+                                        using (var docCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            docCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            docCmd.Parameters.AddWithValue("@DocName", doc.DocName);
+                                            docCmd.Parameters.AddWithValue("@PageCount", (object?)doc.PageCount ?? DBNull.Value);
+                                            docCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
                         }
+
+                        trans.Commit();
+                        return caseId;
+                    }
+                    catch
+                    {
+                        trans.Rollback();
+                        throw;
                     }
                 }
             }
-
-            if (caseId > 0 && string.IsNullOrEmpty(model.PetitionerName) && model.Petitioners != null && model.Petitioners.Any())
-            {
-                model.PetitionerName = model.Petitioners[0].Name;
-                _db.ExecuteNonQuery("UPDATE OTHER_CASES SET PetitionerName = @PetName WHERE CaseID = @CaseID", new[] {
-                    new SqlParameter("@CaseID", caseId),
-                    new SqlParameter("@PetName", (object?)model.PetitionerName ?? DBNull.Value)
-                });
-            }
-
-            return caseId;
         }
 
         public bool UpdateCase(OtherCourtsCase model)
         {
+            // Fallback resolution for PetitionerName and RespondentName on update
+            if (string.IsNullOrWhiteSpace(model.PetitionerName))
+            {
+                if (model.Petitioners != null && model.Petitioners.Any(p => !string.IsNullOrWhiteSpace(p.Name)))
+                {
+                    model.PetitionerName = model.Petitioners.First(p => !string.IsNullOrWhiteSpace(p.Name)).Name;
+                }
+                else if (model.Respondents != null && model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.Name)) && model.LitigantType == "Claimant")
+                {
+                    model.PetitionerName = model.Respondents.First(r => !string.IsNullOrWhiteSpace(r.Name)).Name;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(model.RespondentName))
+            {
+                if (model.Respondents != null && model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.Name)) && model.LitigantType == "Corporation")
+                {
+                    model.RespondentName = model.Respondents.First(r => !string.IsNullOrWhiteSpace(r.Name)).Name;
+                }
+            }
+
             string query = @"
                 UPDATE OTHER_CASES SET
                     DivisionID = @DivisionID,
@@ -253,116 +330,172 @@ namespace MVCCaseManagement.DAL
                     AppealClosureNumber = @AppealClosureNumber,
                     AppealClosureDate = @AppealClosureDate,
                     AppealJudgmentCopyPath = COALESCE(@AppealJudgmentCopyPath, AppealJudgmentCopyPath),
+                    CNRNumber = COALESCE(@CNRNumber, CNRNumber),
+                    EstCode = COALESCE(@EstCode, EstCode),
+                    CaseTypeCode = COALESCE(@CaseTypeCode, CaseTypeCode),
+                    OtherCourtDetails = COALESCE(@OtherCourtDetails, OtherCourtDetails),
+                    LastNapixSyncAt = COALESCE(@LastNapixSyncAt, LastNapixSyncAt),
+                    LastNapixSyncStatus = COALESCE(@LastNapixSyncStatus, LastNapixSyncStatus),
+                    LastNapixSyncError = @LastNapixSyncError,
+                    NapixSyncAttemptCount = @NapixSyncAttemptCount,
+                    NapixDataHash = COALESCE(@NapixDataHash, NapixDataHash),
+                    PendDispStatus = COALESCE(@PendDispStatus, PendDispStatus),
+                    EstName = COALESCE(@EstName, EstName),
+                    ECourtsStage = COALESCE(@ECourtsStage, ECourtsStage),
+                    ECourtsCourtNo = COALESCE(@ECourtsCourtNo, ECourtsCourtNo),
+                    ECourtsJudge = COALESCE(@ECourtsJudge, ECourtsJudge),
                     ModifiedBy = @ModifiedBy,
                     ModifiedDate = GETDATE()
                 WHERE CaseID = @CaseID";
 
-            var parameters = BuildParameters(model, includeId: true);
-            bool success = _db.ExecuteNonQuery(query, parameters) > 0;
-
-            if (success)
+            using (var conn = new SqlConnection(_db.GetConnectionString()))
             {
-                // Petitioners (only synchronize if collection is provided)
-                if (model.Petitioners != null)
+                conn.Open();
+                using (var trans = conn.BeginTransaction())
                 {
-                    _db.ExecuteNonQuery("DELETE FROM OTHER_CASE_PETITIONERS WHERE CaseID = @CaseID", new[] { new SqlParameter("@CaseID", model.CaseID) });
-                    foreach (var pet in model.Petitioners)
+                    try
                     {
-                        if (!string.IsNullOrEmpty(pet.Name))
+                        var parameters = BuildParameters(model, includeId: true);
+                        bool success = false;
+                        using (var cmd = new SqlCommand(query, conn, trans))
                         {
-                            string petQuery = "INSERT INTO OTHER_CASE_PETITIONERS (CaseID, PetitionerName, PetitionerRemark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(petQuery, new[] { 
-                                new SqlParameter("@CaseID", model.CaseID), 
-                                new SqlParameter("@Name", pet.Name),
-                                new SqlParameter("@Remark", (object?)pet.Remark ?? DBNull.Value)
-                            });
+                            cmd.Parameters.AddRange(parameters);
+                            success = cmd.ExecuteNonQuery() > 0;
                         }
-                    }
-                }
-                
-                // Respondents (only synchronize if collection is provided)
-                if (model.Respondents != null)
-                {
-                    _db.ExecuteNonQuery("DELETE FROM OTHER_CASE_RESPONDENTS WHERE CaseID = @CaseID", new[] { new SqlParameter("@CaseID", model.CaseID) });
-                    foreach (var resp in model.Respondents)
-                    {
-                        if (!string.IsNullOrEmpty(resp.Name))
-                        {
-                            string respQuery = "INSERT INTO OTHER_CASE_RESPONDENTS (CaseID, RespondentName, RespondentRemark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(respQuery, new[] { 
-                                new SqlParameter("@CaseID", model.CaseID), 
-                                new SqlParameter("@Name", resp.Name),
-                                new SqlParameter("@Remark", (object?)resp.Remark ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
 
-                // Respondent Evidence (only synchronize if collection is provided)
-                if (model.RespondentEvidence != null)
-                {
-                    _db.ExecuteNonQuery("DELETE FROM OTHER_CASE_EVIDENCE_RESPONDENT WHERE CaseID = @CaseID", new[] { new SqlParameter("@CaseID", model.CaseID) });
-                    foreach (var resp in model.RespondentEvidence)
-                    {
-                        if (!string.IsNullOrEmpty(resp.Name))
+                        if (success)
                         {
-                            string q = "INSERT INTO OTHER_CASE_EVIDENCE_RESPONDENT (CaseID, Name, Remark) VALUES (@CaseID, @Name, @Remark)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", model.CaseID), 
-                                new SqlParameter("@Name", resp.Name),
-                                new SqlParameter("@Remark", (object?)resp.Remark ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
+                            // Petitioners (only synchronize if valid items are provided to avoid wiping existing child records)
+                            if (model.Petitioners != null && model.Petitioners.Any(p => !string.IsNullOrWhiteSpace(p.Name)))
+                            {
+                                using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASE_PETITIONERS WHERE CaseID = @CaseID", conn, trans))
+                                {
+                                    delCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                    delCmd.ExecuteNonQuery();
+                                }
+                                foreach (var pet in model.Petitioners)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(pet.Name))
+                                    {
+                                        string petQuery = "INSERT INTO OTHER_CASE_PETITIONERS (CaseID, PetitionerName, PetitionerRemark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var insCmd = new SqlCommand(petQuery, conn, trans))
+                                        {
+                                            insCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            insCmd.Parameters.AddWithValue("@Name", pet.Name);
+                                            insCmd.Parameters.AddWithValue("@Remark", (object?)pet.Remark ?? DBNull.Value);
+                                            insCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Respondents (only synchronize if valid items are provided)
+                            if (model.Respondents != null && model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.Name)))
+                            {
+                                using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASE_RESPONDENTS WHERE CaseID = @CaseID", conn, trans))
+                                {
+                                    delCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                    delCmd.ExecuteNonQuery();
+                                }
+                                foreach (var resp in model.Respondents)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(resp.Name))
+                                    {
+                                        string respQuery = "INSERT INTO OTHER_CASE_RESPONDENTS (CaseID, RespondentName, RespondentRemark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var insCmd = new SqlCommand(respQuery, conn, trans))
+                                        {
+                                            insCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            insCmd.Parameters.AddWithValue("@Name", resp.Name);
+                                            insCmd.Parameters.AddWithValue("@Remark", (object?)resp.Remark ?? DBNull.Value);
+                                            insCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
 
-                // Corp Evidence (only synchronize if collection is provided)
-                if (model.CorpEvidence != null)
-                {
-                    _db.ExecuteNonQuery("DELETE FROM OTHER_CASE_EVIDENCE_CORP WHERE CaseID = @CaseID", new[] { new SqlParameter("@CaseID", model.CaseID) });
-                    foreach (var corp in model.CorpEvidence)
-                    {
-                        if (!string.IsNullOrEmpty(corp.Name))
-                        {
-                            string q = "INSERT INTO OTHER_CASE_EVIDENCE_CORP (CaseID, Name, Designation) VALUES (@CaseID, @Name, @Designation)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", model.CaseID), 
-                                new SqlParameter("@Name", corp.Name),
-                                new SqlParameter("@Designation", (object?)corp.Designation ?? DBNull.Value)
-                            });
-                        }
-                    }
-                }
+                            // Respondent Evidence (only synchronize if valid items are provided)
+                            if (model.RespondentEvidence != null && model.RespondentEvidence.Any(e => !string.IsNullOrWhiteSpace(e.Name)))
+                            {
+                                using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASE_EVIDENCE_RESPONDENT WHERE CaseID = @CaseID", conn, trans))
+                                {
+                                    delCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                    delCmd.ExecuteNonQuery();
+                                }
+                                foreach (var resp in model.RespondentEvidence)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(resp.Name))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_EVIDENCE_RESPONDENT (CaseID, Name, Remark) VALUES (@CaseID, @Name, @Remark)";
+                                        using (var insCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            insCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            insCmd.Parameters.AddWithValue("@Name", resp.Name);
+                                            insCmd.Parameters.AddWithValue("@Remark", (object?)resp.Remark ?? DBNull.Value);
+                                            insCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
 
-                // Enclosed Documents (only synchronize if collection is provided)
-                if (model.EnclosedDocuments != null)
-                {
-                    _db.ExecuteNonQuery("DELETE FROM OTHER_CASE_DOCUMENTS WHERE CaseID = @CaseID", new[] { new SqlParameter("@CaseID", model.CaseID) });
-                    foreach (var doc in model.EnclosedDocuments)
-                    {
-                        if (!string.IsNullOrEmpty(doc.DocName))
-                        {
-                            string q = "INSERT INTO OTHER_CASE_DOCUMENTS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)";
-                            _db.ExecuteNonQuery(q, new[] { 
-                                new SqlParameter("@CaseID", model.CaseID), 
-                                new SqlParameter("@DocName", doc.DocName),
-                                new SqlParameter("@PageCount", (object?)doc.PageCount ?? DBNull.Value)
-                            });
+                            // Corp Evidence (only synchronize if valid items are provided)
+                            if (model.CorpEvidence != null && model.CorpEvidence.Any(c => !string.IsNullOrWhiteSpace(c.Name)))
+                            {
+                                using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASE_EVIDENCE_CORP WHERE CaseID = @CaseID", conn, trans))
+                                {
+                                    delCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                    delCmd.ExecuteNonQuery();
+                                }
+                                foreach (var corp in model.CorpEvidence)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(corp.Name))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_EVIDENCE_CORP (CaseID, Name, Designation) VALUES (@CaseID, @Name, @Designation)";
+                                        using (var insCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            insCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            insCmd.Parameters.AddWithValue("@Name", corp.Name);
+                                            insCmd.Parameters.AddWithValue("@Designation", (object?)corp.Designation ?? DBNull.Value);
+                                            insCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Enclosed Documents (only synchronize if valid items are provided)
+                            if (model.EnclosedDocuments != null && model.EnclosedDocuments.Any(d => !string.IsNullOrWhiteSpace(d.DocName)))
+                            {
+                                using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASE_DOCUMENTS WHERE CaseID = @CaseID", conn, trans))
+                                {
+                                    delCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                    delCmd.ExecuteNonQuery();
+                                }
+                                foreach (var doc in model.EnclosedDocuments)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(doc.DocName))
+                                    {
+                                        string q = "INSERT INTO OTHER_CASE_DOCUMENTS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)";
+                                        using (var insCmd = new SqlCommand(q, conn, trans))
+                                        {
+                                            insCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            insCmd.Parameters.AddWithValue("@DocName", doc.DocName);
+                                            insCmd.Parameters.AddWithValue("@PageCount", (object?)doc.PageCount ?? DBNull.Value);
+                                            insCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                            }
                         }
+
+                        trans.Commit();
+                        return success;
+                    }
+                    catch
+                    {
+                        trans.Rollback();
+                        throw;
                     }
                 }
             }
-
-            if (success && string.IsNullOrEmpty(model.PetitionerName) && model.Petitioners != null && model.Petitioners.Any())
-            {
-                model.PetitionerName = model.Petitioners[0].Name;
-                _db.ExecuteNonQuery("UPDATE OTHER_CASES SET PetitionerName = @PetName WHERE CaseID = @CaseID", new[] {
-                    new SqlParameter("@CaseID", model.CaseID),
-                    new SqlParameter("@PetName", (object?)model.PetitionerName ?? DBNull.Value)
-                });
-            }
-
-            return success;
         }
 
         public OtherCourtsCase? GetCaseById(int caseId)
@@ -447,13 +580,13 @@ namespace MVCCaseManagement.DAL
                 paramsList.Add(new SqlParameter("@DivisionID", divisionId));
             }
 
-            if (!string.IsNullOrEmpty(caseType))
+            if (!string.IsNullOrEmpty(caseType) && caseType != "All")
             {
                 whereClause += " AND c.CaseType = @CaseType";
                 paramsList.Add(new SqlParameter("@CaseType", caseType));
             }
 
-            if (!string.IsNullOrEmpty(litigantType))
+            if (!string.IsNullOrEmpty(litigantType) && litigantType != "All")
             {
                 whereClause += " AND c.LitigantType = @LitigantType";
                 paramsList.Add(new SqlParameter("@LitigantType", litigantType));
@@ -590,6 +723,22 @@ namespace MVCCaseManagement.DAL
                 new SqlParameter("@AppealClosureNumber", (object?)m.AppealClosureNumber ?? DBNull.Value),
                 new SqlParameter("@AppealClosureDate", (object?)m.AppealClosureDate ?? DBNull.Value),
                 new SqlParameter("@AppealJudgmentCopyPath", (object?)m.AppealJudgmentCopyPath ?? DBNull.Value),
+
+                // e-Courts NAPIX Parameters
+                new SqlParameter("@CNRNumber", (object?)m.CNRNumber ?? DBNull.Value),
+                new SqlParameter("@EstCode", (object?)m.EstCode ?? DBNull.Value),
+                new SqlParameter("@CaseTypeCode", (object?)m.CaseTypeCode ?? DBNull.Value),
+                new SqlParameter("@OtherCourtDetails", (object?)m.OtherCourtDetails ?? DBNull.Value),
+                new SqlParameter("@LastNapixSyncAt", (object?)m.LastNapixSyncAt ?? DBNull.Value),
+                new SqlParameter("@LastNapixSyncStatus", (object?)m.LastNapixSyncStatus ?? DBNull.Value),
+                new SqlParameter("@LastNapixSyncError", (object?)m.LastNapixSyncError ?? DBNull.Value),
+                new SqlParameter("@NapixSyncAttemptCount", m.NapixSyncAttemptCount),
+                new SqlParameter("@NapixDataHash", (object?)m.NapixDataHash ?? DBNull.Value),
+                new SqlParameter("@PendDispStatus", (object?)m.PendDispStatus ?? DBNull.Value),
+                new SqlParameter("@EstName", (object?)m.EstName ?? DBNull.Value),
+                new SqlParameter("@ECourtsStage", (object?)m.ECourtsStage ?? DBNull.Value),
+                new SqlParameter("@ECourtsCourtNo", (object?)m.ECourtsCourtNo ?? DBNull.Value),
+                new SqlParameter("@ECourtsJudge", (object?)m.ECourtsJudge ?? DBNull.Value),
             };
 
             if (includeId)
@@ -606,24 +755,46 @@ namespace MVCCaseManagement.DAL
             var allCases = GetAllCases(divisionId, caseType, litigantType).ToList();
 
             stats.TotalCases = allCases.Count;
-            stats.PendingCases = allCases.Count(c => c.CaseStage?.ToLower() == "pending");
-            stats.CloseCount = allCases.Count(c => c.CaseStage?.ToLower() == "disposed");
-            stats.HearingsToday = allCases.Count(c => c.NextDateOfHearing?.Date == DateTime.Today);
-            stats.ComplianceDueCount = allCases.Count(c => c.CaseStage?.ToLower() == "pending" && c.NextDateOfHearing < DateTime.Today);
 
-            stats.RecentCases = allCases
-                .Where(c => c.NextDateOfHearing >= DateTime.Today)
+            bool IsClosed(OtherCourtsCase c)
+            {
+                var ds = (c.DisposalStatus ?? "").Trim().ToLower();
+                var cs = (c.CaseStage ?? "").Trim().ToLower();
+                var cstat = (c.CaseStatus ?? "").Trim().ToLower();
+                return ds.Contains("disposed") || ds.Contains("closed") || ds.Contains("dnp") || ds.Contains("decreed")
+                    || cs.Contains("disposed") || cs.Contains("closed") || cs.Contains("dnp")
+                    || cstat.Contains("disposed") || cstat.Contains("closed") || c.ClosureDate.HasValue;
+            }
+
+            stats.CloseCount = allCases.Count(c => IsClosed(c));
+            stats.PendingCases = allCases.Count - stats.CloseCount;
+            stats.HearingsToday = allCases.Count(c => c.NextDateOfHearing.HasValue && c.NextDateOfHearing.Value.Date == DateTime.Today);
+            stats.ComplianceDueCount = allCases.Count(c => !IsClosed(c) && c.NextDateOfHearing.HasValue && c.NextDateOfHearing.Value.Date < DateTime.Today);
+
+            // Fetch upcoming hearings first; if none, show most recent cases so dashboard is never empty
+            var upcoming = allCases
+                .Where(c => !IsClosed(c) && c.NextDateOfHearing.HasValue && c.NextDateOfHearing.Value.Date >= DateTime.Today)
                 .OrderBy(c => c.NextDateOfHearing)
                 .Take(10)
-                .Select(c => new RecentCaseViewModel
-                {
-                    CaseID = c.CaseID,
-                    MVCNo = c.CaseNumber ?? "N/A",
-                    MACTName = c.Court ?? "N/A",
-                    DisposalResult = c.CaseStage ?? "Pending",
-                    CreatedAt = c.CreatedDate,
-                    NextHearingDate = c.NextDateOfHearing
-                }).ToList();
+                .ToList();
+
+            if (!upcoming.Any())
+            {
+                upcoming = allCases
+                    .OrderByDescending(c => c.CreatedDate)
+                    .Take(10)
+                    .ToList();
+            }
+
+            stats.RecentCases = upcoming.Select(c => new RecentCaseViewModel
+            {
+                CaseID = c.CaseID,
+                MVCNo = !string.IsNullOrEmpty(c.CaseNumber) ? $"{c.CaseNumber}/{(c.CaseYear.HasValue ? c.CaseYear.ToString() : "")}" : "NOT FILED",
+                MACTName = c.Court ?? "N/A",
+                DisposalResult = IsClosed(c) ? (c.DisposalStatus ?? "Disposed") : (c.CaseStage ?? "Pending"),
+                CreatedAt = c.CreatedDate,
+                NextHearingDate = c.NextDateOfHearing
+            }).ToList();
 
             return stats;
         }
@@ -632,106 +803,203 @@ namespace MVCCaseManagement.DAL
         {
             return new OtherCourtsCase
             {
-                CaseID = row["CaseID"] != DBNull.Value ? Convert.ToInt32(row["CaseID"]) : 0,
-                DivisionID = row["DivisionID"] != DBNull.Value ? Convert.ToInt32(row["DivisionID"]) : 0,
-                DivisionName = row["DivisionName"]?.ToString(),
-                CaseType = row["CaseType"] != DBNull.Value ? row["CaseType"].ToString() ?? "" : "",
-                LitigantType = row["LitigantType"] != DBNull.Value ? row["LitigantType"].ToString() ?? "" : "",
-                IsPendingForFiling = row["IsPendingForFiling"] != DBNull.Value && Convert.ToBoolean(row["IsPendingForFiling"]),
-                CaseNumber = row["CaseNumber"]?.ToString(),
-                CaseYear = row["CaseYear"] != DBNull.Value ? Convert.ToInt32(row["CaseYear"]) : null,
-                Court = row["Court"]?.ToString(),
-                CaseNature = row["CaseNature"]?.ToString(),
-                ClaimDetails = row["ClaimDetails"]?.ToString(),
-                RespondentName = row["RespondentName"]?.ToString(),
-                EntrustmentNumber = row["EntrustmentNumber"]?.ToString(),
-                EntrustmentDate = row["EntrustmentDate"] != DBNull.Value ? Convert.ToDateTime(row["EntrustmentDate"]) : null,
-                AdvocateName = row["AdvocateName"]?.ToString(),
-                EvidenceFiled = row["EvidenceFiled"]?.ToString(),
-                CaseStatus = row["CaseStatus"]?.ToString(),
-                NextDateOfHearing = row["NextDateOfHearing"] != DBNull.Value ? Convert.ToDateTime(row["NextDateOfHearing"]) : null,
-                InterimOrder = row["InterimOrder"]?.ToString(),
-                InterimOrderFilePath = row["InterimOrderFilePath"]?.ToString(),
-                AwardDetails = row["AwardDetails"]?.ToString(),
-                Result = row["Result"]?.ToString(),
-                DisposalStatus = row["DisposalStatus"]?.ToString(),
+                CaseID = row.GetInt("CaseID") ?? 0,
+                DivisionID = row.GetInt("DivisionID") ?? 0,
+                DivisionName = row.GetString("DivisionName"),
+                CaseType = row.GetString("CaseType") ?? "",
+                LitigantType = row.GetString("LitigantType") ?? "",
+                IsPendingForFiling = row.GetBool("IsPendingForFiling"),
+                CaseNumber = row.GetString("CaseNumber"),
+                CaseYear = row.GetInt("CaseYear"),
+                Court = row.GetString("Court"),
+                CaseNature = row.GetString("CaseNature"),
+                ClaimDetails = row.GetString("ClaimDetails"),
+                RespondentName = row.GetString("RespondentName"),
+                EntrustmentNumber = row.GetString("EntrustmentNumber"),
+                EntrustmentDate = row.GetDate("EntrustmentDate"),
+                AdvocateName = row.GetString("AdvocateName"),
+                EvidenceFiled = row.GetString("EvidenceFiled"),
+                CaseStatus = row.GetString("CaseStatus"),
+                NextDateOfHearing = row.GetDate("NextDateOfHearing"),
+                InterimOrder = row.GetString("InterimOrder"),
+                InterimOrderFilePath = row.GetString("InterimOrderFilePath"),
+                AwardDetails = row.GetString("AwardDetails"),
+                Result = row.GetString("Result"),
+                DisposalStatus = row.GetString("DisposalStatus"),
                 
                 // CC Details
-                CopyDisposedOn = row["CopyDisposedOn"] != DBNull.Value ? Convert.ToDateTime(row["CopyDisposedOn"]) : null,
-                CopyAppliedOn = row["CopyAppliedOn"] != DBNull.Value ? Convert.ToDateTime(row["CopyAppliedOn"]) : null,
-                CopyReadyOn = row["CopyReadyOn"] != DBNull.Value ? Convert.ToDateTime(row["CopyReadyOn"]) : null,
-                CopyDeliveredOn = row["CopyDeliveredOn"] != DBNull.Value ? Convert.ToDateTime(row["CopyDeliveredOn"]) : null,
-                CopyReceivedAtDivision = row["CopyReceivedAtDivision"] != DBNull.Value ? Convert.ToDateTime(row["CopyReceivedAtDivision"]) : null,
-                CertifiedCopyRemarks = row["CertifiedCopyRemarks"]?.ToString(),
+                CopyDisposedOn = row.GetDate("CopyDisposedOn"),
+                CopyAppliedOn = row.GetDate("CopyAppliedOn"),
+                CopyReadyOn = row.GetDate("CopyReadyOn"),
+                CopyDeliveredOn = row.GetDate("CopyDeliveredOn"),
+                CopyReceivedAtDivision = row.GetDate("CopyReceivedAtDivision"),
+                CertifiedCopyRemarks = row.GetString("CertifiedCopyRemarks"),
 
-                AdvocateOpinion = row["AdvocateOpinion"]?.ToString(),
-                LawOfficerOpinion = row["LawOfficerOpinion"]?.ToString(),
-                DCFinalDecision = row["DCFinalDecision"]?.ToString(),
-                FinalForwardingStatus = row["FinalForwardingStatus"]?.ToString(),
-                FinalJudgmentFilePath = row["FinalJudgmentFilePath"]?.ToString(),
+                AdvocateOpinion = row.GetString("AdvocateOpinion"),
+                LawOfficerOpinion = row.GetString("LawOfficerOpinion"),
+                DCFinalDecision = row.GetString("DCFinalDecision"),
+                FinalForwardingStatus = row.GetString("FinalForwardingStatus"),
+                FinalJudgmentFilePath = row.GetString("FinalJudgmentFilePath"),
 
-                PetitionerName = row["PetitionerName"]?.ToString(),
-                PetitionerRelationship = row["PetitionerRelationship"]?.ToString(),
-                ClaimType = row["ClaimType"]?.ToString(),
-                DateOfClaimPetition = row["DateOfClaimPetition"] != DBNull.Value ? Convert.ToDateTime(row["DateOfClaimPetition"]) : null,
-                CaseStage = row["CaseStage"]?.ToString(),
-                DocumentSent = row["DocumentSent"]?.ToString(),
-                ObjectionVerified = row["ObjectionVerified"]?.ToString(),
-                IsObjectionFiled = row["IsObjectionFiled"]?.ToString(),
-                ObjectionPending = row["ObjectionPending"]?.ToString(),
-                ObjectionRemarks = row["ObjectionRemarks"]?.ToString(),
-                ObjectionOutwardNumber = row["ObjectionOutwardNumber"]?.ToString(),
-                ObjectionFiledDate = row["ObjectionFiledDate"] != DBNull.Value ? Convert.ToDateTime(row["ObjectionFiledDate"]) : null,
+                PetitionerName = row.GetString("PetitionerName"),
+                PetitionerRelationship = row.GetString("PetitionerRelationship"),
+                ClaimType = row.GetString("ClaimType"),
+                DateOfClaimPetition = row.GetDate("DateOfClaimPetition"),
+                CaseStage = row.GetString("CaseStage"),
+                DocumentSent = row.GetString("DocumentSent"),
+                ObjectionVerified = row.GetString("ObjectionVerified"),
+                IsObjectionFiled = row.GetString("IsObjectionFiled"),
+                ObjectionPending = row.GetString("ObjectionPending"),
+                ObjectionRemarks = row.GetString("ObjectionRemarks"),
+                ObjectionOutwardNumber = row.GetString("ObjectionOutwardNumber"),
+                ObjectionFiledDate = row.GetDate("ObjectionFiledDate"),
 
-                ClosureDate = row["ClosureDate"] != DBNull.Value ? Convert.ToDateTime(row["ClosureDate"]) : null,
-                ClosureNumber = row["ClosureNumber"]?.ToString(),
-                ClosureRemark = row["ClosureRemark"]?.ToString(),
-                OutwardNumber = row["OutwardNumber"]?.ToString(),
-                OutwardDate = row["OutwardDate"] != DBNull.Value ? Convert.ToDateTime(row["OutwardDate"]) : null,
-                InitialOutwardNumber = row["InitialOutwardNumber"]?.ToString(),
-                InitialOutwardDate = row["InitialOutwardDate"] != DBNull.Value ? Convert.ToDateTime(row["InitialOutwardDate"]) : null,
-                VehicleNumber = row["VehicleNumber"]?.ToString(),
-                DateOfAccident = row["DateOfAccident"] != DBNull.Value ? Convert.ToDateTime(row["DateOfAccident"]) : null,
-                ClaimAmount = row["ClaimAmount"] != DBNull.Value ? Convert.ToDecimal(row["ClaimAmount"]) : null,
-                IsVehicleInvolved = row.Table.Columns.Contains("IsVehicleInvolved") ? row["IsVehicleInvolved"]?.ToString() : null,
-                VehicleType = row.Table.Columns.Contains("VehicleType") ? row["VehicleType"]?.ToString() : null,
-                IsCorporationEmployee = row.Table.Columns.Contains("IsCorporationEmployee") ? row["IsCorporationEmployee"]?.ToString() : null,
-                MannerOfIncident = row.Table.Columns.Contains("MannerOfIncident") ? row["MannerOfIncident"]?.ToString() : null,
-                ClaimRemarks = row.Table.Columns.Contains("ClaimRemarks") ? row["ClaimRemarks"]?.ToString() : null,
-                CreatedBy = row["CreatedBy"] != DBNull.Value ? Convert.ToInt32(row["CreatedBy"]) : null,
-                CreatedDate = row["CreatedDate"] != DBNull.Value ? Convert.ToDateTime(row["CreatedDate"]) : DateTime.Now,
-                ModifiedBy = row["ModifiedBy"] != DBNull.Value ? Convert.ToInt32(row["ModifiedBy"]) : null,
-                ModifiedDate = row["ModifiedDate"] != DBNull.Value ? Convert.ToDateTime(row["ModifiedDate"]) : null,
+                ClosureDate = row.GetDate("ClosureDate"),
+                ClosureNumber = row.GetString("ClosureNumber"),
+                ClosureRemark = row.GetString("ClosureRemark"),
+                OutwardNumber = row.GetString("OutwardNumber"),
+                OutwardDate = row.GetDate("OutwardDate"),
+                InitialOutwardNumber = row.GetString("InitialOutwardNumber"),
+                InitialOutwardDate = row.GetDate("InitialOutwardDate"),
+                VehicleNumber = row.GetString("VehicleNumber"),
+                DateOfAccident = row.GetDate("DateOfAccident"),
+                ClaimAmount = row.GetDecimal("ClaimAmount"),
+                IsVehicleInvolved = row.GetString("IsVehicleInvolved"),
+                VehicleType = row.GetString("VehicleType"),
+                IsCorporationEmployee = row.GetString("IsCorporationEmployee"),
+                MannerOfIncident = row.GetString("MannerOfIncident"),
+                ClaimRemarks = row.GetString("ClaimRemarks"),
+                CreatedBy = row.GetInt("CreatedBy"),
+                CreatedDate = row.GetDate("CreatedDate") ?? DateTime.Now,
+                ModifiedBy = row.GetInt("ModifiedBy"),
+                ModifiedDate = row.GetDate("ModifiedDate"),
 
                 // Appeal Fields
-                AppealNumber = row.Table.Columns.Contains("AppealNumber") ? row["AppealNumber"]?.ToString() : null,
-                AppealYear = row.Table.Columns.Contains("AppealYear") && row["AppealYear"] != DBNull.Value ? Convert.ToInt32(row["AppealYear"]) : null,
-                ArisingOutOSNumber = row.Table.Columns.Contains("ArisingOutOSNumber") ? row["ArisingOutOSNumber"]?.ToString() : null,
-                OSYear = row.Table.Columns.Contains("OSYear") && row["OSYear"] != DBNull.Value ? Convert.ToInt32(row["OSYear"]) : null,
-                AppealEntrustmentNumber = row.Table.Columns.Contains("AppealEntrustmentNumber") ? row["AppealEntrustmentNumber"]?.ToString() : null,
-                AppealEntrustmentDate = row.Table.Columns.Contains("AppealEntrustmentDate") && row["AppealEntrustmentDate"] != DBNull.Value ? Convert.ToDateTime(row["AppealEntrustmentDate"]) : null,
-                CourtAppellateAuth = row.Table.Columns.Contains("CourtAppellateAuth") ? row["CourtAppellateAuth"]?.ToString() : null,
-                AppealAdvocateName = row.Table.Columns.Contains("AppealAdvocateName") ? row["AppealAdvocateName"]?.ToString() : null,
-                AppealComplianceAmount = row.Table.Columns.Contains("AppealComplianceAmount") && row["AppealComplianceAmount"] != DBNull.Value ? Convert.ToDecimal(row["AppealComplianceAmount"]) : null,
-                AppealChequeNumber = row.Table.Columns.Contains("AppealChequeNumber") ? row["AppealChequeNumber"]?.ToString() : null,
-                AppealChequeDate = row.Table.Columns.Contains("AppealChequeDate") && row["AppealChequeDate"] != DBNull.Value ? Convert.ToDateTime(row["AppealChequeDate"]) : null,
-                AppealAwardDetails = row.Table.Columns.Contains("AppealAwardDetails") ? row["AppealAwardDetails"]?.ToString() : null,
-                AppealCaseDisposedOn = row.Table.Columns.Contains("AppealCaseDisposedOn") && row["AppealCaseDisposedOn"] != DBNull.Value ? Convert.ToDateTime(row["AppealCaseDisposedOn"]) : null,
-                AppealCopyAppliedOn = row.Table.Columns.Contains("AppealCopyAppliedOn") && row["AppealCopyAppliedOn"] != DBNull.Value ? Convert.ToDateTime(row["AppealCopyAppliedOn"]) : null,
-                AppealCopyReadyOn = row.Table.Columns.Contains("AppealCopyReadyOn") && row["AppealCopyReadyOn"] != DBNull.Value ? Convert.ToDateTime(row["AppealCopyReadyOn"]) : null,
-                AppealCopyDeliveredOn = row.Table.Columns.Contains("AppealCopyDeliveredOn") && row["AppealCopyDeliveredOn"] != DBNull.Value ? Convert.ToDateTime(row["AppealCopyDeliveredOn"]) : null,
-                AppealCopyReceivedAtDivision = row.Table.Columns.Contains("AppealCopyReceivedAtDivision") && row["AppealCopyReceivedAtDivision"] != DBNull.Value ? Convert.ToDateTime(row["AppealCopyReceivedAtDivision"]) : null,
-                AppealDelayRemarks = row.Table.Columns.Contains("AppealDelayRemarks") ? row["AppealDelayRemarks"]?.ToString() : null,
-                AppealAdvocateOpinion = row.Table.Columns.Contains("AppealAdvocateOpinion") ? row["AppealAdvocateOpinion"]?.ToString() : null,
-                AppealALOOpinion = row.Table.Columns.Contains("AppealALOOpinion") ? row["AppealALOOpinion"]?.ToString() : null,
-                AppealDCOpinion = row.Table.Columns.Contains("AppealDCOpinion") ? row["AppealDCOpinion"]?.ToString() : null,
-                AppealForwardingStatus = row.Table.Columns.Contains("AppealForwardingStatus") ? row["AppealForwardingStatus"]?.ToString() : null,
-                AppealOutwardNumber = row.Table.Columns.Contains("AppealOutwardNumber") ? row["AppealOutwardNumber"]?.ToString() : null,
-                AppealOutwardDate = row.Table.Columns.Contains("AppealOutwardDate") && row["AppealOutwardDate"] != DBNull.Value ? Convert.ToDateTime(row["AppealOutwardDate"]) : null,
-                AppealClosureNumber = row.Table.Columns.Contains("AppealClosureNumber") ? row["AppealClosureNumber"]?.ToString() : null,
-                AppealClosureDate = row.Table.Columns.Contains("AppealClosureDate") && row["AppealClosureDate"] != DBNull.Value ? Convert.ToDateTime(row["AppealClosureDate"]) : null,
-                AppealJudgmentCopyPath = row.Table.Columns.Contains("AppealJudgmentCopyPath") ? row["AppealJudgmentCopyPath"]?.ToString() : null,
+                AppealNumber = row.GetString("AppealNumber"),
+                AppealYear = row.GetInt("AppealYear"),
+                ArisingOutOSNumber = row.GetString("ArisingOutOSNumber"),
+                OSYear = row.GetInt("OSYear"),
+                AppealEntrustmentNumber = row.GetString("AppealEntrustmentNumber"),
+                AppealEntrustmentDate = row.GetDate("AppealEntrustmentDate"),
+                CourtAppellateAuth = row.GetString("CourtAppellateAuth"),
+                AppealAdvocateName = row.GetString("AppealAdvocateName"),
+                AppealComplianceAmount = row.GetDecimal("AppealComplianceAmount"),
+                AppealChequeNumber = row.GetString("AppealChequeNumber"),
+                AppealChequeDate = row.GetDate("AppealChequeDate"),
+                AppealAwardDetails = row.GetString("AppealAwardDetails"),
+                AppealCaseDisposedOn = row.GetDate("AppealCaseDisposedOn"),
+                AppealCopyAppliedOn = row.GetDate("AppealCopyAppliedOn"),
+                AppealCopyReadyOn = row.GetDate("AppealCopyReadyOn"),
+                AppealCopyDeliveredOn = row.GetDate("AppealCopyDeliveredOn"),
+                AppealCopyReceivedAtDivision = row.GetDate("AppealCopyReceivedAtDivision"),
+                AppealDelayRemarks = row.GetString("AppealDelayRemarks"),
+                AppealAdvocateOpinion = row.GetString("AppealAdvocateOpinion"),
+                AppealALOOpinion = row.GetString("AppealALOOpinion"),
+                AppealDCOpinion = row.GetString("AppealDCOpinion"),
+                AppealForwardingStatus = row.GetString("AppealForwardingStatus"),
+                AppealOutwardNumber = row.GetString("AppealOutwardNumber"),
+                AppealOutwardDate = row.GetDate("AppealOutwardDate"),
+                AppealClosureNumber = row.GetString("AppealClosureNumber"),
+                AppealClosureDate = row.GetDate("AppealClosureDate"),
+                AppealJudgmentCopyPath = row.GetString("AppealJudgmentCopyPath"),
+
+                // e-Courts NAPIX Fields
+                CNRNumber = row.GetString("CNRNumber"),
+                EstCode = row.GetString("EstCode"),
+                CaseTypeCode = row.GetString("CaseTypeCode"),
+                OtherCourtDetails = row.GetString("OtherCourtDetails"),
+                LastNapixSyncAt = row.GetDate("LastNapixSyncAt"),
+                LastNapixSyncStatus = row.GetString("LastNapixSyncStatus"),
+                LastNapixSyncError = row.GetString("LastNapixSyncError"),
+                NapixSyncAttemptCount = row.GetInt("NapixSyncAttemptCount") ?? 0,
+                NapixDataHash = row.GetString("NapixDataHash"),
+                PendDispStatus = row.GetString("PendDispStatus"),
+                EstName = row.GetString("EstName"),
+                ECourtsStage = row.GetString("ECourtsStage"),
+                ECourtsCourtNo = row.GetString("ECourtsCourtNo"),
+                ECourtsJudge = row.GetString("ECourtsJudge"),
             };
+        }
+
+        public bool UpdateLiveSyncInfo(int caseId, string cnr, string status, string? error, DateTime? nextDate, string? stage, string? courtNo, string? judge, string? pendDisp, string? estName)
+        {
+            string sql = @"
+                UPDATE OTHER_CASES
+                SET LastNapixSyncAt = SYSUTCDATETIME(),
+                    LastNapixSyncStatus = @Status,
+                    LastNapixSyncError = @Error,
+                    NapixSyncAttemptCount = NapixSyncAttemptCount + 1,
+                    PendDispStatus = COALESCE(@PendDisp, PendDispStatus),
+                    NextDateOfHearing = COALESCE(@NextDate, NextDateOfHearing),
+                    EstName = COALESCE(@EstName, EstName),
+                    ECourtsStage = COALESCE(@Stage, ECourtsStage),
+                    ECourtsCourtNo = COALESCE(@CourtNo, ECourtsCourtNo),
+                    ECourtsJudge = COALESCE(@Judge, ECourtsJudge),
+                    CNRNumber = COALESCE(@CNR, CNRNumber)
+                WHERE CaseID = @CaseID;";
+
+            var parameters = new[]
+            {
+                new SqlParameter("@CaseID", caseId),
+                new SqlParameter("@Status", status),
+                new SqlParameter("@Error", (object?)error ?? DBNull.Value),
+                new SqlParameter("@PendDisp", (object?)pendDisp ?? DBNull.Value),
+                new SqlParameter("@NextDate", (object?)nextDate ?? DBNull.Value),
+                new SqlParameter("@EstName", (object?)estName ?? DBNull.Value),
+                new SqlParameter("@Stage", (object?)stage ?? DBNull.Value),
+                new SqlParameter("@CourtNo", (object?)courtNo ?? DBNull.Value),
+                new SqlParameter("@Judge", (object?)judge ?? DBNull.Value),
+                new SqlParameter("@CNR", (object?)cnr ?? DBNull.Value)
+            };
+
+            return _db.ExecuteNonQuery(sql, parameters) > 0;
+        }
+
+        public bool DeleteCase(int caseId)
+        {
+            using (var conn = new SqlConnection(_db.GetConnectionString()))
+            {
+                conn.Open();
+                using (var trans = conn.BeginTransaction())
+                {
+                    try
+                    {
+                        string[] tables = { 
+                            "OTHER_CASE_PETITIONERS", 
+                            "OTHER_CASE_RESPONDENTS", 
+                            "OTHER_CASE_EVIDENCE_RESPONDENT", 
+                            "OTHER_CASE_EVIDENCE_CORP", 
+                            "OTHER_CASE_DOCUMENTS" 
+                        };
+                        foreach (var tbl in tables)
+                        {
+                            using (var cmd = new SqlCommand($"IF OBJECT_ID('{tbl}', 'U') IS NOT NULL DELETE FROM {tbl} WHERE CaseID = @Id", conn, trans))
+                            {
+                                cmd.Parameters.AddWithValue("@Id", caseId);
+                                cmd.ExecuteNonQuery();
+                            }
+                        }
+                        using (var notingCmd = new SqlCommand("IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL DELETE FROM CASE_NOTINGS WHERE CaseType IN ('OTHER', 'OS', 'ECA', 'CC', 'PSC', 'LAC', 'Consumer') AND CaseID = @Id", conn, trans))
+                        {
+                            notingCmd.Parameters.AddWithValue("@Id", caseId);
+                            notingCmd.ExecuteNonQuery();
+                        }
+                        int affected;
+                        using (var delCmd = new SqlCommand("DELETE FROM OTHER_CASES WHERE CaseID = @Id", conn, trans))
+                        {
+                            delCmd.Parameters.AddWithValue("@Id", caseId);
+                            affected = delCmd.ExecuteNonQuery();
+                        }
+                        trans.Commit();
+                        return affected > 0;
+                    }
+                    catch
+                    {
+                        trans.Rollback();
+                        throw;
+                    }
+                }
+            }
         }
     }
 }

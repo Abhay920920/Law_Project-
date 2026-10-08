@@ -314,7 +314,7 @@ namespace MVCCaseManagement.DAL
             await conn.ExecuteAsync(sql, new { cnrNumber, stage, nextHearingDate });
         }
 
-        public async Task SyncLiveCaseDataAsync(string cnrNumber, DateTime? nextHearingDate, string? stage, string? courtHall, string? caseStatus, int? caseId = null, string? module = null, int? appealId = null)
+        public async Task SyncLiveCaseDataAsync(string cnrNumber, DateTime? nextHearingDate, string? stage, string? courtHall, string? caseStatus, int? caseId = null, string? module = null, int? appealId = null, DateTime? decisionDate = null, string? estName = null)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber)) return;
             string cleanCnr = cnrNumber.Trim();
@@ -328,11 +328,15 @@ namespace MVCCaseManagement.DAL
                         CNRNumber = COALESCE(NULLIF(CNRNumber, ''), @cleanCnr),
                         NextHearingDate = COALESCE(@nextHearingDate, NextHearingDate),
                         CurrentStage = COALESCE(NULLIF(@stage, ''), CurrentStage),
+                        ECourtsStage = COALESCE(NULLIF(@stage, ''), ECourtsStage),
                         CaseStatus = COALESCE(NULLIF(@caseStatus, ''), CaseStatus),
-                        CourtHall = COALESCE(NULLIF(@courtHall, ''), CourtHall)
+                        CourtHall = COALESCE(NULLIF(@courtHall, ''), CourtHall),
+                        EstName = COALESCE(NULLIF(@estName, ''), EstName),
+                        ClosureDate = COALESCE(ClosureDate, @decisionDate),
+                        PendDispStatus = CASE WHEN @caseStatus = 'Disposed' OR @decisionDate IS NOT NULL THEN 'D' ELSE COALESCE(PendDispStatus, 'P') END
                     WHERE (CaseID = @caseId AND @caseId IS NOT NULL AND @caseId > 0)
                        OR (CNRNumber = @cleanCnr)";
-                await conn.ExecuteAsync(sqlMvc, new { cleanCnr, nextHearingDate, stage, caseStatus, courtHall, caseId });
+                await conn.ExecuteAsync(sqlMvc, new { cleanCnr, nextHearingDate, stage, caseStatus, courtHall, caseId, decisionDate, estName });
             }
 
             // 2. Update APPEAL_DETAILS
@@ -349,13 +353,18 @@ namespace MVCCaseManagement.DAL
                         CO_Claimant_CaseStatus = CASE WHEN CO_Claimant_CNRNumber = @cleanCnr THEN COALESCE(NULLIF(@caseStatus, ''), CO_Claimant_CaseStatus) ELSE CO_Claimant_CaseStatus END,
                         NextHearingDate = COALESCE(@nextHearingDate, NextHearingDate),
                         CurrentStage = COALESCE(NULLIF(@stage, ''), CurrentStage),
-                        CaseStatus = COALESCE(NULLIF(@caseStatus, ''), CaseStatus)
+                        ECourtsStage = COALESCE(NULLIF(@stage, ''), ECourtsStage),
+                        EstName = COALESCE(NULLIF(@estName, ''), EstName),
+                        ECourtsCourtNo = COALESCE(NULLIF(@courtHall, ''), ECourtsCourtNo),
+                        CaseStatus = COALESCE(NULLIF(@caseStatus, ''), CaseStatus),
+                        DisposalDate = COALESCE(DisposalDate, @decisionDate),
+                        PendDispStatus = CASE WHEN @caseStatus = 'Disposed' OR @decisionDate IS NOT NULL THEN 'D' ELSE COALESCE(PendDispStatus, 'P') END
                     WHERE (CaseID = @caseId AND @caseId IS NOT NULL AND @caseId > 0)
                        OR (CNRNumber = @cleanCnr)
                        OR (CO_WP_CNRNumber = @cleanCnr)
                        OR (CO_WA_CNRNumber = @cleanCnr)
                        OR (CO_Claimant_CNRNumber = @cleanCnr)";
-                await conn.ExecuteAsync(sqlLabour, new { cleanCnr, nextHearingDate, stage, caseStatus, caseId });
+                await conn.ExecuteAsync(sqlLabour, new { cleanCnr, nextHearingDate, stage, caseStatus, courtHall, caseId, decisionDate, estName });
             }
 
             // 4. Update TRACKED_CASES

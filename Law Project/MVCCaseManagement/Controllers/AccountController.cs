@@ -209,6 +209,7 @@ namespace MVCCaseManagement.Controllers
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, user.UserID.ToString()),
+                new Claim("UserID", user.UserID.ToString()),
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim("FullName", user.FullName),
                 new Claim(ClaimTypes.Role, user.RoleName),

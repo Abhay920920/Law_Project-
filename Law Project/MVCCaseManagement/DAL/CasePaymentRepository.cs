@@ -68,7 +68,9 @@ namespace MVCCaseManagement.DAL
                                     ? null : reader.GetString(reader.GetOrdinal("PaymentType")),
                                 Remarks = reader.IsDBNull(reader.GetOrdinal("Remarks")) 
                                     ? null : reader.GetString(reader.GetOrdinal("Remarks")),
-                                CreatedDate = reader.GetDateTime(reader.GetOrdinal("CreatedDate")),
+                                CreatedDate = reader.IsDBNull(reader.GetOrdinal("CreatedDate"))
+                                    ? DateTime.MinValue
+                                    : reader.GetDateTime(reader.GetOrdinal("CreatedDate")),
                                 CreatedBy = reader.IsDBNull(reader.GetOrdinal("CreatedBy")) 
                                     ? null : reader.GetString(reader.GetOrdinal("CreatedBy"))
                             });
@@ -174,7 +176,8 @@ namespace MVCCaseManagement.DAL
                 using (var cmd = new SqlCommand(query, connection))
                 {
                     cmd.Parameters.AddWithValue("@CaseID", caseId);
-                    return (decimal)cmd.ExecuteScalar();
+                    var result = cmd.ExecuteScalar();
+                    return result != null && result != DBNull.Value ? Convert.ToDecimal(result) : 0m;
                 }
             }
         }

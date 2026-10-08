@@ -106,6 +106,23 @@
                     </div>
                 </a>
 
+                @{
+                    var config = Context.RequestServices.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
+                    bool isAIEnabled = config == null || (config["AI:Enabled"] != "false" && config["NyayaPathaAI:IsEnabled"] != "false");
+                    bool isAuthorizedForAI = isAIEnabled && (User.Identity?.IsAuthenticated == true);
+                }
+                @if (isAuthorizedForAI)
+                {
+                    <a class="nav-link @(currentController == "NyayaPatha" ? "active" : "") fw-bold mb-2" href="/NyayaPatha" 
+                       style="padding: 10px 14px; border-radius: 8px; border-left: 3px solid #3b82f6; background: @(currentController == "NyayaPatha" ? "rgba(37, 99, 235, 0.2)" : "rgba(37, 99, 235, 0.08)");">
+                        <i class="bi bi-robot text-info" style="font-size: 19px; width: 22px; text-align: center; margin-right: 10px;"></i>
+                        <div class="link-text d-flex align-items-center justify-content-between w-100">
+                            <span class="text-white">Nyaya Patha AI</span>
+                            <span class="badge bg-primary rounded-pill px-1.5 py-0.5" style="font-size: 0.62rem; letter-spacing: 0.3px;">AI</span>
+                        </div>
+                    </a>
+                }
+
                 @if (isReport)
                 {
                     <a class="nav-link @(string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
@@ -331,6 +348,18 @@
                         <span>Systems Setup</span>
                     </a>
                 }
+
+                @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO"))
+                {
+                    <a class="nav-link @(currentController == "ApiDashboard" ? "active" : "")" href="/ApiDashboard"
+                       style="position:relative">
+                        <i class="bi bi-speedometer2"></i>
+                        <span>API Dashboard</span>
+                        <span id="quotaDot" style="display:none;position:absolute;top:8px;right:10px;
+                            width:8px;height:8px;border-radius:50%;background:#ef4444;
+                            animation:quotaPulse 1.4s ease-in-out infinite"></span>
+                    </a>
+                }
             </nav>
 
             <!-- e-Courts Quick Link -->
@@ -553,7 +582,7 @@
                                             </div>
                                             <div class="small mt-1 text-dark">${note.message}</div>
                                             <div class="mt-2 text-end">
-                                                <button class="btn btn-sm btn-light py-0 px-2 border note-read-btn" data-id="${note.notificationID}">Mark Read</button>
+                                                <button class="btn btn-sm btn-light py-0 px-2 border note-read-btn" data-id="${note.notificationID || note.notificationId}">Mark Read</button>
                                                 ${note.linkUrl ? `<a href="${note.linkUrl}" class="btn btn-sm btn-primary py-0 px-2 ms-1">View</a>` : ''}
                                             </div>
                                          </div>`;
@@ -575,12 +604,53 @@
                     e.preventDefault();
                     e.stopPropagation();
                     var id = $(this).data('id');
-                    $.post('/Notification/MarkAsRead/' + id, function() {
-                        loadNotifications();
+                    if (!id) return;
+                    var token = $('#__notificationAntiForgeryForm input[name="__RequestVerificationToken"]').val();
+                    $.ajax({
+                        url: '/Notification/MarkAsRead/' + id,
+                        type: 'POST',
+                        data: {
+                            __RequestVerificationToken: token
+                        },
+                        headers: {
+                            "RequestVerificationToken": token
+                        },
+                        success: function() {
+                            loadNotifications();
+                        },
+                        error: function(xhr) {
+                            console.warn('Notification mark read failed:', xhr.status);
+                        }
                     });
                 });
             });
         </script>
+
+        <form id="__notificationAntiForgeryForm" style="display:none;" aria-hidden="true">
+            @Html.AntiForgeryToken()
+        </form>
+
+        <script>
+            // ── Quota warning dot on sidebar link ────────────────────────────
+            (function checkQuota() {
+                fetch('/ApiDashboard/Data')
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => {
+                        if (!d) return;
+                        const dot = document.getElementById('quotaDot');
+                        if (dot && d.usedPercent >= 80) dot.style.display = 'inline-block';
+                    })
+                    .catch(() => {});
+                // Re-check every 5 minutes
+                setTimeout(checkQuota, 5 * 60 * 1000);
+            })();
+        </script>
+        <style>
+            @@keyframes quotaPulse {
+                0%,100% { opacity:1; transform:scale(1);   }
+                50%      { opacity:.4; transform:scale(.7); }
+            }
+        </style>
 
 </body>
 </html>

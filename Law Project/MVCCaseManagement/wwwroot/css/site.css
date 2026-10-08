@@ -117,43 +117,58 @@ body {
 }
 
 /* Official Header Branding */
+/* Official Header Branding - Enterprise Clean Alignment */
 .branding-header {
     background: #ffffff;
     border-bottom: 1px solid var(--border);
-    padding: 0.5rem 2rem;
+    padding: 0 20px;
+    height: 66px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 1000;
 }
 
 .branding-logo {
-    height: 48px;
+    height: 42px;
     width: auto;
-    margin-right: 1.25rem;
-    padding-right: 1.25rem;
-    border-right: 2px solid var(--border);
+    margin-right: 14px;
+    padding-right: 14px;
+    border-right: 1.5px solid var(--border);
+    object-fit: contain;
+}
+
+.branding-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 
 .branding-text h1 {
-    font-size: 1.1rem;
-    font-weight: 800;
+    font-size: 1.05rem;
+    font-weight: 700;
     margin: 0;
     color: var(--text-primary);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
 }
 
 .branding-text .kannada {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: var(--text-secondary);
     font-weight: 600;
+    line-height: 1.2;
+    display: block;
 }
 
 /* User Profile & Navigation */
 .user-profile-widget {
     background: var(--background);
-    padding: 4px 12px;
+    padding: 0 10px;
+    height: 38px;
     border-radius: var(--radius-2xl);
     display: flex;
     align-items: center;
@@ -169,13 +184,17 @@ body {
 .logout-pill {
     background: #fef2f2;
     color: var(--danger);
-    padding: 6px 16px;
+    height: 36px;
+    padding: 0 14px;
     border-radius: var(--radius-2xl);
-    font-weight: 700;
-    font-size: 0.8rem;
+    font-weight: 600;
+    font-size: 0.78rem;
     text-decoration: none;
     transition: all 0.2s;
-    border: 1px solid rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .logout-pill:hover {

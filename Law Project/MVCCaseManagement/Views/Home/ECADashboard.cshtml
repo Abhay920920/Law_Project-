@@ -1,178 +1,188 @@
 @model MVCCaseManagement.Models.DashboardStatsViewModel
 @{
     Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
-    ViewData["Title"] = "ECA Dashboard";
+    ViewData["Title"] = "ECA Cases Dashboard";
+    ViewBag.ActiveCourt = "ECA";
+    ViewBag.LitigantType = "Claimant";
+
+    var displayName = User.FindFirst("FullName")?.Value ?? User.FindFirst("DivisionName")?.Value ?? "Officer";
+    var hour = DateTime.Now.Hour;
+    var displayGreeting = "Good Morning";
+    if (hour >= 12 && hour < 17) displayGreeting = "Good Afternoon";
+    else if (hour >= 17) displayGreeting = "Good Evening";
 }
 
-<div class="container-fluid pt-2 pb-4" style="max-width: 1600px;">
-    <div class="row g-4">
-        <!-- Sidebar Navigation -->
-        <div class="col-lg-3 col-xl-2 d-print-none">
-            @await Html.PartialAsync("_OtherCourtsSidebar")
-        </div>
-
-        <!-- Main Dashboard Area -->
-        <div class="col-lg-9 col-xl-10">
-            <!-- Header section -->
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <div>
-                    <h4 class="fw-bold text-primary mb-1"><i class="bi bi-speedometer2 me-2"></i>ECA Dashboard</h4>
-                    <p class="text-muted small mb-0">Employees' Compensation Act - Overview of active cases</p>
+<div class="container-fluid fade-in">
+    <!-- Official Greeting Header Banner (Matching MVC & Labour) -->
+    <div class="mb-4">
+        <div class="glass-card p-4">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h3 class="fw-bold text-primary mb-1">
+                        @displayGreeting, @displayName! <span class="ms-1">👋</span>
+                    </h3>
+                    <p class="text-secondary mb-0">
+                        Managing <strong>Employees' Compensation Act (ECA) Cases</strong>. Track workplace accident compensation, medical evidence, and awards.
+                    </p>
                 </div>
-                <div class="d-flex gap-2">
-                    <a href="@Url.Action("ECAForm", "Home")" class="btn btn-primary shadow-sm rounded-pill px-4">
-                        <i class="bi bi-plus-lg me-1"></i> New Registration
-                    </a>
-                </div>
-            </div>
-
-            <!-- Stat Cards -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-3">
-                    <div class="stat-card card-bold-total p-3 border-0 shadow-sm rounded-4 h-100">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
-                                <i class="bi bi-folder2-open fs-4"></i>
-                            </div>
-                            <h6 class="mb-0 small fw-bold">Total Cases</h6>
-                        </div>
-                        <div class="d-flex align-items-baseline">
-                            <h3 class="fw-bold mb-0">@Model.TotalCases</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card card-bold-pending p-3 border-0 shadow-sm rounded-4 h-100">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
-                                <i class="bi bi-hourglass-split fs-4"></i>
-                            </div>
-                            <h6 class="mb-0 small fw-bold">Pending</h6>
-                        </div>
-                        <div class="d-flex align-items-baseline">
-                            <h3 class="fw-bold mb-0">@Model.PendingCases</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card card-bold-disposed p-3 border-0 shadow-sm rounded-4 h-100">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
-                                <i class="bi bi-check-all fs-4"></i>
-                            </div>
-                            <h6 class="mb-0 small fw-bold">Disposed</h6>
-                        </div>
-                        <div class="d-flex align-items-baseline">
-                            <h3 class="fw-bold mb-0">@Model.CloseCount</h3>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card card-bold-hearings p-3 border-0 shadow-sm rounded-4 h-100">
-                        <div class="d-flex align-items-center mb-3">
-                            <div class="stat-icon bg-white bg-opacity-25 rounded-3 p-2 me-3 shadow-sm">
-                                <i class="bi bi-calendar3 fs-4"></i>
-                            </div>
-                            <h6 class="mb-0 small fw-bold">Today's Hearings</h6>
-                        </div>
-                        <div class="d-flex align-items-baseline">
-                            <h3 class="fw-bold mb-0">@Model.HearingsToday</h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Table -->
-            <div class="card border-0 shadow-sm rounded-4 overflow-hidden">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="fw-bold text-primary mb-0"><i class="bi bi-calendar-week me-2"></i>Upcoming Hearing Schedule</h6>
-                    <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant" })" class="btn btn-sm btn-light rounded-pill px-3">View All</a>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle mb-0">
-                            <thead class="bg-light bg-opacity-50">
-                                <tr>
-                                    <th class="ps-4">ECA Case Details</th>
-                                    <th>Court</th>
-                                    <th>Current Stage</th>
-                                    <th>Hearing Date</th>
-                                    <th class="text-end pe-4">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @if (Model.RecentCases != null && Model.RecentCases.Any())
-                                {
-                                    foreach (var caseItem in Model.RecentCases)
-                                    {
-                                        <tr>
-                                            <td class="ps-4">
-                                                <div class="fw-bold text-dark">@caseItem.MVCNo</div>
-                                                <div class="xsmall text-muted">Created: @caseItem.CreatedAt.ToString("dd MMM yyyy")</div>
-                                            </td>
-                                            <td>
-                                                <span class="small">@caseItem.MACTName</span>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-soft-primary text-primary border rounded-pill px-3">@caseItem.DisposalResult</span>
-                                            </td>
-                                            <td>
-                                                <div class="fw-bold">@caseItem.NextHearingDate?.ToString("dd-MM-yyyy")</div>
-                                                @if (caseItem.NextHearingDate?.Date == DateTime.Today)
-                                                {
-                                                    <div class="xsmall text-danger fw-bold animate-pulse"><i class="bi bi-alarm-fill me-1"></i>TODAY</div>
-                                                }
-                                            </td>
-                                            <td class="text-end pe-4">
-                                                <a href="@Url.Action("EditOtherCourtsCase", "Home", new { id = caseItem.CaseID })" class="btn btn-icon btn-light rounded-circle shadow-sm">
-                                                    <i class="bi bi-pencil-square text-primary"></i>
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    }
-                                }
-                                else
-                                {
-                                    <tr>
-                                        <td colspan="5" class="text-center py-5">
-                                            <div class="text-muted">
-                                                <i class="bi bi-inbox fs-1 mb-3 d-block opacity-25"></i>
-                                                No upcoming hearings found for ECA.
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                    <div class="d-inline-flex align-items-center bg-white p-2 px-3 rounded-pill shadow-sm border border-primary border-opacity-10">
+                        <i class="bi bi-calendar3 text-primary me-2"></i>
+                        <div class="fw-bold text-dark small">@DateTime.Now.ToString("dd MMM yyyy")</div>
+                        <div class="mx-2 text-muted">|</div>
+                        <i class="bi bi-clock text-primary me-2"></i>
+                        <div class="fw-bold text-dark small" id="liveClock">@DateTime.Now.ToString("HH:mm")</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<style>
-    .glass-card {
-        background: rgba(255, 255, 255, 0.7);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-    .stat-icon {
-        width: 48px;
-        height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .bg-soft-primary { background-color: #eef2ff; }
-    .btn-white { background: white; }
-    .btn-icon {
-        width: 32px;
-        height: 32px;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .xsmall { font-size: 0.75rem; }
-</style>
+    <!-- Live Analytics & Action Header -->
+    <div class="glass-header shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+            <div>
+                <h4 class="fw-bold mb-0 text-dark">ECA Compensation Overview</h4>
+                <p class="text-secondary mb-0 small">Registry metrics for @User.FindFirst("DivisionName")?.Value</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">
+                    <i class="bi bi-cpu shadow-sm me-1"></i> Live Analytics
+                </div>
+                <a href="@Url.Action("ECA", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm fw-bold">
+                    <i class="bi bi-plus-circle me-1"></i> New ECA Claim
+                </a>
+            </div>
+        </div>
+
+        <div class="row g-4 mt-2">
+            <!-- Total Cases -->
+            <div class="col-12 col-sm-6 col-lg-3">
+                <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant" })" class="text-decoration-none">
+                    <div class="stat-card-gradient bg-grad-blue">
+                        <div class="bg-circle"></div>
+                        <div class="label">Total ECA Claims</div>
+                        <div class="value">@Model.TotalCases</div>
+                        <i class="bi bi-person-workspace icon-btm"></i>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Pending Cases -->
+            <div class="col-12 col-sm-6 col-lg-3">
+                <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant", status = "Pending" })" class="text-decoration-none">
+                    <div class="stat-card-gradient bg-grad-orange">
+                        <div class="bg-circle"></div>
+                        <div class="label">Pending Adjudication</div>
+                        <div class="value">@Model.PendingCases</div>
+                        <i class="bi bi-clock-history icon-btm"></i>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Disposed Cases -->
+            <div class="col-12 col-sm-6 col-lg-3">
+                <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant", status = "Disposed" })" class="text-decoration-none">
+                    <div class="stat-card-gradient bg-grad-green">
+                        <div class="bg-circle"></div>
+                        <div class="label">Awarded / Settled</div>
+                        <div class="value">@Model.CloseCount</div>
+                        <i class="bi bi-check-circle icon-btm"></i>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Today's Hearings -->
+            <div class="col-12 col-sm-6 col-lg-3">
+                <div class="stat-card-gradient bg-grad-red">
+                    <div class="bg-circle"></div>
+                    <div class="label">Today's Hearings</div>
+                    <div class="value">@Model.HearingsToday</div>
+                    <i class="bi bi-calendar-event icon-btm"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upcoming Hearing Schedule Table -->
+    <div class="table-card mb-4">
+        <div class="table-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="title">
+                <i class="bi bi-calendar-check me-1"></i> Upcoming Hearing Schedule (ECA Claims)
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge bg-light text-dark border">Hearings Scheduled</span>
+                <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant" })" class="btn btn-sm btn-outline-light rounded-pill px-3">
+                    View Registry
+                </a>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4" style="width: 25%;">Case No &amp; Year</th>
+                            <th style="width: 25%;">Court / Commissioner</th>
+                            <th style="width: 20%;">Current Stage</th>
+                            <th style="width: 15%;">Hearing Date</th>
+                            <th class="text-end pe-4" style="width: 15%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.RecentCases != null && Model.RecentCases.Any())
+                        {
+                            foreach (var caseItem in Model.RecentCases)
+                            {
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-dark">@(string.IsNullOrEmpty(caseItem.MVCNo) ? "NOT FILED" : caseItem.MVCNo)</div>
+                                        <div class="text-muted small">Registered: @caseItem.CreatedAt.ToString("dd-MM-yyyy")</div>
+                                    </td>
+                                    <td>
+                                        <div class="small fw-semibold text-dark">@caseItem.MACTName</div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-1 rounded-pill">
+                                            @(string.IsNullOrEmpty(caseItem.DisposalResult) ? "In Progress" : caseItem.DisposalResult)
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold text-dark small">@caseItem.NextHearingDate?.ToString("dd-MM-yyyy")</div>
+                                        @if (caseItem.NextHearingDate?.Date == DateTime.Today)
+                                        {
+                                            <span class="badge bg-danger text-white rounded-pill px-2 py-0" style="font-size: 0.65rem;">TODAY</span>
+                                        }
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="@Url.Action("OtherCourtsCaseDetails", "Home", new { id = caseItem.CaseID })" class="btn btn-outline-primary shadow-sm" title="View Details">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = caseItem.CaseID })" class="btn btn-outline-secondary shadow-sm" title="Edit Case">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center py-5 text-muted">
+                                    <div class="bg-light rounded-circle d-inline-flex p-3 mb-2">
+                                        <i class="bi bi-calendar-x fs-1 text-secondary opacity-50"></i>
+                                    </div>
+                                    <h6 class="fw-bold text-dark mb-1">No Upcoming ECA Hearings</h6>
+                                    <p class="small text-muted mb-0">All ECA court hearing dates are up to date.</p>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

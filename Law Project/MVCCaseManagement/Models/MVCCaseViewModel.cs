@@ -83,6 +83,17 @@ namespace MVCCaseManagement.Models
         [StringLength(150)]
         public string? CourtHall { get; set; }
 
+        public DateTime? LastNapixSyncAt { get; set; }
+        public string? LastNapixSyncStatus { get; set; }
+        public string? LastNapixSyncError { get; set; }
+        public int NapixSyncAttemptCount { get; set; }
+        public string? NapixDataHash { get; set; }
+        public string? PendDispStatus { get; set; }
+        public string? EstName { get; set; }
+        public string? ECourtsStage { get; set; }
+        public string? ECourtsCourtNo { get; set; }
+        public string? ECourtsJudge { get; set; }
+
         public DateTime? ModifiedDate { get; set; }
         public int? ModifiedBy { get; set; }
 
@@ -187,6 +198,7 @@ namespace MVCCaseManagement.Models
         public bool HasInterimOrder { get; set; }
         public string? InterimOrderFilePath { get; set; }
         public IFormFile? InterimOrderFile { get; set; }
+        public string? FavorJudgmentPath { get; set; }
 
         // Moved from AdverseAward
         [Display(Name = "Whether deceased/injured was passenger in ST bus")]

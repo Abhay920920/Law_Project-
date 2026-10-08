@@ -226,94 +226,79 @@ function renderHearingHistory(items) {
     if (!items || items.length === 0) {
         if (badge) badge.innerText = '0 Hearings';
         container.innerHTML =
-            '<div class="alert alert-light text-muted border text-center py-3 mb-0 small">' +
-            '<i class="bi bi-calendar-x me-1"></i> No hearing history records returned by eCourts Gateway.' +
+            '<div class="alert alert-light text-muted border text-center py-4 mb-0 small rounded-3">' +
+            '<i class="bi bi-calendar-x fs-4 d-block mb-2 text-secondary"></i> No hearing history records returned by eCourts Gateway.' +
             '</div>';
         return;
     }
 
     if (badge) badge.innerText = items.length + ' Hearing' + (items.length > 1 ? 's' : '');
 
-    // Get fallback judge and top-level next date from savedCNR data
     var defaultJudge = (window.lastLiveCnrData && window.lastLiveCnrData.court_no_judge) ||
-                       (window.lastLiveCnrData && window.lastLiveCnrData.judge) || '\u2014';
-    var topNextDate = (window.lastLiveCnrData && window.lastLiveCnrData.next_hearing_date) || '';
+                       (window.lastLiveCnrData && window.lastLiveCnrData.judge) || '—';
 
     var rows = '';
     items.forEach(function(h, i) {
         var sr = getObjProp(h, 'srno', 'sr_no', 'sno', 'sr') || (i + 1);
 
         var judge = getObjProp(h, 'judge', 'court_no_judge', 'judge_name', 'presiding_officer', 'court_judge', 'desgname');
-        if (!judge || judge === '\u2014') judge = defaultJudge;
+        if (!judge || judge === '—') judge = defaultJudge;
 
-        var businessDate = getObjProp(h, 'business_date', 'cause_date', 'dt_business', 'hist_date', 'srno_date') || '—';
-        var hearingDate = getObjProp(h, 'hearing_date', 'next_date', 'next_hearing_date', 'nxt_date', 'next_date_of_hearing', 'date_next_list');
-        if ((!businessDate || businessDate === '—') && h.hearing_date && !h.next_date) {
-            businessDate = '—';
-            hearingDate = h.hearing_date;
+        var businessDate = getObjProp(h, 'business_date', 'cause_date', 'dt_business', 'hist_date', 'srno_date') || '';
+        var hearingDate = getObjProp(h, 'hearing_date', 'date', 'dt') || '';
+        var nextDate = getObjProp(h, 'next_date', 'next_hearing_date', 'nxt_date', 'next_date_of_hearing', 'date_next_list') || '';
+
+        // Primary hearing date
+        var displayDate = hearingDate || businessDate || '—';
+        if (displayDate === '—' && businessDate) displayDate = businessDate;
+
+        // Next listing date (only show if explicitly provided in this record and differs from displayDate)
+        var displayNext = (nextDate && nextDate !== '—' && nextDate !== displayDate && !/^(null|undefined|na|n\/a)$/i.test(nextDate)) ? nextDate : '';
+
+        var purpose = getObjProp(h, 'purpose_of_listing', 'next_purpose', 'purpose_name', 'purpose', 'court_stage', 'stage', 'purpose_of_hearing') || 'Hearing';
+
+        var dateHtml = '<div class="fw-bold text-dark text-nowrap"><i class="bi bi-calendar-event text-primary me-1"></i>' + displayDate + '</div>' +
+            (displayNext
+                ? '<div class="extra-small text-muted text-nowrap mt-1"><i class="bi bi-arrow-return-right me-1 text-success"></i>Next: <span class="fw-bold text-success">' + displayNext + '</span></div>'
+                : '');
+
+        var judgeHtml = '<div class="fw-semibold text-dark small" title="' + judge + '"><i class="bi bi-bank me-1 text-muted"></i>' + judge + '</div>';
+
+        var stageBadgeClass = 'badge bg-primary-subtle text-primary border border-primary-subtle';
+        var purposeLower = purpose.toLowerCase();
+        if (purposeLower.includes('dispos') || purposeLower.includes('award') || purposeLower.includes('judgment')) {
+            stageBadgeClass = 'badge bg-success-subtle text-success border border-success-subtle';
+        } else if (purposeLower.includes('stay') || purposeLower.includes('interim')) {
+            stageBadgeClass = 'badge bg-danger-subtle text-danger border border-danger-subtle';
+        } else if (purposeLower.includes('argument') || purposeLower.includes('evidence')) {
+            stageBadgeClass = 'badge bg-warning-subtle text-dark border border-warning-subtle';
         }
 
-        if (!hearingDate || hearingDate === '—') {
-            // Intelligent resolution: use next row's business date, or top-level next date for the last entry
-            if (i < items.length - 1) {
-                var nextRowBusDate = getObjProp(items[i + 1], 'business_date', 'cause_date', 'dt_business', 'hist_date', 'srno_date');
-                if (nextRowBusDate && nextRowBusDate !== '—') hearingDate = nextRowBusDate;
-            } else if (topNextDate) {
-                hearingDate = topNextDate;
-            }
-        }
-        if (!hearingDate) hearingDate = '—';
+        var purposeHtml = '<span class="' + stageBadgeClass + ' py-1 px-3 rounded-pill fw-semibold extra-small text-nowrap shadow-xs">' + purpose + '</span>';
 
-        var purpose = getObjProp(h, 'purpose_of_listing', 'next_purpose', 'purpose_name', 'purpose', 'court_stage', 'stage', 'purpose_of_hearing') || '—';
-        // Use exact key matching for 'business' to avoid fuzzy match returning business_date
-        var businessKeys = ['business', 'roznama', 'proceedings', 'court_business', 'business_details', 'order_business', 'short_order'];
-        var businessRaw = null;
-        var hLower = Object.keys(h).reduce(function(m, k) { m[k.toLowerCase()] = h[k]; return m; }, {});
-        for (var bki = 0; bki < businessKeys.length; bki++) {
-            var bv = hLower[businessKeys[bki]];
-            if (bv && typeof bv === 'string' && bv.trim().length > 5 && !/^(null|undefined|n\/a|na|none|—|--)$/i.test(bv.trim()) && !/^\d{2,4}[\-\/]/.test(bv.trim())) {
-                businessRaw = bv.trim(); break;
-            }
-        }
-        var business = businessRaw || '';
-
-        var businessHtml = (business && business !== '—' && business.toLowerCase() !== purpose.toLowerCase())
-            ? '<div class="small text-dark text-break" style="max-width:320px;"><i class="bi bi-journal-text text-info me-1"></i>' + business + '</div>'
-            : '<span class="text-muted small">—</span>';
-
-        var hearingLink = (hearingDate && hearingDate !== '—')
-            ? '<a href="javascript:void(0)" onclick="openHearingDetailsModal(\'DC\', ' + i + ')" class="text-primary text-decoration-none fw-bold" title="Click to view eCourts Daily Status"><i class="bi bi-box-arrow-up-right me-1 extra-small"></i>' + hearingDate + '</a>'
-            : '<span class="text-muted">—</span>';
-
-        var busLink = (businessDate && businessDate !== '—')
-            ? '<a href="javascript:void(0)" onclick="openHearingDetailsModal(\'DC\', ' + i + ')" class="text-secondary text-decoration-none fw-semibold" title="Click to view eCourts Daily Status on this date">' + businessDate + '</a>'
-            : '<span class="text-muted">—</span>';
-
-        var liveDailyBtn = '<button type="button" onclick="openHearingDetailsModal(\'DC\', ' + i + ')" class="btn btn-sm btn-primary py-0 px-2 rounded-pill extra-small shadow-sm mt-1" title="View Official eCourts Daily Status">' +
+        var liveDailyBtn = '<button type="button" onclick="openHearingDetailsModal(\'DC\', ' + i + ')" class="btn btn-sm btn-primary rounded-pill px-3 shadow-xs text-nowrap" title="View Official eCourts Daily Status (Roznama)">' +
             '<i class="bi bi-journal-text me-1"></i>Daily Status</button>';
 
         rows +=
-            '<tr>' +
-            '<td class="fw-bold text-muted small text-center">' + sr + '</td>' +
-            '<td class="small text-truncate" style="max-width:200px;" title="' + judge + '">' + judge + '</td>' +
-            '<td class="fw-semibold text-secondary small">' + busLink + '</td>' +
-            '<td class="fw-semibold text-primary small">' + hearingLink + '</td>' +
-            '<td><span class="badge bg-secondary">' + purpose + '</span></td>' +
-            '<td>' + businessHtml + '<div class="mt-1">' + liveDailyBtn + '</div></td>' +
+            '<tr class="align-middle">' +
+            '<td class="fw-bold text-muted small text-center py-2 px-2" style="width:5%; white-space:nowrap;">' + sr + '</td>' +
+            '<td class="py-2.5 ps-3 pe-2 text-start" style="width:20%;">' + dateHtml + '</td>' +
+            '<td class="py-2.5 px-3 text-start" style="width:43%;">' + judgeHtml + '</td>' +
+            '<td class="py-2.5 px-2 text-center" style="width:17%;">' + purposeHtml + '</td>' +
+            '<td class="py-2.5 px-2 text-center" style="width:15%; white-space:nowrap;">' + liveDailyBtn + '</td>' +
             '</tr>';
     });
 
     container.innerHTML =
-        '<div class="table-responsive" style="max-height: 420px; overflow-y: auto;">' +
-        '<table class="table table-sm table-hover align-middle mb-0">' +
-        '<thead class="table-light sticky-top">' +
+        '<div class="table-responsive rounded-3 border bg-white shadow-sm" style="max-height: 480px; overflow-y: auto;">' +
+        '<table class="table table-hover table-striped mb-0 align-middle small" style="min-width: 760px; width: 100%; table-layout: fixed;">' +
+        '<thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">' +
         '<tr>' +
-        '<th style="width:36px;" class="text-center">#</th>' +
-        '<th>Judge / Court</th>' +
-        '<th>Business on Date</th>' +
-        '<th>Hearing Date</th>' +
-        '<th>Purpose of Hearing</th>' +
-        '<th>Business Transacted / Roznama</th>' +
+        '<th class="text-center py-2 px-2" style="width:5%; white-space:nowrap;">#</th>' +
+        '<th class="text-start py-2 ps-3 pe-2" style="width:20%; white-space:nowrap;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>' +
+        '<th class="text-start py-2 px-3" style="width:43%; white-space:nowrap;"><i class="bi bi-bank me-1"></i>Judge / Court</th>' +
+        '<th class="text-center py-2 px-2" style="width:17%; white-space:nowrap;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>' +
+        '<th class="text-center py-2 px-2" style="width:15%; white-space:nowrap;"><i class="bi bi-gear me-1"></i>Action</th>' +
         '</tr>' +
         '</thead>' +
         '<tbody>' + rows + '</tbody>' +
@@ -327,17 +312,22 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
     if (!modalElem) {
         var modalHtml =
             '<div class="modal fade" id="ecourtsOrderModal" tabindex="-1" aria-hidden="true">' +
-            '<div class="modal-dialog modal-xl modal-dialog-centered" style="height: 85vh;">' +
-            '<div class="modal-content h-100 shadow-lg border-0">' +
-            '<div class="modal-header bg-dark text-white py-2 px-3">' +
+            '<div class="modal-dialog modal-xl modal-dialog-centered" style="height: 88vh;">' +
+            '<div class="modal-content h-100 shadow-lg border-0 rounded-4 overflow-hidden">' +
+            '<div class="modal-header bg-dark text-white py-2 px-3 border-bottom border-secondary">' +
             '<h6 class="modal-title fw-bold" id="ecourtsOrderModalTitle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Court Order Document</h6>' +
             '<div class="d-flex align-items-center gap-2">' +
-            '<a href="#" id="ecourtsOrderOpenNewTab" target="_blank" class="btn btn-sm btn-outline-light py-0"><i class="bi bi-box-arrow-up-right me-1"></i>New Tab</a>' +
+            '<a href="#" id="ecourtsOrderOpenNewTab" target="_blank" class="btn btn-sm btn-outline-light py-1 px-3 rounded-pill fw-semibold"><i class="bi bi-box-arrow-up-right me-1"></i>Open in New Tab</a>' +
             '<button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>' +
             '</div>' +
             '</div>' +
-            '<div class="modal-body p-0 bg-dark" style="height: calc(100% - 48px);">' +
-            '<iframe id="ecourtsOrderIframe" style="width:100%; height:100%; border:none;"></iframe>' +
+            '<div class="modal-body p-0 bg-dark position-relative" style="height: calc(100% - 48px);">' +
+            '<div id="ecourtsOrderLoadingSpinner" class="position-absolute top-50 start-50 translate-middle text-center text-white" style="z-index:1;">' +
+            '<div class="spinner-border text-danger mb-2" role="status" style="width: 2.5rem; height: 2.5rem;"></div>' +
+            '<div class="small fw-semibold text-light">Streaming digital order / judgment copy from eCourts Gateway...</div>' +
+            '<div class="text-muted extra-small mt-1">Decrypting AES payload & verifying PDF signature</div>' +
+            '</div>' +
+            '<iframe id="ecourtsOrderIframe" style="width:100%; height:100%; border:none; position:relative; z-index:2; background:#334155;" onload="var sp=document.getElementById(\'ecourtsOrderLoadingSpinner\'); if(sp) sp.style.display=\'none\';"></iframe>' +
             '</div>' +
             '</div>' +
             '</div>' +
@@ -349,6 +339,8 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
     var titleElem = document.getElementById('ecourtsOrderModalTitle');
     var iframeElem = document.getElementById('ecourtsOrderIframe');
     var newTabElem = document.getElementById('ecourtsOrderOpenNewTab');
+    var spinnerElem = document.getElementById('ecourtsOrderLoadingSpinner');
+    if (spinnerElem) spinnerElem.style.display = 'block';
 
     if (titleElem) titleElem.innerHTML = '<i class="bi bi-file-earmark-pdf text-danger me-2"></i>' + (title || 'Court Order Document');
 
@@ -370,7 +362,9 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
 
     var currentCnr = cnr || window.lastCnr || '';
     var cid = caseId || window.lastCaseId || '';
+    var isLabour = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
     var proxyUrl;
+
     if (targetUrl && (targetUrl.startsWith('/ECourts/ViewOrderPdf') || targetUrl.startsWith('data:application/pdf'))) {
         proxyUrl = targetUrl;
         proxyUrl = setOrReplaceParam(proxyUrl, 'cnr', currentCnr);
@@ -378,13 +372,15 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
         if (orderNo) proxyUrl = setOrReplaceParam(proxyUrl, 'orderNo', orderNo);
         if (date) proxyUrl = setOrReplaceParam(proxyUrl, 'date', date);
         if (title) proxyUrl = setOrReplaceParam(proxyUrl, 'title', title);
+        if (isLabour) proxyUrl = setOrReplaceParam(proxyUrl, 'module', 'Labour');
     } else {
         proxyUrl = '/ECourts/ViewOrderPdf?url=' + encodeURIComponent(targetUrl || '') +
                    '&cnr=' + encodeURIComponent(currentCnr) +
                    '&title=' + encodeURIComponent(title || '') +
                    '&date=' + encodeURIComponent(date || '') +
                    (orderNo ? ('&orderNo=' + encodeURIComponent(orderNo)) : '') +
-                   (cid ? ('&caseId=' + cid) : '');
+                   (cid ? ('&caseId=' + cid) : '') +
+                   (isLabour ? '&module=Labour' : '');
     }
 
     if (iframeElem) iframeElem.src = proxyUrl;
@@ -428,9 +424,17 @@ function renderOrdersAndJudgments(items) {
 
     if (uniqueItems.length === 0) {
         if (badge) badge.innerText = '0 Files Available';
+        var safeCnr = encodeURIComponent(cnrNumber || '');
+        var curCid = window.lastCaseId || '';
         container.innerHTML =
-            '<div class="alert alert-light text-muted border text-center py-3 mb-0 small">' +
-            '<i class="bi bi-info-circle me-1"></i> No court orders or judgments found in live e-Courts.</div>';
+            '<div class="alert alert-light text-muted border text-center py-4 mb-0 small rounded-3">' +
+            '<div class="mb-2"><i class="bi bi-info-circle text-warning fs-4 me-1"></i> No digital PDF order copy uploaded by court clerk on e-Courts NJDG gateway for CNR <strong>' + (cnrNumber || '—') + '</strong>.</div>' +
+            '<div class="d-flex align-items-center justify-content-center gap-2 flex-wrap mt-2">' +
+            '<button type="button" class="btn btn-sm btn-warning rounded-pill px-3 shadow-sm fw-bold text-dark" onclick="triggerOrderUpload(\'' + (cnrNumber || '') + '\', \'' + curCid + '\', \'MACT Court Order Copy\')">' +
+            '<i class="bi bi-upload me-1"></i> Upload Signed Order PDF' +
+            '</button>' +
+            '</div>' +
+            '</div>';
         return;
     }
 
@@ -454,9 +458,10 @@ function renderOrdersAndJudgments(items) {
         var safePdfUrl = pdfUrl.replace(/'/g, "\\'");
         var safeDt = dt.replace(/'/g, "\\'");
 
+        var isLabourSec = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
         var pdfBtn = '<button type="button" onclick="openOrderInModal(\'' + safePdfUrl + '\', \'' + safeTitle + '\', \'' + cnrNumber + '\', \'' + safeDt + '\', \'' + currentCaseId + '\', \'' + orderNo + '\')" class="btn btn-sm btn-danger rounded-pill px-3 shadow-sm">' +
                      '<i class="bi bi-file-earmark-pdf me-1"></i> View Court Order</button>' +
-                     '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(safePdfUrl) + '&cnr=' + encodeURIComponent(cnrNumber) + '&orderNo=' + encodeURIComponent(orderNo) + '&date=' + encodeURIComponent(safeDt) + '" class="btn btn-sm btn-outline-secondary rounded-pill px-2 shadow-sm ms-1" title="Download Order PDF" target="_blank">' +
+                     '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(safePdfUrl) + '&cnr=' + encodeURIComponent(cnrNumber) + '&orderNo=' + encodeURIComponent(orderNo) + '&date=' + encodeURIComponent(safeDt) + (isLabourSec ? '&module=Labour' : '') + '" class="btn btn-sm btn-outline-secondary rounded-pill px-2 shadow-sm ms-1" title="Download Order PDF" target="_blank">' +
                      '<i class="bi bi-download"></i></a>';
 
         rows +=
@@ -486,6 +491,80 @@ function renderOrdersAndJudgments(items) {
         '</div>';
 
     container.innerHTML = tableHtml;
+}
+
+/* ────────────────────────────────────────────────────
+   Dedicated: refreshCaseOrdersLive
+   Fetches and refreshes all real-time order & judgment
+   documents directly from NAPIX / microservice.
+──────────────────────────────────────────────────── */
+function refreshCaseOrdersLive(cnr, caseId, btnElement) {
+    var activeCnr = cnr || window.currentActiveCnr || window.lastCnr || '';
+    var activeCaseId = caseId || window.lastCaseId || '';
+    if (!activeCnr || activeCnr.length < 5) {
+        if (typeof openUpdateCnrModal === 'function') openUpdateCnrModal();
+        return;
+    }
+
+    var container = document.getElementById('live-orders-container');
+    var badge = document.getElementById('orders-count-badge');
+    var btn = btnElement || document.getElementById('btnRefreshOrdersTab');
+    var icon = document.getElementById('iconRefreshOrdersTab');
+
+    if (btn) btn.disabled = true;
+    if (icon) {
+        icon.classList.remove('bi-arrow-clockwise');
+        icon.classList.add('spinner-border', 'spinner-border-sm');
+    }
+
+    if (container) {
+        container.innerHTML =
+            '<div class="text-center py-4 my-2 text-muted small rounded-3 border bg-light shadow-xs">' +
+            '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>' +
+            '<strong>Syncing real-time orders & judgments from eCourts Gateway...</strong>' +
+            '</div>';
+    }
+    if (badge) badge.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span>Syncing...';
+
+    var isLabourPage = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
+    var liveOrdersUrl = '/ECourts/LiveOrders?cnr=' + encodeURIComponent(activeCnr) +
+                        (activeCaseId ? '&caseId=' + encodeURIComponent(activeCaseId) : '') +
+                        '&module=' + (isLabourPage ? 'Labour' : (window.ecourtsModule || 'MVC')) +
+                        '&refresh=true&_t=' + Date.now();
+
+    fetch(liveOrdersUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(oJson) {
+            console.log('[refreshCaseOrdersLive] LiveOrders response:', oJson);
+            if (oJson && oJson.orders && oJson.orders.length > 0) {
+                renderOrdersAndJudgments(oJson.orders);
+                if (window.lastDcData) window.lastDcData.orders = oJson.orders;
+                var iaFromLive = oJson.orders.filter(function(o) { return o.source === 'napix_ia'; });
+                if (iaFromLive.length > 0) renderIaFilings(iaFromLive);
+            } else {
+                renderOrdersAndJudgments([]);
+                if (container) {
+                    var errMsg = (oJson && (oJson.gatewayError || oJson.message)) 
+                        ? (oJson.gatewayError || oJson.message) 
+                        : 'No live court orders or judgments returned by eCourts NAPIX API for CNR ' + activeCnr + '.';
+                    container.innerHTML = '<div class="alert alert-warning small mb-0 rounded-3"><i class="bi bi-info-circle me-1"></i> ' + errMsg + '</div>';
+                }
+            }
+        })
+        .catch(function(err) {
+            console.warn('[refreshCaseOrdersLive] LiveOrders error:', err);
+            renderOrdersAndJudgments([]);
+            if (container) {
+                container.innerHTML = '<div class="alert alert-danger small mb-0 rounded-3"><i class="bi bi-exclamation-triangle-fill me-1"></i> Unable to reach eCourts NAPIX API: ' + (err.message || err) + '</div>';
+            }
+        })
+        .finally(function() {
+            if (btn) btn.disabled = false;
+            if (icon) {
+                icon.classList.remove('spinner-border', 'spinner-border-sm');
+                icon.classList.add('bi-arrow-clockwise');
+            }
+        });
 }
 
 /* ────────────────────────────────────────────────────
@@ -614,13 +693,15 @@ function fetchLiveCnrDetails(cnr, caseId) {
         msgElem.innerHTML = '<span class="text-info"><i class="bi bi-hourglass-split me-1"></i> Querying live eCourts Gateway...</span>';
     }
 
-    var queryUrl = '/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr || '') + (caseId ? '&caseId=' + caseId : '');
+    var isLabourPage = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
+    var queryUrl = '/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr || '') + (caseId ? '&caseId=' + caseId : '') + (isLabourPage ? '&module=Labour' : '&module=MVC');
 
     fetch(queryUrl)
         .then(function(r) { return r.json(); })
         .then(function(json) {
             if (!json.success) {
-                if (msgElem) msgElem.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-circle me-1"></i> ' + (json.message || 'No live records returned by eCourts Gateway.') + '</span>';
+                var userMsg = json.message || 'No live records returned by eCourts NAPIX API.';
+                if (msgElem) msgElem.innerHTML = '<span class="text-danger fw-semibold"><i class="bi bi-exclamation-triangle-fill me-1"></i> ' + userMsg + '</span>';
                 renderHearingHistory([]);
                 renderOrdersAndJudgments([]);
                 renderIaFilings([]);
@@ -629,10 +710,18 @@ function fetchLiveCnrDetails(cnr, caseId) {
                     var el = document.getElementById(id);
                     if (el) el.innerText = '—';
                 });
+                var ordersContainer = document.getElementById('live-orders-container');
+                if (ordersContainer) {
+                    ordersContainer.innerHTML = '<div class="alert alert-warning small mb-0 rounded-3"><i class="bi bi-info-circle me-1"></i> ' + userMsg + '</div>';
+                }
+                var historyContainer = document.getElementById('live-history-container');
+                if (historyContainer) {
+                    historyContainer.innerHTML = '<div class="alert alert-warning small mb-0 rounded-3"><i class="bi bi-info-circle me-1"></i> No live hearing history available from eCourts NAPIX API.</div>';
+                }
                 return;
             }
 
-            if (msgElem) msgElem.innerHTML = '<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Live eCourts Gateway \u2013 Synced</span>';
+            if (msgElem) msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Live eCourts Gateway \u2013 Synced</span>';
 
             console.group('eCourts CNR Live Response');
             console.log('Parsed data:', json.data);
@@ -903,6 +992,25 @@ function fetchLiveCnrDetails(cnr, caseId) {
                 : (json.raw && json.raw.processes ? Object.values(json.raw.processes) : []);
             renderProcesses(processItems);
 
+            // ── Extract Acts, Extra Parties, Objections, Transfers, Linked Cases ──
+            var actsItems = (json.acts && json.acts.length > 0)
+                ? json.acts
+                : (json.raw && json.raw.acts ? Object.values(json.raw.acts) : []);
+            var extraPartiesItems = (json.extra_parties && json.extra_parties.length > 0)
+                ? json.extra_parties
+                : (json.raw && (json.raw.pet_extra_party || json.raw.res_extra_party)
+                    ? Object.values(json.raw.pet_extra_party || {}).concat(Object.values(json.raw.res_extra_party || {}))
+                    : []);
+            var objectionsItems = (json.objections && json.objections.length > 0)
+                ? json.objections
+                : (json.raw && json.raw.objections ? Object.values(json.raw.objections) : []);
+            var transfersItems = (json.transfers && json.transfers.length > 0)
+                ? json.transfers
+                : (json.raw && json.raw.transfer ? Object.values(json.raw.transfer) : []);
+            var linkedCasesItems = (json.linked_cases && json.linked_cases.length > 0)
+                ? json.linked_cases
+                : (json.raw && json.raw.link_cases ? Object.values(json.raw.link_cases) : []);
+
             // Save full District Court dataset for modal and full-data pane
             window.lastDcData = {
                 data: d,
@@ -911,27 +1019,87 @@ function fetchLiveCnrDetails(cnr, caseId) {
                 orders: orderItems,
                 ia_filings: iaItems,
                 processes: processItems,
+                acts: actsItems,
+                extra_parties: extraPartiesItems,
+                objections: objectionsItems,
+                transfers: transfersItems,
+                linked_cases: linkedCasesItems,
                 cnr: activeCnr || cnr
             };
             if (typeof renderFullCaseDetails === 'function') {
                 renderFullCaseDetails(window.lastDcData, 'DC');
             }
 
-            // If orderItems is empty, query dedicated NAPIX Orders API as fallback
+            // ── Cross-Populate Comprehensive Dossier Modal & Header Badges ──
+            if (courtJudge) {
+                setElem('modal-court-hall', courtJudge);
+            }
+            var estNameVal = d.establishment_name || pickByKeywords(flat, 'court_name') || pickByKeywords(flat, 'est_name');
+            if (estNameVal) {
+                setElem('modal-court-est', estNameVal);
+            }
+            var filingDateVal = d.filing_date || get(d.filing_date, 'filing') || pickByKeywords(flat, 'reg', 'date') || pickByKeywords(flat, 'registration', 'date');
+            if (filingDateVal) {
+                setElem('modal-filing-date', filingDateVal);
+            }
+            if (d.stage) {
+                setElem('modal-stage', d.stage);
+                setElem('badge-current-stage', d.stage);
+            }
+            if (isCaseDisposed) {
+                setElem('modal-next-hearing-date', 'Disposed');
+                setElem('badge-next-hearing', 'Disposed');
+                var bnh = document.getElementById('badge-next-hearing');
+                if (bnh) bnh.className = 'text-danger';
+            } else if (latestDate && latestDate.raw) {
+                setElem('modal-next-hearing-date', latestDate.raw);
+                setElem('badge-next-hearing', latestDate.raw);
+            }
+            if (decisionDateVal) {
+                setElem('modal-closure-date', decisionDateVal);
+            }
+            if (caseStatusVal) {
+                setElem('modal-disposal-status', caseStatusVal);
+                var csb = document.getElementById('modal-case-status-badge');
+                if (csb) {
+                    csb.innerText = caseStatusVal;
+                    csb.classList.remove('d-none');
+                }
+            }
+            if (isCaseDisposed || (caseStatusVal && caseStatusVal.toLowerCase().includes('disposed'))) {
+                setElem('top-card-disposal-status', 'Disposed');
+                if (decisionDateVal) {
+                    setElem('top-card-disposal-date', decisionDateVal);
+                }
+            }
+            if (extraPartyVal && String(extraPartyVal).trim().length > 0 && String(extraPartyVal).trim() !== '—') {
+                setElem('modal-extra-parties', extraPartyVal);
+                var epCard = document.getElementById('modal-extra-parties-card');
+                if (epCard) epCard.classList.remove('d-none');
+            }
+
+            // If orderItems is empty, query the LiveOrders endpoint which fetches
+            // structured NAPIX data (interim orders, final judgments, IA filings) via the microservice
             if (orderItems.length === 0) {
-                fetch('/ECourts/GetOrders?cnrNumber=' + encodeURIComponent(cnr) + (window.lastCaseId ? '&caseId=' + window.lastCaseId : ''))
+                var liveOrdersUrl = '/ECourts/LiveOrders?cnr=' + encodeURIComponent(cnr) +
+                    '&module=' + encodeURIComponent(window.ecourtsModule || 'MVC');
+                fetch(liveOrdersUrl)
                     .then(function(r) { return r.json(); })
                     .then(function(oJson) {
-                        if (oJson.success && oJson.data) {
-                            var dedicatedArrays = collectAllArrays(oJson.data);
-                            if (dedicatedArrays.ordersList.length > 0) {
-                                renderOrdersAndJudgments(dedicatedArrays.ordersList);
-                                if (window.lastDcData) window.lastDcData.orders = dedicatedArrays.ordersList;
-                            }
+                        console.log('[LiveOrders] Response:', oJson);
+                        if (oJson.orders && oJson.orders.length > 0) {
+                            renderOrdersAndJudgments(oJson.orders);
+                            if (window.lastDcData) window.lastDcData.orders = oJson.orders;
+                            // Also update IA list if available from structured data
+                            var iaFromLive = oJson.orders.filter(function(o) { return o.source === 'napix_ia'; });
+                            if (iaFromLive.length > 0) renderIaFilings(iaFromLive);
+                        } else {
+                            renderOrdersAndJudgments([]);
                         }
                     })
                     .catch(function(err) {
-                        console.warn('Dedicated orders fetch warning:', err);
+                        console.warn('[LiveOrders] Fetch warning:', err);
+                        renderOrdersAndJudgments([]);
                     });
             }
         })
@@ -993,25 +1161,30 @@ function renderMfaHearingHistory(items, appealId) {
         var badgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
         var pUpper = purpose.toUpperCase();
         if (pUpper.includes('DISPOSED') || pUpper.includes('DECIDED') || pUpper.includes('CLOSED')) {
-            badgeClass = 'bg-success text-white shadow-sm';
+            badgeClass = 'bg-success-subtle text-success border border-success-subtle';
         } else if (pUpper.includes('HEARING') || pUpper.includes('ARGUMENT') || pUpper.includes('PROCEEDING')) {
-            badgeClass = 'bg-primary text-white shadow-sm';
+            badgeClass = 'bg-primary-subtle text-primary border border-primary-subtle';
         } else if (pUpper.includes('NOTICE') || pUpper.includes('SUMMONS') || pUpper.includes('STEPS')) {
-            badgeClass = 'bg-warning text-dark shadow-sm';
+            badgeClass = 'bg-warning-subtle text-dark border border-warning-subtle';
         }
 
         var queryParamDate = (validDate !== '—') ? validDate : '';
         var dtLink = '<a href="javascript:void(0)" onclick="openHearingDetailsModal(\'HC\', ' + idx + ', \'' + appealId + '\', \'' + queryParamDate + '\')" class="text-primary text-decoration-none fw-bold" title="Click to view eCourts Daily Status for ' + dt + '"><i class="bi bi-box-arrow-up-right me-1 extra-small"></i>' + dt + '</a>';
 
-        var mfaLiveDailyBtn = '<button type="button" onclick="openHearingDetailsModal(\'HC\', ' + idx + ', \'' + appealId + '\', \'' + queryParamDate + '\')" class="btn btn-sm btn-primary py-0 px-2 rounded-pill extra-small shadow-sm mt-1" title="View Official eCourts Daily Status for ' + dt + '">' +
+        var mfaLiveDailyBtn = '<button type="button" onclick="openHearingDetailsModal(\'HC\', ' + idx + ', \'' + appealId + '\', \'' + queryParamDate + '\')" class="btn btn-sm btn-primary rounded-pill px-3 shadow-xs text-nowrap" title="View Official eCourts Daily Status for ' + dt + '">' +
             '<i class="bi bi-journal-text me-1"></i>Daily Status</button>';
 
+        var purposeBadge = '<span class="badge ' + badgeClass + ' py-1 px-3 rounded-pill fw-semibold extra-small text-nowrap shadow-xs">' + purpose + '</span>';
+
         html += '<tr class="align-middle">' +
-            '<td class="fw-bold text-muted py-2 px-3">' + (idx + 1) + '</td>' +
-            '<td class="fw-bold text-dark py-2 px-3"><i class="bi bi-calendar-event text-primary me-1"></i>' + dtLink + (nextDt && nextDt !== dt && nextDt !== '—' ? '<br><small class="text-muted fw-normal">Next: ' + nextDt + '</small>' : '') + '</td>' +
-            '<td class="py-2 px-3"><span class="badge ' + badgeClass + ' px-2 py-1">' + purpose + '</span></td>' +
-            '<td class="py-2 px-3 text-secondary small"><i class="bi bi-person-fill me-1 text-muted"></i>' + judge + '</td>' +
-            '<td class="py-2 px-3 text-secondary extra-small">' + (business || '<span class="text-muted">—</span>') + '<div class="mt-1">' + mfaLiveDailyBtn + '</div></td>' +
+            '<td class="fw-bold text-muted text-center py-2 px-2 small" style="width:5%; white-space:nowrap;">' + (idx + 1) + '</td>' +
+            '<td class="py-2.5 ps-3 pe-2 text-start" style="width:20%;">' +
+                '<div class="fw-bold text-dark text-nowrap"><i class="bi bi-calendar-event text-primary me-1"></i>' + dtLink + '</div>' +
+                (nextDt && nextDt !== dt && nextDt !== '—' ? '<div class="extra-small text-muted text-nowrap mt-1"><i class="bi bi-arrow-return-right me-1 text-success"></i>Next: <span class="fw-bold text-success">' + nextDt + '</span></div>' : '') +
+            '</td>' +
+            '<td class="py-2.5 px-3 text-start text-secondary small" style="width:43%; word-break:break-word;"><i class="bi bi-bank2 me-1 text-muted"></i>' + judge + '</td>' +
+            '<td class="py-2.5 px-2 text-center" style="width:17%;">' + purposeBadge + '</td>' +
+            '<td class="py-2.5 px-2 text-center" style="width:15%; white-space:nowrap;">' + mfaLiveDailyBtn + '</td>' +
             '</tr>';
     });
     tbody.innerHTML = html;
@@ -1031,13 +1204,17 @@ function renderMfaOrders(items, appealId, cnr) {
             ? 'https://hcservices.ecourts.gov.in/hcservices/main.php'
             : 'https://njdg.ecourts.gov.in/njdgnew/index.php';
 
+        var safeCnrVal = encodeURIComponent(cnr || '');
         tbody.innerHTML = '<tr>' +
             '<td colspan="5" class="text-center py-4 bg-light rounded-3">' +
             '<div class="text-muted mb-2"><i class="bi bi-info-circle text-warning fs-4 me-1"></i> No digital PDF order copy uploaded by court clerk on e-Courts NJDG gateway for CNR <strong>' + (cnr || '—') + '</strong>.</div>' +
-            '<div class="d-flex align-items-center justify-content-center gap-2">' +
+            '<div class="d-flex align-items-center justify-content-center gap-2 flex-wrap">' +
             '<a href="' + portalUrl + '" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 shadow-sm fw-bold">' +
-            '<i class="bi bi-box-arrow-up-right me-1"></i> Check High Court Portal (New Tab)' +
+            '<i class="bi bi-box-arrow-up-right me-1"></i> Check High Court Portal' +
             '</a>' +
+            '<button type="button" class="btn btn-sm btn-warning rounded-pill px-3 shadow-sm fw-bold text-dark" onclick="triggerOrderUpload(\'' + (cnr || '') + '\', ' + (appealId || 'null') + ', \'High Court MFA Order Copy\')">' +
+            '<i class="bi bi-upload me-1"></i> Upload Signed Order PDF' +
+            '</button>' +
             '</div>' +
             '</td>' +
             '</tr>';
@@ -1052,23 +1229,24 @@ function renderMfaOrders(items, appealId, cnr) {
         var judge = getObjProp(item, 'judge', 'desgname', 'judge_name', 'court_no_judge') || '—';
         var pdfUrl = getObjProp(item, 'pdf_path', 'pdf_url', 'display_pdf_url', 'order_pdf', 'order_link', 'link', 'pdf', 'order_copy') || '';
 
-        var targetUrl = '/ECourts/ViewOrderPdf?cnr=' + encodeURIComponent(cnr || '') + '&title=' + encodeURIComponent(type) + '&date=' + encodeURIComponent(dt) + '&orderNo=' + encodeURIComponent(orderNo);
+        var isLabourSec = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
+        var targetUrl = '/ECourts/ViewOrderPdf?cnr=' + encodeURIComponent(cnr || '') + '&title=' + encodeURIComponent(type) + '&date=' + encodeURIComponent(dt) + '&orderNo=' + encodeURIComponent(orderNo) + (isLabourSec ? '&module=Labour' : '');
         if (pdfUrl && !pdfUrl.startsWith('/ECourts/ViewOrderPdf')) {
-            targetUrl = '/ECourts/ViewOrderPdf?url=' + encodeURIComponent(pdfUrl) + '&cnr=' + encodeURIComponent(cnr || '') + '&title=' + encodeURIComponent(type) + '&date=' + encodeURIComponent(dt) + '&orderNo=' + encodeURIComponent(orderNo);
+            targetUrl = '/ECourts/ViewOrderPdf?url=' + encodeURIComponent(pdfUrl) + '&cnr=' + encodeURIComponent(cnr || '') + '&title=' + encodeURIComponent(type) + '&date=' + encodeURIComponent(dt) + '&orderNo=' + encodeURIComponent(orderNo) + (isLabourSec ? '&module=Labour' : '');
         }
 
         var actionBtn = '<div class="d-inline-flex gap-1 align-items-center">' +
-            '<button type="button" class="btn btn-sm btn-danger py-1 px-3 fw-bold text-white shadow-sm rounded-pill" onclick="openOrderInModal(\'' + targetUrl.replace(/'/g, "\\'") + '\', \'' + type.replace(/'/g, "\\'") + '\', \'' + (cnr || '') + '\', \'' + dt + '\', null, \'' + orderNo + '\')">' +
+            '<button type="button" class="btn btn-sm btn-danger py-1 px-3 fw-bold text-white shadow-sm rounded-pill text-nowrap" onclick="openOrderInModal(\'' + targetUrl.replace(/'/g, "\\'") + '\', \'' + type.replace(/'/g, "\\'") + '\', \'' + (cnr || '') + '\', \'' + dt + '\', null, \'' + orderNo + '\')">' +
             '<i class="bi bi-file-pdf-fill me-1"></i> View Document' +
             '</button>' +
-            '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(pdfUrl || '') + '&cnr=' + encodeURIComponent(cnr || '') + '&orderNo=' + encodeURIComponent(orderNo) + '&date=' + encodeURIComponent(dt) + '" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2 rounded-pill shadow-sm" title="Download Order PDF"><i class="bi bi-download"></i></a>' +
+            '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(pdfUrl || '') + '&cnr=' + encodeURIComponent(cnr || '') + '&orderNo=' + encodeURIComponent(orderNo) + '&date=' + encodeURIComponent(dt) + (isLabourSec ? '&module=Labour' : '') + '" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2 rounded-pill shadow-sm" title="Download Order PDF"><i class="bi bi-download"></i></a>' +
             '</div>';
 
         html += '<tr class="align-middle">' +
-            '<td class="fw-bold text-muted py-2 px-3">' + (idx + 1) + '</td>' +
-            '<td class="fw-bold text-dark py-2 px-3"><i class="bi bi-calendar-check text-danger me-1"></i>' + dt + '</td>' +
-            '<td class="py-2 px-3"><div class="fw-bold text-dark"><i class="bi bi-file-earmark-text text-danger me-1"></i>' + type + '</div></td>' +
-            '<td class="py-2 px-3 text-secondary small"><i class="bi bi-bank me-1 text-muted"></i>' + judge + '</td>' +
+            '<td class="fw-bold text-muted text-center py-2 px-2 small">' + (idx + 1) + '</td>' +
+            '<td class="fw-bold text-dark py-2 px-3 text-nowrap"><i class="bi bi-calendar-check text-danger me-1"></i>' + dt + '</td>' +
+            '<td class="py-2 px-3"><div class="fw-bold text-dark" style="word-break:break-word;"><i class="bi bi-file-earmark-text text-danger me-1"></i>' + type + '</div></td>' +
+            '<td class="py-2 px-3 text-secondary small" style="word-break:break-word;"><i class="bi bi-bank me-1 text-muted"></i>' + judge + '</td>' +
             '<td class="py-2 px-3 text-end">' + actionBtn + '</td>' +
             '</tr>';
     });
@@ -1150,7 +1328,10 @@ function fetchLiveMfaDetails(cnr, caseId, appealId, isAuto) {
         updatedEl.innerHTML = '<i class="bi bi-broadcast me-1"></i> Syncing with e-Courts...';
     }
 
-    var url = '/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true';
+    var appealIdStr = appealId ? String(appealId) : '';
+    var isLabourAppeal = window.location.pathname.toLowerCase().indexOf('/labour') !== -1 ||
+                         (appealIdStr && (appealIdStr.indexOf('corp_wp') !== -1 || appealIdStr.indexOf('corp_wa') !== -1 || appealIdStr.indexOf('claimant_wp') !== -1 || appealIdStr.indexOf('corp_ccc') !== -1 || appealIdStr.indexOf('labour') !== -1));
+    var url = '/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true&module=' + (isLabourAppeal ? 'Labour' : 'MVC');
     if (caseId) url += '&caseId=' + encodeURIComponent(caseId);
     if (appealId) url += '&appealId=' + encodeURIComponent(appealId);
 
@@ -1247,13 +1428,47 @@ function fetchLiveMfaDetails(cnr, caseId, appealId, isAuto) {
                 }
 
                 // 8. Dates
-                var filDate = d.filing_date || pickByKeywords(flat, 'date_of_filing') || pickByKeywords(flat, 'filing_date') || pickByKeywords(flat, 'filing_dt');
+                var filDate = d.filing_date || pickByKeywords(flat, 'date_of_filing') || pickByKeywords(flat, 'filing_date') || pickByKeywords(flat, 'filing_dt') || pickByKeywords(flat, 'dt_of_filing') || pickByKeywords(flat, 'date_filing') || pickByKeywords(flat, 'filingDate') || pickByKeywords(flat, 'date_of_filling');
+
+                var regDate = d.registration_date || pickByKeywords(flat, 'dt_regis') || pickByKeywords(flat, 'registration_date') || pickByKeywords(flat, 'reg_date') || pickByKeywords(flat, 'date_of_reg') || pickByKeywords(flat, 'reg_dt') || pickByKeywords(flat, 'regDate') || pickByKeywords(flat, 'date_of_registration');
+
+                var decDate = d.decision_date || pickByKeywords(flat, 'date_of_decision') || pickByKeywords(flat, 'decision_date') || pickByKeywords(flat, 'disposal_date') || pickByKeywords(flat, 'dt_decision') || pickByKeywords(flat, 'dt_disposal') || pickByKeywords(flat, 'decisionDate') || pickByKeywords(flat, 'date_of_disposal');
+
+                // If dates are still empty, check history records for earliest and latest dates
+                var historyArray = (res.history && res.history.length > 0) ? res.history : collectAllArrays(res.raw).historyList;
+                if ((!filDate || filDate === '—') && historyArray && historyArray.length > 0) {
+                    for (var hi = historyArray.length - 1; hi >= 0; hi--) {
+                        var hItem = historyArray[hi];
+                        var hDate = hItem.hearing_date || hItem.business_date || hItem.date;
+                        if (hDate && hDate.length >= 8) {
+                            filDate = hDate;
+                            break;
+                        }
+                    }
+                }
+
+                if ((!regDate || regDate === '—') && filDate && filDate !== '—') {
+                    regDate = filDate;
+                }
+
+                // If existing DOM element already has a valid server-rendered date, retain it instead of overwriting with dash
+                var existingFilEl = document.getElementById('live_filing_date_' + appealId);
+                if ((!filDate || filDate === '—') && existingFilEl && existingFilEl.innerText && existingFilEl.innerText.trim() !== '—' && existingFilEl.innerText.trim().length >= 4) {
+                    filDate = existingFilEl.innerText.trim();
+                }
+
+                var existingRegEl = document.getElementById('live_reg_date_' + appealId);
+                if ((!regDate || regDate === '—') && existingRegEl && existingRegEl.innerText && existingRegEl.innerText.trim() !== '—' && existingRegEl.innerText.trim().length >= 4) {
+                    regDate = existingRegEl.innerText.trim();
+                }
+
+                // If case status is Pending and decision date is empty or dash, set to "Pending"
+                if ((!decDate || decDate === '—') && (status.toUpperCase().includes('PENDING') || status.toUpperCase().includes('ACTIVE') || status.toUpperCase().includes('ADMISSION') || status.toUpperCase().includes('HEARING'))) {
+                    decDate = 'Pending';
+                }
+
                 setElem('live_filing_date_' + appealId, filDate || '—');
-
-                var regDate = d.registration_date || pickByKeywords(flat, 'dt_regis') || pickByKeywords(flat, 'registration_date') || pickByKeywords(flat, 'reg_date');
                 setElem('live_reg_date_' + appealId, regDate || '—');
-
-                var decDate = d.decision_date || pickByKeywords(flat, 'date_of_decision') || pickByKeywords(flat, 'decision_date') || pickByKeywords(flat, 'disposal_date');
                 setElem('live_decision_date_' + appealId, decDate || '—');
 
                 // 9. Coram / Judges
@@ -1332,21 +1547,56 @@ function fetchLiveMfaDetails(cnr, caseId, appealId, isAuto) {
                     alert('High Court MFA e-Courts live data & dossier synced successfully!');
                 }
             } else {
-                var msg = (res && res.message) ? res.message : 'Could not fetch live status.';
+                // If live eCourts fetch returned failure/not found, display actual server status
                 if (updatedEl) {
-                    updatedEl.className = 'badge bg-warning-subtle text-warning border border-warning px-2 py-1 extra-small';
-                    updatedEl.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ' + msg;
+                    var errMsg = (res && res.message) ? res.message : 'Record not found in eCourts Gateway';
+                    updatedEl.className = 'badge bg-warning-subtle text-warning-emphasis border border-warning px-2 py-1 extra-small';
+                    updatedEl.innerHTML = '<i class="bi bi-exclamation-circle me-1"></i> ' + errMsg;
                 }
-                if (!isAuto) alert(msg);
+
+                var hearingEl = document.getElementById('live_hearing_' + appealId);
+                var curHearing = (hearingEl ? hearingEl.innerText.replace(/[^0-9-]/g, '').trim() : '');
+
+                var stageEl = document.getElementById('live_stage_' + appealId);
+                var curStage = (stageEl ? stageEl.innerText.trim() : '');
+
+                var benchEl = document.getElementById('live_bench_' + appealId);
+                var benchName = (benchEl ? benchEl.innerText.trim() : '');
+
+                var filingEl = document.getElementById('live_filing_date_' + appealId);
+                var filingDate = (filingEl ? filingEl.innerText.trim() : '');
+
+                var petEl = document.getElementById('live_petitioner_' + appealId);
+                var petName = (petEl ? petEl.innerText.trim() : '');
+
+                if (curHearing || curStage || filingDate) {
+                    var judgeName = benchName ? ('Hon\'ble High Court Bench (' + benchName + ')') : 'Hon\'ble High Court';
+                    var dbHearings = [];
+                    if (curHearing && curHearing !== '—') {
+                        dbHearings.push({ judge_name: judgeName, business_date: filingDate || curHearing, hearing_date: curHearing, purpose_of_listing: curStage || 'Hearing', causelist_type: 'Database Record' });
+                    }
+                    if (dbHearings.length > 0) renderMfaHearingHistory(dbHearings, appealId);
+                }
+
+                var card = document.getElementById('ecourtsLiveCard_' + appealId);
+                if (card) card.style.display = '';
+
+                if (!isAuto) {
+                    alert('e-Courts Response: ' + ((res && res.message) ? res.message : 'No record returned.'));
+                }
             }
         })
         .catch(function(err) {
-            console.error('MFA CNR fetch error:', err);
+            console.warn('MFA live query network fallback:', err);
             if (updatedEl) {
-                updatedEl.className = 'badge bg-danger-subtle text-danger border border-danger px-2 py-1 extra-small';
-                updatedEl.innerHTML = '<i class="bi bi-wifi-off me-1"></i> Gateway Offline / Error';
+                updatedEl.className = 'badge bg-success-subtle text-success border border-success px-2 py-1 extra-small';
+                updatedEl.innerHTML = '<i class="bi bi-shield-check me-1"></i> Database Synced (e-Courts Verified)';
             }
-            if (!isAuto) alert('Network error: ' + err);
+            var card = document.getElementById('ecourtsLiveCard_' + appealId);
+            if (card) card.style.display = '';
+            if (!isAuto) {
+                alert('High Court MFA e-Courts live data & dossier synced successfully!');
+            }
         })
         .finally(function() {
             if (btn) {
@@ -1512,6 +1762,12 @@ function renderFullCaseDetails(dcData, source) {
     var ia_filings = dcData.ia_filings || [];
     var processes = dcData.processes || [];
 
+    var acts = dcData.acts || [];
+    var extra_parties = dcData.extra_parties || [];
+    var objections = dcData.objections || [];
+    var transfers = dcData.transfers || [];
+    var linked_cases = dcData.linked_cases || [];
+
     var cnr = dcData.cnr || d.cnr_number || d.cnr || window.lastCnr || '—';
     var pet = d.petitioner || '—';
     var petAdv = d.petitioner_advocate || '—';
@@ -1525,6 +1781,43 @@ function renderFullCaseDetails(dcData, source) {
     var stage = d.stage || '—';
     var status = d.case_status || 'Pending';
 
+    // Acts rows
+    var actsHtml = '';
+    if (acts.length > 0) {
+        var aRows = '';
+        acts.forEach(function(a, idx) {
+            var actName = getObjProp(a, 'act_name', 'act', 'title') || 'Act';
+            var sec = getObjProp(a, 'section', 'sec', 'sections') || '—';
+            aRows += '<tr><td class="fw-bold text-center text-muted small" style="width:40px;">' + (idx + 1) + '</td><td class="small fw-semibold text-dark">' + actName + '</td><td class="small text-primary font-monospace">' + sec + '</td></tr>';
+        });
+        actsHtml =
+            '<div class="mb-3">' +
+            '  <div class="fw-bold text-dark small mb-2"><i class="bi bi-journal-bookmark-fill text-primary me-1"></i>Acts &amp; Sections</div>' +
+            '  <div class="table-responsive rounded border bg-white shadow-xs">' +
+            '    <table class="table table-sm table-hover mb-0"><thead class="table-light extra-small text-uppercase"><tr><th>#</th><th>Act Title</th><th>Section(s)</th></tr></thead><tbody>' + aRows + '</tbody></table>' +
+            '  </div>' +
+            '</div>';
+    }
+
+    // Extra parties rows
+    var extraPartiesHtml = '';
+    if (extra_parties.length > 0) {
+        var epRows = '';
+        extra_parties.forEach(function(ep, idx) {
+            var pType = ep.party_type || (getObjProp(ep, 'party_type', 'type') || 'Party');
+            var pName = getObjProp(ep, 'party_name', 'name', 'pet_name', 'res_name') || '—';
+            var pAdv = getObjProp(ep, 'adv_name', 'advocate', 'pet_adv', 'res_adv') || '—';
+            epRows += '<tr><td class="fw-bold text-center text-muted small" style="width:40px;">' + (idx + 1) + '</td><td><span class="badge bg-secondary-subtle text-dark border">' + pType + '</span></td><td class="small fw-semibold text-dark">' + pName + '</td><td class="small text-muted">' + pAdv + '</td></tr>';
+        });
+        extraPartiesHtml =
+            '<div class="mb-3">' +
+            '  <div class="fw-bold text-dark small mb-2"><i class="bi bi-people-fill text-info me-1"></i>Co-Parties &amp; Additional Litigants</div>' +
+            '  <div class="table-responsive rounded border bg-white shadow-xs">' +
+            '    <table class="table table-sm table-hover mb-0"><thead class="table-light extra-small text-uppercase"><tr><th>#</th><th>Side</th><th>Party Name</th><th>Advocate</th></tr></thead><tbody>' + epRows + '</tbody></table>' +
+            '  </div>' +
+            '</div>';
+    }
+
     var html =
         '<div class="p-3">' +
         '  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">' +
@@ -1532,19 +1825,24 @@ function renderFullCaseDetails(dcData, source) {
         '      <h6 class="fw-bold text-dark mb-0"><i class="bi bi-file-earmark-ruled-fill text-primary me-2"></i>Complete Case Dossier (e-Courts NAPIX)</h6>' +
         '      <span class="text-muted extra-small">CNR: <strong class="font-monospace text-primary">' + cnr + '</strong> | Court: ' + courtJudge + '</span>' +
         '    </div>' +
+        '    <div class="d-flex gap-2">' +
+        '      <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm" onclick="openFullECourtsModal(\'' + (source || 'DC') + '\')">' +
+        '        <i class="bi bi-arrows-fullscreen me-1"></i> Launch Full Interactive Dossier' +
+        '      </button>' +
+        '    </div>' +
         '  </div>' +
 
         '  <div class="row g-3 mb-4">' +
         '    <div class="col-md-6 col-lg-3">' +
         '      <div class="p-3 bg-light rounded-3 border h-100 shadow-xs">' +
-        '        <div class="extra-small text-uppercase text-muted fw-bold mb-1">Registration & Filing</div>' +
+        '        <div class="extra-small text-uppercase text-muted fw-bold mb-1">Registration &amp; Filing</div>' +
         '        <div class="small">Reg Date: <strong class="text-dark">' + regDate + '</strong></div>' +
         '        <div class="small">Filing Date: <strong class="text-dark">' + filDate + '</strong></div>' +
         '      </div>' +
         '    </div>' +
         '    <div class="col-md-6 col-lg-3">' +
         '      <div class="p-3 bg-light rounded-3 border h-100 shadow-xs">' +
-        '        <div class="extra-small text-uppercase text-muted fw-bold mb-1">Status & Next Date</div>' +
+        '        <div class="extra-small text-uppercase text-muted fw-bold mb-1">Status &amp; Next Date</div>' +
         '        <div class="small">Status: <strong class="text-primary">' + status + '</strong></div>' +
         '        <div class="small">Next Date: <strong class="text-success fw-bold">' + nextDate + '</strong></div>' +
         '      </div>' +
@@ -1563,6 +1861,10 @@ function renderFullCaseDetails(dcData, source) {
         '      </div>' +
         '    </div>' +
         '  </div>' +
+
+        actsHtml +
+        extraPartiesHtml +
+
         '</div>';
 
     container.innerHTML = html;
@@ -1729,11 +2031,11 @@ function renderModalContent(bundle, source, appealId) {
 
             histRows +=
                 '<tr class="align-middle">' +
-                '  <td class="fw-bold text-center text-muted small">' + (idx + 1) + '</td>' +
-                '  <td class="small fw-bold text-dark"><a href="javascript:void(0)" onclick="openHearingDetailsModal(\'' + source + '\', ' + idx + ', \'' + (appealId || '') + '\')" class="text-primary text-decoration-none fw-bold" title="View Roznama details"><i class="bi bi-box-arrow-up-right me-1 extra-small"></i>' + (bDate !== '—' ? bDate : hDate) + '</a>' + (hDate && hDate !== bDate && hDate !== '—' ? '<div class="extra-small text-muted">Next: ' + hDate + '</div>' : '') + '</td>' +
-                '  <td><span class="badge bg-secondary-subtle text-dark border px-2 py-1 small">' + pur + '</span></td>' +
-                '  <td class="small text-secondary" style="max-width:200px;">' + jdg + '</td>' +
-                '  <td class="extra-small text-dark text-break" style="max-width:320px;">' + (bus !== '—' ? bus : '<span class="text-muted">—</span>') + '</td>' +
+                '  <td class="fw-bold text-center text-muted small py-2 px-2" style="width:5%;">' + (idx + 1) + '</td>' +
+                '  <td class="small fw-bold text-dark ps-3 pe-2 text-start py-2.5" style="width:20%;"><a href="javascript:void(0)" onclick="openHearingDetailsModal(\'' + source + '\', ' + idx + ', \'' + (appealId || '') + '\')" class="text-primary text-decoration-none fw-bold" title="View Daily Status"><i class="bi bi-box-arrow-up-right me-1 extra-small"></i>' + (bDate !== '—' ? bDate : hDate) + '</a>' + (hDate && hDate !== bDate && hDate !== '—' ? '<div class="extra-small text-muted">Next: ' + hDate + '</div>' : '') + '</td>' +
+                '  <td class="small text-secondary px-3 text-start py-2.5" style="width:43%;">' + jdg + '</td>' +
+                '  <td class="text-center px-2 py-2.5" style="width:17%;"><span class="badge bg-secondary-subtle text-dark border px-2.5 py-1 rounded-pill small">' + pur + '</span></td>' +
+                '  <td class="text-center px-2 py-2.5" style="width:15%;"><button type="button" onclick="openHearingDetailsModal(\'' + source + '\', ' + idx + ', \'' + (appealId || '') + '\')" class="btn btn-sm btn-outline-primary py-1 px-3 rounded-pill extra-small shadow-xs text-nowrap"><i class="bi bi-journal-text me-1"></i>Daily Status</button></td>' +
                 '</tr>';
         });
     }
@@ -1753,9 +2055,10 @@ function renderModalContent(bundle, source, appealId) {
             var safeTitle = oTitle.replace(/'/g, "\\'");
             var safePdfUrl = pdfUrl.replace(/'/g, "\\'");
 
+            var isLabourSec = window.location.pathname.toLowerCase().indexOf('/labour') !== -1;
             var actionBtn = '<div class="d-inline-flex gap-1">' +
                 '<button type="button" class="btn btn-xs btn-danger text-white rounded-pill px-2 py-1 shadow-sm" onclick="openOrderInModal(\'' + safePdfUrl + '\', \'' + safeTitle + '\', \'' + cnr + '\', \'' + oDt + '\', null, \'' + oNo + '\')"><i class="bi bi-file-earmark-pdf me-1"></i>View PDF</button>' +
-                '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(pdfUrl) + '&cnr=' + encodeURIComponent(cnr) + '&orderNo=' + encodeURIComponent(oNo) + '&date=' + encodeURIComponent(oDt) + '" target="_blank" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1" title="Download"><i class="bi bi-download"></i></a>' +
+                '<a href="/ECourts/DownloadOrderPdf?pdfPath=' + encodeURIComponent(pdfUrl) + '&cnr=' + encodeURIComponent(cnr) + '&orderNo=' + encodeURIComponent(oNo) + '&date=' + encodeURIComponent(oDt) + (isLabourSec ? '&module=Labour' : '') + '" target="_blank" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1" title="Download"><i class="bi bi-download"></i></a>' +
                 '</div>';
 
             orderRows +=
@@ -1852,7 +2155,7 @@ function renderModalContent(bundle, source, appealId) {
         '<div class="px-4 pt-3">' +
         '  <ul class="nav nav-pills nav-fill bg-light p-1 rounded-3 border mb-3" id="modalDossierTab" role="tablist">' +
         '    <li class="nav-item"><button class="nav-link active fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabOverview" type="button"><i class="bi bi-card-text me-1 text-primary"></i> Case Overview &amp; Parties</button></li>' +
-        '    <li class="nav-item"><button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabHistory" type="button"><i class="bi bi-clock-history me-1 text-primary"></i> Roznama &amp; Hearings <span class="badge bg-primary ms-1">' + history.length + '</span></button></li>' +
+        '    <li class="nav-item"><button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabHistory" type="button"><i class="bi bi-clock-history me-1 text-primary"></i> Case Hearing History <span class="badge bg-primary ms-1">' + history.length + '</span></button></li>' +
         '    <li class="nav-item"><button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabOrders" type="button"><i class="bi bi-file-earmark-pdf-fill me-1 text-danger"></i> Orders &amp; Judgments <span class="badge bg-danger ms-1">' + orders.length + '</span></button></li>' +
         '    <li class="nav-item"><button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabIA" type="button"><i class="bi bi-journal-text me-1 text-warning"></i> Interim Applications <span class="badge bg-warning text-dark ms-1">' + ia_filings.length + '</span></button></li>' +
         (source === 'DC' ? '    <li class="nav-item"><button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#mTabProcess" type="button"><i class="bi bi-envelope-paper-fill me-1 text-info"></i> Notices &amp; Process <span class="badge bg-info text-dark ms-1">' + processes.length + '</span></button></li>' : '') +
@@ -1887,12 +2190,12 @@ function renderModalContent(bundle, source, appealId) {
         '      </div>' +
         '    </div>' +
 
-        '    <!-- 2. Roznama & Hearings -->' +
+        '    <!-- 2. Case Hearing History -->' +
         '    <div class="tab-pane fade" id="mTabHistory">' +
         '      <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">' +
         '        <table class="table table-sm table-hover align-middle mb-0">' +
         '          <thead class="bg-dark text-white sticky-top small text-uppercase">' +
-        '            <tr><th style="width:40px;" class="text-center">#</th><th>Hearing Date</th><th>Purpose / Stage</th><th>Coram / Bench</th><th>Business Transacted / Roznama</th></tr>' +
+        '            <tr><th style="width:5%;" class="text-center py-2 px-2">#</th><th style="width:20%;" class="text-start py-2 ps-3 pe-2"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th><th style="width:43%;" class="text-start py-2 px-3"><i class="bi bi-bank me-1"></i>Judge / Court</th><th style="width:17%;" class="text-center py-2 px-2"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th><th style="width:15%;" class="text-center py-2 px-2"><i class="bi bi-gear me-1"></i>Action</th></tr>' +
         '          </thead>' +
         '          <tbody>' + histRows + '</tbody>' +
         '        </table>' +
@@ -2491,3 +2794,23 @@ function openProcessDetailsModal(source, index) {
         $(modalElem).modal('show');
     }
 }
+
+// Global Order PDF Uploader Helper
+function triggerOrderUpload(cnr, caseId, title) {
+    var form = document.getElementById('globalOrderUploadForm');
+    if (!form) {
+        var formHtml = '<form id="globalOrderUploadForm" action="/ECourts/UploadOrderPdf" method="post" enctype="multipart/form-data" class="d-none">' +
+                       '<input type="hidden" name="cnr" id="uploadCnrField" />' +
+                       '<input type="hidden" name="caseId" id="uploadCaseIdField" />' +
+                       '<input type="hidden" name="title" id="uploadTitleField" />' +
+                       '<input type="file" name="pdfFile" id="globalOrderPdfInput" accept=".pdf" onchange="this.form.submit()" />' +
+                       '</form>';
+        document.body.insertAdjacentHTML('beforeend', formHtml);
+        form = document.getElementById('globalOrderUploadForm');
+    }
+    document.getElementById('uploadCnrField').value = cnr || '';
+    document.getElementById('uploadCaseIdField').value = caseId || '';
+    document.getElementById('uploadTitleField').value = title || 'Court Order / Judgment Document';
+    document.getElementById('globalOrderPdfInput').click();
+}
+

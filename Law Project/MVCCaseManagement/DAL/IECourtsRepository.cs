@@ -20,6 +20,7 @@ namespace MVCCaseManagement.DAL
         public string? CourtNo { get; set; }
         public string? JudgeName { get; set; }
         public bool IsHighCourt { get; set; }
+        public string? RelatedModule { get; set; }
         public DateTime LastSyncedDate { get; set; }
     }
 
@@ -60,6 +61,6 @@ namespace MVCCaseManagement.DAL
         Task<IEnumerable<MVCCaseManagement.Models.HighCourtCauseListItem>> GetHighCourtCauseListAsync();
         Task UpdateAppealLiveECourtsDataAsync(string? cnrNumber, string? courtHall, DateTime? nextHearingDate, string? stage, int? appealId = null);
         Task UpdateTrackedCaseStatusAsync(string cnrNumber, string? status, DateTime? nextHearingDate, string? stage);
-        Task SyncLiveCaseDataAsync(string cnrNumber, DateTime? nextHearingDate, string? stage, string? courtHall, string? caseStatus, int? caseId = null, string? module = null, int? appealId = null);
+        Task SyncLiveCaseDataAsync(string cnrNumber, DateTime? nextHearingDate, string? stage, string? courtHall, string? caseStatus, int? caseId = null, string? module = null, int? appealId = null, DateTime? decisionDate = null, string? estName = null);
     }
 }

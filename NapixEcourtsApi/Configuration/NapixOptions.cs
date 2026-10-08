@@ -40,4 +40,82 @@ public class NapixOptions
     /// it is NOT subscriber-specific (unlike AuthenticationKey).
     /// </summary>
     public string HmacSharedKey { get; set; } = "15081947";
+
+    /// <summary>Optional High Court password if mandated by a specific High Court portal.</summary>
+    public string? HcPassword { get; set; } = null;
+
+    /// <summary>MVC Application credentials.</summary>
+    public NapixModuleCredentials? MVC { get; set; }
+
+    /// <summary>Labour Application credentials.</summary>
+    public NapixModuleCredentials? Labour { get; set; }
+
+    /// <summary>High Court Application credentials (subscribed separately from DC).</summary>
+    public NapixModuleCredentials? HC { get; set; }
+
+    /// <summary>
+    /// Resolves the credentials for the specified module ("Labour" or "MVC"),
+    /// falling back to root settings if module-specific credentials are not defined.
+    /// </summary>
+    public NapixModuleCredentials GetModuleCredentials(string? module)
+    {
+        if (string.Equals(module, "Labour", StringComparison.OrdinalIgnoreCase) && Labour != null && !string.IsNullOrWhiteSpace(Labour.ClientId))
+        {
+            return new NapixModuleCredentials
+            {
+                ClientId = Labour.ClientId,
+                ClientSecret = Labour.ClientSecret,
+                DeptId = !string.IsNullOrWhiteSpace(Labour.DeptId) ? Labour.DeptId : DeptId,
+                AuthenticationKey = !string.IsNullOrWhiteSpace(Labour.AuthenticationKey) ? Labour.AuthenticationKey : AuthenticationKey,
+                HcPassword = !string.IsNullOrWhiteSpace(Labour.HcPassword) ? Labour.HcPassword : (HC?.HcPassword ?? HcPassword)
+            };
+        }
+
+        // HC module uses same gateway credentials but needs the HcPassword in pipe params
+        if (string.Equals(module, "HC", StringComparison.OrdinalIgnoreCase) && HC != null && !string.IsNullOrWhiteSpace(HC.ClientId))
+        {
+            return new NapixModuleCredentials
+            {
+                ClientId = HC.ClientId,
+                ClientSecret = HC.ClientSecret,
+                DeptId = !string.IsNullOrWhiteSpace(HC.DeptId) ? HC.DeptId : DeptId,
+                AuthenticationKey = !string.IsNullOrWhiteSpace(HC.AuthenticationKey) ? HC.AuthenticationKey : AuthenticationKey,
+                HcPassword = !string.IsNullOrWhiteSpace(HC.HcPassword) ? HC.HcPassword : HcPassword
+            };
+        }
+
+        if (MVC != null && !string.IsNullOrWhiteSpace(MVC.ClientId))
+        {
+            return new NapixModuleCredentials
+            {
+                ClientId = MVC.ClientId,
+                ClientSecret = MVC.ClientSecret,
+                DeptId = !string.IsNullOrWhiteSpace(MVC.DeptId) ? MVC.DeptId : DeptId,
+                AuthenticationKey = !string.IsNullOrWhiteSpace(MVC.AuthenticationKey) ? MVC.AuthenticationKey : AuthenticationKey,
+                HcPassword = !string.IsNullOrWhiteSpace(MVC.HcPassword) ? MVC.HcPassword : HcPassword
+            };
+        }
+
+        return new NapixModuleCredentials
+        {
+            ClientId = ClientId,
+            ClientSecret = ClientSecret,
+            DeptId = DeptId,
+            AuthenticationKey = AuthenticationKey,
+        };
+    }
+}
+
+public class NapixModuleCredentials
+{
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+    public string DeptId { get; set; } = string.Empty;
+    public string AuthenticationKey { get; set; } = string.Empty;
+
+    /// <summary>
+    /// HC-specific password included in the encrypted pipe for HC API calls.
+    /// Issued by NIC e-Committee alongside the Authentication Key for HC subscriptions.
+    /// </summary>
+    public string? HcPassword { get; set; }
 }

@@ -1,6 +1,8 @@
 ## Visual Studio / Build Artifacts
 [Bb]in/
 [Oo]bj/
+**/bin/
+**/obj/
 [Aa]rm/
 [Aa]rm64/
 [Dd]ebug/
@@ -9,15 +11,31 @@ x64/
 x86/
 build/
 Publish_Output/
+**/Publish_Output/
 publish/
+**/publish/
 dist/
+**/dist/
 
 ## User-specific files
 *.rsuser
 *.suo
 *.user
+*.userprefs
 *.userosscache
 *.sln.docstates
+.idea/
+
+## Temporary & Archive Files
+*.bak
+*.tmp
+*.zip
+Final_Publish/
+*.nupkg
+packages/
+scratch/
+__pycache__/
+*.pyc
 
 ## Visual Studio / Code
 .vs/
@@ -38,6 +56,8 @@ coverage*.json
 coverage*.xml
 *.coverage
 *.coveragexml
+*test_results*.json
+all_endpoints_test_results.json
 
 ## ASP.NET Core / Logs / Runtime State
 logs/

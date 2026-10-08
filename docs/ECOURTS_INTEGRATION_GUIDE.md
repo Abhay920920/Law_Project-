@@ -13,26 +13,21 @@
 The **Law Project** integrates directly with the official **Indian e-Courts System** via the **NIC NAPIX Gateway**. This integration enables automated 16-digit CNR auto-linking, real-time case status lookups, hearing date synchronizations, judgment order views, and cause list fetches for both District Courts (ICJS) and High Courts.
 
 ```
-+-----------------------+              +------------------------+              +-----------------------+
-|  ASP.NET Core App     |              |  XAMPP / PHP Proxy     |              |  NIC e-Courts NAPIX   |
-|  (ECourtsNapixService)|              |  (http://localhost/    |              |  Gateway API          |
-|                       |              |   ecourts/api.php)     |              |  (delhigw.napix.gov.in|
-+-----------------------+              +------------------------+              +-----------------------+
-            |                                       |                                      |
-            |---- 1. Try PHP Proxy Discovery ------>|                                      |
-            |     (est_code, case_type, reg_no)     |---- 2. OAuth2 Client Credentials --->|
-            |                                       |<--- 3. Access Token -----------------|
-            |                                       |                                      |
-            |                                       |---- 4. AES-128-CBC + HMAC Req ------>|
-            |                                       |<--- 5. Encrypted Response -----------|
-            |<--- 6. Return CNR / JSON Status ------|                                      |
-            |                                                                              |
-            |==== [FALLBACK] Direct C# NAPIX Pipeline (If PHP Proxy Unavailable) ==========|
-            |                                                                              |
-            |---------------- 7. OAuth2 Token Fetch (Cached 55m in IMemoryCache) --------->|
-            |<--------------- 8. Access Token ---------------------------------------------|
-            |---------------- 9. AES-128-CBC Payload + HMAC-SHA256 Token ----------------->|
-            |<--------------- 10. Decrypted response_str Payload --------------------------|
++-----------------------------------+                           +-----------------------------------+
+|       ASP.NET Core App            |                           |       NIC e-Courts NAPIX          |
+|     (ECourtsNapixService)         |                           |          Gateway API              |
+|                                   |                           |      (delhigw.napix.gov.in)       |
++-----------------------------------+                           +-----------------------------------+
+                  |                                                               |
+                  |---------------- 1. OAuth2 Token Fetch (Basic Auth) ---------->|
+                  |<--------------- 2. Access Token (Cached 50m in IMemoryCache) -|
+                  |                                                               |
+                  |---------------- 3. AES-128-CBC Payload + HMAC-SHA256 Token -->|
+                  |<--------------- 4. Decrypted response_str Payload ------------|
+                  |                                                               |
+                  |================ [NAPIX Quota Tracker Enforced] ===============|
+                  |  - Rolling 1-hr quota limit (1000 calls/hr)                   |
+                  |  - Audit logging to dbo.NAPIX_API_CALLS                       |
 ```
 
 ---

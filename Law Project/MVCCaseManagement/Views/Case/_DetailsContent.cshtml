@@ -1243,18 +1243,12 @@
                 <h6 class="mb-0 fw-bold text-dark">Pleadings &amp; Defense Status</h6>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                @if (Model.NextHearingDate.HasValue)
-                {
-                    <span class="badge bg-light text-dark border px-2 py-1 extra-small">
-                        <i class="bi bi-calendar-event text-primary me-1"></i>Next Hearing: <strong>@Model.NextHearingDate.Value.ToString("dd-MM-yyyy")</strong>
-                    </span>
-                }
-                @if (!string.IsNullOrEmpty(Model.CurrentStage))
-                {
-                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 extra-small">
-                        <i class="bi bi-diagram-3 me-1"></i>Stage: @Model.CurrentStage
-                    </span>
-                }
+                <span class="badge bg-light text-dark border px-2 py-1 extra-small" id="badge-next-hearing-container">
+                    <i class="bi bi-calendar-event text-primary me-1"></i>Next Hearing: <strong id="badge-next-hearing">@(Model.NextHearingDate.HasValue ? Model.NextHearingDate.Value.ToString("dd-MM-yyyy") : "—")</strong>
+                </span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 extra-small" id="badge-stage-container">
+                    <i class="bi bi-diagram-3 me-1"></i>Stage: <span id="badge-current-stage">@(!string.IsNullOrEmpty(Model.CurrentStage) ? Model.CurrentStage : "—")</span>
+                </span>
             </div>
         </div>
         <div class="card-body p-3 bg-light bg-opacity-25">
@@ -1441,31 +1435,50 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">First Hearing Date</small>
-                    <div class="fw-semibold text-secondary" id="live-first-date">—</div>
+                    <div class="fw-semibold text-secondary" id="live-first-date">@(Model.ClaimPetitionDate.HasValue ? Model.ClaimPetitionDate.Value.ToString("dd-MM-yyyy") : (Model.EntrustmentDate.HasValue ? Model.EntrustmentDate.Value.ToString("dd-MM-yyyy") : "—"))</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Next Hearing Date</small>
-                    <div class="fs-6 fw-bold text-primary" id="live-next-date">—</div>
+                    <div class="fs-6 fw-bold @(Model.PendDispStatus == "D" || Model.CaseStatus == "Disposed" ? "text-danger" : "text-primary")" id="live-next-date">
+                        @if (Model.PendDispStatus == "D" || Model.CaseStatus == "Disposed")
+                        {
+                            <span>Disposed</span>
+                        }
+                        else if (Model.NextHearingDate.HasValue)
+                        {
+                            <span>@Model.NextHearingDate.Value.ToString("dd-MM-yyyy")</span>
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Stage</small>
-                    <div class="fw-bold text-dark" id="live-stage">—</div>
+                    <div class="fw-bold text-dark" id="live-stage">@(!string.IsNullOrWhiteSpace(Model.ECourtsStage) ? Model.ECourtsStage : (!string.IsNullOrWhiteSpace(Model.CurrentStage) ? Model.CurrentStage : "—"))</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Status</small>
-                    <div class="fw-semibold text-dark" id="live-case-status">—</div>
+                    <div class="fw-semibold text-dark" id="live-case-status">@(!string.IsNullOrWhiteSpace(Model.CaseStatus) ? Model.CaseStatus : (Model.PendDispStatus == "D" ? "Disposed" : (Model.PendDispStatus == "P" ? "Pending" : "—")))</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                    <div class="fw-semibold text-dark" id="live-filing-date">—</div>
+                    <div class="fw-semibold text-dark" id="live-filing-date">@(Model.ClaimPetitionDate.HasValue ? Model.ClaimPetitionDate.Value.ToString("dd-MM-yyyy") : "—")</div>
                 </div>
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                    <div class="fw-semibold text-dark" id="live-decision-date">—</div>
+                    <div class="fw-semibold text-dark" id="live-decision-date">@(Model.ClosureDate.HasValue ? Model.ClosureDate.Value.ToString("dd-MM-yyyy") : "—")</div>
                 </div>
                 <div class="col-12 col-md-6">
-                    <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Court Number & Judge</small>
-                    <div class="fw-semibold text-dark" id="live-court-judge" style="word-break: break-word;">—</div>
+                    <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Court Number &amp; Judge</small>
+                    <div class="fw-semibold text-dark" id="live-court-judge" style="word-break: break-word;">
+                        @{
+                            var courtJudgeParts = new[] { Model.ECourtsCourtNo, Model.ECourtsJudge }.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+                            var courtJudgeDisplay = courtJudgeParts.Any() ? string.Join(" — ", courtJudgeParts) : (!string.IsNullOrWhiteSpace(Model.CourtHall) ? Model.CourtHall : (!string.IsNullOrWhiteSpace(Model.MACTName) ? Model.MACTName : "—"));
+                        }
+                        @courtJudgeDisplay
+                    </div>
                 </div>
                 @if (!string.IsNullOrEmpty(Model.CNRNumber))
                 {
@@ -1477,11 +1490,11 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner Advocate</small>
-                        <div class="fw-semibold text-dark" id="live-pet-adv" style="word-break: break-word;">—</div>
+                        <div class="fw-semibold text-dark" id="live-pet-adv" style="word-break: break-word;">@(!string.IsNullOrWhiteSpace(Model.AdvocateName) ? Model.AdvocateName : "—")</div>
                     </div>
                     <div class="col-6 col-md-3">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Respondent</small>
-                        <div class="fw-semibold text-dark" id="live-respondent" style="word-break: break-word;">—</div>
+                        <div class="fw-semibold text-dark" id="live-respondent" style="word-break: break-word;">@(Model.Respondents?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.RespondentName))?.RespondentName ?? (!string.IsNullOrEmpty(Model.DivisionName) ? Model.DivisionName : "NWKRTC"))</div>
                     </div>
                     <div class="col-12 col-md-6">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Insurance / Extra Parties</small>
@@ -1561,50 +1574,60 @@
                         <div class="tab-content" id="ecourtsTabContent">
                             <!-- Orders & Judgments Pane -->
                             <div class="tab-pane fade show active" id="orders-pane" role="tabpanel">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
                                     <small class="text-muted"><i class="bi bi-shield-check text-success me-1"></i>Official Court Orders &amp; Judgments verified by eCourts Gateway</small>
                                     @if (!string.IsNullOrEmpty(Model.CNRNumber))
                                     {
-                                        <a href="/ECourts/DownloadAllOrdersZip?cnr=@Model.CNRNumber" class="btn btn-sm btn-outline-danger rounded-pill shadow-sm" title="Download all orders in a single ZIP">
-                                            <i class="bi bi-file-earmark-zip-fill me-1"></i> Download All Orders (ZIP)
-                                        </a>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill shadow-sm fw-semibold" id="btnRefreshOrdersTab" onclick="refreshCaseOrdersLive('@Model.CNRNumber', @Model.CaseID, this)" title="Refresh court orders, judgments & real-time documents">
+                                                <i class="bi bi-arrow-clockwise me-1" id="iconRefreshOrdersTab"></i> Refresh Orders &amp; Judgments
+                                            </button>
+                                            <a href="/ECourts/DownloadAllOrdersZip?cnr=@Model.CNRNumber" class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-semibold" title="Download all orders in a single ZIP">
+                                                <i class="bi bi-file-earmark-zip-fill me-1"></i> Download All Orders (ZIP)
+                                            </a>
+                                        </div>
                                     }
                                 </div>
                                 <div id="live-orders-container">
-                                    <div class="text-muted small py-2">
-                                        <i class="bi bi-hourglass-split me-1"></i> Querying Court Orders &amp; Judgments from eCourts Gateway...
+                                    <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                        <i class="bi bi-file-earmark-pdf text-primary fs-5 d-block mb-1"></i>
+                                        Click <strong>Refresh Orders &amp; Judgments</strong> to load verified court order copies.
                                     </div>
                                 </div>
                             </div>
                             <!-- Hearing History Pane -->
                             <div class="tab-pane fade" id="history-pane" role="tabpanel">
                                 <div id="live-history-container">
-                                    <div class="text-muted small py-2">
-                                        <i class="bi bi-hourglass-split me-1"></i> Loading Case Hearing History from eCourts Gateway...
+                                    <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                        <i class="bi bi-clock-history text-secondary fs-5 d-block mb-1"></i>
+                                        Click <strong>Fetch Live Status</strong> to view the complete case hearing history.
                                     </div>
                                 </div>
                             </div>
                             <!-- IA Applications Pane -->
                             <div class="tab-pane fade" id="ia-pane" role="tabpanel">
                                 <div id="live-ia-container">
-                                    <div class="text-muted small py-2">
-                                        <i class="bi bi-hourglass-split me-1"></i> Loading Interim Applications from eCourts Gateway...
+                                    <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                        <i class="bi bi-file-earmark-text text-secondary fs-5 d-block mb-1"></i>
+                                        Click <strong>Fetch Live Status</strong> to view interim applications.
                                     </div>
                                 </div>
                             </div>
                             <!-- Processes Pane -->
                             <div class="tab-pane fade" id="process-pane" role="tabpanel">
                                 <div id="live-process-container">
-                                    <div class="text-muted small py-2">
-                                        <i class="bi bi-hourglass-split me-1"></i> Loading Processes &amp; Notices from eCourts Gateway...
+                                    <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                        <i class="bi bi-envelope-paper text-secondary fs-5 d-block mb-1"></i>
+                                        Click <strong>Fetch Live Status</strong> to view process notices.
                                     </div>
                                 </div>
                             </div>
                             <!-- Full Case Details Pane -->
                             <div class="tab-pane fade" id="fulldata-pane" role="tabpanel">
                                 <div id="live-fulldata-container">
-                                    <div class="text-muted small py-2">
-                                        <i class="bi bi-hourglass-split me-1"></i> Loading Complete eCourts Data...
+                                    <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                        <i class="bi bi-card-text text-secondary fs-5 d-block mb-1"></i>
+                                        Click <strong>Fetch Live Status</strong> to view complete eCourts payload.
                                     </div>
                                 </div>
                             </div>
@@ -1640,12 +1663,19 @@
                 }
                 <div class="col-12 border-top pt-2 d-flex justify-content-between align-items-center">
                     <div class="small text-muted" id="live-sync-msg">
-                        <i class="bi bi-arrow-repeat me-1"></i> Auto-synced with eCourts Gateway
+                        @if (Model.LastNapixSyncAt.HasValue)
+                        {
+                            <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Synced: @Model.LastNapixSyncAt.Value.ToString("dd MMM yyyy, hh:mm tt") (@(Model.LastNapixSyncStatus ?? "Success"))</span>
+                        }
+                        else
+                        {
+                            <span><i class="bi bi-arrow-repeat me-1"></i> Auto-synced with eCourts Gateway</span>
+                        }
                     </div>
                     <div class="d-flex gap-2">
                         @if (!string.IsNullOrEmpty(Model.CNRNumber))
                         {
-                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill" onclick="fetchLiveCnrDetails('@Model.CNRNumber', @Model.CaseID)">
+                            <button type="button" class="btn btn-sm btn-outline-info rounded-pill" onclick="triggerFetchCaseLiveStatus()">
                                 <i class="bi bi-arrow-clockwise me-1"></i> Refresh Live Status
                             </button>
                         }
@@ -1925,15 +1955,15 @@
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                                        <div class="fw-semibold text-dark" id="live_filing_date_@appeal.AppealID">—</div>
+                                        <div class="fw-semibold text-dark" id="live_filing_date_@appeal.AppealID">@(appeal.CorpMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.CorpMFAYear.HasValue && appeal.CorpMFAYear > 1900 ? $"01-01-{appeal.CorpMFAYear}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Registration Date</small>
-                                        <div class="fw-semibold text-dark" id="live_reg_date_@appeal.AppealID">—</div>
+                                        <div class="fw-semibold text-dark" id="live_reg_date_@appeal.AppealID">@(appeal.CorpMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.CorpMFAYear.HasValue && appeal.CorpMFAYear > 1900 ? $"01-01-{appeal.CorpMFAYear}" : "—"))</div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                                        <div class="fw-semibold text-dark" id="live_decision_date_@appeal.AppealID">—</div>
+                                        <div class="fw-semibold text-dark" id="live_decision_date_@appeal.AppealID">@(appeal.ClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(appeal.CorpMFAStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</div>
                                     </div>
 
                                     <!-- Row 3: 2 columns -->
@@ -1980,27 +2010,27 @@
                                 <!-- Dossier Tabs Section -->
                                 <div class="col-12 mt-3 pt-2 border-top">
                                     <div class="card border-0 shadow-sm rounded-3 p-3 bg-white">
-                                        <ul class="nav nav-pills nav-fill dossier-tab-nav bg-light p-1 rounded-3 border mb-3" role="tablist">
+                                        <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex flex-wrap gap-1" role="tablist">
                                             <li class="nav-item">
-                                                <button class="nav-link active fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@appeal.AppealID" type="button">
+                                                <button class="nav-link active fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@appeal.AppealID" type="button">
                                                     <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History
                                                     <span class="badge bg-primary text-white rounded-pill ms-1" id="tabCountHistory_@appeal.AppealID">0</span>
                                                 </button>
                                             </li>
                                             <li class="nav-item">
-                                                <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabOrders_@appeal.AppealID" type="button">
+                                                <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabOrders_@appeal.AppealID" type="button">
                                                     <i class="bi bi-file-earmark-pdf-fill me-1 text-danger"></i> Orders &amp; Judgments
                                                     <span class="badge bg-danger text-white rounded-pill ms-1" id="tabCountOrders_@appeal.AppealID">0</span>
                                                 </button>
                                             </li>
                                             <li class="nav-item">
-                                                <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabIA_@appeal.AppealID" type="button">
+                                                <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabIA_@appeal.AppealID" type="button">
                                                     <i class="bi bi-journal-text me-1 text-warning"></i> Interim Applications (I.A.)
                                                     <span class="badge bg-warning text-dark rounded-pill ms-1" id="tabCountIA_@appeal.AppealID">0</span>
                                                 </button>
                                             </li>
                                             <li class="nav-item">
-                                                <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabParties_@appeal.AppealID" type="button">
+                                                <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabParties_@appeal.AppealID" type="button">
                                                     <i class="bi bi-card-heading me-1 text-info"></i> Full Case Details
                                                 </button>
                                             </li>
@@ -2009,15 +2039,15 @@
                                         <div class="tab-content">
                                             <!-- 1. Hearing History Tab -->
                                             <div class="tab-pane fade show active" id="tabHistory_@appeal.AppealID">
-                                                <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                    <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                        <thead class="bg-dark text-white sticky-top">
+                                                <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                    <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                        <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                             <tr>
-                                                                <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                <th class="py-2 px-3 text-nowrap" style="width:140px;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
-                                                                <th class="py-2 px-3" style="width:180px;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-chat-left-text me-1"></i>Business / Cause List</th>
+                                                                <th class="text-center py-2 px-2" style="width:5%; white-space:nowrap;">#</th>
+                                                                <th class="text-start py-2 ps-3 pe-2 text-nowrap" style="width:20%;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
+                                                                <th class="text-start py-2 px-3" style="width:43%;"><i class="bi bi-bank2 me-1"></i>Bench / Coram</th>
+                                                                <th class="text-center py-2 px-2" style="width:17%;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
+                                                                <th class="text-center py-2 px-2" style="width:15%; white-space:nowrap;"><i class="bi bi-gear me-1"></i>Action</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="tbodyHistory_@appeal.AppealID">
@@ -2029,15 +2059,15 @@
 
                                             <!-- 2. Orders & Judgments Tab -->
                                             <div class="tab-pane fade" id="tabOrders_@appeal.AppealID">
-                                                <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                    <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                        <thead class="text-white sticky-top" style="background: linear-gradient(135deg, #1e293b, #334155);">
+                                                <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                    <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                        <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                             <tr>
-                                                                <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                <th class="py-2 px-3 text-nowrap" style="width:130px;"><i class="bi bi-calendar-check me-1 text-danger"></i>Order Date</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-file-earmark-text me-1 text-info"></i>Order Type / Details</th>
-                                                                <th class="py-2 px-3"><i class="bi bi-bank me-1 text-warning"></i>Bench / Coram</th>
-                                                                <th class="py-2 px-3 text-end" style="width:160px;"><i class="bi bi-file-pdf me-1 text-danger"></i>Action / PDF</th>
+                                                                <th class="text-center py-2 px-2" style="width:6%; white-space:nowrap;">#</th>
+                                                                <th class="py-2 px-3 text-nowrap" style="width:18%;"><i class="bi bi-calendar-check me-1 text-danger"></i>Order Date</th>
+                                                                <th class="py-2 px-3" style="width:34%;"><i class="bi bi-file-earmark-text me-1 text-info"></i>Order Type / Details</th>
+                                                                <th class="py-2 px-3" style="width:22%;"><i class="bi bi-bank me-1 text-warning"></i>Bench / Coram</th>
+                                                                <th class="py-2 px-3 text-end" style="width:20%;"><i class="bi bi-file-pdf me-1 text-danger"></i>Action / PDF</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody id="tbodyOrders_@appeal.AppealID">
@@ -2093,9 +2123,9 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-warning border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-calendar-range-fill text-warning me-1"></i> Milestone Dates</div>
-                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_@appeal.AppealID" class="text-dark">—</strong></div>
-                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_@appeal.AppealID" class="text-dark">—</strong></div>
-                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_@appeal.AppealID" class="text-dark">—</strong></div>
+                                                            <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_@appeal.AppealID" class="text-dark">@(appeal.CorpMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong></div>
+                                                            <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_@appeal.AppealID" class="text-dark">@(appeal.CorpMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.CorpMFAYear.HasValue && appeal.CorpMFAYear > 1900 ? $"01-01-{appeal.CorpMFAYear}" : "—"))</strong></div>
+                                                            <div class="extra-small">Decision Date: <strong id="fullDisposalDate_@appeal.AppealID" class="text-dark">@(appeal.ClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(appeal.CorpMFAStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</strong></div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2350,15 +2380,15 @@
                                             </div>
                                             <div class="col-6 col-md-3">
                                                 <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Filing Date</small>
-                                                <div class="fw-semibold text-dark" id="live_filing_date_@(appeal.AppealID)_claimant">—</div>
+                                                <div class="fw-semibold text-dark" id="live_filing_date_@(appeal.AppealID)_claimant">@(appeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.ClaimantMFAYear.HasValue && appeal.ClaimantMFAYear > 1900 ? $"01-01-{appeal.ClaimantMFAYear}" : "—"))</div>
                                             </div>
                                             <div class="col-6 col-md-3">
                                                 <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Registration Date</small>
-                                                <div class="fw-semibold text-dark" id="live_reg_date_@(appeal.AppealID)_claimant">—</div>
+                                                <div class="fw-semibold text-dark" id="live_reg_date_@(appeal.AppealID)_claimant">@(appeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.ClaimantMFAYear.HasValue && appeal.ClaimantMFAYear > 1900 ? $"01-01-{appeal.ClaimantMFAYear}" : "—"))</div>
                                             </div>
                                             <div class="col-6 col-md-3">
                                                 <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Decision Date</small>
-                                                <div class="fw-semibold text-dark" id="live_decision_date_@(appeal.AppealID)_claimant">—</div>
+                                                <div class="fw-semibold text-dark" id="live_decision_date_@(appeal.AppealID)_claimant">@(appeal.ClaimantSCClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(appeal.ClaimantMFAStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</div>
                                             </div>
 
                                             <!-- Row 3: Coram & Classification -->
@@ -2408,27 +2438,27 @@
 
                                         <!-- Collapsible Full Dossier Tabs -->
                                         <div class="mt-4 pt-2 border-top">
-                                            <ul class="nav nav-pills nav-fill dossier-tab-nav bg-light p-1 rounded-3 border mb-3" role="tablist">
+                                            <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex flex-wrap gap-1" role="tablist">
                                                 <li class="nav-item">
-                                                    <button class="nav-link active fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@(appeal.AppealID)_claimant" type="button">
+                                                    <button class="nav-link active fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@(appeal.AppealID)_claimant" type="button">
                                                         <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History
                                                         <span class="badge bg-primary text-white rounded-pill ms-1" id="tabCountHistory_@(appeal.AppealID)_claimant">0</span>
                                                     </button>
                                                 </li>
                                                 <li class="nav-item">
-                                                    <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabOrders_@(appeal.AppealID)_claimant" type="button">
+                                                    <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabOrders_@(appeal.AppealID)_claimant" type="button">
                                                         <i class="bi bi-file-earmark-pdf-fill me-1 text-danger"></i> Orders &amp; Judgments
                                                         <span class="badge bg-danger text-white rounded-pill ms-1" id="tabCountOrders_@(appeal.AppealID)_claimant">0</span>
                                                     </button>
                                                 </li>
                                                 <li class="nav-item">
-                                                    <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabIA_@(appeal.AppealID)_claimant" type="button">
+                                                    <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabIA_@(appeal.AppealID)_claimant" type="button">
                                                         <i class="bi bi-folder-check me-1 text-warning"></i> Interim Applications (I.A.)
                                                         <span class="badge bg-warning text-dark rounded-pill ms-1" id="tabCountIA_@(appeal.AppealID)_claimant">0</span>
                                                     </button>
                                                 </li>
                                                 <li class="nav-item">
-                                                    <button class="nav-link fw-bold small py-2 rounded-2" data-bs-toggle="tab" data-bs-target="#tabParties_@(appeal.AppealID)_claimant" type="button">
+                                                    <button class="nav-link fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabParties_@(appeal.AppealID)_claimant" type="button">
                                                         <i class="bi bi-card-heading me-1 text-info"></i> Full Case Details
                                                     </button>
                                                 </li>
@@ -2436,15 +2466,15 @@
 
                                             <div class="tab-content">
                                                 <div class="tab-pane fade show active" id="tabHistory_@(appeal.AppealID)_claimant">
-                                                    <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                        <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                            <thead class="bg-dark text-white sticky-top">
+                                                    <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                        <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                            <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                                 <tr>
-                                                                    <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                    <th class="py-2 px-3 text-nowrap" style="width:130px;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
-                                                                    <th class="py-2 px-3" style="width:180px;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
-                                                                    <th class="py-2 px-3"><i class="bi bi-bank2 me-1"></i>Bench / Judge</th>
-                                                                    <th class="py-2 px-3"><i class="bi bi-chat-left-text me-1"></i>Business / Remarks</th>
+                                                                    <th class="text-center py-2 px-2" style="width:6%; white-space:nowrap;">#</th>
+                                                                    <th class="py-2 px-3 text-nowrap" style="width:18%;"><i class="bi bi-calendar-event me-1"></i>Hearing Date</th>
+                                                                    <th class="py-2 px-3" style="width:25%;"><i class="bi bi-bookmark-star me-1"></i>Purpose / Stage</th>
+                                                                    <th class="py-2 px-3" style="width:21%;"><i class="bi bi-bank2 me-1"></i>Bench / Judge</th>
+                                                                    <th class="py-2 px-3" style="width:30%;"><i class="bi bi-chat-left-text me-1"></i>Business / Remarks</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="tbodyHistory_@(appeal.AppealID)_claimant">
@@ -2454,15 +2484,15 @@
                                                     </div>
                                                 </div>
                                                 <div class="tab-pane fade" id="tabOrders_@(appeal.AppealID)_claimant">
-                                                    <div class="table-responsive rounded-3 border" style="max-height: 350px; overflow-y: auto;">
-                                                        <table class="table table-sm table-hover align-middle extra-small mb-0" style="min-width: 600px;">
-                                                            <thead class="text-white sticky-top" style="background: linear-gradient(135deg, #1e293b, #334155);">
+                                                    <div class="table-responsive rounded-3 border" style="max-height: 420px; overflow-y: auto;">
+                                                        <table class="table table-hover table-striped align-middle extra-small mb-0" style="min-width: 760px; width: 100%; table-layout: fixed;">
+                                                            <thead class="table-dark small text-uppercase sticky-top" style="position: sticky; top: 0; z-index: 2;">
                                                                 <tr>
-                                                                    <th class="py-2 px-3" style="width:40px;">#</th>
-                                                                    <th class="py-2 px-3 text-nowrap" style="width:130px;"><i class="bi bi-calendar-check me-1 text-danger"></i>Order Date</th>
-                                                                    <th class="py-2 px-3"><i class="bi bi-file-earmark-text me-1 text-info"></i>Order Type / Details</th>
-                                                                    <th class="py-2 px-3"><i class="bi bi-bank me-1 text-warning"></i>Bench / Judge</th>
-                                                                    <th class="py-2 px-3 text-end" style="width:160px;"><i class="bi bi-file-pdf me-1 text-danger"></i>Action / PDF</th>
+                                                                    <th class="text-center py-2 px-2" style="width:6%; white-space:nowrap;">#</th>
+                                                                    <th class="py-2 px-3 text-nowrap" style="width:18%;"><i class="bi bi-calendar-check me-1 text-danger"></i>Order Date</th>
+                                                                    <th class="py-2 px-3" style="width:34%;"><i class="bi bi-file-earmark-text me-1 text-info"></i>Order Type / Details</th>
+                                                                    <th class="py-2 px-3" style="width:22%;"><i class="bi bi-bank me-1 text-warning"></i>Bench / Judge</th>
+                                                                    <th class="py-2 px-3 text-end" style="width:20%;"><i class="bi bi-file-pdf me-1 text-danger"></i>Action / PDF</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody id="tbodyOrders_@(appeal.AppealID)_claimant">
@@ -2514,9 +2544,9 @@
                                                         <div class="col-md-6">
                                                             <div class="p-3 bg-white border-start border-warning border-4 rounded-3 shadow-sm h-100">
                                                                 <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-calendar-range-fill text-warning me-1"></i> Milestone Dates</div>
-                                                                <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_@(appeal.AppealID)_claimant" class="text-dark">—</strong></div>
-                                                                <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_@(appeal.AppealID)_claimant" class="text-dark">—</strong></div>
-                                                                <div class="extra-small">Decision Date: <strong id="fullDisposalDate_@(appeal.AppealID)_claimant" class="text-dark">—</strong></div>
+                                                                <div class="extra-small mb-1">Filing Date: <strong id="fullFilingDate_@(appeal.AppealID)_claimant" class="text-dark">@(appeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong></div>
+                                                                <div class="extra-small mb-1">Registration Date: <strong id="fullRegDate_@(appeal.AppealID)_claimant" class="text-dark">@(appeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? (appeal.ClaimantMFAYear.HasValue && appeal.ClaimantMFAYear > 1900 ? $"01-01-{appeal.ClaimantMFAYear}" : "—"))</strong></div>
+                                                                <div class="extra-small">Decision Date: <strong id="fullDisposalDate_@(appeal.AppealID)_claimant" class="text-dark">@(appeal.ClaimantSCClosureDate?.ToString("dd-MM-yyyy") ?? (string.Equals(appeal.ClaimantMFAStatus, "Disposed", StringComparison.OrdinalIgnoreCase) ? "Disposed" : "Pending"))</strong></div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -3008,7 +3038,7 @@
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">MACT Court:</div>
-                                                <div class="info-value">@(string.IsNullOrEmpty(Model.MACTName) ? "— Not specified —" : Model.MACTName)</div>
+                                                <div class="info-value" id="modal-court-est">@(string.IsNullOrEmpty(Model.MACTName) ? "— Not specified —" : Model.MACTName)</div>
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">16-Digit CNR:</div>
@@ -3032,17 +3062,21 @@
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Court Hall / Bench:</div>
-                                                <div class="info-value">@(string.IsNullOrEmpty(Model.CourtHall) ? "—" : Model.CourtHall)</div>
+                                                <div class="info-value" id="modal-court-hall">@(string.IsNullOrEmpty(Model.CourtHall) ? "—" : Model.CourtHall)</div>
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Case Status / Type:</div>
                                                 <div class="info-value">
-                                                    <span class="badge @(Model.CaseType == "Disposed" ? "bg-success-subtle text-success border border-success-subtle" : "bg-warning-subtle text-warning-emphasis border border-warning-subtle")">
+                                                    <span class="badge @(Model.CaseType == "Disposed" ? "bg-success-subtle text-success border border-success-subtle" : "bg-warning-subtle text-warning-emphasis border border-warning-subtle")" id="modal-case-type-badge">
                                                         @Model.CaseType
                                                     </span>
                                                     @if (!string.IsNullOrEmpty(Model.CaseStatus) && Model.CaseStatus != Model.CaseType)
                                                     {
-                                                        <span class="badge bg-light text-secondary border ms-1">@Model.CaseStatus</span>
+                                                        <span class="badge bg-light text-secondary border ms-1" id="modal-case-status-badge">@Model.CaseStatus</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-light text-secondary border ms-1 d-none" id="modal-case-status-badge"></span>
                                                     }
                                                 </div>
                                             </div>
@@ -3246,7 +3280,7 @@
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Petition Date:</div>
-                                                <div class="info-value">
+                                                <div class="info-value" id="modal-filing-date">
                                                     @(Model.ClaimPetitionDate.HasValue ? Model.ClaimPetitionDate.Value.ToString("dd-MM-yyyy") : (Model.AdverseAward?.ClaimPetitionDate.HasValue == true ? Model.AdverseAward.ClaimPetitionDate.Value.ToString("dd-MM-yyyy") : "—"))
                                                 </div>
                                             </div>
@@ -3402,6 +3436,17 @@
                                     </div>
                                 </div>
 
+                                <!-- Live eCourts Co-Parties / Extra Parties -->
+                                <div class="card shadow-sm border-0 mb-3 bg-white d-none" id="modal-extra-parties-card">
+                                    <div class="card-header bg-white py-2 border-bottom fw-bold small text-primary d-flex align-items-center justify-content-between">
+                                        <span><i class="bi bi-shield-check me-1"></i> Live eCourts Co-Parties / Insurance</span>
+                                        <span class="badge bg-info-subtle text-info border">eCourts NAPIX</span>
+                                    </div>
+                                    <div class="card-body p-3">
+                                        <div class="small fw-semibold text-dark" id="modal-extra-parties">—</div>
+                                    </div>
+                                </div>
+
                                 <!-- Witnesses & Evidence Cards -->
                                 <div class="card shadow-sm border-0 bg-white">
                                     <div class="card-header bg-white py-2 border-bottom fw-bold small text-primary">
@@ -3537,11 +3582,11 @@
                                         <div class="info-grid">
                                             <div class="info-row">
                                                 <div class="info-label">Current Stage:</div>
-                                                <div class="info-value fw-bold text-dark">@(string.IsNullOrEmpty(Model.CurrentStage) ? "—" : Model.CurrentStage)</div>
+                                                <div class="info-value fw-bold text-dark" id="modal-stage">@(string.IsNullOrEmpty(Model.CurrentStage) ? "—" : Model.CurrentStage)</div>
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Next Hearing Date:</div>
-                                                <div class="info-value fw-bold text-primary">
+                                                <div class="info-value fw-bold text-primary" id="modal-next-hearing-date">
                                                     @(Model.NextHearingDate.HasValue ? Model.NextHearingDate.Value.ToString("dd-MM-yyyy") : "— Not Scheduled —")
                                                 </div>
                                             </div>
@@ -3917,7 +3962,7 @@
                                         <div class="info-grid">
                                             <div class="info-row">
                                                 <div class="info-label">Disposal Status:</div>
-                                                <div class="info-value fw-bold">@(string.IsNullOrEmpty(Model.DisposalStatus) ? "Pending" : Model.DisposalStatus)</div>
+                                                <div class="info-value fw-bold" id="modal-disposal-status">@(string.IsNullOrEmpty(Model.DisposalStatus) ? "Pending" : Model.DisposalStatus)</div>
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Disposal Result:</div>
@@ -3942,7 +3987,7 @@
                                             </div>
                                             <div class="info-row">
                                                 <div class="info-label">Closure Date:</div>
-                                                <div class="info-value fw-bold text-dark">
+                                                <div class="info-value fw-bold text-dark" id="modal-closure-date">
                                                     @(Model.ClosureDate.HasValue ? Model.ClosureDate.Value.ToString("dd-MM-yyyy") : (Model.AdverseAward?.ClosureDate.HasValue == true ? Model.AdverseAward.ClosureDate.Value.ToString("dd-MM-yyyy") : "—"))
                                                 </div>
                                             </div>

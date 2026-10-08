@@ -54,17 +54,9 @@
                 }
                 else
                 {
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold dropdown-toggle d-inline-flex align-items-center" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="bi bi-shield-check me-2"></i> ACTION
-                        </button>
-                        <ul class="dropdown-menu shadow border-0 rounded-3">
-                            <li><a class="dropdown-item py-2" href="@Url.Action("ArisingLOAction", "Labour", new { id = Model.ArisingID })"><i class="bi bi-person-badge text-info me-2"></i>Law Officer (LO) Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("ArisingDyCLOAction", "Labour", new { id = Model.ArisingID })"><i class="bi bi-person-check text-secondary me-2"></i>Dy. CLO Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("ArisingCLOAction", "Labour", new { id = Model.ArisingID })"><i class="bi bi-award text-primary me-2"></i>Chief Law Officer (CLO) Action</a></li>
-                            <li><a class="dropdown-item py-2" href="@Url.Action("ArisingMDAction", "Labour", new { id = Model.ArisingID })"><i class="bi bi-check-circle text-success me-2"></i>Managing Director (MD) Action</a></li>
-                        </ul>
-                    </div>
+                    <a href="@Url.Action("Action", "Labour", new { id = Model.ArisingID, isArising = true })" class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center">
+                        <i class="bi bi-shield-check me-2"></i> Central Office Action
+                    </a>
                 }
             }
             else if (Model.SentToCO != true)
@@ -1324,7 +1316,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Syncing Live e-Courts...';
 
-            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=false')
+            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=false&module=Labour')
                 .then(r => r.json())
                 .then(res => {
                     if (res && res.success && res.data) {
@@ -1394,7 +1386,7 @@
             const statusEl = document.getElementById('aa_live_updated_' + pane);
             if (statusEl) statusEl.innerHTML = '<span class="badge bg-info-subtle text-info border px-2 py-1" style="font-size:.68rem"><i class="bi bi-broadcast-pin me-1"></i>Fetching Live...</span>';
 
-            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true')
+            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true&module=Labour')
                 .then(r => r.json())
                 .then(res => {
                     if (res && res.success && res.data) {

@@ -15,6 +15,7 @@ builder.Logging.AddDebug();
 builder.Services.Configure<ECourtsOptions>(builder.Configuration.GetSection(ECourtsOptions.SectionName));
 builder.Services.Configure<SmsOptions>(builder.Configuration.GetSection(SmsOptions.SectionName));
 builder.Services.Configure<TR18Options>(builder.Configuration.GetSection(TR18Options.SectionName));
+builder.Services.Configure<MVCCaseManagement.Models.AI.NyayaPathaOptions>(builder.Configuration.GetSection(MVCCaseManagement.Models.AI.NyayaPathaOptions.SectionName));
 
 // Add services to the container with global AntiForgeryToken validation on state-changing requests
 builder.Services.AddControllersWithViews(options =>
@@ -66,11 +67,37 @@ builder.Services.AddScoped<IECourtsRepository, ECourtsRepository>();
 builder.Services.AddScoped<ICaseNotingRepository, CaseNotingRepository>();
 builder.Services.AddHostedService<MVCCaseManagement.Services.NotificationBackgroundService>();
 
+// Nyaya Patha AI Legal Research Assistant Subsystem
+builder.Services.Configure<MVCCaseManagement.Models.AI.AIOptions>(builder.Configuration.GetSection(MVCCaseManagement.Models.AI.AIOptions.SectionName));
+builder.Services.Configure<MVCCaseManagement.Models.AI.NyayaPathaOptions>(builder.Configuration.GetSection(MVCCaseManagement.Models.AI.NyayaPathaOptions.SectionName));
+
+// Local Ollama Inference & Intelligence Services
+builder.Services.AddHttpClient<MVCCaseManagement.Services.AI.OllamaLLMProvider>();
+builder.Services.AddSingleton<MVCCaseManagement.Services.AI.ILLMProvider>(sp => sp.GetRequiredService<MVCCaseManagement.Services.AI.OllamaLLMProvider>());
+builder.Services.AddSingleton<MVCCaseManagement.Services.AI.ILLMService, MVCCaseManagement.Services.AI.LLMService>();
+
+builder.Services.AddHttpClient<MVCCaseManagement.Services.AI.ILegalWebSearchService, MVCCaseManagement.Services.AI.LegalWebSearchService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IQueryRouterService, MVCCaseManagement.Services.AI.QueryRouterService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IDocumentTextExtractor, MVCCaseManagement.Services.AI.DocumentTextExtractor>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IDocumentSearchService, MVCCaseManagement.Services.AI.DocumentSearchService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IConflictDetectorService, MVCCaseManagement.Services.AI.ConflictDetectorService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.ISimilarCaseService, MVCCaseManagement.Services.AI.SimilarCaseService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IECourtsContextService, MVCCaseManagement.Services.AI.ECourtsContextService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.ILegalSearchService, MVCCaseManagement.Services.AI.LegalSearchService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IUnifiedLegalResearchService, MVCCaseManagement.Services.AI.UnifiedLegalResearchService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.ICaseContextBuilder, MVCCaseManagement.Services.AI.CaseContextBuilder>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IPromptManagementService, MVCCaseManagement.Services.AI.PromptManagementService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IAIAuditService, MVCCaseManagement.Services.AI.AIAuditService>();
+
+
 // Add SMS Service
 builder.Services.AddHttpClient<ISMSService, SMSService>();
 
 // Add TR-18 API Service with standard TLS verification
 builder.Services.AddHttpClient<ITR18Service, TR18Service>();
+
+// Add NAPIX quota tracker (singleton — shared across all requests so the call counter is accurate)
+builder.Services.AddSingleton<MVCCaseManagement.Utils.NapixQuotaService>();
 
 // Add eCourts NAPIX Service with modern TLS 1.2 / TLS 1.3 protocol enforcement
 builder.Services.AddHttpClient<IECourtsNapixService, ECourtsNapixService>()
@@ -82,6 +109,10 @@ builder.Services.AddHttpClient<IECourtsNapixService, ECourtsNapixService>()
         },
         AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
     });
+
+// Add NAPIX Sync Engine and Background Hosted Service
+builder.Services.AddSingleton<MVCCaseManagement.Utils.NapixSyncEngine>();
+builder.Services.AddHostedService<MVCCaseManagement.Services.NapixBackgroundSyncService>();
 
 // Add authentication
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -127,6 +158,13 @@ builder.Services.AddAuthorization(options =>
         policy.RequireAssertion(context =>
             context.User.IsInRole("Admin") ||
             context.User.IsInRole("MD")));
+
+    // Nyaya Patha AI Assistant Access Policy:
+    // Open to all authenticated NWKRTC users across all Divisions and Central Office ($0 Local AI Cost)
+    options.AddPolicy("NyayaPathaAIAccess", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+    });
 });
 
 var app = builder.Build();
@@ -178,8 +216,15 @@ else
 
 app.UseResponseCompression();
 
-// Serve standard public static assets (CSS, JS, images, favicon)
-app.UseStaticFiles();
+// Serve standard public static assets (CSS, JS, images, favicon) with client-side caching headers
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // Cache static assets for 7 days to eliminate redundant downloads and maximize page load speeds
+        ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=604800");
+    }
+});
 
 app.UseRouting();
 

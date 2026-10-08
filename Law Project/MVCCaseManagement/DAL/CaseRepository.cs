@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
 using System.Text.Json;
+using Dapper;
 using MVCCaseManagement.Models;
 
 namespace MVCCaseManagement.DAL
@@ -18,33 +19,19 @@ namespace MVCCaseManagement.DAL
 
         public IEnumerable<ConnectedCaseViewModel> SearchLinkedCases(string vehicleNo, DateTime accidentDate)
         {
-            var cases = new List<ConnectedCaseViewModel>();
+            using var conn = new SqlConnection(_db.GetConnectionString());
             string query = @"
-                SELECT c.MVCNo, c.MVCYear, m.MACTName as MACT, c.CurrentStage
+                SELECT c.MVCNo AS ConnectedMVCNo, 
+                       ISNULL(c.MVCYear, 0) AS ConnectedYear, 
+                       ISNULL(m.MACTName, '') AS MACT, 
+                       ISNULL(c.CurrentStage, '') AS CurrentStage, 
+                       'Auto-linked by system' AS Remarks
                 FROM MVC_CASES c
                 LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                 WHERE REPLACE(c.VehicleNo, ' ', '') = REPLACE(@VehicleNo, ' ', '')
                   AND CAST(c.AccidentDate AS DATE) = CAST(@AccidentDate AS DATE)";
 
-            var parameters = new[]
-            {
-                new SqlParameter("@VehicleNo", vehicleNo ?? (object)DBNull.Value),
-                new SqlParameter("@AccidentDate", accidentDate.Date)
-            };
-
-            DataTable dt = _db.ExecuteQuery(query, parameters);
-            foreach (DataRow row in dt.Rows)
-            {
-                cases.Add(new ConnectedCaseViewModel
-                {
-                    ConnectedMVCNo = row["MVCNo"]?.ToString() ?? "",
-                    ConnectedYear = row["MVCYear"] != DBNull.Value ? Convert.ToInt32(row["MVCYear"]) : 0,
-                    MACT = row["MACT"]?.ToString() ?? "",
-                    CurrentStage = row["CurrentStage"]?.ToString() ?? "",
-                    Remarks = "Auto-linked by system"
-                });
-            }
-            return cases;
+            return conn.Query<ConnectedCaseViewModel>(query, new { VehicleNo = vehicleNo, AccidentDate = accidentDate.Date });
         }
 
         public int SaveCase(MVCCaseViewModel model)
@@ -61,7 +48,7 @@ namespace MVCCaseManagement.DAL
                         if (!string.IsNullOrEmpty(model.CNRNumber))
                         {
                             string cnrDupQuery = "SELECT COUNT(*) FROM MVC_CASES WHERE CNRNumber = @CNRNumber";
-                            var cnrDupCmd = new SqlCommand(cnrDupQuery, conn, trans);
+                            using var cnrDupCmd = new SqlCommand(cnrDupQuery, conn, trans);
                             cnrDupCmd.Parameters.AddWithValue("@CNRNumber", model.CNRNumber);
                             existingCount = (int)cnrDupCmd.ExecuteScalar();
                             if (existingCount > 0)
@@ -72,7 +59,7 @@ namespace MVCCaseManagement.DAL
                             string duplicateCheckQuery = @"
                                 SELECT COUNT(*) FROM MVC_CASES 
                                 WHERE MVCNo = @MVCNo AND MVCYear = @MVCYear";
-                            var dupCmd = new SqlCommand(duplicateCheckQuery, conn, trans);
+                            using var dupCmd = new SqlCommand(duplicateCheckQuery, conn, trans);
                             dupCmd.Parameters.AddWithValue("@MVCNo", model.MVCNo?.Trim() ?? string.Empty);
                             dupCmd.Parameters.AddWithValue("@MVCYear", model.MVCYear);
                             existingCount = (int)dupCmd.ExecuteScalar();
@@ -102,7 +89,7 @@ namespace MVCCaseManagement.DAL
                                     @IsOppositeVehicleInmate, @ClaimRemark, @ClaimPetitionDate, @HasInterimOrder, @InterimOrderFilePath,
                                     @CNRNumber, @EstCode, @CaseTypeCode)";
 
-                        var cmd = new SqlCommand(mainQuery, conn, trans);
+                        using var cmd = new SqlCommand(mainQuery, conn, trans);
                         cmd.Parameters.AddWithValue("@DivisionID", model.DivisionID);
                         cmd.Parameters.AddWithValue("@MVCNo", model.MVCNo?.Trim() ?? string.Empty);
                         cmd.Parameters.AddWithValue("@MVCYear", model.MVCYear);
@@ -160,7 +147,7 @@ namespace MVCCaseManagement.DAL
                         // 2. Save Petitioners
                         foreach (var pet in model.Petitioners)
                         {
-                            var petCmd = new SqlCommand("INSERT INTO MVC_CASE_PETITIONERS (CaseID, PetitionerName, Relationship) VALUES (@CaseID, @PetitionerName, @Relationship)", conn, trans);
+                            using var petCmd = new SqlCommand("INSERT INTO MVC_CASE_PETITIONERS (CaseID, PetitionerName, Relationship) VALUES (@CaseID, @PetitionerName, @Relationship)", conn, trans);
                             petCmd.Parameters.AddWithValue("@CaseID", caseId);
                             petCmd.Parameters.AddWithValue("@PetitionerName", pet.PetitionerName);
                             string finalRel = pet.Relationship;
@@ -177,7 +164,7 @@ namespace MVCCaseManagement.DAL
                         {
                             if (!string.IsNullOrEmpty(resp.RespondentName))
                             {
-                                var respCmd = new SqlCommand("INSERT INTO MVC_CASE_RESPONDENTS (CaseID, RespondentName, Remarks) VALUES (@CaseID, @RespondentName, @Remarks)", conn, trans);
+                                using var respCmd = new SqlCommand("INSERT INTO MVC_CASE_RESPONDENTS (CaseID, RespondentName, Remarks) VALUES (@CaseID, @RespondentName, @Remarks)", conn, trans);
                                 respCmd.Parameters.AddWithValue("@CaseID", caseId);
                                 respCmd.Parameters.AddWithValue("@RespondentName", resp.RespondentName);
                                 respCmd.Parameters.AddWithValue("@Remarks", resp.Remarks ?? (object)DBNull.Value);
@@ -188,7 +175,7 @@ namespace MVCCaseManagement.DAL
                         // 3. Save Connected Cases (Section E)
                         foreach (var connCase in model.ConnectedCases)
                         {
-                            var connCmd = new SqlCommand("INSERT INTO MVC_CASE_CONNECTED (CaseID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@CaseID, @MVCNo, @Year, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
+                            using var connCmd = new SqlCommand("INSERT INTO MVC_CASE_CONNECTED (CaseID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@CaseID, @MVCNo, @Year, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
                             connCmd.Parameters.AddWithValue("@CaseID", caseId);
                             connCmd.Parameters.AddWithValue("@MVCNo", connCase.ConnectedMVCNo);
                             connCmd.Parameters.AddWithValue("@Year", connCase.ConnectedYear);
@@ -203,7 +190,7 @@ namespace MVCCaseManagement.DAL
                         {
                             if (!string.IsNullOrEmpty(vno))
                             {
-                                var vnoCmd = new SqlCommand("INSERT INTO MVC_CASE_OPPOSITE_VEHICLES (CaseID, VehicleNo) VALUES (@CaseID, @VehicleNo)", conn, trans);
+                                using var vnoCmd = new SqlCommand("INSERT INTO MVC_CASE_OPPOSITE_VEHICLES (CaseID, VehicleNo) VALUES (@CaseID, @VehicleNo)", conn, trans);
                                 vnoCmd.Parameters.AddWithValue("@CaseID", caseId);
                                 vnoCmd.Parameters.AddWithValue("@VehicleNo", vno);
                                 vnoCmd.ExecuteNonQuery();
@@ -218,7 +205,7 @@ namespace MVCCaseManagement.DAL
                             {
                                 if (!string.IsNullOrEmpty(doc.DocName))
                                 {
-                                    var docCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_DOCS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)", conn, trans);
+                                    using var docCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_DOCS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)", conn, trans);
                                     docCmd.Parameters.AddWithValue("@CaseID", caseId);
                                     docCmd.Parameters.AddWithValue("@DocName", doc.DocName);
                                     docCmd.Parameters.AddWithValue("@PageCount", doc.PageCount ?? (object)DBNull.Value);
@@ -265,7 +252,7 @@ namespace MVCCaseManagement.DAL
                                     @LossOfDependency, @LossOfConsortium, @LossOfEstate, @FuneralExpenses, @LossOfLoveAffection, @MedicalExpenseOther, @AgeProofPath,
                                     @PainSufferings, @ConveyanceAttendant, @LossOfFutureIncome, @LossOfIncomeLaidUp, @LossOfAmenities, @FutureMedicalExpenses, @InjuryOtherExpense, @CustomCompensation, @EPNumber, @EPCourt, @EPStage, @EPNextHearingDate, @RoundOffAmount, @AsPerECourts)";
 
-                            var advCmd = new SqlCommand(advQuery, conn, trans);
+                            using var advCmd = new SqlCommand(advQuery, conn, trans);
                             advCmd.Parameters.AddWithValue("@CaseID", caseId);
                             advCmd.Parameters.AddWithValue("@BusInsurance", adverseAward.BusInsuranceDetails ?? (object)DBNull.Value);
                             advCmd.Parameters.AddWithValue("@IsBusInsured", adverseAward.IsBusInsured);
@@ -388,80 +375,101 @@ namespace MVCCaseManagement.DAL
                             if (model.DisposalResult == "Against" && model.AdverseAward != null)
                             {
                                 // PW Lists
-                                foreach (var pw in adverseAward.PetitionerPWNames)
+                                if (adverseAward.PetitionerPWNames != null)
                                 {
-                                    var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type) VALUES (@CaseID, @Name, 'Petitioner')", conn, trans);
-                                pwCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                pwCmd.Parameters.AddWithValue("@Name", pw);
-                                pwCmd.ExecuteNonQuery();
-                            }
-                            foreach (var dr in adverseAward.Doctors)
-                            {
-                                var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, IsTreated) VALUES (@CaseID, @Name, 'Doctor', @IsTreated)", conn, trans);
-                                pwCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                pwCmd.Parameters.AddWithValue("@Name", dr.DoctorName);
-                                pwCmd.Parameters.AddWithValue("@IsTreated", dr.IsTreated);
-                                pwCmd.ExecuteNonQuery();
-                            }
-                            // RW
-                            foreach (var rw in adverseAward.RWNames)
-                            {
-                                var rwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_RW (CaseID, RWName) VALUES (@CaseID, @Name)", conn, trans);
-                                rwCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                rwCmd.Parameters.AddWithValue("@Name", rw);
-                                rwCmd.ExecuteNonQuery();
-                            }
-                            // Adverse Connected
-                            foreach (var advConn in adverseAward.ConnectedCases)
-                            {
-                                 var acCmd = new SqlCommand(@"INSERT INTO MVC_CASE_ADVERSE_CONNECTED 
-                                    (CaseID, CaseDetails, Status, CurrentStage, AwardAmount, InterestRate, VictimAge, Occupation, IncomeConsidered, InjuryDetails) 
-                                    VALUES (@CaseID, @Details, @Status, @CurrentStage, @AwardAmount, @InterestRate, @VictimAge, @Occupation, @IncomeConsidered, @InjuryDetails)", conn, trans);
-                                acCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                string details = $"{advConn.ConnectedMVCNo} / {advConn.ConnectedYear}";
-                                if (!string.IsNullOrEmpty(advConn.MACT)) details += $" - {advConn.MACT}";
-                                acCmd.Parameters.AddWithValue("@Details", details);
-                                acCmd.Parameters.AddWithValue("@Status", advConn.Status ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@CurrentStage", advConn.CurrentStage ?? (object)DBNull.Value);
-                                
-                                // Award Details
-                                acCmd.Parameters.AddWithValue("@AwardAmount", advConn.AwardDetails.AwardAmount ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@InterestRate", advConn.AwardDetails.InterestRate ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@VictimAge", advConn.AwardDetails.VictimAge ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@Occupation", advConn.AwardDetails.Occupation ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@IncomeConsidered", advConn.AwardDetails.IncomeConsidered ?? (object)DBNull.Value);
-                                acCmd.Parameters.AddWithValue("@InjuryDetails", advConn.AwardDetails.InjuryDetails ?? (object)DBNull.Value);
-
-                                acCmd.ExecuteNonQuery();
-                            }
-                        }
-
-                        // 6. Save Third Party Evidence (Respondent & Corporation)
-                        if (model.ThirdPartyFlag)
-                        {
-                            foreach (var ev in model.RespondentEvidence)
-                            {
-                                if (!string.IsNullOrEmpty(ev.Name))
+                                    foreach (var pw in adverseAward.PetitionerPWNames)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(pw)) continue;
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type) VALUES (@CaseID, @Name, 'Petitioner')", conn, trans);
+                                        pwCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                        pwCmd.Parameters.AddWithValue("@Name", pw);
+                                        pwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                if (adverseAward.Doctors != null)
                                 {
-                                    var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Remark) VALUES (@CaseID, @Name, 'TP_Respondent', @Remark)", conn, trans);
-                                    evCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                    evCmd.Parameters.AddWithValue("@Name", ev.Name);
-                                    evCmd.Parameters.AddWithValue("@Remark", ev.Remark ?? (object)DBNull.Value);
-                                    evCmd.ExecuteNonQuery();
+                                    foreach (var dr in adverseAward.Doctors)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(dr.DoctorName)) continue;
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, IsTreated) VALUES (@CaseID, @Name, 'Doctor', @IsTreated)", conn, trans);
+                                        pwCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                        pwCmd.Parameters.AddWithValue("@Name", dr.DoctorName);
+                                        pwCmd.Parameters.AddWithValue("@IsTreated", dr.IsTreated);
+                                        pwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                // RW
+                                if (adverseAward.RWNames != null)
+                                {
+                                    foreach (var rw in adverseAward.RWNames)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(rw)) continue;
+                                        using var rwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_RW (CaseID, RWName) VALUES (@CaseID, @Name)", conn, trans);
+                                        rwCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                        rwCmd.Parameters.AddWithValue("@Name", rw);
+                                        rwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                // Adverse Connected
+                                if (adverseAward.ConnectedCases != null)
+                                {
+                                    foreach (var advConn in adverseAward.ConnectedCases)
+                                    {
+                                        using var acCmd = new SqlCommand(@"INSERT INTO MVC_CASE_ADVERSE_CONNECTED 
+                                            (CaseID, CaseDetails, Status, CurrentStage, AwardAmount, InterestRate, VictimAge, Occupation, IncomeConsidered, InjuryDetails) 
+                                            VALUES (@CaseID, @Details, @Status, @CurrentStage, @AwardAmount, @InterestRate, @VictimAge, @Occupation, @IncomeConsidered, @InjuryDetails)", conn, trans);
+                                        acCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                        string details = $"{advConn.ConnectedMVCNo} / {advConn.ConnectedYear}";
+                                        if (!string.IsNullOrEmpty(advConn.MACT)) details += $" - {advConn.MACT}";
+                                        acCmd.Parameters.AddWithValue("@Details", details);
+                                        acCmd.Parameters.AddWithValue("@Status", advConn.Status ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@CurrentStage", advConn.CurrentStage ?? (object)DBNull.Value);
+                                        
+                                        // Award Details
+                                        acCmd.Parameters.AddWithValue("@AwardAmount", advConn.AwardDetails?.AwardAmount ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@InterestRate", advConn.AwardDetails?.InterestRate ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@VictimAge", advConn.AwardDetails?.VictimAge ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@Occupation", advConn.AwardDetails?.Occupation ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@IncomeConsidered", advConn.AwardDetails?.IncomeConsidered ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@InjuryDetails", advConn.AwardDetails?.InjuryDetails ?? (object)DBNull.Value);
+
+                                        acCmd.ExecuteNonQuery();
+                                    }
                                 }
                             }
-                            foreach (var ev in model.CorpEvidence)
+
+                            // 6. Save Third Party Evidence (Respondent & Corporation)
+                            if (model.ThirdPartyFlag)
                             {
-                                if (!string.IsNullOrEmpty(ev.Name))
+                                if (model.RespondentEvidence != null)
                                 {
-                                    var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Designation) VALUES (@CaseID, @Name, 'TP_Corporation', @Designation)", conn, trans);
-                                    evCmd.Parameters.AddWithValue("@CaseID", caseId);
-                                    evCmd.Parameters.AddWithValue("@Name", ev.Name);
-                                    evCmd.Parameters.AddWithValue("@Designation", ev.Designation ?? (object)DBNull.Value);
-                                    evCmd.ExecuteNonQuery();
+                                    foreach (var ev in model.RespondentEvidence)
+                                    {
+                                        if (!string.IsNullOrEmpty(ev.Name))
+                                        {
+                                            using var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Remark) VALUES (@CaseID, @Name, 'TP_Respondent', @Remark)", conn, trans);
+                                            evCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            evCmd.Parameters.AddWithValue("@Name", ev.Name);
+                                            evCmd.Parameters.AddWithValue("@Remark", ev.Remark ?? (object)DBNull.Value);
+                                            evCmd.ExecuteNonQuery();
+                                        }
+                                    }
+                                }
+                                if (model.CorpEvidence != null)
+                                {
+                                    foreach (var ev in model.CorpEvidence)
+                                    {
+                                        if (!string.IsNullOrEmpty(ev.Name))
+                                        {
+                                            using var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Designation) VALUES (@CaseID, @Name, 'TP_Corporation', @Designation)", conn, trans);
+                                            evCmd.Parameters.AddWithValue("@CaseID", caseId);
+                                            evCmd.Parameters.AddWithValue("@Name", ev.Name);
+                                            evCmd.Parameters.AddWithValue("@Designation", ev.Designation ?? (object)DBNull.Value);
+                                            evCmd.ExecuteNonQuery();
+                                        }
+                                    }
                                 }
                             }
-                        }
 
                         trans.Commit();
                         return caseId;
@@ -572,6 +580,14 @@ namespace MVCCaseManagement.DAL
             model.ModifiedBy = row.Table.Columns.Contains("ModifiedBy") && row["ModifiedBy"] != DBNull.Value ? (int?)Convert.ToInt32(row["ModifiedBy"]) : null;
             model.NextHearingDate = row["NextHearingDate"] != DBNull.Value ? Convert.ToDateTime(row["NextHearingDate"]) : null;
             model.CurrentStage = row["CurrentStage"]?.ToString();
+            model.ECourtsStage = row.Table.Columns.Contains("ECourtsStage") ? row["ECourtsStage"]?.ToString() : null;
+            model.ECourtsCourtNo = row.Table.Columns.Contains("ECourtsCourtNo") ? row["ECourtsCourtNo"]?.ToString() : null;
+            model.ECourtsJudge = row.Table.Columns.Contains("ECourtsJudge") ? row["ECourtsJudge"]?.ToString() : null;
+            model.LastNapixSyncAt = row.Table.Columns.Contains("LastNapixSyncAt") && row["LastNapixSyncAt"] != DBNull.Value ? (DateTime?)Convert.ToDateTime(row["LastNapixSyncAt"]) : null;
+            model.LastNapixSyncStatus = row.Table.Columns.Contains("LastNapixSyncStatus") ? row["LastNapixSyncStatus"]?.ToString() : null;
+            model.LastNapixSyncError = row.Table.Columns.Contains("LastNapixSyncError") ? row["LastNapixSyncError"]?.ToString() : null;
+            model.PendDispStatus = row.Table.Columns.Contains("PendDispStatus") ? row["PendDispStatus"]?.ToString() : null;
+            model.EstName = row.Table.Columns.Contains("EstName") ? row["EstName"]?.ToString() : null;
             model.DisposalStatus = row["DisposalStatus"]?.ToString();
             model.DisposalResult = row["DisposalResult"]?.ToString();
             model.DisposalRemarks = row["DisposalRemarks"]?.ToString();
@@ -1254,7 +1270,7 @@ namespace MVCCaseManagement.DAL
                                  ModifiedDate = GETDATE()
                              WHERE CaseID = @CaseID";
 
-                        var cmd = new SqlCommand(updateQuery, conn, trans);
+                        using var cmd = new SqlCommand(updateQuery, conn, trans);
                         cmd.Parameters.AddWithValue("@DivisionID", model.DivisionID);
                         cmd.Parameters.AddWithValue("@MVCNo", model.MVCNo?.Trim() ?? string.Empty);
                         cmd.Parameters.AddWithValue("@MVCYear", model.MVCYear);
@@ -1314,12 +1330,12 @@ namespace MVCCaseManagement.DAL
                         // Update Child Tables (Delete and Re-insert only when collection is submitted)
                         if (model.Petitioners != null)
                         {
-                            var delPetCmd = new SqlCommand("DELETE FROM MVC_CASE_PETITIONERS WHERE CaseID = @CaseID", conn, trans);
+                            using var delPetCmd = new SqlCommand("DELETE FROM MVC_CASE_PETITIONERS WHERE CaseID = @CaseID", conn, trans);
                             delPetCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                             delPetCmd.ExecuteNonQuery();
                             foreach (var pet in model.Petitioners)
                             {
-                                var petCmd = new SqlCommand("INSERT INTO MVC_CASE_PETITIONERS (CaseID, PetitionerName, Relationship) VALUES (@CaseID, @PetitionerName, @Relationship)", conn, trans);
+                                using var petCmd = new SqlCommand("INSERT INTO MVC_CASE_PETITIONERS (CaseID, PetitionerName, Relationship) VALUES (@CaseID, @PetitionerName, @Relationship)", conn, trans);
                                 petCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 petCmd.Parameters.AddWithValue("@PetitionerName", pet.PetitionerName);
                                 string finalRel = pet.Relationship;
@@ -1334,14 +1350,14 @@ namespace MVCCaseManagement.DAL
 
                         if (model.Respondents != null)
                         {
-                            var delRespCmd = new SqlCommand("DELETE FROM MVC_CASE_RESPONDENTS WHERE CaseID = @CaseID", conn, trans);
+                            using var delRespCmd = new SqlCommand("DELETE FROM MVC_CASE_RESPONDENTS WHERE CaseID = @CaseID", conn, trans);
                             delRespCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                             delRespCmd.ExecuteNonQuery();
                             foreach (var resp in model.Respondents)
                             {
                                 if (!string.IsNullOrEmpty(resp.RespondentName))
                                 {
-                                    var respCmd = new SqlCommand("INSERT INTO MVC_CASE_RESPONDENTS (CaseID, RespondentName, Remarks) VALUES (@CaseID, @RespondentName, @Remarks)", conn, trans);
+                                    using var respCmd = new SqlCommand("INSERT INTO MVC_CASE_RESPONDENTS (CaseID, RespondentName, Remarks) VALUES (@CaseID, @RespondentName, @Remarks)", conn, trans);
                                     respCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                     respCmd.Parameters.AddWithValue("@RespondentName", resp.RespondentName);
                                     respCmd.Parameters.AddWithValue("@Remarks", resp.Remarks ?? (object)DBNull.Value);
@@ -1352,12 +1368,12 @@ namespace MVCCaseManagement.DAL
 
                         if (model.ConnectedCases != null)
                         {
-                            var delConnCmd = new SqlCommand("DELETE FROM MVC_CASE_CONNECTED WHERE CaseID = @CaseID", conn, trans);
+                            using var delConnCmd = new SqlCommand("DELETE FROM MVC_CASE_CONNECTED WHERE CaseID = @CaseID", conn, trans);
                             delConnCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                             delConnCmd.ExecuteNonQuery();
                             foreach (var connCase in model.ConnectedCases)
                             {
-                                var connCmd = new SqlCommand("INSERT INTO MVC_CASE_CONNECTED (CaseID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@CaseID, @MVCNo, @Year, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
+                                using var connCmd = new SqlCommand("INSERT INTO MVC_CASE_CONNECTED (CaseID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@CaseID, @MVCNo, @Year, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
                                 connCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 connCmd.Parameters.AddWithValue("@MVCNo", connCase.ConnectedMVCNo);
                                 connCmd.Parameters.AddWithValue("@Year", connCase.ConnectedYear);
@@ -1371,14 +1387,14 @@ namespace MVCCaseManagement.DAL
                         // Synchronize Opposite Vehicle Numbers
                         if (model.OppositeVehicleNumbers != null)
                         {
-                            var delVnoCmd = new SqlCommand("DELETE FROM MVC_CASE_OPPOSITE_VEHICLES WHERE CaseID = @CaseID", conn, trans);
+                            using var delVnoCmd = new SqlCommand("DELETE FROM MVC_CASE_OPPOSITE_VEHICLES WHERE CaseID = @CaseID", conn, trans);
                             delVnoCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                             delVnoCmd.ExecuteNonQuery();
                             foreach (var vno in model.OppositeVehicleNumbers)
                             {
                                 if (!string.IsNullOrWhiteSpace(vno))
                                 {
-                                    var vnoCmd = new SqlCommand("INSERT INTO MVC_CASE_OPPOSITE_VEHICLES (CaseID, VehicleNo) VALUES (@CaseID, @VehicleNo)", conn, trans);
+                                    using var vnoCmd = new SqlCommand("INSERT INTO MVC_CASE_OPPOSITE_VEHICLES (CaseID, VehicleNo) VALUES (@CaseID, @VehicleNo)", conn, trans);
                                     vnoCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                     vnoCmd.Parameters.AddWithValue("@VehicleNo", vno.Trim());
                                     vnoCmd.ExecuteNonQuery();
@@ -1421,7 +1437,7 @@ namespace MVCCaseManagement.DAL
                         if (string.IsNullOrEmpty(adverseAward.DelayCondonedOrderPath)) adverseAward.DelayCondonedOrderPath = existingDelayCond;
                         if (string.IsNullOrEmpty(adverseAward.AgeProofUploadPath)) adverseAward.AgeProofUploadPath = existingAge;
 
-                        var delAdvDetCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID", conn, trans);
+                        using var delAdvDetCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID", conn, trans);
                         delAdvDetCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                         delAdvDetCmd.ExecuteNonQuery();
                             string advQuery = @"
@@ -1456,55 +1472,55 @@ namespace MVCCaseManagement.DAL
                                     @IsAmountDepositedInEP, @IsEPFiled, @EPDepositedAmount, @FutureProspectsPercentage, @PersonalExpensesDeduction, @Multiplier,
                                     @LossOfDependency, @LossOfConsortium, @LossOfEstate, @FuneralExpenses, @LossOfLoveAffection, @MedicalExpenseOther, @AgeProofPath, @PainSufferings, @ConveyanceAttendant, @LossOfFutureIncome, @LossOfIncomeLaidUp, @LossOfAmenities, @FutureMedicalExpenses, @InjuryOtherExpense, @CustomCompensation, @EPNumber, @EPCourt, @EPStage, @EPNextHearingDate, @RoundOffAmount, @AsPerECourts)";
 
-                            var advCmd = new SqlCommand(advQuery, conn, trans);
+                            using var advCmd = new SqlCommand(advQuery, conn, trans);
                             advCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                            advCmd.Parameters.AddWithValue("@BusInsurance", model.AdverseAward.BusInsuranceDetails ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IsBusInsured", model.AdverseAward.IsBusInsured);
-                            advCmd.Parameters.AddWithValue("@ClaimPetitionDate", model.AdverseAward.ClaimPetitionDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@AwardDate", model.AdverseAward.AwardDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@MannerOfAccident", model.AdverseAward.MannerOfAccident ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@MannerOfAccidentRO", model.AdverseAward.MannerOfAccidentRO ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@ObjectionFiled", model.AdverseAward.ObjectionFiled);
-                            advCmd.Parameters.AddWithValue("@ObjectionRemarks", model.AdverseAward.ObjectionRemarks ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@RWType", model.AdverseAward.RWType ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@TR18Remarks", model.AdverseAward.TR18Remarks ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IsDeceasedInTR18", model.AdverseAward.IsDeceasedInTR18);
-                            advCmd.Parameters.AddWithValue("@TR18Path", model.AdverseAward.TR18UploadPath ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IsAlleged", model.AdverseAward.IsAllegedAccident);
-                            advCmd.Parameters.AddWithValue("@DoubleClaimFlag", model.AdverseAward.DoubleClaimFlag);
-                            advCmd.Parameters.AddWithValue("@DoubleClaimDetails", model.AdverseAward.DoubleClaimDetails ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@SecurityRequired", model.AdverseAward.SecurityRequired);
-                            advCmd.Parameters.AddWithValue("@SecurityPath", model.AdverseAward.SecurityUploadPath ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@GovIDPath", model.AdverseAward.GovIDProofUploadPath ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@DisposedOn", model.AdverseAward.DisposedOnDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@AppliedOn", model.AdverseAward.CopyAppliedDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@CopyRemarks", model.AdverseAward.CertifiedCopyRemarks ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IssuedOn", model.AdverseAward.CopyIssuedDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@ReceivedOn", model.AdverseAward.CopyReceivedDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@CopyDelivered", model.AdverseAward.CopyDeliveredDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@AwardAmount", model.AdverseAward.AwardAmount ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@InterestRate", model.AdverseAward.InterestRate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@VictimAge", model.AdverseAward.VictimAge ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@Occupation", model.AdverseAward.Occupation ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@Income", model.AdverseAward.IncomeConsidered ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IncomePeriod", model.AdverseAward.IncomePeriod ?? "monthly");
-                            advCmd.Parameters.AddWithValue("@InjuryType", model.AdverseAward.InjuryType ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@Injury", model.AdverseAward.InjuryDetails ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@PunishmentStatus", model.AdverseAward.DriverPunishmentStatus ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@PunishmentPath", model.AdverseAward.PunishmentOrderUploadPath ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@PunishmentRemarks", model.AdverseAward.PunishmentRemarks ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@DisabilityPercentage", model.AdverseAward.DisabilityPercentage ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@InterimAmount", model.AdverseAward.InterimCompAmount ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@InterimDeducted", model.AdverseAward.InterimCompDeducted);
-                            advCmd.Parameters.AddWithValue("@AdvOpinion", model.AdverseAward.AdvocateOpinion ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@LOOpinion", model.AdverseAward.LOOpinion ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@DCOpinion", model.AdverseAward.DCOpinion ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@ForwardStatus", model.AdverseAward.ForwardingStatus ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@ClosureRemarks", model.AdverseAward.ClosureRemarks ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@ClosureDate", model.AdverseAward.ClosureDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@OutwardNo", model.AdverseAward.OutwardNumber ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@OutwardDate", model.AdverseAward.OutwardDate ?? (object)DBNull.Value);
-                            advCmd.Parameters.AddWithValue("@IsCorpLiable", model.AdverseAward.IsCorpLiable);
+                            advCmd.Parameters.AddWithValue("@BusInsurance", adverseAward.BusInsuranceDetails ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IsBusInsured", adverseAward.IsBusInsured);
+                            advCmd.Parameters.AddWithValue("@ClaimPetitionDate", adverseAward.ClaimPetitionDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@AwardDate", adverseAward.AwardDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@MannerOfAccident", adverseAward.MannerOfAccident ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@MannerOfAccidentRO", adverseAward.MannerOfAccidentRO ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@ObjectionFiled", adverseAward.ObjectionFiled);
+                            advCmd.Parameters.AddWithValue("@ObjectionRemarks", adverseAward.ObjectionRemarks ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@RWType", adverseAward.RWType ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@TR18Remarks", adverseAward.TR18Remarks ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IsDeceasedInTR18", adverseAward.IsDeceasedInTR18);
+                            advCmd.Parameters.AddWithValue("@TR18Path", adverseAward.TR18UploadPath ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IsAlleged", adverseAward.IsAllegedAccident);
+                            advCmd.Parameters.AddWithValue("@DoubleClaimFlag", adverseAward.DoubleClaimFlag);
+                            advCmd.Parameters.AddWithValue("@DoubleClaimDetails", adverseAward.DoubleClaimDetails ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@SecurityRequired", adverseAward.SecurityRequired);
+                            advCmd.Parameters.AddWithValue("@SecurityPath", adverseAward.SecurityUploadPath ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@GovIDPath", adverseAward.GovIDProofUploadPath ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@DisposedOn", adverseAward.DisposedOnDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@AppliedOn", adverseAward.CopyAppliedDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@CopyRemarks", adverseAward.CertifiedCopyRemarks ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IssuedOn", adverseAward.CopyIssuedDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@ReceivedOn", adverseAward.CopyReceivedDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@CopyDelivered", adverseAward.CopyDeliveredDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@AwardAmount", adverseAward.AwardAmount ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@InterestRate", adverseAward.InterestRate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@VictimAge", adverseAward.VictimAge ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@Occupation", adverseAward.Occupation ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@Income", adverseAward.IncomeConsidered ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IncomePeriod", adverseAward.IncomePeriod ?? "monthly");
+                            advCmd.Parameters.AddWithValue("@InjuryType", adverseAward.InjuryType ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@Injury", adverseAward.InjuryDetails ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@PunishmentStatus", adverseAward.DriverPunishmentStatus ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@PunishmentPath", adverseAward.PunishmentOrderUploadPath ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@PunishmentRemarks", adverseAward.PunishmentRemarks ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@DisabilityPercentage", adverseAward.DisabilityPercentage ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@InterimAmount", adverseAward.InterimCompAmount ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@InterimDeducted", adverseAward.InterimCompDeducted);
+                            advCmd.Parameters.AddWithValue("@AdvOpinion", adverseAward.AdvocateOpinion ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@LOOpinion", adverseAward.LOOpinion ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@DCOpinion", adverseAward.DCOpinion ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@ForwardStatus", adverseAward.ForwardingStatus ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@ClosureRemarks", adverseAward.ClosureRemarks ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@ClosureDate", adverseAward.ClosureDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@OutwardNo", adverseAward.OutwardNumber ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@OutwardDate", adverseAward.OutwardDate ?? (object)DBNull.Value);
+                            advCmd.Parameters.AddWithValue("@IsCorpLiable", adverseAward.IsCorpLiable);
                             advCmd.Parameters.AddWithValue("@LiabilityPercentage", adverseAward.LiabilityPercentage ?? (object)DBNull.Value);
                             advCmd.Parameters.AddWithValue("@LiabilityRemarks", adverseAward.LiabilityRemarks ?? (object)DBNull.Value);
                             advCmd.Parameters.AddWithValue("@AdverseJudgmentUploadPath", adverseAward.AdverseJudgmentUploadPath ?? (object)DBNull.Value);
@@ -1577,76 +1593,92 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
 
                             if (model.DisposalResult == "Against" && model.AdverseAward != null)
                             {
-                                var delAdvPWCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_PW WHERE CaseID = @CaseID AND Type NOT LIKE 'TP_%'", conn, trans);
+                                using var delAdvPWCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_PW WHERE CaseID = @CaseID AND Type NOT LIKE 'TP_%'", conn, trans);
                                 delAdvPWCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 delAdvPWCmd.ExecuteNonQuery();
-                                var delAdvRWCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_RW WHERE CaseID = @CaseID", conn, trans);
+                                using var delAdvRWCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_RW WHERE CaseID = @CaseID", conn, trans);
                                 delAdvRWCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 delAdvRWCmd.ExecuteNonQuery();
-                                var delAdvConnCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_CONNECTED WHERE CaseID = @CaseID", conn, trans);
+                                using var delAdvConnCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_CONNECTED WHERE CaseID = @CaseID", conn, trans);
                                 delAdvConnCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 delAdvConnCmd.ExecuteNonQuery();
-                                var delDocsCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_DOCS WHERE CaseID = @CaseID", conn, trans);
+
+                                if (adverseAward.PetitionerPWNames != null)
+                                {
+                                    foreach (var pw in adverseAward.PetitionerPWNames)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(pw)) continue;
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type) VALUES (@CaseID, @Name, 'Petitioner')", conn, trans);
+                                        pwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                        pwCmd.Parameters.AddWithValue("@Name", pw);
+                                        pwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                if (adverseAward.Doctors != null)
+                                {
+                                    foreach (var dr in adverseAward.Doctors)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(dr.DoctorName)) continue;
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, IsTreated) VALUES (@CaseID, @Name, 'Doctor', @IsTreated)", conn, trans);
+                                        pwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                        pwCmd.Parameters.AddWithValue("@Name", dr.DoctorName);
+                                        pwCmd.Parameters.AddWithValue("@IsTreated", dr.IsTreated);
+                                        pwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                if (adverseAward.RWNames != null)
+                                {
+                                    foreach (var rw in adverseAward.RWNames)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(rw)) continue;
+                                        using var rwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_RW (CaseID, RWName) VALUES (@CaseID, @Name)", conn, trans);
+                                        rwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                        rwCmd.Parameters.AddWithValue("@Name", rw);
+                                        rwCmd.ExecuteNonQuery();
+                                    }
+                                }
+                                if (adverseAward.ConnectedCases != null)
+                                {
+                                    foreach (var advConn in adverseAward.ConnectedCases)
+                                    {
+                                        using var acCmd = new SqlCommand(@"INSERT INTO MVC_CASE_ADVERSE_CONNECTED 
+                                            (CaseID, CaseDetails, Status, CurrentStage, AwardAmount, InterestRate, VictimAge, Occupation, IncomeConsidered, InjuryDetails) 
+                                            VALUES (@CaseID, @Details, @Status, @CurrentStage, @AwardAmount, @InterestRate, @VictimAge, @Occupation, @IncomeConsidered, @InjuryDetails)", conn, trans);
+                                        acCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                        string details = $"{advConn.ConnectedMVCNo} / {advConn.ConnectedYear}";
+                                        if (!string.IsNullOrEmpty(advConn.MACT)) details += $" - {advConn.MACT}";
+                                        acCmd.Parameters.AddWithValue("@Details", details);
+                                        acCmd.Parameters.AddWithValue("@Status", advConn.Status ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@CurrentStage", advConn.CurrentStage ?? (object)DBNull.Value);
+
+                                        // Award Details
+                                        acCmd.Parameters.AddWithValue("@AwardAmount", advConn.AwardDetails?.AwardAmount ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@InterestRate", advConn.AwardDetails?.InterestRate ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@VictimAge", advConn.AwardDetails?.VictimAge ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@Occupation", advConn.AwardDetails?.Occupation ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@IncomeConsidered", advConn.AwardDetails?.IncomeConsidered ?? (object)DBNull.Value);
+                                        acCmd.Parameters.AddWithValue("@InjuryDetails", advConn.AwardDetails?.InjuryDetails ?? (object)DBNull.Value);
+                                        acCmd.ExecuteNonQuery();
+                                    }
+                                }
+                            }
+
+                            // Enclosed Documents (only synchronize if collection is provided)
+                            if (model.AdverseAward?.EnclosedDocuments != null)
+                            {
+                                using var delDocsCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_DOCS WHERE CaseID = @CaseID", conn, trans);
                                 delDocsCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
                                 delDocsCmd.ExecuteNonQuery();
 
-                                foreach (var pw in model.AdverseAward.PetitionerPWNames)
+                                foreach (var doc in model.AdverseAward.EnclosedDocuments)
                                 {
-                                    var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type) VALUES (@CaseID, @Name, 'Petitioner')", conn, trans);
-                                    pwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                    pwCmd.Parameters.AddWithValue("@Name", pw);
-                                    pwCmd.ExecuteNonQuery();
-                                }
-                                foreach (var dr in model.AdverseAward.Doctors)
-                                {
-                                    var pwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, IsTreated) VALUES (@CaseID, @Name, 'Doctor', @IsTreated)", conn, trans);
-                                    pwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                    pwCmd.Parameters.AddWithValue("@Name", dr.DoctorName);
-                                    pwCmd.Parameters.AddWithValue("@IsTreated", dr.IsTreated);
-                                    pwCmd.ExecuteNonQuery();
-                                }
-                                foreach (var rw in model.AdverseAward.RWNames)
-                                {
-                                    var rwCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_RW (CaseID, RWName) VALUES (@CaseID, @Name)", conn, trans);
-                                    rwCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                    rwCmd.Parameters.AddWithValue("@Name", rw);
-                                    rwCmd.ExecuteNonQuery();
-                                }
-                                foreach (var advConn in model.AdverseAward.ConnectedCases)
-                                {
-                                    var acCmd = new SqlCommand(@"INSERT INTO MVC_CASE_ADVERSE_CONNECTED 
-                                        (CaseID, CaseDetails, Status, CurrentStage, AwardAmount, InterestRate, VictimAge, Occupation, IncomeConsidered, InjuryDetails) 
-                                        VALUES (@CaseID, @Details, @Status, @CurrentStage, @AwardAmount, @InterestRate, @VictimAge, @Occupation, @IncomeConsidered, @InjuryDetails)", conn, trans);
-                                    acCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                    string details = $"{advConn.ConnectedMVCNo} / {advConn.ConnectedYear}";
-                                    if (!string.IsNullOrEmpty(advConn.MACT)) details += $" - {advConn.MACT}";
-                                    acCmd.Parameters.AddWithValue("@Details", details);
-                                    acCmd.Parameters.AddWithValue("@Status", advConn.Status ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@CurrentStage", advConn.CurrentStage ?? (object)DBNull.Value);
-
-                                    // Award Details
-                                    acCmd.Parameters.AddWithValue("@AwardAmount", advConn.AwardDetails.AwardAmount ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@InterestRate", advConn.AwardDetails.InterestRate ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@VictimAge", advConn.AwardDetails.VictimAge ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@Occupation", advConn.AwardDetails.Occupation ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@IncomeConsidered", advConn.AwardDetails.IncomeConsidered ?? (object)DBNull.Value);
-                                    acCmd.Parameters.AddWithValue("@InjuryDetails", advConn.AwardDetails.InjuryDetails ?? (object)DBNull.Value);
-                                    acCmd.ExecuteNonQuery();
-                                }
-
-                                // Enclosed Documents
-                                if (model.AdverseAward.EnclosedDocuments != null)
-                                {
-                                    foreach (var doc in model.AdverseAward.EnclosedDocuments)
+                                    if (!string.IsNullOrEmpty(doc.DocName))
                                     {
-                                        if (!string.IsNullOrEmpty(doc.DocName))
-                                        {
-                                            var docCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_DOCS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)", conn, trans);
-                                            docCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                            docCmd.Parameters.AddWithValue("@DocName", doc.DocName);
-                                            docCmd.Parameters.AddWithValue("@PageCount", doc.PageCount ?? (object)DBNull.Value);
-                                            docCmd.ExecuteNonQuery();
-                                        }
+                                        using var docCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_DOCS (CaseID, DocName, PageCount) VALUES (@CaseID, @DocName, @PageCount)", conn, trans);
+                                        docCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                        docCmd.Parameters.AddWithValue("@DocName", doc.DocName);
+                                        docCmd.Parameters.AddWithValue("@PageCount", doc.PageCount ?? (object)DBNull.Value);
+                                        docCmd.ExecuteNonQuery();
                                     }
                                 }
                             }
@@ -1654,26 +1686,36 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                             // Re-insert Third Party Evidence
                             if (model.ThirdPartyFlag)
                             {
-                                foreach (var ev in model.RespondentEvidence)
+                                using var delTPEvCmd = new SqlCommand("DELETE FROM MVC_CASE_ADVERSE_PW WHERE CaseID = @CaseID AND Type LIKE 'TP_%'", conn, trans);
+                                delTPEvCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                delTPEvCmd.ExecuteNonQuery();
+
+                                if (model.RespondentEvidence != null)
                                 {
-                                    if (!string.IsNullOrEmpty(ev.Name))
+                                    foreach (var ev in model.RespondentEvidence)
                                     {
-                                        var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Remark) VALUES (@CaseID, @Name, 'TP_Respondent', @Remark)", conn, trans);
-                                        evCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                        evCmd.Parameters.AddWithValue("@Name", ev.Name);
-                                        evCmd.Parameters.AddWithValue("@Remark", ev.Remark ?? (object)DBNull.Value);
-                                        evCmd.ExecuteNonQuery();
+                                        if (!string.IsNullOrEmpty(ev.Name))
+                                        {
+                                            using var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Remark) VALUES (@CaseID, @Name, 'TP_Respondent', @Remark)", conn, trans);
+                                            evCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            evCmd.Parameters.AddWithValue("@Name", ev.Name);
+                                            evCmd.Parameters.AddWithValue("@Remark", ev.Remark ?? (object)DBNull.Value);
+                                            evCmd.ExecuteNonQuery();
+                                        }
                                     }
                                 }
-                                foreach (var ev in model.CorpEvidence)
+                                if (model.CorpEvidence != null)
                                 {
-                                    if (!string.IsNullOrEmpty(ev.Name))
+                                    foreach (var ev in model.CorpEvidence)
                                     {
-                                        var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Designation) VALUES (@CaseID, @Name, 'TP_Corporation', @Designation)", conn, trans);
-                                        evCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
-                                        evCmd.Parameters.AddWithValue("@Name", ev.Name);
-                                        evCmd.Parameters.AddWithValue("@Designation", ev.Designation ?? (object)DBNull.Value);
-                                        evCmd.ExecuteNonQuery();
+                                        if (!string.IsNullOrEmpty(ev.Name))
+                                        {
+                                            using var evCmd = new SqlCommand("INSERT INTO MVC_CASE_ADVERSE_PW (CaseID, PWName, Type, Designation) VALUES (@CaseID, @Name, 'TP_Corporation', @Designation)", conn, trans);
+                                            evCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
+                                            evCmd.Parameters.AddWithValue("@Name", ev.Name);
+                                            evCmd.Parameters.AddWithValue("@Designation", ev.Designation ?? (object)DBNull.Value);
+                                            evCmd.ExecuteNonQuery();
+                                        }
                                     }
                                 }
                             }
@@ -3058,7 +3100,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                     @IsDocumentSent, @DocumentOutwardNo, @DocumentOutwardDate, @IsObjectionFiled, @ObjectionFiledDate, @ObjectionOutwardNo, @IsEvidenceFiled,
                                     @AdvocateName, @VehicleType, @ClosureDate, @OriginalCaseID, @CNRNumber, @EstCode, @CaseTypeCode)";
 
-                        var cmd = new SqlCommand(mainQuery, conn, trans);
+                        using var cmd = new SqlCommand(mainQuery, conn, trans);
                         cmd.Parameters.AddWithValue("@DivisionID", model.DivisionID);
                         cmd.Parameters.AddWithValue("@MVCNo", model.MVCNo);
                         cmd.Parameters.AddWithValue("@MVCYear", model.MVCYear);
@@ -3099,7 +3141,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         // 2. Save Petitioners
                         foreach (var pet in model.Petitioners)
                         {
-                            var petCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_PETITIONERS (RemindBackID, PetitionerName, Relationship) VALUES (@RemindBackID, @PetitionerName, @Relationship)", conn, trans);
+                            using var petCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_PETITIONERS (RemindBackID, PetitionerName, Relationship) VALUES (@RemindBackID, @PetitionerName, @Relationship)", conn, trans);
                             petCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                             petCmd.Parameters.AddWithValue("@PetitionerName", pet.PetitionerName);
                             petCmd.Parameters.AddWithValue("@Relationship", pet.Relationship ?? (object)DBNull.Value);
@@ -3113,7 +3155,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                             {
                                 if (!string.IsNullOrEmpty(resp.RespondentName))
                                 {
-                                    var respCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_RESPONDENTS (RemindBackID, RespondentName, Remarks) VALUES (@RemindBackID, @RespondentName, @Remarks)", conn, trans);
+                                    using var respCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_RESPONDENTS (RemindBackID, RespondentName, Remarks) VALUES (@RemindBackID, @RespondentName, @Remarks)", conn, trans);
                                     respCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                     respCmd.Parameters.AddWithValue("@RespondentName", resp.RespondentName);
                                     respCmd.Parameters.AddWithValue("@Remarks", resp.Remarks ?? (object)DBNull.Value);
@@ -3125,7 +3167,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         // 3. Save Connected Cases
                         foreach (var connCase in model.ConnectedCases)
                         {
-                            var connCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_CONNECTED (RemindBackID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@RemindBackID, @ConnectedMVCNo, @ConnectedYear, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
+                            using var connCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_CONNECTED (RemindBackID, ConnectedMVCNo, ConnectedYear, Remarks, MACT, IsDoubleClaim) VALUES (@RemindBackID, @ConnectedMVCNo, @ConnectedYear, @Remarks, @MACT, @IsDoubleClaim)", conn, trans);
                             connCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                             connCmd.Parameters.AddWithValue("@ConnectedMVCNo", connCase.ConnectedMVCNo);
                             connCmd.Parameters.AddWithValue("@ConnectedYear", connCase.ConnectedYear);
@@ -3161,7 +3203,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                     (@RemindBackID, @BusInsuranceDetails, @IsBusInsured, @ClaimPetitionDate, @AwardDate, @MannerOfAccident, @ObjectionFiled, @ObjectionRemarks, @RWType, @TR18Remarks, @TR18UploadPath, @IsAllegedAccident, @AdverseDoubleClaimFlag, @DoubleClaimDetails, @SecurityRequired, @SecurityUploadPath, @GovIDProofUploadPath, @DisposedOnDate, @CopyAppliedDate, @CertifiedCopyRemarks, @CopyIssuedDate, @CopyReceivedDate, @CopyDeliveredDate, @AwardAmount, @InterestRate, @VictimAge, @Occupation, @IncomeConsidered, @IncomePeriod, @InjuryDetails, @DriverPunishmentStatus, @PunishmentOrderUploadPath, @PunishmentRemarks, @DisabilityPercentage, @InterimCompAmount, @InterimCompDeducted, @AdvocateOpinion, @LOOpinion, @DCOpinion, @ForwardingStatus, @ClosureRemarks, @ClosureDate, @OutwardNumber, @OutwardDate, @IsCorpLiable, @LiabilityPercentage, @LiabilityRemarks, @AdverseJudgmentUploadPath, @FutureProspectus, @InjuryType, @TreatedDocFlag, @IsEPFiled, @EPDepositedAmount, @IsFIRFiled, @IsChargeSheetFiled, @IsBusCameraInstalled, @IsCameraFootageProduced, @IsPhotographProduced, @PhotographNotProducedReason, @PoliceSketchExhibitNo, @IsPoliceSketchEnclosed, @IsEvidenceBasedOnSecurityReport, @SecurityReportNoEvidenceReason, @IsImpleadingAppFiled, @ImpleadingAppNotFiledReason, @IsVictimSalaried, @IsIncomeCrossVerified, @DoesIncomeTallyWithDocuments, @IsMedicalBillsVerified, @IsAmountDepositedInEP, @FutureProspectsPercentage, @PersonalExpensesDeduction, @Multiplier, @LossOfDependency, @LossOfConsortium, @LossOfEstate, @FuneralExpenses, @LossOfLoveAffection, @MedicalExpenseOther, @AgeProofUploadPath, @PainSufferings, @ConveyanceAttendant, @LossOfFutureIncome, @LossOfIncomeLaidUp, @LossOfAmenities, @FutureMedicalExpenses, @InjuryOtherExpense, @IsSTPassenger, @IsMedicalExpensesPaid, @MedicalPaidAmount, @MedicalPaidRemarks, @IsARFAmountPaid, @ARFPaidAmount, @ARFPaidRemarks, @IsDelayApplicationFiled, @DelayApplicationPath, @IsDelayCondonedAdverse, @DelayCondonedOrderPath, @IsMedicalInsuranceClaimed, @IsDeceasedInTR18, @MannerOfAccidentRO, @CustomCompensation, @EPNumber, @EPCourt, @EPStage, @EPNextHearingDate, @RoundOffAmount, @AsPerECourts)";
 
                             var adverseAward = model.AdverseAward;
-                            var advCmd = new SqlCommand(advQuery, conn, trans);
+                            using var advCmd = new SqlCommand(advQuery, conn, trans);
                             advCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                             advCmd.Parameters.AddWithValue("@BusInsuranceDetails", adverseAward.BusInsuranceDetails ?? (object)DBNull.Value);
                             advCmd.Parameters.AddWithValue("@IsBusInsured", adverseAward.IsBusInsured);
@@ -3285,7 +3327,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 {
                                     if (!string.IsNullOrWhiteSpace(pw))
                                     {
-                                        var pwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type) VALUES (@RemindBackID, @Name, 'Petitioner')", conn, trans);
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type) VALUES (@RemindBackID, @Name, 'Petitioner')", conn, trans);
                                         pwCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                         pwCmd.Parameters.AddWithValue("@Name", pw);
                                         pwCmd.ExecuteNonQuery();
@@ -3298,7 +3340,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 {
                                     if (!string.IsNullOrWhiteSpace(dr.DoctorName))
                                     {
-                                        var pwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, IsTreated) VALUES (@RemindBackID, @Name, 'Doctor', @IsTreated)", conn, trans);
+                                        using var pwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, IsTreated) VALUES (@RemindBackID, @Name, 'Doctor', @IsTreated)", conn, trans);
                                         pwCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                         pwCmd.Parameters.AddWithValue("@Name", dr.DoctorName);
                                         pwCmd.Parameters.AddWithValue("@IsTreated", dr.IsTreated);
@@ -3314,7 +3356,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 {
                                     if (!string.IsNullOrWhiteSpace(rw))
                                     {
-                                        var rwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_RW (RemindBackID, RWName) VALUES (@RemindBackID, @Name)", conn, trans);
+                                        using var rwCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_RW (RemindBackID, RWName) VALUES (@RemindBackID, @Name)", conn, trans);
                                         rwCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                         rwCmd.Parameters.AddWithValue("@Name", rw);
                                         rwCmd.ExecuteNonQuery();
@@ -3329,7 +3371,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 {
                                     if (!string.IsNullOrWhiteSpace(ev.Name))
                                     {
-                                        var evCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, Remark) VALUES (@RemindBackID, @Name, 'TP_Respondent', @Remark)", conn, trans);
+                                        using var evCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, Remark) VALUES (@RemindBackID, @Name, 'TP_Respondent', @Remark)", conn, trans);
                                         evCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                         evCmd.Parameters.AddWithValue("@Name", ev.Name);
                                         evCmd.Parameters.AddWithValue("@Remark", ev.Remark ?? (object)DBNull.Value);
@@ -3343,7 +3385,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 {
                                     if (!string.IsNullOrWhiteSpace(ev.Name))
                                     {
-                                        var evCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, Designation) VALUES (@RemindBackID, @Name, 'TP_Corporation', @Designation)", conn, trans);
+                                        using var evCmd = new SqlCommand("INSERT INTO MVC_REMIND_BACK_ADVERSE_PW (RemindBackID, PWName, Type, Designation) VALUES (@RemindBackID, @Name, 'TP_Corporation', @Designation)", conn, trans);
                                         evCmd.Parameters.AddWithValue("@RemindBackID", rbId);
                                         evCmd.Parameters.AddWithValue("@Name", ev.Name);
                                         evCmd.Parameters.AddWithValue("@Designation", ev.Designation ?? (object)DBNull.Value);

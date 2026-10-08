@@ -313,7 +313,7 @@
         buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span>';
 
         try {
-            const response = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnrNumber)}&isHighCourt=${isHighCourt}`);
+            const response = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnrNumber)}&isHighCourt=${isHighCourt}&module=${encodeURIComponent(moduleName || 'MVC')}`);
             const result = await response.json();
 
             if (result && result.success && result.data) {

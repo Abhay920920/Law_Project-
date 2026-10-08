@@ -1,6 +1,7 @@
 using System.Data;
 using Microsoft.Data.SqlClient;
 using MVCCaseManagement.Models;
+using MVCCaseManagement.Common;
 
 namespace MVCCaseManagement.DAL
 {
@@ -48,24 +49,6 @@ namespace MVCCaseManagement.DAL
         public LabourRepository(DBHelper db)
         {
             _db = db;
-            try
-            {
-                _db.ExecuteNonQuery("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LABOUR_CONNECTED_CASES') AND name = 'CaseType') ALTER TABLE LABOUR_CONNECTED_CASES ADD CaseType NVARCHAR(100) NULL;");
-                _db.ExecuteNonQuery("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('LABOUR_CASES') AND name = 'IsReinstatementViewed') ALTER TABLE LABOUR_CASES ADD IsReinstatementViewed BIT NOT NULL DEFAULT 0;");
-                _db.ExecuteNonQuery("IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'LABOUR_ENCLOSED_DOCS') CREATE TABLE LABOUR_ENCLOSED_DOCS (DocID INT PRIMARY KEY IDENTITY, CaseID INT, DocName NVARCHAR(500), PageCount INT);");
-                
-                // Self-healing data repair: restore CaseStatus corrupted by eCourts live sync stages
-                _db.ExecuteNonQuery(@"
-                    UPDATE LABOUR_CASES 
-                    SET CurrentStage = CASE WHEN (CurrentStage IS NULL OR CurrentStage = '') THEN CaseStatus ELSE CurrentStage END,
-                        CaseStatus = CASE 
-                            WHEN UPPER(LTRIM(RTRIM(CaseStatus))) IN ('DISPOSED', 'DISMISSED', 'CLOSED', 'DECIDED') THEN 'Disposed'
-                            ELSE 'Pending'
-                        END
-                    WHERE CaseStatus NOT IN ('Pending', 'Disposed', 'DNP', 'Ex-parte') 
-                      AND CaseStatus IS NOT NULL AND CaseStatus <> '';");
-            }
-            catch { }
         }
 
         public IEnumerable<LabourCourt> GetAllCourts()
@@ -1247,6 +1230,14 @@ namespace MVCCaseManagement.DAL
                 CNRNumber = GetString(row, "CNRNumber"),
                 EstCode = GetString(row, "EstCode"),
                 CaseTypeCode = GetString(row, "CaseTypeCode"),
+                LastNapixSyncAt = GetDate(row, "LastNapixSyncAt"),
+                LastNapixSyncStatus = GetString(row, "LastNapixSyncStatus"),
+                LastNapixSyncError = GetString(row, "LastNapixSyncError"),
+                PendDispStatus = GetString(row, "PendDispStatus"),
+                EstName = GetString(row, "EstName"),
+                ECourtsStage = GetString(row, "ECourtsStage"),
+                ECourtsCourtNo = GetString(row, "ECourtsCourtNo"),
+                ECourtsJudge = GetString(row, "ECourtsJudge"),
                 
                 PetitionerName = GetString(row, "PetitionerName") ?? "",
                 EmployeeNo = GetString(row, "EmployeeNo"),
@@ -1561,38 +1552,12 @@ namespace MVCCaseManagement.DAL
             return model;
         }
 
-        // --- Safe Helpers ---
-
-        private string? GetString(DataRow row, string colName)
-        {
-            if (!row.Table.Columns.Contains(colName) || row[colName] == DBNull.Value) return null;
-            return row[colName].ToString();
-        }
-
-        private int? GetInt(DataRow row, string colName)
-        {
-            if (!row.Table.Columns.Contains(colName) || row[colName] == DBNull.Value) return null;
-            if (int.TryParse(row[colName].ToString(), out int val)) return val;
-            return null;
-        }
-
-        private DateTime? GetDate(DataRow row, string colName)
-        {
-            if (!row.Table.Columns.Contains(colName) || row[colName] == DBNull.Value) return null;
-            if (DateTime.TryParse(row[colName].ToString(), out DateTime val)) return val;
-            return null;
-        }
-
-        private bool GetBool(DataRow row, string colName)
-        {
-            return ToBool(row.Table.Columns.Contains(colName) ? row[colName] : null);
-        }
-
-        private bool? GetBoolNullable(DataRow row, string colName)
-        {
-            if (!row.Table.Columns.Contains(colName) || row[colName] == DBNull.Value) return null;
-            return ToBool(row[colName]);
-        }
+        // --- Safe Helpers (Delegated to Common.DataRowExtensions) ---
+        private string? GetString(DataRow row, string colName) => row.GetString(colName);
+        private int? GetInt(DataRow row, string colName) => row.GetInt(colName);
+        private DateTime? GetDate(DataRow row, string colName) => row.GetDate(colName);
+        private bool GetBool(DataRow row, string colName) => row.GetBool(colName);
+        private bool? GetBoolNullable(DataRow row, string colName) => row.GetBoolNullable(colName);
         
         public void MarkCaseAsViewed(int caseId)
         {
@@ -1752,7 +1717,7 @@ namespace MVCCaseManagement.DAL
                                 IsTransferViewed = 0
                             WHERE CaseID = @CaseID";
 
-                        var cmd = new SqlCommand(updateQuery, conn, trans);
+                        using var cmd = new SqlCommand(updateQuery, conn, trans);
                         cmd.Parameters.AddWithValue("@ToDivID", toDivisionId);
                         cmd.Parameters.AddWithValue("@FromDivID", fromDivId);
                         cmd.Parameters.AddWithValue("@CaseID", caseId);

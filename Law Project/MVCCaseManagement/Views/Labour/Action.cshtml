@@ -1686,7 +1686,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching High Court...';
 
-            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true')
+            fetch('/ECourts/GetCnrDetails?cnrNumber=' + encodeURIComponent(cnr) + '&isHighCourt=true&module=Labour')
                 .then(r => r.json())
                 .then(res => {
                     if (res && res.success && res.data) {
