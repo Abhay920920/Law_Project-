@@ -12,8 +12,6 @@ x86/
 build/
 Publish_Output/
 **/Publish_Output/
-publish/
-**/publish/
 dist/
 **/dist/
 
