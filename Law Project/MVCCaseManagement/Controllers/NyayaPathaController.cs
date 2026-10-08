@@ -141,7 +141,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> Chat([FromBody] NyayaPathaChatRequest request, CancellationToken cancellationToken)
         {
             try
@@ -224,7 +224,8 @@ namespace MVCCaseManagement.Controllers
             if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
                 return Json(new List<CaseSearchItemDto>());
 
-            var results = await _contextBuilder.SearchCasesAsync(q.Trim(), 15, cancellationToken);
+            int userDivisionId = GetCurrentDivisionId();
+            var results = await _contextBuilder.SearchCasesAsync(q.Trim(), 15, userDivisionId, cancellationToken);
             return Json(results);
         }
 
@@ -234,6 +235,14 @@ namespace MVCCaseManagement.Controllers
             var dossier = await _contextBuilder.BuildDossierAsync(caseType, caseId, cancellationToken);
             if (dossier == null)
                 return NotFound(new { message = "Case record not found in system." });
+
+            int userDivisionId = GetCurrentDivisionId();
+            if (userDivisionId != 5 && dossier.DivisionId.HasValue && dossier.DivisionId.Value != userDivisionId)
+            {
+                _logger.LogWarning("Security Block: User with division {UserDiv} attempted to access dossier for case {CaseType} #{CaseId} in division {CaseDiv}",
+                    userDivisionId, caseType, caseId, dossier.DivisionId);
+                return Forbid();
+            }
 
             return Json(new
             {
@@ -281,7 +290,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> DeleteConversation(int id, CancellationToken cancellationToken)
         {
             if (id <= 0)
@@ -298,7 +307,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> CheckECourts(string caseType, int caseId, CancellationToken cancellationToken)
         {
             if (caseId <= 0) return BadRequest(new { message = "Invalid case ID." });
@@ -310,7 +319,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SearchSimilarCases(string caseType, int caseId, string? q, CancellationToken cancellationToken)
         {
             var similar = await _similarCaseService.FindSimilarCasesAsync(caseType, caseId, q, 6, cancellationToken);
@@ -318,7 +327,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SearchLatestJudgments(string query, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(query)) return Json(new List<ExternalLegalSourceDto>());

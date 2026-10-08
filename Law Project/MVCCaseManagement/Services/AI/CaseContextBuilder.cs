@@ -173,7 +173,8 @@ namespace MVCCaseManagement.Services.AI
                 Petitioner = petitionerNames,
                 Respondent = respondentNames,
                 VehicleNo = mvc.VehicleNo,
-                CNRNumber = mvc.CNRNumber
+                CNRNumber = mvc.CNRNumber,
+                DivisionId = mvc.DivisionID
             };
 
             // 1. Structured Facts & Procedures
@@ -331,7 +332,8 @@ namespace MVCCaseManagement.Services.AI
                 NextHearingDate = null,
                 Petitioner = employee,
                 Respondent = "NWKRTC",
-                CNRNumber = labour.CNRNumber
+                CNRNumber = labour.CNRNumber,
+                DivisionId = labour.DivisionID
             };
 
             var facts = dossier.StructuredFacts;
@@ -405,6 +407,7 @@ namespace MVCCaseManagement.Services.AI
                 return await BuildMvcDossierAsync(caseId, cancellationToken);
             }
 
+            var underlyingMvc = _caseRepo.GetCaseById(appeal.CaseID);
             var dossier = new CaseDossier
             {
                 CaseId = appeal.AppealID,
@@ -414,7 +417,8 @@ namespace MVCCaseManagement.Services.AI
                 CurrentStage = appeal.CorpMFAStage ?? appeal.CorpMFAStatus ?? "Pending",
                 Petitioner = "NWKRTC / Appellant",
                 Respondent = "Respondents",
-                CNRNumber = appeal.CorpMFACNRNumber
+                CNRNumber = appeal.CorpMFACNRNumber,
+                DivisionId = underlyingMvc?.DivisionID
             };
 
             var facts = dossier.StructuredFacts;
@@ -461,7 +465,8 @@ namespace MVCCaseManagement.Services.AI
                 CourtName = gra.CourtType ?? "Controlling Authority, Payment of Gratuity",
                 CurrentStage = gra.CurrentStage ?? "Pending",
                 Petitioner = gra.ClaimantName ?? "Workman",
-                Respondent = "NWKRTC"
+                Respondent = "NWKRTC",
+                DivisionId = gra.DivisionCode
             };
 
             var facts = dossier.StructuredFacts;
@@ -494,7 +499,8 @@ namespace MVCCaseManagement.Services.AI
                 CurrentStage = other.CaseStage ?? "Pending",
                 Petitioner = other.PetitionerName ?? "Plaintiff / Petitioner",
                 Respondent = other.RespondentName ?? "NWKRTC",
-                CNRNumber = other.CNRNumber
+                CNRNumber = other.CNRNumber,
+                DivisionId = other.DivisionID
             };
 
             var facts = dossier.StructuredFacts;
@@ -531,12 +537,33 @@ namespace MVCCaseManagement.Services.AI
                         }
                         break;
 
+                    case LegalQueryIntent.DriverHistory:
+                        if (!string.IsNullOrWhiteSpace(plan.DriverName) || !string.IsNullOrWhiteSpace(plan.DriverTokenNo))
+                        {
+                            var drvDossier = await ResolveDriverLitigationHistoryAsync(plan.DriverName, plan.DriverTokenNo, userDivisionId, cancellationToken);
+                            if (drvDossier != null) return drvDossier;
+                        }
+                        break;
+
+                    case LegalQueryIntent.ClaimantPortfolio:
+                        if (!string.IsNullOrWhiteSpace(plan.ClaimantName))
+                        {
+                            var claimDossier = await ResolveClaimantPortfolioAsync(plan.ClaimantName, userDivisionId, cancellationToken);
+                            if (claimDossier != null) return claimDossier;
+                        }
+                        break;
+
                     case LegalQueryIntent.AdvocatePortfolio:
                         if (!string.IsNullOrWhiteSpace(plan.AdvocateName))
                         {
                             var advDossier = await ResolveAdvocatePortfolioAsync(plan.AdvocateName, userDivisionId, cancellationToken);
                             if (advDossier != null) return advDossier;
                         }
+                        break;
+
+                    case LegalQueryIntent.StageHearingFilter:
+                        var stageDossier = await ResolveStageAndHearingFilterAsync(plan, userDivisionId, cancellationToken);
+                        if (stageDossier != null) return stageDossier;
                         break;
 
                     case LegalQueryIntent.HearingCalendar:
@@ -560,7 +587,7 @@ namespace MVCCaseManagement.Services.AI
                         break;
 
                     case LegalQueryIntent.DivisionalStatistics:
-                        var divDossier = await BuildDivisionalDossierAsync(clean, cancellationToken);
+                        var divDossier = await BuildDivisionalDossierAsync(clean, userDivisionId, cancellationToken);
                         if (divDossier != null) return divDossier;
                         break;
                 }
@@ -700,7 +727,7 @@ namespace MVCCaseManagement.Services.AI
             }
 
             // Try Divisional Statistics Match
-            var divCandidate = await BuildDivisionalDossierAsync(clean, cancellationToken);
+            var divCandidate = await BuildDivisionalDossierAsync(clean, userDivisionId, cancellationToken);
             if (divCandidate != null) return divCandidate;
 
             return null;
@@ -747,13 +774,16 @@ namespace MVCCaseManagement.Services.AI
                     LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
                     LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                     LEFT JOIN MVC_CASE_ADVERSE_DETAILS adv ON c.CaseID = adv.CaseID
-                    WHERE REPLACE(REPLACE(UPPER(c.VehicleNo), '-', ''), ' ', '') LIKE @VehPattern
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND REPLACE(REPLACE(UPPER(c.VehicleNo), '-', ''), ' ', '') LIKE @VehPattern
                     ORDER BY c.AccidentDate DESC, c.MVCYear DESC, c.CaseID DESC";
 
+                int targetDivId = (userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0;
                 var cases = new List<dynamic>();
                 using (var cmd = new SqlCommand(sql, conn))
                 {
                     cmd.Parameters.AddWithValue("@VehPattern", $"%{cleanVeh}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -927,6 +957,8 @@ namespace MVCCaseManagement.Services.AI
                 using var conn = _db.GetConnection();
                 await conn.OpenAsync(cancellationToken);
 
+                int targetDivId = (userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0;
+
                 // 1. MVC cases for this advocate
                 string mvcSql = @"
                     SELECT TOP 30
@@ -947,13 +979,15 @@ namespace MVCCaseManagement.Services.AI
                     LEFT JOIN ADVOCATE_MASTER a ON c.AdvocateID = a.AdvocateID
                     LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
                     LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
-                    WHERE (c.AdvocateName LIKE @Adv OR a.AdvocateName LIKE @Adv)
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND (c.AdvocateName LIKE @Adv OR a.AdvocateName LIKE @Adv)
                     ORDER BY c.MVCYear DESC, c.CaseID DESC";
 
                 var mvcList = new List<dynamic>();
                 using (var cmd = new SqlCommand(mvcSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@Adv", $"%{cleanAdv}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -996,13 +1030,15 @@ namespace MVCCaseManagement.Services.AI
                     LEFT JOIN ADVOCATE_MASTER am ON c.AdvocateID = am.AdvocateID
                     LEFT JOIN LABOUR_ADVOCATES la ON c.AdvocateID = la.AdvocateID
                     LEFT JOIN HIGH_COURT_ADVOCATES hca ON c.AdvocateID = hca.AdvocateID
-                    WHERE (c.AdvocateName LIKE @Adv OR am.AdvocateName LIKE @Adv OR la.AdvocateName LIKE @Adv OR hca.AdvocateName LIKE @Adv)
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND (c.AdvocateName LIKE @Adv OR am.AdvocateName LIKE @Adv OR la.AdvocateName LIKE @Adv OR hca.AdvocateName LIKE @Adv)
                     ORDER BY c.CaseYear DESC, c.CaseID DESC";
 
                 var labourList = new List<dynamic>();
                 using (var cmd = new SqlCommand(labourSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@Adv", $"%{cleanAdv}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -1039,13 +1075,15 @@ namespace MVCCaseManagement.Services.AI
                     FROM APPEAL_DETAILS app
                     LEFT JOIN MVC_CASES mc ON app.CaseID = mc.CaseID
                     LEFT JOIN DIVISION_MASTER d ON mc.DivisionID = d.DivisionID
-                    WHERE app.CorpMFAAdvocate LIKE @Adv
+                    WHERE (@DivId = 0 OR mc.DivisionID = @DivId)
+                      AND app.CorpMFAAdvocate LIKE @Adv
                     ORDER BY app.CorpMFAYear DESC, app.AppealID DESC";
 
                 var appList = new List<dynamic>();
                 using (var cmd = new SqlCommand(appSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@Adv", $"%{cleanAdv}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -1617,21 +1655,373 @@ namespace MVCCaseManagement.Services.AI
             }
         }
 
+        private async Task<CaseDossier?> ResolveDriverLitigationHistoryAsync(string? driverName, string? driverTokenNo, int userDivisionId, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(driverName) && string.IsNullOrWhiteSpace(driverTokenNo))
+                return null;
+
+            string cleanName = (driverName ?? "").Trim();
+            string cleanToken = (driverTokenNo ?? "").Trim();
+            int targetDivId = (userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    SELECT 
+                        c.CaseID,
+                        c.MVCNo,
+                        c.MVCYear,
+                        ISNULL(c.VehicleNo, 'N/A') AS VehicleNo,
+                        c.AccidentDate,
+                        ISNULL(c.AccidentLocation, 'N/A') AS AccidentLocation,
+                        ISNULL(c.DriverName, 'N/A') AS DriverName,
+                        ISNULL(c.DriverTokenNo, 'N/A') AS DriverTokenNo,
+                        ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = c.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant') AS PetitionerName,
+                        ISNULL(m.MACTName, ISNULL(c.EstName, 'MACT Tribunal')) AS CourtName,
+                        d.DivisionNameEnglish AS DivisionName,
+                        ISNULL(c.CurrentStage, 'Pending') AS CurrentStage,
+                        ISNULL(c.PendDispStatus, 'P') AS PendDispStatus,
+                        c.DisposalStatus,
+                        c.ClaimAmount,
+                        c.AwardAmount,
+                        c.NextHearingDate,
+                        adv.DriverPunishmentStatus,
+                        adv.TR18Remarks
+                    FROM MVC_CASES c
+                    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
+                    LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
+                    LEFT JOIN MVC_CASE_ADVERSE_DETAILS adv ON c.CaseID = adv.CaseID
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND (
+                           (@Token <> '' AND c.DriverTokenNo = @Token)
+                           OR (@Name <> '' AND c.DriverName LIKE @NamePattern)
+                      )
+                    ORDER BY c.AccidentDate DESC, c.MVCYear DESC, c.CaseID DESC";
+
+                var list = new List<dynamic>();
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    cmd.Parameters.AddWithValue("@Token", cleanToken);
+                    cmd.Parameters.AddWithValue("@Name", cleanName);
+                    cmd.Parameters.AddWithValue("@NamePattern", $"%{cleanName}%");
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        list.Add(new
+                        {
+                            CaseId = rdr.GetInt32(0),
+                            MVCNo = rdr.IsDBNull(1) ? "N/A" : rdr.GetString(1),
+                            MVCYear = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2),
+                            VehicleNo = rdr.IsDBNull(3) ? "N/A" : rdr.GetString(3),
+                            AccidentDate = rdr.IsDBNull(4) ? (DateTime?)null : rdr.GetDateTime(4),
+                            AccidentLocation = rdr.IsDBNull(5) ? "N/A" : rdr.GetString(5),
+                            DriverName = rdr.IsDBNull(6) ? "N/A" : rdr.GetString(6),
+                            DriverTokenNo = rdr.IsDBNull(7) ? "N/A" : rdr.GetString(7),
+                            PetitionerName = rdr.IsDBNull(8) ? "Claimant" : rdr.GetString(8),
+                            CourtName = rdr.IsDBNull(9) ? "MACT" : rdr.GetString(9),
+                            DivisionName = rdr.IsDBNull(10) ? "N/A" : rdr.GetString(10),
+                            CurrentStage = rdr.IsDBNull(11) ? "Pending" : rdr.GetString(11),
+                            PendDispStatus = rdr.IsDBNull(12) ? "P" : rdr.GetString(12),
+                            DisposalStatus = rdr.IsDBNull(13) ? "" : rdr.GetString(13),
+                            ClaimAmount = rdr.IsDBNull(14) ? (decimal?)null : rdr.GetDecimal(14),
+                            AwardAmount = rdr.IsDBNull(15) ? (decimal?)null : rdr.GetDecimal(15),
+                            NextHearingDate = rdr.IsDBNull(16) ? (DateTime?)null : rdr.GetDateTime(16),
+                            Punishment = rdr.IsDBNull(17) ? "" : rdr.GetString(17),
+                            TR18 = rdr.IsDBNull(18) ? "" : rdr.GetString(18)
+                        });
+                    }
+                }
+
+                if (list.Count == 0) return null;
+
+                // Group by distinct driver token / name to detect potential homonyms
+                var distinctDrivers = list
+                    .GroupBy(x => new { Name = (string)x.DriverName, Token = (string)x.DriverTokenNo })
+                    .ToList();
+
+                var sb = new System.Text.StringBuilder();
+                string primaryLabel = !string.IsNullOrWhiteSpace(cleanToken) ? $"Token #{cleanToken}" : cleanName;
+                sb.AppendLine("## NYAYA PATHA — Driver Accident & Litigation Intelligence");
+                sb.AppendLine();
+                sb.AppendLine($"### 👨‍✈️ Driver Litigation History: **{primaryLabel}**");
+                sb.AppendLine($"> **Total Registered Cases:** {list.Count} | **Distinct Driver Personas Detected:** {distinctDrivers.Count}");
+                sb.AppendLine();
+
+                if (distinctDrivers.Count > 1 && string.IsNullOrWhiteSpace(cleanToken))
+                {
+                    sb.AppendLine("> ⚠️ **Homonym Disambiguation Alert:** Multiple distinct driver tokens were found matching this name. Records are grouped by Driver Token to avoid conflating individuals:");
+                    sb.AppendLine();
+                    foreach (var group in distinctDrivers)
+                    {
+                        sb.AppendLine($"- **Driver:** {group.Key.Name} — **Token:** `{group.Key.Token}` ({group.Count()} cases)");
+                    }
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine("| Case Number | Vehicle No | Accident Date | Division | Claimant | Stage | Next Hearing | Claim (₹) | Award (₹) | TR-18 / Punishment |");
+                sb.AppendLine("|---|---|:---:|---|---|:---:|:---:|:---:|:---:|---|");
+                foreach (var c in list)
+                {
+                    string accDt = c.AccidentDate != null ? ((DateTime)c.AccidentDate).ToString("dd-MM-yyyy") : "-";
+                    string nxtDt = c.NextHearingDate != null ? ((DateTime)c.NextHearingDate).ToString("dd-MM-yyyy") : "-";
+                    string claimStr = c.ClaimAmount != null ? $"Rs. {((decimal)c.ClaimAmount):N0}" : "-";
+                    string awardStr = c.AwardAmount != null ? $"Rs. {((decimal)c.AwardAmount):N0}" : "-";
+                    string remark = !string.IsNullOrWhiteSpace((string)c.Punishment) ? (string)c.Punishment : (!string.IsNullOrWhiteSpace((string)c.TR18) ? (string)c.TR18 : "None recorded");
+                    sb.AppendLine($"| **MVC/{c.MVCNo}/{c.MVCYear}** | `{c.VehicleNo}` | {accDt} | {c.DivisionName} | {c.PetitionerName} | **{c.CurrentStage}** | {nxtDt} | {claimStr} | {awardStr} | {remark} |");
+                }
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: NWKRTC Central Case Management Database (Direct SQL Query — 100% Real-Time & Verified).*");
+
+                var dossier = new CaseDossier
+                {
+                    CaseType = "DriverHistory",
+                    CaseNumber = $"Driver History - {primaryLabel}",
+                    CourtName = "NWKRTC Central Database",
+                    CurrentStage = $"{list.Count} Cases Registered",
+                    Petitioner = primaryLabel,
+                    Respondent = "NWKRTC"
+                };
+                dossier.StructuredFacts["DirectMarkdown"] = sb.ToString();
+                dossier.StructuredFacts["Total Cases"] = list.Count.ToString();
+                return dossier;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving driver litigation history for {DriverName} / {Token}", driverName, driverTokenNo);
+                return null;
+            }
+        }
+
+        private async Task<CaseDossier?> ResolveClaimantPortfolioAsync(string claimantName, int userDivisionId, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(claimantName)) return null;
+
+            string clean = claimantName.Trim();
+            int targetDivId = (userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    SELECT TOP 30
+                        c.CaseID,
+                        c.MVCNo,
+                        c.MVCYear,
+                        ISNULL(c.VehicleNo, 'N/A') AS VehicleNo,
+                        p.PetitionerName,
+                        ISNULL(p.Relationship, '') AS Relationship,
+                        ISNULL(m.MACTName, ISNULL(c.EstName, 'MACT Tribunal')) AS CourtName,
+                        d.DivisionNameEnglish AS DivisionName,
+                        ISNULL(c.CurrentStage, 'Pending') AS CurrentStage,
+                        c.NextHearingDate,
+                        c.ClaimAmount,
+                        c.AwardAmount
+                    FROM MVC_CASE_PETITIONERS p
+                    JOIN MVC_CASES c ON p.CaseID = c.CaseID
+                    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
+                    LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND p.PetitionerName LIKE @Pattern
+                    ORDER BY c.MVCYear DESC, c.CaseID DESC";
+
+                var list = new List<dynamic>();
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    cmd.Parameters.AddWithValue("@Pattern", $"%{clean}%");
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        list.Add(new
+                        {
+                            CaseId = rdr.GetInt32(0),
+                            MVCNo = rdr.IsDBNull(1) ? "N/A" : rdr.GetString(1),
+                            MVCYear = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2),
+                            VehicleNo = rdr.IsDBNull(3) ? "N/A" : rdr.GetString(3),
+                            PetitionerName = rdr.IsDBNull(4) ? clean : rdr.GetString(4),
+                            Relationship = rdr.IsDBNull(5) ? "" : rdr.GetString(5),
+                            CourtName = rdr.IsDBNull(6) ? "MACT" : rdr.GetString(6),
+                            DivisionName = rdr.IsDBNull(7) ? "N/A" : rdr.GetString(7),
+                            CurrentStage = rdr.IsDBNull(8) ? "Pending" : rdr.GetString(8),
+                            NextHearingDate = rdr.IsDBNull(9) ? (DateTime?)null : rdr.GetDateTime(9),
+                            ClaimAmount = rdr.IsDBNull(10) ? (decimal?)null : rdr.GetDecimal(10),
+                            AwardAmount = rdr.IsDBNull(11) ? (decimal?)null : rdr.GetDecimal(11)
+                        });
+                    }
+                }
+
+                if (list.Count == 0) return null;
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("## NYAYA PATHA — Claimant Claims Portfolio Register");
+                sb.AppendLine();
+                sb.AppendLine($"### 👤 Claimant: **{clean}**");
+                sb.AppendLine($"> Showing **{list.Count}** matching claim petition(s) across NWKRTC divisions:");
+                sb.AppendLine();
+                sb.AppendLine("| Case Number | Vehicle No | Claimant / Petitioner | Relation | Court / Tribunal | Division | Stage | Next Hearing | Claim (₹) | Award (₹) |");
+                sb.AppendLine("|---|---|---|---|---|---|:---:|:---:|:---:|:---:|");
+                foreach (var c in list)
+                {
+                    string nxtDt = c.NextHearingDate != null ? ((DateTime)c.NextHearingDate).ToString("dd-MM-yyyy") : "-";
+                    string claimStr = c.ClaimAmount != null ? $"Rs. {((decimal)c.ClaimAmount):N0}" : "-";
+                    string awardStr = c.AwardAmount != null ? $"Rs. {((decimal)c.AwardAmount):N0}" : "-";
+                    sb.AppendLine($"| **MVC/{c.MVCNo}/{c.MVCYear}** | `{c.VehicleNo}` | {c.PetitionerName} | {c.Relationship} | {c.CourtName} | {c.DivisionName} | **{c.CurrentStage}** | {nxtDt} | {claimStr} | {awardStr} |");
+                }
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: NWKRTC Central Case Management Database (Direct SQL Query — 100% Real-Time & Verified).*");
+
+                var dossier = new CaseDossier
+                {
+                    CaseType = "ClaimantPortfolio",
+                    CaseNumber = $"Claimant - {clean}",
+                    CourtName = "MACT Tribunals",
+                    CurrentStage = $"{list.Count} Claims Listed",
+                    Petitioner = clean,
+                    Respondent = "NWKRTC"
+                };
+                dossier.StructuredFacts["DirectMarkdown"] = sb.ToString();
+                dossier.StructuredFacts["Total Claims"] = list.Count.ToString();
+                return dossier;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving claimant portfolio for {ClaimantName}", claimantName);
+                return null;
+            }
+        }
+
+        private async Task<CaseDossier?> ResolveStageAndHearingFilterAsync(LegalQueryPlan plan, int userDivisionId, CancellationToken cancellationToken)
+        {
+            int targetDivId = plan.DivisionId ?? ((userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0);
+            string stage = (plan.StageFilter ?? "").Trim();
+            bool isNoHearingDate = plan.IsNoNextHearingDateFilter;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    SELECT TOP 40
+                        c.CaseID,
+                        c.MVCNo,
+                        c.MVCYear,
+                        ISNULL(c.VehicleNo, 'N/A') AS VehicleNo,
+                        ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = c.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant') AS PetitionerName,
+                        ISNULL(m.MACTName, ISNULL(c.EstName, 'MACT Tribunal')) AS CourtName,
+                        d.DivisionNameEnglish AS DivisionName,
+                        ISNULL(c.CurrentStage, 'Pending') AS CurrentStage,
+                        c.NextHearingDate,
+                        c.ClaimAmount
+                    FROM MVC_CASES c
+                    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
+                    LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND (c.PendDispStatus = 'P' OR c.PendDispStatus IS NULL)
+                      AND (c.DisposalStatus IS NULL OR c.DisposalStatus <> 'DISPOSED')
+                      AND (@Stage = '' OR c.CurrentStage LIKE @StagePattern)
+                      AND (@NoHearing = 0 OR c.NextHearingDate IS NULL)
+                    ORDER BY c.MVCYear DESC, c.CaseID DESC";
+
+                var list = new List<dynamic>();
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    cmd.Parameters.AddWithValue("@Stage", stage);
+                    cmd.Parameters.AddWithValue("@StagePattern", $"%{stage}%");
+                    cmd.Parameters.AddWithValue("@NoHearing", isNoHearingDate ? 1 : 0);
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        list.Add(new
+                        {
+                            CaseId = rdr.GetInt32(0),
+                            MVCNo = rdr.IsDBNull(1) ? "N/A" : rdr.GetString(1),
+                            MVCYear = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2),
+                            VehicleNo = rdr.IsDBNull(3) ? "N/A" : rdr.GetString(3),
+                            PetitionerName = rdr.IsDBNull(4) ? "Claimant" : rdr.GetString(4),
+                            CourtName = rdr.IsDBNull(5) ? "MACT" : rdr.GetString(5),
+                            DivisionName = rdr.IsDBNull(6) ? "N/A" : rdr.GetString(6),
+                            CurrentStage = rdr.IsDBNull(7) ? "Pending" : rdr.GetString(7),
+                            NextHearingDate = rdr.IsDBNull(8) ? (DateTime?)null : rdr.GetDateTime(8),
+                            ClaimAmount = rdr.IsDBNull(9) ? (decimal?)null : rdr.GetDecimal(9)
+                        });
+                    }
+                }
+
+                if (list.Count == 0) return null;
+
+                string titleLabel = isNoHearingDate ? "Cases without Next Hearing Date" : $"Stage: {stage}";
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("## NYAYA PATHA — Case Register Filter Intelligence");
+                sb.AppendLine();
+                sb.AppendLine($"### 📋 **{titleLabel}**");
+                sb.AppendLine($"> Showing **{list.Count}** matching pending cases:");
+                sb.AppendLine();
+                sb.AppendLine("| Case Number | Vehicle No | Claimant / Petitioner | Court / Tribunal | Division | Stage | Next Hearing | Claim (₹) |");
+                sb.AppendLine("|---|---|---|---|---|:---:|:---:|:---:|");
+                foreach (var c in list)
+                {
+                    string nxtDt = c.NextHearingDate != null ? ((DateTime)c.NextHearingDate).ToString("dd-MM-yyyy") : "⚠️ *Not fixed*";
+                    string claimStr = c.ClaimAmount != null ? $"Rs. {((decimal)c.ClaimAmount):N0}" : "-";
+                    sb.AppendLine($"| **MVC/{c.MVCNo}/{c.MVCYear}** | `{c.VehicleNo}` | {c.PetitionerName} | {c.CourtName} | {c.DivisionName} | **{c.CurrentStage}** | {nxtDt} | {claimStr} |");
+                }
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: NWKRTC Central Case Management Database (Direct SQL Query — 100% Real-Time & Verified).*");
+
+                var dossier = new CaseDossier
+                {
+                    CaseType = "StageHearingFilter",
+                    CaseNumber = titleLabel,
+                    CourtName = "NWKRTC Central Database",
+                    CurrentStage = $"{list.Count} Cases Listed",
+                    Petitioner = titleLabel,
+                    Respondent = "NWKRTC"
+                };
+                dossier.StructuredFacts["DirectMarkdown"] = sb.ToString();
+                dossier.StructuredFacts["Total Cases"] = list.Count.ToString();
+                return dossier;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resolving stage/hearing filter");
+                return null;
+            }
+        }
+
         private async Task<CaseDossier?> ResolveCompoundFilterAsync(LegalQueryPlan plan, int userDivisionId, CancellationToken cancellationToken)
         {
             if (!string.IsNullOrWhiteSpace(plan.VehicleNumber))
                 return await ResolveVehicleLitigationHistoryAsync(plan.VehicleNumber, userDivisionId, cancellationToken);
 
+            if (!string.IsNullOrWhiteSpace(plan.DriverName) || !string.IsNullOrWhiteSpace(plan.DriverTokenNo))
+                return await ResolveDriverLitigationHistoryAsync(plan.DriverName, plan.DriverTokenNo, userDivisionId, cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(plan.ClaimantName))
+                return await ResolveClaimantPortfolioAsync(plan.ClaimantName, userDivisionId, cancellationToken);
+
             if (!string.IsNullOrWhiteSpace(plan.AdvocateName))
                 return await ResolveAdvocatePortfolioAsync(plan.AdvocateName, userDivisionId, cancellationToken);
+
+            if (plan.IsNoNextHearingDateFilter || !string.IsNullOrWhiteSpace(plan.StageFilter))
+                return await ResolveStageAndHearingFilterAsync(plan, userDivisionId, cancellationToken);
 
             if (plan.AmountThreshold.HasValue)
                 return await ResolveFinancialExposureAsync(plan.AmountThreshold.Value, plan.DivisionId, userDivisionId, cancellationToken);
 
-            return await BuildDivisionalDossierAsync(plan.RawQuery, cancellationToken);
+            return await BuildDivisionalDossierAsync(plan.RawQuery, userDivisionId, cancellationToken);
         }
 
-        private async Task<CaseDossier?> BuildDivisionalDossierAsync(string query, CancellationToken cancellationToken)
+        private async Task<CaseDossier?> BuildDivisionalDossierAsync(string query, int userDivisionId, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(query)) return null;
             string lower = query.ToLowerInvariant();
@@ -1735,6 +2125,21 @@ namespace MVCCaseManagement.Services.AI
                 if (matchedDivs.Count == 0 && (lower.Contains("all division") || lower.Contains("all divisions") || lower.Contains("overall") || lower.Contains("corporation")))
                 {
                     matchedDivs.AddRange(divisions.Where(d => d.Id != 5)); // All operating divisions
+                }
+
+                // SECURITY & AUTHORIZATION ENFORCEMENT:
+                // Non-Central Office users (userDivisionId != 5) are strictly restricted to their assigned division.
+                if (userDivisionId != 5 && userDivisionId > 0)
+                {
+                    matchedDivs = matchedDivs.Where(d => d.Id == userDivisionId).ToList();
+                    if (matchedDivs.Count == 0)
+                    {
+                        var assignedDiv = divisions.FirstOrDefault(d => d.Id == userDivisionId);
+                        if (assignedDiv.Id != 0)
+                        {
+                            matchedDivs.Add(assignedDiv);
+                        }
+                    }
                 }
 
                 if (matchedDivs.Count == 0) return null;
@@ -2236,32 +2641,49 @@ namespace MVCCaseManagement.Services.AI
             }
         }
 
-        public async Task<List<CaseSearchItemDto>> SearchCasesAsync(string query, int maxResults = 15, CancellationToken cancellationToken = default)
+        public async Task<List<CaseSearchItemDto>> SearchCasesAsync(string query, int maxResults = 15, int userDivisionId = 5, CancellationToken cancellationToken = default)
         {
             var results = new List<CaseSearchItemDto>();
             if (string.IsNullOrWhiteSpace(query))
                 return results;
 
             string clean = query.Trim();
+            string noSpace = clean.Replace(" ", "");
+            string noDash = noSpace.Replace("-", "");
             int top = Math.Min(30, Math.Max(1, maxResults));
+            int targetDivId = (userDivisionId != 5 && userDivisionId > 0) ? userDivisionId : 0;
 
             try
             {
                 using var conn = _db.GetConnection();
                 await conn.OpenAsync(cancellationToken);
 
-                // 1. Search MVC
+                // 1. Search MVC (Join MVC_CASE_PETITIONERS for claimant name matching)
                 string mvcSql = @"
-                    SELECT TOP (@Top) CaseID, MVCNo, MVCYear, ISNULL(VehicleNo, '') AS VehicleNo,
-                           ISNULL(PetitionerName, '') AS Petitioner, ISNULL(CurrentStage, '') AS Stage
-                    FROM MVC_CASES
-                    WHERE MVCNo LIKE @Q OR VehicleNo LIKE @Q OR PetitionerName LIKE @Q OR CNRNumber LIKE @Q
-                    ORDER BY MVCYear DESC, CaseID DESC";
+                    SELECT TOP (@Top) c.CaseID, c.MVCNo, c.MVCYear, ISNULL(c.VehicleNo, '') AS VehicleNo,
+                           ISNULL(p.PetitionerName, 'Claimant') AS Petitioner, ISNULL(c.CurrentStage, 'Pending') AS Stage
+                    FROM MVC_CASES c
+                    LEFT JOIN (
+                        SELECT CaseID, MIN(PetitionerName) AS PetitionerName
+                        FROM MVC_CASE_PETITIONERS
+                        GROUP BY CaseID
+                    ) p ON c.CaseID = p.CaseID
+                    WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                      AND (c.MVCNo LIKE @Q 
+                           OR c.VehicleNo LIKE @Q 
+                           OR REPLACE(c.VehicleNo, ' ', '') LIKE @QNoSpace
+                           OR REPLACE(REPLACE(c.VehicleNo, ' ', ''), '-', '') LIKE @QNoDash
+                           OR p.PetitionerName LIKE @Q 
+                           OR c.CNRNumber LIKE @Q)
+                    ORDER BY c.MVCYear DESC, c.CaseID DESC";
 
                 using (var cmd = new SqlCommand(mvcSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@Top", top);
                     cmd.Parameters.AddWithValue("@Q", $"%{clean}%");
+                    cmd.Parameters.AddWithValue("@QNoSpace", $"%{noSpace}%");
+                    cmd.Parameters.AddWithValue("@QNoDash", $"%{noDash}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -2275,18 +2697,23 @@ namespace MVCCaseManagement.Services.AI
                     }
                 }
 
-                // 2. Search Labour
+                // 2. Search Labour (PetitionerName represents the Workman in LABOUR_CASES)
                 string labourSql = @"
                     SELECT TOP (@Top) CaseID, CaseType, CaseNumber, CaseYear,
-                           ISNULL(EmployeeName, '') AS Employee, ISNULL(CurrentStage, '') AS Stage
+                           ISNULL(PetitionerName, '') AS Workman, ISNULL(CurrentStage, 'Pending') AS Stage
                     FROM LABOUR_CASES
-                    WHERE CaseNumber LIKE @Q OR EmployeeName LIKE @Q OR CNRNumber LIKE @Q
+                    WHERE (@DivId = 0 OR DivisionID = @DivId)
+                      AND (CaseNumber LIKE @Q 
+                           OR PetitionerName LIKE @Q 
+                           OR ISNULL(EmployeeNo, '') LIKE @Q 
+                           OR CNRNumber LIKE @Q)
                     ORDER BY CaseYear DESC, CaseID DESC";
 
                 using (var cmd = new SqlCommand(labourSql, conn))
                 {
                     cmd.Parameters.AddWithValue("@Top", top);
                     cmd.Parameters.AddWithValue("@Q", $"%{clean}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
                     using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                     while (await rdr.ReadAsync(cancellationToken))
                     {
@@ -2295,7 +2722,91 @@ namespace MVCCaseManagement.Services.AI
                             CaseId = rdr.GetInt32(rdr.GetOrdinal("CaseID")),
                             CaseType = "LABOUR",
                             CaseNumber = $"{rdr["CaseType"]}/{rdr["CaseNumber"]}/{rdr["CaseYear"]}",
-                            Summary = $"Employee: {rdr["Employee"]} | Stage: {rdr["Stage"]}"
+                            Summary = $"Workman: {rdr["Workman"]} | Stage: {rdr["Stage"]}"
+                        });
+                    }
+                }
+
+                // 3. Search High Court Appeals (MFA)
+                if (results.Count < top * 2)
+                {
+                    string appealSql = @"
+                        SELECT TOP (@Top) a.AppealID, a.CaseID, ISNULL(a.CorpMFANumber, '') AS MFANo, ISNULL(a.CorpMFAYear, 0) AS MFAYear,
+                               ISNULL(a.HighCourtBench, 'Dharwad') AS Bench, ISNULL(c.MVCNo, '') AS MVCNo, ISNULL(c.MVCYear, 0) AS MVCYear
+                        FROM APPEAL_DETAILS a
+                        LEFT JOIN MVC_CASES c ON a.CaseID = c.CaseID
+                        WHERE (@DivId = 0 OR c.DivisionID = @DivId)
+                          AND (a.CorpMFANumber LIKE @Q OR c.MVCNo LIKE @Q)
+                        ORDER BY a.AppealID DESC";
+
+                    using var cmd = new SqlCommand(appealSql, conn);
+                    cmd.Parameters.AddWithValue("@Top", top);
+                    cmd.Parameters.AddWithValue("@Q", $"%{clean}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        results.Add(new CaseSearchItemDto
+                        {
+                            CaseId = rdr.GetInt32(rdr.GetOrdinal("AppealID")),
+                            CaseType = "APPEAL",
+                            CaseNumber = $"MFA/{rdr["MFANo"]}/{rdr["MFAYear"]}",
+                            Summary = $"Bench: {rdr["Bench"]} | Lower MVC: {rdr["MVCNo"]}/{rdr["MVCYear"]}"
+                        });
+                    }
+                }
+
+                // 4. Search Payment of Gratuity (PGA)
+                if (results.Count < top * 2)
+                {
+                    string graSql = @"
+                        SELECT TOP (@Top) CaseID, PGANumber, ISNULL(ClaimantName, '') AS Claimant, ISNULL(CurrentStage, 'Pending') AS Stage
+                        FROM GRA_CASES
+                        WHERE (@DivId = 0 OR DivisionCode = @DivId)
+                          AND (PGANumber LIKE @Q OR ClaimantName LIKE @Q OR ISNULL(AdvocateName, '') LIKE @Q)
+                        ORDER BY CaseID DESC";
+
+                    using var cmd = new SqlCommand(graSql, conn);
+                    cmd.Parameters.AddWithValue("@Top", top);
+                    cmd.Parameters.AddWithValue("@Q", $"%{clean}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        results.Add(new CaseSearchItemDto
+                        {
+                            CaseId = rdr.GetInt32(rdr.GetOrdinal("CaseID")),
+                            CaseType = "GRATUITY",
+                            CaseNumber = $"PGA/{rdr["PGANumber"]}",
+                            Summary = $"Claimant: {rdr["Claimant"]} | Stage: {rdr["Stage"]}"
+                        });
+                    }
+                }
+
+                // 5. Search Other Courts (Civil OS, ECA, CC, LAC)
+                if (results.Count < top * 2)
+                {
+                    string otherSql = @"
+                        SELECT TOP (@Top) CaseID, CaseType, CaseNumber, CaseYear,
+                               ISNULL(PetitionerName, '') AS Petitioner, ISNULL(CurrentStage, 'Pending') AS Stage
+                        FROM OTHER_CASES
+                        WHERE (@DivId = 0 OR DivisionID = @DivId)
+                          AND (CaseNumber LIKE @Q OR PetitionerName LIKE @Q OR ISNULL(CNRNumber, '') LIKE @Q)
+                        ORDER BY CaseYear DESC, CaseID DESC";
+
+                    using var cmd = new SqlCommand(otherSql, conn);
+                    cmd.Parameters.AddWithValue("@Top", top);
+                    cmd.Parameters.AddWithValue("@Q", $"%{clean}%");
+                    cmd.Parameters.AddWithValue("@DivId", targetDivId);
+                    using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                    while (await rdr.ReadAsync(cancellationToken))
+                    {
+                        results.Add(new CaseSearchItemDto
+                        {
+                            CaseId = rdr.GetInt32(rdr.GetOrdinal("CaseID")),
+                            CaseType = "OTHERCOURTS",
+                            CaseNumber = $"{rdr["CaseType"]}/{rdr["CaseNumber"]}/{rdr["CaseYear"]}",
+                            Summary = $"Petitioner: {rdr["Petitioner"]} | Stage: {rdr["Stage"]}"
                         });
                     }
                 }

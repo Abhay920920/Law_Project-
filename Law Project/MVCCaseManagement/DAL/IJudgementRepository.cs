@@ -7,6 +7,7 @@ namespace MVCCaseManagement.DAL
         IEnumerable<JudgementViewModel> GetAllJudgements();
         JudgementViewModel? GetJudgementById(int id);
         void SaveJudgement(JudgementViewModel model);
+        void UpdateJudgement(JudgementViewModel model);
         void DeleteJudgement(int id);
     }
 }

@@ -57,6 +57,89 @@ namespace MVCCaseManagement.Controllers
             return View(model);
         }
 
+        [HttpGet]
+        public IActionResult Edit(int id)
+        {
+            if (!IsAuthorizedToUpload())
+            {
+                return RedirectToAction("Index");
+            }
+
+            var judgement = _repo.GetJudgementById(id);
+            if (judgement == null)
+            {
+                TempData["ErrorMessage"] = "Judgement record not found.";
+                return RedirectToAction("Index");
+            }
+
+            return View(judgement);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult Edit(JudgementViewModel model, bool removeFile = false)
+        {
+            if (!IsAuthorizedToUpload())
+            {
+                return RedirectToAction("Index");
+            }
+
+            var existing = _repo.GetJudgementById(model.JudgementID);
+            if (existing == null)
+            {
+                TempData["ErrorMessage"] = "Judgement record not found.";
+                return RedirectToAction("Index");
+            }
+
+            if (ModelState.IsValid)
+            {
+                if (model.JudgementFile != null && model.JudgementFile.Length > 0)
+                {
+                    // Save replacement file
+                    var newFilePath = SaveFile(model.JudgementFile);
+
+                    // Delete old file if present
+                    if (!string.IsNullOrEmpty(existing.FilePath) && existing.FilePath != newFilePath)
+                    {
+                        var relativePath = existing.FilePath.TrimStart('/');
+                        var fullPath = Path.Combine(_environment.WebRootPath, relativePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            try { System.IO.File.Delete(fullPath); } catch { }
+                        }
+                    }
+
+                    model.FilePath = newFilePath;
+                }
+                else if (removeFile)
+                {
+                    // User explicitly requested to remove the attached file
+                    if (!string.IsNullOrEmpty(existing.FilePath))
+                    {
+                        var relativePath = existing.FilePath.TrimStart('/');
+                        var fullPath = Path.Combine(_environment.WebRootPath, relativePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+                        if (System.IO.File.Exists(fullPath))
+                        {
+                            try { System.IO.File.Delete(fullPath); } catch { }
+                        }
+                    }
+                    model.FilePath = null;
+                }
+                else
+                {
+                    // Retain existing file
+                    model.FilePath = existing.FilePath;
+                }
+
+                model.UploadedBy = existing.UploadedBy ?? User.FindFirstValue("FullName");
+                _repo.UpdateJudgement(model);
+                TempData["SuccessMessage"] = "Judgement updated successfully.";
+                return RedirectToAction("Index");
+            }
+
+            return View(model);
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult Delete(int id)

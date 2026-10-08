@@ -96,6 +96,9 @@
 
                                             @if (User.FindFirst("DivisionID")?.Value == "5" || User.FindFirst("DivisionID")?.Value == "0")
                                             {
+                                                <a href="/Judgement/Edit/@item.JudgementID" class="btn-action btn-edit" title="Edit Record & Uploaded File">
+                                                    <i class="bi bi-pencil-fill"></i>
+                                                </a>
                                                 <form asp-action="Delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this record?');">
                                                     @Html.AntiForgeryToken()
                                                     <input type="hidden" name="id" value="@item.JudgementID" />
@@ -334,6 +337,7 @@
         }
 
         .btn-action.btn-view:hover { color: #ffffff; background-color: #10b981; border-color: #10b981; }
+        .btn-action.btn-edit:hover { color: #ffffff; background-color: #2563eb; border-color: #2563eb; }
         .btn-action.btn-delete:hover { color: #ffffff; background-color: #ef4444; border-color: #ef4444; }
         
         .smaller { font-size: 0.75rem; }

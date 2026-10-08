@@ -51,9 +51,12 @@ namespace MVCCaseManagement.Services.AI
             plan.CNRNumber = result.ExtractedCNR;
 
             ExtractVehicleNumber(clean, result, plan);
+            ExtractDriver(clean, result, plan);
+            ExtractClaimant(clean, result, plan);
             ExtractAdvocateName(clean, result, plan);
             ExtractDateRange(clean, plan);
             ExtractFinancialThreshold(clean, plan);
+            ExtractStageAndHearingConditions(clean, plan);
             ExtractDivision(clean, plan);
 
             // 3. Extract Statutory Provisions
@@ -118,7 +121,25 @@ namespace MVCCaseManagement.Services.AI
                                            plan.DivisionId.HasValue;
 
             // Route Evaluation Matrix
-            if (!string.IsNullOrWhiteSpace(plan.VehicleNumber) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
+            if (!string.IsNullOrWhiteSpace(plan.DriverName) || !string.IsNullOrWhiteSpace(plan.DriverTokenNo))
+            {
+                // A1. Driver Accident History & Caseload Intent
+                plan.Intent = LegalQueryIntent.DriverHistory;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = $"Driver litigation and accident claim history query for Driver {plan.DriverName ?? plan.DriverTokenNo} routed to database.";
+            }
+            else if (!string.IsNullOrWhiteSpace(plan.ClaimantName) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
+            {
+                // A2. Claimant / Petitioner Portfolio Intent
+                plan.Intent = LegalQueryIntent.ClaimantPortfolio;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = $"Claimant litigation claims query for {plan.ClaimantName} routed to database.";
+            }
+            else if (!string.IsNullOrWhiteSpace(plan.VehicleNumber) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
             {
                 if (mentionsSupremeOrHighCourt || mentionsSimilarCases)
                 {
@@ -131,6 +152,14 @@ namespace MVCCaseManagement.Services.AI
                     result.RequiredSources.Add(QuerySourceCategory.Judgments);
                     result.RequiredSources.Add(QuerySourceCategory.LegalWeb);
                     result.Reasoning = $"Vehicle litigation combined with judicial precedent search for {plan.VehicleNumber}.";
+                }
+                else if (plan.AmountThreshold.HasValue || !string.IsNullOrWhiteSpace(plan.StageFilter))
+                {
+                    plan.Intent = LegalQueryIntent.CompoundFilter;
+                    plan.IsDeterministicDatabaseQuery = true;
+                    result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                    result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                    result.Reasoning = $"Compound query filtering vehicle {plan.VehicleNumber} by financial threshold or court stage routed to database.";
                 }
                 else
                 {
@@ -150,6 +179,15 @@ namespace MVCCaseManagement.Services.AI
                 result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
                 result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
                 result.Reasoning = $"Advocate portfolio and active caseload query for {plan.AdvocateName} routed to database.";
+            }
+            else if ((!string.IsNullOrWhiteSpace(plan.StageFilter) || plan.IsNoNextHearingDateFilter) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
+            {
+                // B2. Procedural Court Stage & Unscheduled Hearing Intent
+                plan.Intent = LegalQueryIntent.StageHearingFilter;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = $"Court stage and pending hearing date filter query (Stage: {plan.StageFilter ?? "Unlisted Date"}) routed to database.";
             }
             else if (plan.DateRangeStart.HasValue && !mentionsSupremeOrHighCourt && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
             {
@@ -179,7 +217,7 @@ namespace MVCCaseManagement.Services.AI
                 result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
                 result.Reasoning = "Execution Petitions and attachment risk query routed to database.";
             }
-            else if (plan.DivisionId.HasValue && (plan.AmountThreshold.HasValue || plan.DateRangeStart.HasValue))
+            else if (plan.DivisionId.HasValue && (plan.AmountThreshold.HasValue || plan.DateRangeStart.HasValue || !string.IsNullOrWhiteSpace(plan.StageFilter) || plan.IsNoNextHearingDateFilter))
             {
                 // F. Multi-Filter Compound Query
                 plan.Intent = LegalQueryIntent.CompoundFilter;
@@ -261,6 +299,7 @@ namespace MVCCaseManagement.Services.AI
             else if (mentionsInternalDbOnly || !string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
             {
                 plan.Intent = LegalQueryIntent.CaseLookup;
+                plan.IsDeterministicDatabaseQuery = true;
                 result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
                 result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
                 result.Reasoning = "Internal case metadata, parties, vehicle, or internal opinions routed to internal database.";
@@ -309,9 +348,77 @@ namespace MVCCaseManagement.Services.AI
             }
         }
 
+        private static void ExtractDriver(string input, QueryRouteResult result, LegalQueryPlan plan)
+        {
+            // Token match: "token 1042", "token no 2188", "badge 1042", "token: 3091"
+            var tokenMatch = Regex.Match(input, @"\b(?:driver\s+)?(?:token|badge)(?:\s*(?:no\.?|#|:))?\s*([A-Za-z0-9\-]+)\b", RegexOptions.IgnoreCase);
+            if (tokenMatch.Success)
+            {
+                string token = tokenMatch.Groups[1].Value.Trim();
+                if (token.Length >= 2 && !IsCommonStopword(token))
+                {
+                    plan.DriverTokenNo = token;
+                }
+            }
+
+            // Driver name match: "driver Ramesh", "driver S.K. Patil", "driver Mahadev"
+            var driverMatch = Regex.Match(input, @"\bdriver\s+([A-Za-z\.\s]{3,30}?)(?:\b|token|in|for|involved|cases|accident|\?|$)", RegexOptions.IgnoreCase);
+            if (driverMatch.Success)
+            {
+                string name = driverMatch.Groups[1].Value.Trim(' ', '.', ',');
+                if (name.Length >= 3 && !IsCommonStopword(name) && !name.Equals("name", StringComparison.OrdinalIgnoreCase) && !name.Equals("token", StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.DriverName = name;
+                }
+            }
+        }
+
+        private static void ExtractClaimant(string input, QueryRouteResult result, LegalQueryPlan plan)
+        {
+            var claimantMatch = Regex.Match(input, @"(?:claimant|petitioner)\s+([A-Za-z\.\s]{3,35}?)(?:\b|in|for|cases|matter|\?|$)", RegexOptions.IgnoreCase);
+            if (claimantMatch.Success)
+            {
+                string name = claimantMatch.Groups[1].Value.Trim(' ', '.', ',');
+                if (name.Length >= 3 && !IsCommonStopword(name) && !name.Equals("name", StringComparison.OrdinalIgnoreCase))
+                {
+                    plan.ClaimantName = name;
+                }
+            }
+        }
+
+        private static void ExtractStageAndHearingConditions(string input, LegalQueryPlan plan)
+        {
+            string lower = input.ToLowerInvariant();
+            if (lower.Contains("no next hearing") || lower.Contains("without hearing date") || lower.Contains("unlisted next date") || lower.Contains("no hearing date"))
+            {
+                plan.IsNoNextHearingDateFilter = true;
+            }
+
+            if (lower.Contains("evidence stage") || lower.Contains("approaching evidence") || lower.Contains("stage of evidence") || lower.Contains("in evidence"))
+            {
+                plan.StageFilter = "EVIDENCE";
+            }
+            else if (lower.Contains("argument stage") || lower.Contains("stage of arguments") || lower.Contains("in arguments"))
+            {
+                plan.StageFilter = "ARGUMENTS";
+            }
+            else if (lower.Contains("written statement") || lower.Contains("filing written statement") || lower.Contains("objection stage"))
+            {
+                plan.StageFilter = "WRITTEN_STATEMENT";
+            }
+            else if (lower.Contains("notice stage") || lower.Contains("appearance stage") || lower.Contains("summons"))
+            {
+                plan.StageFilter = "NOTICE/APPEARANCE";
+            }
+        }
+
         private static void ExtractAdvocateName(string input, QueryRouteResult result, LegalQueryPlan plan)
         {
-            var match = Regex.Match(input, @"(?:advocate|adv\.?|counsel|lawyer)\s+([A-Za-z\.\s]{3,30}?)(?:\b|in|for|cases|handling|\?|$)", RegexOptions.IgnoreCase);
+            var match = Regex.Match(input, @"(?:assigned\s+to\s+)?(?:advocate|adv\.?|counsel|lawyer)\s+([A-Za-z\.\s]{2,40}?)(?:\s+(?:in|for|at|under|cases|handling|portfolio|matter)|\?|$)", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                match = Regex.Match(input, @"(?:assigned\s+to)\s+([A-Za-z\.\s]{2,40}?)(?:\s+(?:in|for|at|under|cases|handling|portfolio|matter)|\?|$)", RegexOptions.IgnoreCase);
+            }
             if (match.Success)
             {
                 string name = match.Groups[1].Value.Trim(' ', '.', ',');
@@ -319,19 +426,6 @@ namespace MVCCaseManagement.Services.AI
                 {
                     result.ExtractedAdvocateName = name;
                     plan.AdvocateName = name;
-                }
-            }
-            else
-            {
-                var assignedMatch = Regex.Match(input, @"assigned\s+to\s+(?:advocate\s+|adv\.?\s+)?([A-Za-z\.\s]{3,30}?)(?:\b|in|for|\?|$)", RegexOptions.IgnoreCase);
-                if (assignedMatch.Success)
-                {
-                    string name = assignedMatch.Groups[1].Value.Trim(' ', '.', ',');
-                    if (name.Length >= 3 && !IsCommonStopword(name))
-                    {
-                        result.ExtractedAdvocateName = name;
-                        plan.AdvocateName = name;
-                    }
                 }
             }
         }
@@ -475,8 +569,8 @@ namespace MVCCaseManagement.Services.AI
                 result.ExtractedCNR = cnrMatch.Groups[1].Value.ToUpperInvariant();
             }
 
-            // MVC match (e.g. MVC 123/2024 or MVC/123/24)
-            var mvcMatch = Regex.Match(input, @"\b(?:MVC[/\s-]*)(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
+            // 1. Standard MVC match (e.g. MVC 123/2024, MVC No. 123/2024, MVC-123-2024)
+            var mvcMatch = Regex.Match(input, @"\b(?:MVC(?:\s*No\.?)?[/\s-]*)(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
             if (mvcMatch.Success)
             {
                 result.ExtractedCaseType = "MVC";
@@ -486,7 +580,18 @@ namespace MVCCaseManagement.Services.AI
                 return;
             }
 
-            // Labour match (e.g. KID 45/2023 or ID 12/2022)
+            // 1b. Reverse MVC match: "465 of 2017 MVC", "465/2017 MVC"
+            var mvcRevMatch = Regex.Match(input, @"\b(\d+)\s*(?:of|[/\s-])\s*(20\d\d|\d\d)\s*(?:MVC|MACT)\b", RegexOptions.IgnoreCase);
+            if (mvcRevMatch.Success)
+            {
+                result.ExtractedCaseType = "MVC";
+                result.ExtractedCaseNumber = mvcRevMatch.Groups[1].Value;
+                string yr = mvcRevMatch.Groups[2].Value;
+                result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
+                return;
+            }
+
+            // 2. Labour match (e.g. KID 45/2023 or ID 12/2022)
             var labourMatch = Regex.Match(input, @"\b(KID|ID|REF|WP|WA|LCA)[/\s-]*(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
             if (labourMatch.Success)
             {
@@ -497,7 +602,7 @@ namespace MVCCaseManagement.Services.AI
                 return;
             }
 
-            // Appeal match (e.g. MFA 1001/2021)
+            // 3. Appeal match (e.g. MFA 1001/2021)
             var appealMatch = Regex.Match(input, @"\b(MFA)[/\s-]*(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
             if (appealMatch.Success)
             {
@@ -508,13 +613,27 @@ namespace MVCCaseManagement.Services.AI
                 return;
             }
 
-            // Gratuity match (e.g. PGA 15/2023)
-            var gratuityMatch = Regex.Match(input, @"\b(PGA)[/\s-]*(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
+            // 4. Gratuity match (e.g. PGA 15/2023 or PGA 78/2024 or PGA 78)
+            var gratuityMatch = Regex.Match(input, @"\b(PGA|PG)[/\s-]*(\d+)(?:[/\s-]*(20\d\d|\d\d))?\b", RegexOptions.IgnoreCase);
             if (gratuityMatch.Success)
             {
                 result.ExtractedCaseType = "GRATUITY";
                 result.ExtractedCaseNumber = gratuityMatch.Groups[2].Value;
-                string yr = gratuityMatch.Groups[3].Value;
+                if (gratuityMatch.Groups[3].Success)
+                {
+                    string yr = gratuityMatch.Groups[3].Value;
+                    result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
+                }
+                return;
+            }
+
+            // 5. Other Courts / Civil Court match (e.g. OS 210/2021, ECA 15/2022, CC 50/2020)
+            var otherMatch = Regex.Match(input, @"\b(OS|ECA|CC|LAC|PSC)[/\s-]*(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
+            if (otherMatch.Success)
+            {
+                result.ExtractedCaseType = "OTHERCOURTS";
+                result.ExtractedCaseNumber = otherMatch.Groups[2].Value;
+                string yr = otherMatch.Groups[3].Value;
                 result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
                 return;
             }
@@ -580,16 +699,26 @@ namespace MVCCaseManagement.Services.AI
 
             // SubQuery 1: Structured Entity / Case Records
             if (!string.IsNullOrWhiteSpace(plan.VehicleNumber) || 
+                !string.IsNullOrWhiteSpace(plan.DriverName) ||
+                !string.IsNullOrWhiteSpace(plan.DriverTokenNo) ||
+                !string.IsNullOrWhiteSpace(plan.ClaimantName) ||
                 !string.IsNullOrWhiteSpace(plan.CaseNumber) || 
                 !string.IsNullOrWhiteSpace(plan.CNRNumber) ||
                 !string.IsNullOrWhiteSpace(plan.AdvocateName) ||
+                !string.IsNullOrWhiteSpace(plan.StageFilter) ||
+                plan.IsNoNextHearingDateFilter ||
                 plan.DivisionId.HasValue)
             {
                 var entities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 if (!string.IsNullOrWhiteSpace(plan.VehicleNumber)) entities["VehicleNumber"] = plan.VehicleNumber;
+                if (!string.IsNullOrWhiteSpace(plan.DriverName)) entities["DriverName"] = plan.DriverName;
+                if (!string.IsNullOrWhiteSpace(plan.DriverTokenNo)) entities["DriverTokenNo"] = plan.DriverTokenNo;
+                if (!string.IsNullOrWhiteSpace(plan.ClaimantName)) entities["ClaimantName"] = plan.ClaimantName;
                 if (!string.IsNullOrWhiteSpace(plan.CaseNumber)) entities["CaseNumber"] = plan.CaseNumber;
                 if (!string.IsNullOrWhiteSpace(plan.CNRNumber)) entities["CNRNumber"] = plan.CNRNumber;
                 if (!string.IsNullOrWhiteSpace(plan.AdvocateName)) entities["AdvocateName"] = plan.AdvocateName;
+                if (!string.IsNullOrWhiteSpace(plan.StageFilter)) entities["StageFilter"] = plan.StageFilter;
+                if (plan.IsNoNextHearingDateFilter) entities["NoNextHearingDate"] = "true";
                 if (plan.DivisionId.HasValue) entities["DivisionId"] = plan.DivisionId.Value.ToString();
 
                 plan.SubQueries.Add(new DecomposedSubQuery
@@ -682,9 +811,11 @@ namespace MVCCaseManagement.Services.AI
             var followUpIndicators = new[]
             {
                 "its ", " it ", "this case", "the case", "in this matter",
-                "what are its", "who is the driver", "our strongest",
-                "opposing party", "our position", "support us", "supporting us",
-                "what did they decide", "what about the award"
+                "what are its", "who is the driver", "who is the advocate", "advocate",
+                "our strongest", "opposing party", "our position", "support us", "supporting us",
+                "what did they decide", "what about the award", "next date", "next hearing",
+                "previous hearing", "last order", "what happened", "status", "claimant", "respondent",
+                "and what is"
             };
 
             return followUpIndicators.Any(ind => lower.Contains(ind));

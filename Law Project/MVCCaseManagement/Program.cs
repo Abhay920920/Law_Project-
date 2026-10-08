@@ -18,6 +18,11 @@ builder.Services.Configure<TR18Options>(builder.Configuration.GetSection(TR18Opt
 builder.Services.Configure<MVCCaseManagement.Models.AI.NyayaPathaOptions>(builder.Configuration.GetSection(MVCCaseManagement.Models.AI.NyayaPathaOptions.SectionName));
 
 // Add services to the container with global AntiForgeryToken validation on state-changing requests
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "RequestVerificationToken";
+});
+
 builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());

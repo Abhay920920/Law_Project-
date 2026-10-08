@@ -185,6 +185,15 @@ namespace MVCCaseManagement.Services.AI
                         Uri.TryCreate(rawUrl, UriKind.Absolute, out var uri);
                         string domain = uri?.Host.ToLowerInvariant() ?? "";
 
+                        // Exclude non-legal technology, software and cybersecurity domains
+                        if (domain.Contains("microsoft.com") || domain.Contains("ibm.com") || domain.Contains("geeksforgeeks.org") 
+                            || domain.Contains("techtarget.com") || domain.Contains("csoonline.com") || domain.Contains("cloudflare.com")
+                            || domain.Contains("okta.com") || domain.Contains("duo.com") || domain.Contains("auth0.com")
+                            || domain.Contains("wikipedia.org/wiki/Multi-factor"))
+                        {
+                            continue;
+                        }
+
                         string court = "Indian Judiciary / Legal Source";
                         if (domain.Contains("sci.gov.in") || rawTitle.Contains("Supreme Court", StringComparison.OrdinalIgnoreCase) || snippet.Contains("Supreme Court", StringComparison.OrdinalIgnoreCase))
                         {
@@ -480,7 +489,42 @@ namespace MVCCaseManagement.Services.AI
         private static string SanitizeSearchQuery(string query)
         {
             if (string.IsNullOrWhiteSpace(query)) return string.Empty;
-            string clean = Regex.Replace(query, @"[^\w\s\-\/\.]", " ");
+
+            string scrubbed = query;
+
+            // 0. Disambiguate NWKRTC legal acronyms so external search engines do not confuse legal appeals with IT terms
+            if (Regex.IsMatch(scrubbed, @"\bmfa\b", RegexOptions.IgnoreCase))
+            {
+                scrubbed = Regex.Replace(scrubbed, @"\bmfa\b", "Miscellaneous First Appeal Karnataka High Court Section 173 Motor Vehicles Act", RegexOptions.IgnoreCase);
+            }
+            if (Regex.IsMatch(scrubbed, @"\bmvc\b", RegexOptions.IgnoreCase))
+            {
+                scrubbed = Regex.Replace(scrubbed, @"\bmvc\b", "Motor Accident Claims Tribunal MVC case Motor Vehicles Act Karnataka", RegexOptions.IgnoreCase);
+            }
+            if (Regex.IsMatch(scrubbed, @"\bkid\b", RegexOptions.IgnoreCase))
+            {
+                scrubbed = Regex.Replace(scrubbed, @"\bkid\b", "Labour Court Industrial Dispute KID Karnataka", RegexOptions.IgnoreCase);
+            }
+            if (Regex.IsMatch(scrubbed, @"\bpg\b", RegexOptions.IgnoreCase) && !scrubbed.Contains("gratuity", StringComparison.OrdinalIgnoreCase))
+            {
+                scrubbed = Regex.Replace(scrubbed, @"\bpg\b", "Payment of Gratuity Act controlling authority", RegexOptions.IgnoreCase);
+            }
+            if (Regex.IsMatch(scrubbed, @"\bep\b", RegexOptions.IgnoreCase) && !scrubbed.Contains("execution", StringComparison.OrdinalIgnoreCase))
+            {
+                scrubbed = Regex.Replace(scrubbed, @"\bep\b", "Execution Petition Order 21 CPC decree", RegexOptions.IgnoreCase);
+            }
+
+            // 1. Scrub internal vehicle registration numbers (e.g. KA-31-F-1678, KA 25 F 1234)
+            scrubbed = Regex.Replace(scrubbed, @"\b[A-Z]{2}[- ]?\d{1,2}[- ]?[A-Z]{1,3}[- ]?\d{1,4}\b", "NWKRTC vehicle", RegexOptions.IgnoreCase);
+
+            // 2. Scrub driver token patterns (e.g. token 1234, token no 5678)
+            scrubbed = Regex.Replace(scrubbed, @"\btoken\s*(?:no\.?|#)?\s*\d+\b", "driver", RegexOptions.IgnoreCase);
+
+            // 3. Scrub internal database case ID markers (e.g. #1234, CaseId 567)
+            scrubbed = Regex.Replace(scrubbed, @"\b(?:caseid|case\s*id)\s*[:#]?\s*\d+\b", "", RegexOptions.IgnoreCase);
+
+            // 4. Scrub control characters and sanitize
+            string clean = Regex.Replace(scrubbed, @"[^\w\s\-\/\.]", " ");
             return Regex.Replace(clean, @"\s+", " ").Trim();
         }
 

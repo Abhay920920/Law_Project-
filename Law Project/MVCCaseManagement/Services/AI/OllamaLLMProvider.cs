@@ -74,6 +74,18 @@ namespace MVCCaseManagement.Services.AI
                     ollamaMessages.Add(new { role, content = msg.MessageText });
                 }
 
+                // Pre-flight: estimate token count (1 token ≈ 4 chars) and warn if near context limit.
+                int estimatedChars = (request.SystemPrompt?.Length ?? 0)
+                    + request.Messages.Sum(m => m.MessageText?.Length ?? 0);
+                const int MaxContextChars = 24000; // ~6000 tokens at 4 chars/token, safe for 8192 ctx
+                if (estimatedChars > MaxContextChars)
+                {
+                    _logger.LogWarning(
+                        "Ollama prompt for model {Model} is very large ({Chars} chars, ~{Tokens} tokens estimated). " +
+                        "This may exceed the model context window and produce an empty response.",
+                        selectedModel, estimatedChars, estimatedChars / 4);
+                }
+
                 var payload = new
                 {
                     model = selectedModel,
@@ -82,8 +94,8 @@ namespace MVCCaseManagement.Services.AI
                     options = new
                     {
                         temperature = request.Temperature,
-                        num_predict = request.MaxTokens > 0 ? Math.Min(request.MaxTokens, 768) : 512,
-                        num_ctx = 3072
+                        num_predict = request.MaxTokens > 0 ? request.MaxTokens : 2048,
+                        num_ctx = 8192  // Increased from 4096 to handle large legal analysis prompts
                     }
                 };
 
@@ -113,11 +125,45 @@ namespace MVCCaseManagement.Services.AI
                 using var doc = JsonDocument.Parse(responseBody);
                 var root = doc.RootElement;
 
+                // Ollama can return HTTP 200 with {"error": "..."} when the model fails to produce output.
+                // This happens when the context window is exceeded, the model produces empty output,
+                // or the model encounters a generation error (e.g. "model output must contain either
+                // output text or tool calls, these cannot both be empty").
+                if (root.TryGetProperty("error", out var errorElement))
+                {
+                    string ollamaError = errorElement.GetString() ?? "Unknown Ollama model error";
+                    _logger.LogWarning("Ollama returned HTTP 200 but with an error payload for model {Model}: {Error}", selectedModel, ollamaError);
+                    return new LLMResponse
+                    {
+                        Success = false,
+                        Provider = ProviderName,
+                        Model = selectedModel,
+                        ExecutionTimeMs = (int)sw.ElapsedMilliseconds,
+                        ErrorMessage = $"Ollama model error: {ollamaError}"
+                    };
+                }
+
                 string text = string.Empty;
                 if (root.TryGetProperty("message", out var msgElement) &&
                     msgElement.TryGetProperty("content", out var contentElement))
                 {
                     text = contentElement.GetString() ?? string.Empty;
+                }
+
+                // Guard: model produced an empty response without an error key.
+                // Treat as a soft failure so the caller can use the offline fallback.
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    _logger.LogWarning("Ollama returned HTTP 200 but model produced empty content for model {Model}. Raw body (first 300 chars): {Raw}",
+                        selectedModel, responseBody.Length > 300 ? responseBody.Substring(0, 300) : responseBody);
+                    return new LLMResponse
+                    {
+                        Success = false,
+                        Provider = ProviderName,
+                        Model = selectedModel,
+                        ExecutionTimeMs = (int)sw.ElapsedMilliseconds,
+                        ErrorMessage = $"Local Ollama model ({selectedModel}) produced an empty response. The prompt may be too long for the model's context window, or the model stalled. The offline legal intelligence engine will be used instead."
+                    };
                 }
 
                 int totalTokens = 0;

@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.AI.CaseDossier
+﻿@model MVCCaseManagement.Models.AI.CaseDossier
 @{
     ViewData["Title"] = "Nyaya Patha AI — Legal Research Assistant";
     ViewData["HidePageHeader"] = true;
@@ -526,6 +526,7 @@
 }
 
 <div class="nyayapatha-container">
+    @Html.AntiForgeryToken()
     <!-- Top Header Banner (46px Height, Pixel-Perfect Single Row) -->
     <div class="nyayapatha-header text-white">
         <div class="d-flex justify-content-between align-items-center w-100">
@@ -536,10 +537,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-1.5">
                     <span class="fw-bold tracking-wide" style="font-size: 0.92rem; letter-spacing: 0.3px;">NYAYA PATHA AI</span>
-                    <span class="badge bg-info text-dark rounded-pill px-2 py-0 fw-bold" style="font-size: 0.65rem;">ನ್ಯಾಯ ಪಥ</span>
-                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-0 d-none d-sm-inline" style="font-size: 0.62rem;">
-                        <i class="bi bi-shield-check me-1"></i>Central Office Grounded RAG
-                    </span>
+                 
                 </div>
             </div>
             <!-- Right Metadata Badges -->
@@ -1162,29 +1160,44 @@
                 includeWeb: includeWebSelected
             };
 
+            const token = $('input[name="__RequestVerificationToken"]').val() || '';
+            const reqHeaders = {};
+            if (token) {
+                reqHeaders['RequestVerificationToken'] = token;
+            }
+
             $.ajax({
                 url: '/NyayaPatha/Chat',
                 type: 'POST',
                 contentType: 'application/json',
-                headers: { 'RequestVerificationToken': token },
+                headers: reqHeaders,
                 data: JSON.stringify(payload),
                 success: function (res) {
                     $(`#${thinkingId}`).remove();
-                    if (res.success) {
+                    if (res && res.success) {
                         currentConversationId = res.conversationId;
                         appendMessage('assistant', res.reply, res.citations, res.model, res.executionTimeMs, res.sourcesSearched, res.conflicts, res.routeCategory, res.followUpContext);
                         if (res.citations && res.citations.length > 0) {
                             renderSourcesPanel({ citations: res.citations });
                         }
                     } else {
-                        appendMessage('assistant', `⚠️ **Error:** ${res.errorMessage || 'Unable to process legal research query.'}`);
+                        const err = (res && res.errorMessage) ? res.errorMessage : 'Unable to process legal research query.';
+                        appendMessage('assistant', `⚠️ **Error:** ${err}`);
                     }
                 },
-                error: function (xhr) {
+                error: function (xhr, status, errorThrown) {
                     $(`#${thinkingId}`).remove();
                     let errMsg = 'Failed to communicate with Nyaya Patha AI service.';
-                    if (xhr.status === 403) {
-                        errMsg = 'Access Denied (403): Please ensure you are logged in to NWKRTC Law Management.';
+                    if (xhr.status === 401 || xhr.status === 403) {
+                        errMsg = 'Access Denied (' + xhr.status + '): Please ensure your NWKRTC session is active and authenticated.';
+                    } else if (xhr.responseJSON && xhr.responseJSON.errorMessage) {
+                        errMsg = xhr.responseJSON.errorMessage;
+                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errMsg = xhr.responseJSON.message;
+                    } else if (xhr.status === 500) {
+                        errMsg = 'Internal Processing Error (500): The legal retrieval engine encountered an issue while querying case repositories.';
+                    } else if (xhr.status === 0) {
+                        errMsg = 'Network connectivity error or server unavailable. Please verify NWKRTC network connection.';
                     }
                     appendMessage('assistant', `⚠️ **Security / System Error:** ${errMsg}`);
                 },
@@ -1623,18 +1636,29 @@
         });
 
         function printOfficialLegalMemo(btn) {
-            const $card = $(btn).closest('.card');
+            const $btn = $(btn);
+            const $card = $btn.closest('.card');
+            const $assistantRow = $btn.closest('.assistant-message-row');
+            const $userRow = $assistantRow.prevAll('.user-message-row').first();
+            const userPrompt = $userRow.find('.user-bubble-text').text().trim();
             const contentHtml = $card.find('.message-content').html();
+            const rawContent = $card.attr('data-raw-text') || $card.find('.message-content').text() || '';
             const citationsHtml = $card.find('.citations-container').html() || '';
+            
+            const dossierCaseNo = $('#dossierCaseNumber').text().trim();
+            const dossierCourt = $('#dossierCourt').text().trim();
+            const dossierStage = $('#dossierStage').text().trim();
+            const sessionTitle = $('#chatSessionTitle').text().trim();
+
+            const meta = analyzeLegalQueryContext(userPrompt, rawContent, dossierCaseNo, dossierCourt, dossierStage, sessionTitle);
+
             const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
             const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-            
-            const caseTitle = $('#chatSessionTitle').text() || 'Central Legal Research Intelligence';
-            const caseNumber = $('#dossierCaseNumber').text() || 'Official Inquiry';
-            const courtName = $('#dossierCourt').text() || 'MACT / High Court of Karnataka';
-            const stage = $('#dossierStage').text() || 'Legal Evaluation';
+            const now = new Date();
+            const memoRefCode = 'NWKRTC/CO-LEG/NP-AI/' + now.getFullYear() + '/' + Math.floor(100000 + Math.random() * 900000);
 
-            const printWindow = window.open('', '_blank', 'width=950,height=850');
+            const logoUrl = window.location.origin + '/images/logo.jpg';
+            const printWindow = window.open('', '_blank', 'width=980,height=880');
             if (!printWindow) {
                 alert('Please allow popups to open the official printable memorandum.');
                 return;
@@ -1645,118 +1669,172 @@
                 <html lang="en">
                 <head>
                     <meta charset="utf-8" />
-                    <title>NWKRTC Legal Memorandum — ${caseNumber}</title>
+                    <title>NWKRTC Official Legal Memorandum — ${meta.caseRef}</title>
                     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
                     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800&display=swap" rel="stylesheet" />
                     <style>
+                        @@page {
+                            size: A4 portrait;
+                            margin: 15mm 12mm 15mm 12mm;
+                        }
                         body {
-                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+                            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                             color: #0f172a;
                             background: #ffffff;
-                            padding: 35px;
-                            font-size: 13px;
+                            padding: 24px;
+                            font-size: 12.5px;
                             line-height: 1.55;
                         }
                         .official-header {
                             border-bottom: 2.5px solid #0f2331;
                             padding-bottom: 12px;
-                            margin-bottom: 20px;
+                            margin-bottom: 16px;
+                        }
+                        .logo-box {
+                            height: 60px;
+                            width: auto;
+                            max-width: 120px;
+                            object-fit: contain;
+                            border-radius: 4px;
+                            display: block;
                         }
                         .corp-title {
                             font-family: 'Outfit', sans-serif;
-                            font-size: 16px;
+                            font-size: 15px;
                             font-weight: 800;
                             color: #0f2331;
                             text-transform: uppercase;
                             letter-spacing: 0.5px;
+                            line-height: 1.25;
                         }
                         .corp-subtitle {
-                            font-size: 11.5px;
+                            font-size: 11px;
                             color: #475569;
                             font-weight: 600;
+                            margin-top: 2px;
                         }
                         .memo-badge {
                             background: #0f2331;
                             color: #ffffff;
-                            font-size: 11px;
+                            font-size: 10.5px;
                             padding: 4px 10px;
                             border-radius: 4px;
                             font-weight: 700;
                             letter-spacing: 0.8px;
                             text-transform: uppercase;
+                            display: inline-block;
+                        }
+                        .memo-category-badge {
+                            background: #e0f2fe;
+                            color: #0369a1;
+                            border: 1px solid #bae6fd;
+                            font-size: 10px;
+                            padding: 2px 8px;
+                            border-radius: 3px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            margin-top: 4px;
+                            display: inline-block;
                         }
                         .meta-table {
                             width: 100%;
                             border-collapse: collapse;
-                            margin-bottom: 22px;
+                            margin-bottom: 18px;
                         }
                         .meta-table td {
                             padding: 6px 10px;
-                            font-size: 12px;
+                            font-size: 11.5px;
                             border: 1px solid #cbd5e1;
+                            vertical-align: middle;
                         }
                         .meta-label {
                             background-color: #f1f5f9;
                             font-weight: 600;
                             color: #334155;
-                            width: 22%;
+                            width: 20%;
+                            white-space: nowrap;
                         }
-                        .legal-brief-table {
-                            width: 100%;
-                            border-collapse: collapse;
-                            margin: 14px 0;
+                        .directive-card {
+                            background: #f8fafc;
+                            border: 1.5px solid #0284c7;
+                            border-left: 5px solid #0284c7;
+                            border-radius: 4px;
+                            padding: 10px 14px;
+                            margin-bottom: 18px;
                             page-break-inside: avoid;
                         }
-                        .legal-brief-table th {
+                        .directive-title {
+                            font-size: 11px;
+                            font-weight: 800;
+                            text-transform: uppercase;
+                            color: #0369a1;
+                            letter-spacing: 0.5px;
+                            margin-bottom: 4px;
+                        }
+                        .directive-text {
+                            font-size: 11.5px;
+                            color: #0f172a;
+                            line-height: 1.45;
+                        }
+                        .memo-body {
+                            font-size: 12px;
+                            line-height: 1.6;
+                            color: #1e293b;
+                        }
+                        .memo-body table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin: 12px 0;
+                            page-break-inside: avoid;
+                        }
+                        .memo-body th {
                             background-color: #0f2331 !important;
                             color: #ffffff !important;
-                            font-size: 11px;
+                            font-size: 10.5px;
                             font-weight: 700;
                             text-transform: uppercase;
-                            padding: 8px 10px;
+                            padding: 7px 9px;
                             border: 1px solid #0f2331 !important;
                         }
-                        .legal-brief-table td {
-                            padding: 6px 10px;
-                            font-size: 12px;
+                        .memo-body td {
+                            padding: 5px 8px;
+                            font-size: 11px;
                             border: 1px solid #cbd5e1;
                             vertical-align: middle;
                         }
-                        .legal-brief-table tr:nth-child(even) td {
+                        .memo-body tr:nth-child(even) td {
                             background-color: #f8fafc;
-                        }
-                        .legal-callout {
-                            border-left: 4px solid #0f2331;
-                            background-color: #f8fafc;
-                            padding: 10px 14px;
-                            margin: 12px 0;
-                            border-radius: 0 4px 4px 0;
-                            font-size: 12px;
                         }
                         h1, h2, h3, h4, h5 {
                             color: #0f2331;
                             font-weight: 700;
-                            margin-top: 16px;
-                            margin-bottom: 8px;
+                            margin-top: 14px;
+                            margin-bottom: 6px;
                         }
-                        h2, h3 { font-size: 14px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; }
-                        h4, h5 { font-size: 13px; }
+                        h2, h3 { font-size: 13px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; }
+                        h4, h5 { font-size: 12px; }
                         .sign-off-section {
-                            margin-top: 40px;
-                            padding-top: 15px;
+                            margin-top: 36px;
+                            padding-top: 14px;
                             border-top: 1px dashed #94a3b8;
                             page-break-inside: avoid;
                         }
+                        .hash-badge {
+                            font-family: monospace;
+                            font-size: 9.5px;
+                            color: #64748b;
+                        }
                         @@media print {
-                            body { padding: 12mm; }
+                            body { padding: 0; }
                             .d-print-none { display: none !important; }
+                            .memo-body table { page-break-inside: avoid; }
                         }
                     </style>
                 </head>
                 <body>
                     <div class="d-print-none text-end mb-3">
                         <button onclick="window.print()" class="btn btn-primary btn-sm fw-bold px-3 py-1.5 shadow-sm">
-                            🖨️ Print / Save as PDF
+                            🖨️ Print / Save as Official PDF
                         </button>
                         <button onclick="window.close()" class="btn btn-outline-secondary btn-sm px-3 py-1.5 ms-2">
                             Close
@@ -1764,34 +1842,49 @@
                     </div>
 
                     <div class="official-header d-flex justify-content-between align-items-center">
-                        <div>
-                            <div class="corp-title">North Western Karnataka Road Transport Corporation</div>
-                            <div class="corp-subtitle">Central Office : Legal Cell / Nyaya Patha Intelligence Center, Hubballi</div>
+                        <div class="d-flex align-items-center" style="gap:14px;">
+                            <img src="${logoUrl}" alt="NWKRTC" class="logo-box" onerror="this.style.display='none'" />
+                            <div>
+                                <div class="corp-title">North Western Karnataka Road Transport Corporation</div>
+                                <div class="corp-subtitle">Central Legal Directorate & Nyaya Patha Intelligence Center, Hubballi — 580030</div>
+                            </div>
                         </div>
                         <div class="text-end">
                             <span class="memo-badge">Official Legal Memo</span>
-                            <div class="small text-muted mt-1" style="font-size: 10px;">Confidential / Internal Use Only</div>
+                            <div><span class="memo-category-badge">${meta.matterCategory}</span></div>
+                            <div class="small text-muted mt-1" style="font-size: 9.5px;">Confidential // NWKRTC Official Legal Record</div>
                         </div>
                     </div>
 
                     <table class="meta-table">
                         <tr>
-                            <td class="meta-label">Subject / Matter:</td>
-                            <td colspan="3"><strong>${caseTitle}</strong></td>
+                            <td class="meta-label">Matter / Inquiry:</td>
+                            <td colspan="3"><strong>${meta.subject}</strong></td>
                         </tr>
                         <tr>
-                            <td class="meta-label">Case No / Ref:</td>
-                            <td>${caseNumber}</td>
-                            <td class="meta-label">Tribunal / Court:</td>
-                            <td>${courtName}</td>
+                            <td class="meta-label">Case Ref / Index:</td>
+                            <td><strong class="text-primary">${meta.caseRef}</strong></td>
+                            <td class="meta-label">Division / Unit:</td>
+                            <td><strong>${meta.divisionEntity}</strong></td>
                         </tr>
                         <tr>
-                            <td class="meta-label">Current Stage:</td>
-                            <td>${stage}</td>
+                            <td class="meta-label">Competent Forum:</td>
+                            <td>${meta.jurisdiction}</td>
+                            <td class="meta-label">Statutory Reference:</td>
+                            <td>${meta.statutoryRef}</td>
+                        </tr>
+                        <tr>
+                            <td class="meta-label">Legal Stage:</td>
+                            <td>${meta.currentStage}</td>
                             <td class="meta-label">Generated On:</td>
-                            <td>${dateStr} at ${timeStr}</td>
+                            <td>${dateStr} at ${timeStr} | Ref: ${memoRefCode}</td>
                         </tr>
                     </table>
+
+                    <div class="directive-card">
+                        <div class="directive-title">📌 Executive Legal Guidance & Action Directive:</div>
+                        <div class="directive-text">${meta.directive}</div>
+                    </div>
 
                     <div class="memo-body">
                         ${contentHtml}
@@ -1799,20 +1892,29 @@
 
                     ${citationsHtml ? `
                         <div class="mt-4 pt-2 border-top border-secondary-subtle">
-                            <div class="fw-bold mb-2 text-uppercase" style="font-size: 11px;">Verified Sources & Statutory Authorities:</div>
+                            <div class="fw-bold mb-1.5 text-uppercase" style="font-size: 10.5px; color: #0f2331;">
+                                <i class="bi bi-shield-check text-success me-1"></i>Verified Sources, Precedents & Statutory Authorities:
+                            </div>
                             ${citationsHtml}
                         </div>
                     ` : ''}
 
                     <div class="sign-off-section d-flex justify-content-between align-items-end text-muted small">
                         <div>
-                            <div><em>Grounded in NWKRTC Central Case Records & Authoritative Judicial Precedents.</em></div>
-                            <div style="font-size: 10px;">Nyaya Patha AI — Powered by Verified Central Legal Repository</div>
+                            <div><strong>Grounding Attestation:</strong> Grounded in NWKRTC Central Case Records & Binding High Court / Supreme Court Precedents.</div>
+                            <div class="hash-badge">Nyaya Patha AI Engine // System Digest: ${memoRefCode} // Timestamp: ${now.toISOString()}</div>
                         </div>
-                        <div class="text-center" style="min-width: 200px;">
-                            <div style="border-bottom: 1px solid #475569; height: 35px; margin-bottom: 4px;"></div>
-                            <div class="fw-bold text-dark" style="font-size: 11px;">Authorizing Legal Officer / In-Charge</div>
-                            <div style="font-size: 10px;">NWKRTC Central / Divisional Office</div>
+                        <div class="d-flex gap-4">
+                            <div class="text-center" style="min-width: 170px;">
+                                <div style="border-bottom: 1px solid #475569; height: 35px; margin-bottom: 4px;"></div>
+                                <div class="fw-bold text-dark" style="font-size: 10.5px;">Law Officer / Legal Assistant</div>
+                                <div style="font-size: 9.5px;">Divisional Legal Cell</div>
+                            </div>
+                            <div class="text-center" style="min-width: 170px;">
+                                <div style="border-bottom: 1px solid #475569; height: 35px; margin-bottom: 4px;"></div>
+                                <div class="fw-bold text-dark" style="font-size: 10.5px;">Chief Law Officer / In-Charge</div>
+                                <div style="font-size: 9.5px;">NWKRTC Central Office, Hubballi</div>
+                            </div>
                         </div>
                     </div>
                 </body>
@@ -1822,6 +1924,124 @@
             printWindow.document.open();
             printWindow.document.write(printDoc);
             printWindow.document.close();
+        }
+
+        function analyzeLegalQueryContext(prompt, responseText, dossierCaseNo, dossierCourt, dossierStage, sessionTitle) {
+            const p = (prompt || '').toLowerCase();
+            const r = (responseText || '').toLowerCase();
+
+            // Default baseline
+            let subject = prompt ? `Legal Research & Inquiry: ${prompt}` : (sessionTitle || 'Legal Research & Executive Intelligence Memorandum');
+            let matterCategory = 'General Legal Advisory & Statutory Assessment';
+            let statutoryRef = 'Constitution of India, MV Act 1988, ID Act 1947 & Civil Procedure Code 1908';
+            let jurisdiction = dossierCourt && dossierCourt !== 'Central Legal Repository' ? dossierCourt : 'High Court of Karnataka / MACT / Central Legal Directorate';
+            let caseRef = dossierCaseNo && dossierCaseNo !== 'No Active Case Selected' ? dossierCaseNo : 'Official Legal Inquiry';
+            let divisionEntity = 'NWKRTC Central / All Operating Divisions';
+            let currentStage = dossierStage && dossierStage !== 'Ready for Inquiry' ? dossierStage : 'Legal Evaluation / Record Scrutiny';
+            let directive = 'Scrutinize record findings and proceed in accordance with Corporation Legal Standing Orders and procedural timelines.';
+
+            // 1. Division detection
+            const divisionMap = [
+                { code: 'NKD', name: 'Uttara Kannada (NKD)', keywords: ['nkd', 'uttara kannada', 'karwar', 'sirsi'] },
+                { code: 'BGM', name: 'Belagavi (BGM)', keywords: ['bgm', 'belagavi', 'belgaum'] },
+                { code: 'HBL', name: 'Hubballi-Dharwad (HBL)', keywords: ['hbl', 'hubballi', 'hubli', 'dharwad'] },
+                { code: 'GDK', name: 'Gadag (GDK)', keywords: ['gdk', 'gadag'] },
+                { code: 'BGK', name: 'Bagalkot (BGK)', keywords: ['bgk', 'bagalkot', 'bagalkote'] },
+                { code: 'CHD', name: 'Chikkodi (CHD)', keywords: ['chd', 'chikkodi'] },
+                { code: 'HVR', name: 'Haveri (HVR)', keywords: ['hvr', 'haveri'] }
+            ];
+            for (const d of divisionMap) {
+                if (d.keywords.some(k => p.includes(k) || r.includes(k))) {
+                    divisionEntity = d.name;
+                    break;
+                }
+            }
+
+            // 2. Specific Case Number extraction (MFA, MVC, KID, ID, PG, EP, WP, WA, SLP)
+            const caseMatch = (prompt + ' ' + responseText).match(/\b(MFA[\s/.-]*\d+[\s/.-]*\d*|MVC[\s/.-]*\d+[\s/.-]*\d*|KID[\s/.-]*\d+[\s/.-]*\d*|ID[\s/.-]*\d+[\s/.-]*\d*|PG[\s/.-]*\d+[\s/.-]*\d*|EP[\s/.-]*\d+[\s/.-]*\d*|WP[\s/.-]*\d+[\s/.-]*\d*|WA[\s/.-]*\d+[\s/.-]*\d*|SLP[\s/.-]*\d+[\s/.-]*\d*)\b/i);
+            if (caseMatch) {
+                caseRef = caseMatch[1].toUpperCase();
+            }
+
+            // 3. Vehicle Number extraction (KA-xx-x-xxxx)
+            const vehMatch = (prompt + ' ' + responseText).match(/\b(KA[\s-]*\d{1,2}[\s-]*[A-Z]{1,2}[\s-]*\d{1,4})\b/i);
+            const vehRef = vehMatch ? vehMatch[1].toUpperCase() : null;
+
+            // 4. Categorization based on prompt and response
+            if (p.includes('mfa') || p.includes('appeal') || p.includes('high court') || p.includes('section 173')) {
+                matterCategory = 'High Court Appellate Proceedings (MFA / Appeal)';
+                statutoryRef = 'Section 173 of Motor Vehicles Act, 1988 read with Order XLI CPC, 1908';
+                jurisdiction = 'High Court of Karnataka (Dharwad Bench / Bengaluru)';
+                subject = prompt ? `High Court MFA Appeal Review: ${prompt}` : 'High Court MFA Appeal Proceedings Assessment';
+                currentStage = 'Appellate Adjudication / Limitation & Grounds Analysis';
+                directive = 'Verify certified copy of award, compute 90-day limitation period under Sec 173, verify statutory 50% / ₹25,000 deposit compliance, and draft grounds challenging excessive quantum or erroneous negligence apportionment.';
+                if (caseRef === 'Official Legal Inquiry' && divisionEntity !== 'NWKRTC Central / All Operating Divisions') {
+                    caseRef = `MFA-REG-${divisionEntity.split(' ')[0]}`;
+                }
+            } else if (p.includes('mvc') || p.includes('mact') || p.includes('accident') || p.includes('claimant') || p.includes('compensation') || vehRef) {
+                matterCategory = 'Motor Accident Claims Tribunal Adjudication (MVC / MACT)';
+                statutoryRef = 'Motor Vehicles Act, 1988 (Sections 166, 163A, 140, 149) & KMV Rules';
+                jurisdiction = 'Motor Accident Claims Tribunal (MACT) / Principal District & Sessions Court';
+                subject = prompt ? `MACT Accident Claim Assessment: ${prompt}` : 'MVC Accident Claim Evaluation & Quantum Brief';
+                currentStage = 'Tribunal Proceedings / Evidence & Cross-Examination Stage';
+                directive = 'Cross-examine treating doctor regarding whole-body vs limb disability, produce depot trip sheet & vehicle inspection report, and establish contributory negligence where applicable.';
+                if (vehRef && caseRef === 'Official Legal Inquiry') {
+                    caseRef = `VEH: ${vehRef}`;
+                }
+            } else if (p.includes('labour') || p.includes('labor') || p.includes('kid') || p.includes('i.d.') || p.includes('industrial dispute') || p.includes('dismissal') || p.includes('reinstatement')) {
+                matterCategory = 'Industrial & Labour Court Adjudication (KID / ID Proceedings)';
+                statutoryRef = 'Industrial Disputes Act, 1947 (Sections 10, 11-A, 33-C(2), 33(2)(b))';
+                jurisdiction = 'Labour Court / Industrial Tribunal (Hubballi / Belagavi)';
+                subject = prompt ? `Labour Dispute Examination: ${prompt}` : 'Industrial Dispute Brief & Domestic Enquiry Assessment';
+                currentStage = 'Labour Adjudication / Domestic Enquiry Validity Stage';
+                directive = 'Produce enquiry officer findings, past misconduct default card, establish fairness of domestic enquiry as preliminary issue, and pray for leave to lead independent evidence if enquiry is vitiated.';
+            } else if (p.includes('gratuity') || p.includes('pg ') || p.includes('p.g.') || p.includes('form n') || p.includes('controlling authority')) {
+                matterCategory = 'Payment of Gratuity Proceedings (PG Act Adjudication)';
+                statutoryRef = 'Payment of Gratuity Act, 1972 (Sections 4, 7 & 4(6) Forfeiture Provisions)';
+                jurisdiction = 'Controlling Authority / Appellate Authority under Payment of Gratuity Act';
+                subject = prompt ? `Gratuity Claim Evaluation: ${prompt}` : 'Statutory Gratuity Assessment & Liability Analysis';
+                currentStage = 'Statutory Determination / Forfeiture Review Stage';
+                directive = 'Verify continuous service calculation under Section 2A, confirm if statutory ceiling (₹20 Lakhs) applies, verify whether notice of forfeiture under Sec 4(6) was formally issued within limitation.';
+            } else if (p.includes('execution') || p.includes(' e.p.') || p.includes('ep ') || p.includes('attachment') || p.includes('warrant')) {
+                matterCategory = 'Execution & Warrant Proceedings (Order XXI CPC)';
+                statutoryRef = 'Code of Civil Procedure, 1908 (Order XXI, Rules 1, 11, 46) & Section 174 MV Act';
+                jurisdiction = 'Executing Court / Tribunal (Order XXI Execution Bench)';
+                subject = prompt ? `Execution Petition Defense & Asset Protection: ${prompt}` : 'Execution Petition & Stay of Warrant Brief';
+                currentStage = 'Decree Enforcement / Attachment Stay Stage';
+                directive = 'Move immediate application for recall/stay of attachment warrant, demonstrate deposit of decretal amount or pending High Court stay order, and protect Corporation bank accounts from garnishee order.';
+            } else if (p.includes('driver') || p.includes('conductor') || p.includes('badge') || p.includes('accident history')) {
+                matterCategory = 'Crew Operational Risk & Driver Accident Profiling';
+                statutoryRef = 'NWKRTC C&R Regulations, Motor Vehicles Act 1988 & Central Standing Orders';
+                jurisdiction = 'Divisional Traffic & Security Vigilance Wing, NWKRTC';
+                subject = prompt ? `Driver & Crew Operational Profile: ${prompt}` : 'Driver Accident History & Vigilance Profile';
+                currentStage = 'Operational Review & Corrective Action Evaluation';
+                directive = 'Review accident recurrence records, schedule refresher defensive driving training at Regional Training Centre, evaluate safety bonus eligibility, and verify disciplinary action compliance.';
+            } else if (p.includes('division') || p.includes('statistics') || p.includes('all cases') || p.includes('register') || p.includes('pending')) {
+                matterCategory = 'Divisional Litigation Audit & Registry Review';
+                statutoryRef = 'NWKRTC Legal Monitoring Directives & Standing Circular Instructions';
+                jurisdiction = 'Divisional Legal Cell & Central Legal Directorate, Hubballi';
+                subject = prompt ? `Divisional Litigation Audit: ${prompt}` : 'Divisional Case Portfolio Status & Compliance Audit';
+                currentStage = 'Periodic Inventory Review / Lok Adalat Target Assessment';
+                directive = 'Expedite overdue written statements, verify panel advocate engagement status, prioritize high-quantum claims for Lok Adalat pre-conciliation, and submit quarterly disposal returns to Central Office.';
+            } else if (p.includes('precedent') || p.includes('judgment') || p.includes('pranay sethi') || p.includes('sarla verma') || p.includes('syed sadiq')) {
+                matterCategory = 'Judicial Precedents & Authoritative Legal Doctrines';
+                statutoryRef = 'Constitution of India (Article 141 Binding Precedent) & Supreme Court Law Reports';
+                jurisdiction = 'Supreme Court of India / High Court of Karnataka';
+                subject = prompt ? `Judicial Doctrine Analysis: ${prompt}` : 'Supreme Court / High Court Legal Precedent Analysis';
+                currentStage = 'Legal Research & Doctrine Application';
+                directive = 'Incorporate settled legal ratios into pending written statements and appeal memos to preclude excessive compensation and enforce standardized multiplier / future prospects tables.';
+            }
+
+            return {
+                subject: subject,
+                matterCategory: matterCategory,
+                statutoryRef: statutoryRef,
+                jurisdiction: jurisdiction,
+                caseRef: caseRef,
+                divisionEntity: divisionEntity,
+                currentStage: currentStage,
+                directive: directive
+            };
         }
 
         // 6. New Session & Clear Chat

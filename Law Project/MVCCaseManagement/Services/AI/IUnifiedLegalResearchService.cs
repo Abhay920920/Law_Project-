@@ -34,6 +34,7 @@ namespace MVCCaseManagement.Services.AI
         public int ExecutionTimeMs { get; set; }
         public VerificationResult? Verification { get; set; }
         public EvidencePack? EvidencePack { get; set; }
+        public EvidenceSufficiencyEvaluation? Sufficiency { get; set; }
     }
 
     public interface IUnifiedLegalResearchService

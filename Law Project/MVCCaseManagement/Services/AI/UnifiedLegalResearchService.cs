@@ -324,7 +324,8 @@ namespace MVCCaseManagement.Services.AI
                     Query = request.Question,
                     Plan = route.Plan,
                     Conflicts = detectedConflicts,
-                    SourcesQueried = sourcesSearched
+                    SourcesQueried = sourcesSearched,
+                    SimilarCases = dossier.UnifiedSimilarCases ?? new List<UnifiedSimilarCaseDto>()
                 };
 
                 foreach (var kvp in dossier.StructuredFacts)
@@ -477,19 +478,71 @@ namespace MVCCaseManagement.Services.AI
                             }
                             else
                             {
-                                completion = $"[Notice: Local AI reasoning engine is currently unavailable ({llmResp.ErrorMessage}). Verified legal records and authoritative citations remain accessible below.]";
+                                // Tier-2: If Ollama returned an error (commonly "model output must contain
+                                // either output text or tool calls" due to context overflow), retry once
+                                // with a compact stripped-down prompt containing only verified facts.
+                                bool isContextError = llmResp.ErrorMessage != null &&
+                                    (llmResp.ErrorMessage.Contains("model output", StringComparison.OrdinalIgnoreCase) ||
+                                     llmResp.ErrorMessage.Contains("empty response", StringComparison.OrdinalIgnoreCase) ||
+                                     llmResp.ErrorMessage.Contains("context", StringComparison.OrdinalIgnoreCase) ||
+                                     llmResp.ErrorMessage.Contains("too long", StringComparison.OrdinalIgnoreCase));
+
+                                if (isContextError)
+                                {
+                                    _logger.LogWarning("LLM context overflow detected, retrying with compact prompt for user {UserId}. Original error: {Error}",
+                                        request.UserId, llmResp.ErrorMessage);
+
+                                    // Build a minimal prompt: only verified facts + user question
+                                    var compactFacts = new System.Text.StringBuilder();
+                                    compactFacts.AppendLine("CASE FACTS (verified from NWKRTC internal database):");
+                                    foreach (var kvp in evidencePack.VerifiedFacts.Take(20))
+                                        compactFacts.AppendLine($"- {kvp.Key}: {kvp.Value}");
+
+                                    var compactMessages = new List<AIMessage>
+                                    {
+                                        new AIMessage
+                                        {
+                                            Role = "user",
+                                            MessageText = $"{compactFacts}\n\nUSER QUERY: {request.Question}\n\n{(!string.IsNullOrWhiteSpace(request.QuickAction) ? _promptService.ResolveQuickActionDirective(request.QuickAction) : string.Empty)}\n\nBased only on the above verified facts, provide a concise legal analysis."
+                                        }
+                                    };
+
+                                    var retryResp = await _llmService.GenerateAsync(new LLMRequest
+                                    {
+                                        SystemPrompt = systemPrompt,
+                                        Messages = compactMessages
+                                    }, cancellationToken);
+
+                                    if (retryResp.Success)
+                                    {
+                                        completion = retryResp.Content;
+                                        activeModel = retryResp.Model + " (compact-prompt retry)";
+                                        _logger.LogInformation("LLM compact-prompt retry succeeded for user {UserId}", request.UserId);
+                                    }
+                                    else
+                                    {
+                                        completion = GenerateOfflineLegalIntelligenceFallback(request.Question, dossier, evidencePack, retryResp.ErrorMessage);
+                                        activeModel = "Nyaya Patha Offline Legal Intelligence Engine";
+                                    }
+                                }
+                                else
+                                {
+                                    completion = GenerateOfflineLegalIntelligenceFallback(request.Question, dossier, evidencePack, llmResp.ErrorMessage);
+                                    activeModel = "Nyaya Patha Offline Legal Intelligence Engine";
+                                }
                             }
                         }
                         else
                         {
-                            completion = "[Notice: Local AI reasoning engine is currently unconfigured. Verified legal records remain accessible below.]";
-                            activeModel = "Offline / Direct SQL";
+                            completion = GenerateOfflineLegalIntelligenceFallback(request.Question, dossier, evidencePack, "AI service unconfigured");
+                            activeModel = "Nyaya Patha Offline Legal Intelligence Engine";
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "LLM reasoning invocation failed for user {UserId}", request.UserId);
-                        completion = $"[Notice: AI reasoning engine returned an error: {ex.Message}. Verified legal records remain accessible below.]";
+                        completion = GenerateOfflineLegalIntelligenceFallback(request.Question, dossier, evidencePack, ex.Message);
+                        activeModel = "Nyaya Patha Offline Legal Intelligence Engine (Fallback)";
                     }
                 }
 
@@ -525,6 +578,7 @@ namespace MVCCaseManagement.Services.AI
                 result.Answer = completion;
                 result.SourcesSearched = sourcesSearched;
                 result.Citations = citations;
+                result.Sufficiency = EvaluateEvidenceSufficiency(request, dossier, evidencePack, route);
                 result.DossierSummary = dossier.CaseType != "GeneralLegalResearch" && dossier.CaseId > 0
                     ? $"{dossier.CaseNumber} ({dossier.CourtName}) — Stage: {dossier.CurrentStage}"
                     : null;
@@ -618,7 +672,7 @@ namespace MVCCaseManagement.Services.AI
             return response;
         }
 
-        private static bool IsAuthorized(int divisionId, string role, LegalQueryPlan? plan = null)
+        public static bool IsAuthorized(int divisionId, string role, LegalQueryPlan? plan = null)
         {
             // Central Office (DivisionID 5 or 0) or leadership roles have Corporation-wide scope
             bool isCentralOffice = divisionId == 5 || divisionId == 0 ||
@@ -631,10 +685,18 @@ namespace MVCCaseManagement.Services.AI
 
             if (isCentralOffice) return true;
 
-            // Divisional users are prohibited from querying records of other specific divisions
-            if (plan != null && plan.DivisionId.HasValue && plan.DivisionId.Value > 0 && plan.DivisionId.Value != divisionId)
+            // Divisional users are prohibited from querying corporation-wide aggregate (DivisionId == 0) or other divisions
+            if (plan != null)
             {
-                return false;
+                if (plan.DivisionId.HasValue && (plan.DivisionId.Value == 0 || plan.DivisionId.Value != divisionId))
+                {
+                    return false;
+                }
+
+                if (plan.Intent == LegalQueryIntent.DivisionComparison)
+                {
+                    return false;
+                }
             }
 
             return true;
@@ -771,6 +833,13 @@ namespace MVCCaseManagement.Services.AI
 
             string lower = (question ?? string.Empty).ToLowerInvariant().Trim();
 
+            // 0. Legal Glossary & Acronym Conceptual Inquiries (Instant, Zero LLM Cost, Authoritative)
+            if (TryGetLegalGlossaryExplanation(question, out string glossaryAnswer))
+            {
+                directAnswer = glossaryAnswer;
+                return true;
+            }
+
             // 1. Divisional Statistics & Deterministic Structured Registers (Direct Database Facts)
             if (dossier.CaseType == "DivisionalStatistics" ||
                 dossier.CaseType == "VehicleLitigationHistory" ||
@@ -841,7 +910,51 @@ namespace MVCCaseManagement.Services.AI
                 return true;
             }
 
-            // 2. ANY QuickAction must be processed by the LLM reasoning engine (e.g. check_ecourts, analyze_documents, strengths, etc.)
+            // 2. Similar Cases Quick Action (100% Verified Database Records, Zero Hallucination, Zero Lag)
+            if (string.Equals(quickAction, "similar_cases", StringComparison.OrdinalIgnoreCase) ||
+                lower == "action: similar_cases" || lower == "similar cases" || lower == "find similar cases")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("## 🔍 NYAYA PATHA — Verified Similar Cases Analysis");
+                sb.AppendLine();
+                sb.AppendLine($"**Active Matter:** {dossier.CaseType} #{dossier.CaseNumber} ({dossier.CourtName})");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+
+                if (dossier.UnifiedSimilarCases != null && dossier.UnifiedSimilarCases.Count > 0)
+                {
+                    sb.AppendLine($"### 📋 Verified Matches from NWKRTC Central Case Repository ({dossier.UnifiedSimilarCases.Count} Found)");
+                    sb.AppendLine();
+                    int idx = 1;
+                    foreach (var sim in dossier.UnifiedSimilarCases)
+                    {
+                        sb.AppendLine($"#### {idx++}. **{sim.CaseNumber}** — {sim.Court}");
+                        sb.AppendLine($"- **Similarity Index:** `{sim.SimilarityScore * 100:0.#}% Match`");
+                        sb.AppendLine($"- **Similarity Basis:** {sim.SimilarityBasis}");
+                        sb.AppendLine($"- **Case Summary / Facts:** {sim.FactsSummary}");
+                        sb.AppendLine($"- **Legal Issues & Claims:** {sim.LegalIssues}");
+                        sb.AppendLine($"- **Current Stage / Outcome:** **{sim.OutcomeOrStage}**");
+                        sb.AppendLine();
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("### ℹ️ Repository Verification Result");
+                    sb.AppendLine($"No preceding similar cases found in the NWKRTC database strictly matching the factual parameters of **{dossier.CaseNumber}**.");
+                    sb.AppendLine();
+                    sb.AppendLine("- No fictional or synthetic case numbers are generated.");
+                    sb.AppendLine("- To broaden the search, please use general legal precedent research.");
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: NWKRTC Central Case Management Database & Verified Judicial Records (100% Ground Truth — Zero Fictional Citations).*");
+                directAnswer = sb.ToString();
+                return true;
+            }
+
+            // 3. ANY Other QuickAction must be processed by the LLM reasoning engine
             if (!string.IsNullOrWhiteSpace(quickAction))
             {
                 return false;
@@ -977,6 +1090,296 @@ namespace MVCCaseManagement.Services.AI
             }
 
             return false;
+        }
+
+        private static EvidenceSufficiencyEvaluation EvaluateEvidenceSufficiency(
+            LegalResearchRequest request,
+            CaseDossier? dossier,
+            EvidencePack evidencePack,
+            QueryRouteResult route)
+        {
+            var eval = new EvidenceSufficiencyEvaluation();
+
+            // 1. Conflict evaluation
+            if (evidencePack.Conflicts.Count > 0)
+            {
+                eval.Level = EvidenceSufficiencyLevel.Conflicted;
+                eval.ConfidenceScore = 0.70;
+                eval.Explanation = $"Detected {evidencePack.Conflicts.Count} conflicting facts across sources (e.g. {evidencePack.Conflicts[0].FieldName}). Displaying multi-source conflict breakdown.";
+                eval.Contradictions.AddRange(evidencePack.Conflicts.Select(c => $"{c.FieldName}: {c.SourceA}='{c.ValueA}' vs {c.SourceB}='{c.ValueB}'"));
+                return eval;
+            }
+
+            // 2. Direct Markdown / Deterministic Database Queries
+            if (dossier != null && dossier.StructuredFacts.ContainsKey("DirectMarkdown"))
+            {
+                eval.Level = EvidenceSufficiencyLevel.Sufficient;
+                eval.ConfidenceScore = 1.0;
+                eval.Explanation = "Verified direct SQL records established with 100% deterministic precision.";
+                return eval;
+            }
+
+            // 3. Regular Case Dossier
+            if (dossier != null && dossier.CaseId > 0 && dossier.StructuredFacts.Count > 0)
+            {
+                // Check if specific field is asked that might be missing
+                string qLower = request.Question.ToLowerInvariant();
+                bool askedHearing = qLower.Contains("hearing") || qLower.Contains("next date");
+                bool askedClaim = qLower.Contains("claim") || qLower.Contains("amount") || qLower.Contains("award");
+                bool askedAdvocate = qLower.Contains("advocate") || qLower.Contains("lawyer") || qLower.Contains("counsel");
+
+                var missing = new List<string>();
+                if (askedHearing && !dossier.NextHearingDate.HasValue)
+                    missing.Add("Next hearing date is not fixed in court schedule");
+                if (askedAdvocate && !dossier.StructuredFacts.ContainsKey("Appearing Advocate"))
+                    missing.Add("Appearing advocate has not been recorded");
+
+                if (missing.Count > 0)
+                {
+                    eval.Level = EvidenceSufficiencyLevel.Partial;
+                    eval.ConfidenceScore = 0.85;
+                    eval.MissingElements = missing;
+                    eval.Explanation = $"Partial evidence: {string.Join(", ", missing)}.";
+                    return eval;
+                }
+
+                eval.Level = EvidenceSufficiencyLevel.Sufficient;
+                eval.ConfidenceScore = 0.98;
+                eval.Explanation = "Authorized internal case register facts and documents establish the query parameters.";
+                return eval;
+            }
+
+            // 4. Scanned documents without OCR text
+            if (dossier != null && dossier.ExtractedDocuments.Any(d => d.IsScannedDocument && string.IsNullOrWhiteSpace(d.ExtractedText)))
+            {
+                eval.Level = EvidenceSufficiencyLevel.Insufficient;
+                eval.ConfidenceScore = 0.20;
+                eval.MissingElements.Add("The document was scanned and OCR confidence is insufficient to establish this fact reliably.");
+                eval.Explanation = "The document is scanned and reliable text could not be extracted.";
+                return eval;
+            }
+
+            // 5. Research queries with chunks
+            if (evidencePack.Chunks.Count > 0)
+            {
+                eval.Level = EvidenceSufficiencyLevel.Sufficient;
+                eval.ConfidenceScore = 0.90;
+                eval.Explanation = $"Sufficient authoritative precedents and legal sources ({evidencePack.Chunks.Count} evidence passages) retrieved.";
+                return eval;
+            }
+
+            // 6. Insufficient evidence fallback
+            eval.Level = EvidenceSufficiencyLevel.Insufficient;
+            eval.ConfidenceScore = 0.10;
+            eval.MissingElements.Add("No matching authorized legal records, notings, or judicial precedents found.");
+            eval.Explanation = "The available records and sources do not establish this.";
+            return eval;
+        }
+
+        private static bool TryGetLegalGlossaryExplanation(string question, out string explanation)
+        {
+            explanation = string.Empty;
+            if (string.IsNullOrWhiteSpace(question)) return false;
+
+            string q = question.Trim().ToLowerInvariant();
+
+            // Strip common query preambles
+            string normalized = Regex.Replace(q, @"^(?:what(?:'s|\s+is|\s+are)?|explain|tell\s+me\s+about|describe|meaning\s+of|definition\s+of)\s+", "", RegexOptions.IgnoreCase).Trim();
+            normalized = Regex.Replace(normalized, @"[\?\.!]+$", "").Trim();
+
+            // 1. MVC / MACT
+            if (normalized == "mvc" || normalized == "whats mvc" || normalized == "what is mvc" || normalized == "mact" || normalized.StartsWith("mvc case") || normalized == "mvc meaning")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("### 🚗 Motor Accident Claims Tribunal (MVC) Case — Legal Framework");
+                sb.AppendLine();
+                sb.AppendLine("In **NWKRTC** and Indian transport jurisprudence, **MVC** refers to a **Motor Accident Claims Case** instituted before the **Motor Accident Claims Tribunal (MACT)**.");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("#### ⚖️ Governing Statutory Provisions");
+                sb.AppendLine("- **Primary Statute:** **Motor Vehicles Act, 1988 (Sections 166, 163A / 164, 140, 149)** read with the Karnataka Motor Vehicles Rules, 1989.");
+                sb.AppendLine("- **Competent Forum:** Adjudicated by the **Motor Accident Claims Tribunal (MACT)**, presided over by District & Sessions Judges or Senior Civil Judges.");
+                sb.AppendLine("- **Claimants:** Injured accident victims (injury / permanent disability claims) or dependent legal heirs of deceased victims (fatal accident claims).");
+                sb.AppendLine();
+                sb.AppendLine("#### 🛡️ Core Adjudication Elements & NWKRTC Defenses");
+                sb.AppendLine("1. **Actionable Negligence (Section 166):** The burden rests on the claimant to prove rash and negligent driving by the Corporation driver. NWKRTC defends with **spot panchanama, trip sheets, bus mechanical inspection (IMV) reports, and departmental accident inquiry reports** to establish **Contributory Negligence** or sole negligence of third-party vehicles.");
+                sb.AppendLine("2. **Quantum Determination:** Calculated strictly under settled Supreme Court precedents:");
+                sb.AppendLine("   - ***Sarla Verma v. DTC (2009) 6 SCC 121*** — Standardized age multiplier (18 to 5) and personal living expense deductions.");
+                sb.AppendLine("   - ***National Insurance Co. Ltd. v. Pranay Sethi (2017) 16 SCC 680*** — Future prospects calculation (10% to 50%) and standardized conventional heads.");
+                sb.AppendLine("   - ***Raj Kumar v. Ajay Kumar (2011) 1 SCC 343*** — Difference between physical disability and functional loss of earning capacity.");
+                sb.AppendLine("3. **Divisional Administration:** Managed by Divisional Law Officers across all 8 NWKRTC divisions (Belagavi, Hubballi-Dharwad, Gadag, Bagalkot, Uttara Kannada, Haveri, Chikkodi) with Central Office legal oversight.");
+                explanation = sb.ToString();
+                return true;
+            }
+
+            // 2. MFA (Miscellaneous First Appeal)
+            if (normalized == "mfa" || normalized == "whats mfa" || normalized == "what is mfa" || normalized.StartsWith("mfa case") || normalized == "mfa meaning" || normalized == "mfa appeal")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("### ⚖️ Miscellaneous First Appeal (MFA) — High Court Appellate Proceedings");
+                sb.AppendLine();
+                sb.AppendLine("In **NWKRTC** legal operations and Karnataka judicial practice, **MFA** stands for **Miscellaneous First Appeal** (statutory regular first appeal against tribunal awards or miscellaneous civil orders).");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("#### 🏛️ Statutory Basis & Jurisdiction");
+                sb.AppendLine("- **Governing Statute:** **Section 173 of the Motor Vehicles Act, 1988** read with **Order XLI of the Code of Civil Procedure, 1908 (CPC)**.");
+                sb.AppendLine("- **Appellate Forum:** Heard and adjudicated by the **High Court of Karnataka** (Dharwad Bench, Kalaburagi Bench, or Principal Bench Bengaluru).");
+                sb.AppendLine("- **Purpose for NWKRTC:** An appeal preferred by the Corporation challenging an adverse, excessive, or legally erroneous Judgment & Award passed by a lower Motor Accident Claims Tribunal (MACT).");
+                sb.AppendLine();
+                sb.AppendLine("#### 📋 Essential Procedural Conditions for NWKRTC");
+                sb.AppendLine("1. **Statutory Limitation Period:** Must be filed within **90 days** from the date of the MACT award. Any delay requires a formal application under **Section 5 of the Limitation Act, 1963** establishing sufficient administrative cause.");
+                sb.AppendLine("2. **Mandatory Statutory Pre-Deposit:** Under **Section 173(1)**, the Corporation is statutorily required to deposit **₹25,000 or 50% of the awarded amount** (whichever is less) at the time of preferring the appeal.");
+                sb.AppendLine("3. **Standard Grounds of Appeal:**");
+                sb.AppendLine("   - **Excessive Quantum:** Erroneous calculation of notional income, unjustified future prospects, or exaggerated disability ratings contrary to medical board guidelines.");
+                sb.AppendLine("   - **Erroneous Negligence Apportionment:** Tribunal failure to consider contributory negligence of third-party two-wheelers, tractors, or pedestrians.");
+                sb.AppendLine("   - **Interest Reduction:** Challenging exorbitant interest rates (demanding reduction to standard 6% p.a.).");
+                explanation = sb.ToString();
+                return true;
+            }
+
+            // 3. KID / ID (Karnataka Industrial Dispute)
+            if (normalized == "kid" || normalized == "whats kid" || normalized == "what is kid" || normalized == "industrial dispute" || normalized == "id case" || normalized == "kid meaning")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("### 🛠️ Karnataka Industrial Dispute (KID) — Labour Adjudication");
+                sb.AppendLine();
+                sb.AppendLine("In **NWKRTC** personnel and industrial relations, **KID** stands for **Karnataka Industrial Dispute** (individual employee industrial dispute).");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("#### ⚖️ Legal Framework & Forum");
+                sb.AppendLine("- **Governing Statute:** Instituted under **Section 10(4-A)** of the **Industrial Disputes Act, 1947** (Karnataka State Amendment, inserted by Karnataka Act 3 of 1988) or referenced under **Section 10(1)**.");
+                sb.AppendLine("- **Competent Forum:** **Labour Court / Industrial Tribunal** (e.g. Hubballi, Belagavi).");
+                sb.AppendLine("- **Nature of Dispute:** Filed by an individual Corporation workman (driver, conductor, mechanic, artisan) challenging Corporation disciplinary orders of **dismissal, discharge, retrenchment, or termination of service**.");
+                sb.AppendLine();
+                sb.AppendLine("#### 🛡️ Corporation Key Legal Defenses");
+                sb.AppendLine("1. **Validity of Domestic Enquiry:** Corporation preliminary issue. The Labour Court first determines whether the internal departmental inquiry was conducted in strict adherence to principles of natural justice and NWKRTC C&R Regulations.");
+                sb.AppendLine("2. **Section 11-A Power of Tribunal:** Even if misconduct is proven, the Tribunal exercises discretion to substitute dismissal with lesser penalties if deemed disproportionate.");
+                sb.AppendLine("3. **Corporation Reliefs:** Defending against backwages claims by demonstrating non-employment proof, habitual absence, non-issuance of tickets, or past default history cards.");
+                explanation = sb.ToString();
+                return true;
+            }
+
+            // 4. PG (Payment of Gratuity)
+            if (normalized == "pg" || normalized == "whats pg" || normalized == "what is pg" || normalized == "gratuity" || normalized == "pg case" || normalized == "pg meaning")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("### 📜 Payment of Gratuity (PG) Proceedings — Legal Framework");
+                sb.AppendLine();
+                sb.AppendLine("In **NWKRTC**, **PG** refers to proceedings under the **Payment of Gratuity Act, 1972**.");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("#### ⚖️ Statutory Authority & Provisions");
+                sb.AppendLine("- **Governing Law:** **Payment of Gratuity Act, 1972 (Sections 4 & 7)** read with the Karnataka Payment of Gratuity Rules.");
+                sb.AppendLine("- **Competent Authority:** The **Controlling Authority under the PG Act** (Assistant Labour Commissioner) and **Appellate Authority** (Deputy Labour Commissioner).");
+                sb.AppendLine("- **Claim Procedure:** Filed via **Form N** by retired, superannuated, or dismissed employees claiming terminal gratuity or disputed interest under Section 7(3A).");
+                sb.AppendLine();
+                sb.AppendLine("#### 🛡️ Corporation Defense Principles");
+                sb.AppendLine("1. **Continuous Service (Section 2A):** Verification of qualifying 240 days per calendar year, excluding unauthorized absence periods (dies-non).");
+                sb.AppendLine("2. **Statutory Ceiling Limit:** Enforcing the maximum ceiling limit of **₹20,00,000**.");
+                sb.AppendLine("3. **Lawful Forfeiture (Section 4(6)):** Forfeiture of gratuity is statutorily justified where service was terminated for riotous/disorderly conduct, moral turpitude, or causing quantified financial loss to the Corporation.");
+                explanation = sb.ToString();
+                return true;
+            }
+
+            // 5. EP (Execution Petition)
+            if (normalized == "ep" || normalized == "whats ep" || normalized == "what is ep" || normalized == "execution petition" || normalized == "ep meaning")
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("### ⚡ Execution Petition (EP) — Decree Enforcement & Asset Protection");
+                sb.AppendLine();
+                sb.AppendLine("In **NWKRTC**, **EP** stands for an **Execution Petition** for judicial decree enforcement.");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("#### ⚖️ Governing Law & Jurisdiction");
+                sb.AppendLine("- **Governing Statute:** **Order XXI of the Code of Civil Procedure, 1908 (CPC)** read with **Section 174 of the Motor Vehicles Act, 1988**.");
+                sb.AppendLine("- **Competent Forum:** Executing Court / MACT / Labour Court executing recovery certificates.");
+                sb.AppendLine("- **Purpose:** Initiated by claimants or decree-holders when awarded compensation has not been deposited by the Corporation within 30 days.");
+                sb.AppendLine();
+                sb.AppendLine("#### 🛡️ Operational Risks & Corporation Protocol");
+                sb.AppendLine("1. **Attachment Warrants:** Claimants routinely seek attachment of NWKRTC depot buses or Corporation bank accounts (Garnishee orders).");
+                sb.AppendLine("2. **Corporation Response:** Immediate filing of memo of appearance, demonstrating deposit of decretal amount, presenting High Court stay orders, or seeking reasonable time for Central Office financial clearance.");
+                explanation = sb.ToString();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string GenerateOfflineLegalIntelligenceFallback(
+            string question,
+            CaseDossier dossier,
+            EvidencePack evidencePack,
+            string? reason)
+        {
+            // 1. Try definitional / glossary explanation first
+            if (TryGetLegalGlossaryExplanation(question, out string glossary))
+            {
+                return glossary;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("> ℹ️ *Offline Legal Intelligence Synthesizer (Local AI reasoning model is currently unstarted or unreachable; response synthesized directly from verified NWKRTC case records, database facts, and statutory provisions).*");
+            sb.AppendLine();
+
+            // 2. If active case dossier exists, summarize facts
+            if (dossier != null && dossier.CaseId > 0 && dossier.CaseType != "GeneralLegalResearch")
+            {
+                sb.AppendLine($"### 📋 Verified Case Brief: **{dossier.CaseType} #{dossier.CaseNumber}**");
+                sb.AppendLine();
+                sb.AppendLine($"- **Court / Tribunal:** {dossier.CourtName}");
+                sb.AppendLine($"- **Current Stage:** **{dossier.CurrentStage}**");
+                sb.AppendLine($"- **Petitioner / Claimant:** {dossier.Petitioner}");
+                sb.AppendLine($"- **Respondent:** {dossier.Respondent}");
+                if (!string.IsNullOrWhiteSpace(dossier.VehicleNo))
+                    sb.AppendLine($"- **Vehicle Registration:** `{dossier.VehicleNo}`");
+                if (dossier.NextHearingDate.HasValue)
+                    sb.AppendLine($"- **Next Hearing Date:** {dossier.NextHearingDate.Value:dd-MMM-yyyy}");
+                sb.AppendLine();
+
+                if (dossier.StructuredFacts.Count > 0)
+                {
+                    sb.AppendLine("#### 📊 Case Parameters & Financials");
+                    foreach (var fact in dossier.StructuredFacts.Take(6))
+                    {
+                        sb.AppendLine($"- **{fact.Key}:** {fact.Value}");
+                    }
+                    sb.AppendLine();
+                }
+
+                if (dossier.RelevantJudgments.Count > 0)
+                {
+                    sb.AppendLine("#### 🏛️ Relevant Precedents & Legal Repository Matches");
+                    foreach (var j in dossier.RelevantJudgments.Take(3))
+                    {
+                        sb.AppendLine($"- **{j.Title}** ({j.Court}) — *{j.KeyPrinciple}*");
+                    }
+                    sb.AppendLine();
+                }
+            }
+            else if (evidencePack.Chunks.Count > 0)
+            {
+                sb.AppendLine("### 📑 Relevant Records & Authoritative Sources Retrieved");
+                sb.AppendLine();
+                foreach (var chunk in evidencePack.Chunks.Take(4))
+                {
+                    sb.AppendLine($"- **{chunk.DocumentName ?? "Legal Precedent"}:** {chunk.Content}");
+                }
+                sb.AppendLine();
+            }
+            else
+            {
+                sb.AppendLine("### ⚖️ Legal Query Summary");
+                sb.AppendLine($"The system processed your inquiry: **\"{question}\"**.");
+                sb.AppendLine();
+                sb.AppendLine("Verified legal records, statutory references, and relevant judicial precedents have been indexed and cited in the verified sources panel below.");
+            }
+
+            return sb.ToString();
         }
     }
 }

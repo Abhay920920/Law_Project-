@@ -455,12 +455,14 @@ Provide a step-by-step ACTION CHECKLIST for the upcoming hearing:
                 case "find similar cases":
                 case "search similar cases":
                     return @"
-Compare this matter with similar cases across the NWKRTC repository, e-Courts data, and binding Supreme Court/Karnataka High Court precedents.
-For each similar case:
-- State the Case Number and Court
+Compare this matter with similar cases across the NWKRTC repository, e-Courts data, and binding precedents.
+CRITICAL INTEGRITY DIRECTIVE: You MUST strictly and ONLY cite the EXACT real similar cases provided in the <similar_cases> XML block above.
+Under NO circumstances invent or fabricate fictitious case numbers (such as sequential MVC/1234/2015, MVC/5678, etc.).
+If no cases appear in <similar_cases>, explicitly state: 'No similar cases found in the NWKRTC case repository matching this factual matrix.'
+For each retrieved similar case:
+- State the actual Case Number and Court from the evidence block
 - Detail the Specific Similarity Basis (factual matrix, legal issue, statutory provision)
-- Outline how liability was apportioned or awards minimized
-- Do not cite cases as similar based merely on generic words.";
+- Outline how liability was apportioned or awards minimized based strictly on the record.";
 
                 case "check_ecourts":
                 case "check ecourts":
@@ -639,6 +641,27 @@ Cite all applicable statutory provisions and legal authorities relevant to this 
                 sb.AppendLine("  [No external legal web sources retrieved]");
             }
             sb.AppendLine("</web_sources>");
+            sb.AppendLine();
+
+            // 7b. <similar_cases>
+            sb.AppendLine("<similar_cases>");
+            if (pack.SimilarCases != null && pack.SimilarCases.Count > 0)
+            {
+                foreach (var sim in pack.SimilarCases)
+                {
+                    sb.AppendLine($"  <case number=\"{EscapeXml(sim.CaseNumber)}\" court=\"{EscapeXml(sim.Court)}\" score=\"{sim.SimilarityScore}\">");
+                    sb.AppendLine($"    <facts>{EscapeXml(sim.FactsSummary)}</facts>");
+                    sb.AppendLine($"    <issues>{EscapeXml(sim.LegalIssues)}</issues>");
+                    sb.AppendLine($"    <basis>{EscapeXml(sim.SimilarityBasis)}</basis>");
+                    sb.AppendLine($"    <outcome>{EscapeXml(sim.OutcomeOrStage)}</outcome>");
+                    sb.AppendLine("  </case>");
+                }
+            }
+            else
+            {
+                sb.AppendLine("  [No similar cases found in NWKRTC repository matching current search criteria]");
+            }
+            sb.AppendLine("</similar_cases>");
             sb.AppendLine();
 
             // 8. <conflicts>

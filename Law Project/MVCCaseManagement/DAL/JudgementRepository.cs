@@ -83,6 +83,34 @@ namespace MVCCaseManagement.DAL
             }
         }
 
+        public void UpdateJudgement(JudgementViewModel model)
+        {
+            using (var conn = new SqlConnection(_db.GetConnectionString()))
+            {
+                conn.Open();
+                string query = @"UPDATE JUDGEMENT_REPO
+                                 SET Title = @Title,
+                                     Court = @Court,
+                                     JudgementDate = @JDate,
+                                     Remarks = @Remarks,
+                                     Category = @Category,
+                                     FilePath = @FilePath
+                                 WHERE JudgementID = @JudgementID";
+
+                using (var cmd = new SqlCommand(query, conn))
+                {
+                    cmd.Parameters.AddWithValue("@JudgementID", model.JudgementID);
+                    cmd.Parameters.AddWithValue("@Title", model.Title);
+                    cmd.Parameters.AddWithValue("@Court", model.Court ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@JDate", model.JudgementDate ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Remarks", model.Remarks ?? (object)DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Category", model.Category ?? "Judgement");
+                    cmd.Parameters.AddWithValue("@FilePath", model.FilePath ?? (object)DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
         public void DeleteJudgement(int id)
         {
             string query = "DELETE FROM JUDGEMENT_REPO WHERE JudgementID = @ID";

@@ -254,6 +254,8 @@ namespace MVCCaseManagement.Models.AI
         public string SourceFilePath { get; set; } = string.Empty;
         public int PageCount { get; set; }
         public string ExtractedText { get; set; } = string.Empty;
+        public double OcrConfidence { get; set; } = 1.0;
+        public bool IsScannedDocument { get; set; } = false;
     }
 
     public class RelevantJudgmentDto
@@ -297,6 +299,7 @@ namespace MVCCaseManagement.Models.AI
         public string Respondent { get; set; } = string.Empty;
         public string? VehicleNo { get; set; }
         public string? CNRNumber { get; set; }
+        public int? DivisionId { get; set; }
 
         public Dictionary<string, string> StructuredFacts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public List<CaseNotingDto> Notings { get; set; } = new();
@@ -329,14 +332,39 @@ namespace MVCCaseManagement.Models.AI
         CaseLookup,
         CaseDeepDive,
         VehicleHistory,
+        DriverHistory,
+        ClaimantPortfolio,
         AdvocatePortfolio,
         HearingCalendar,
+        StageHearingFilter,
         FinancialRisk,
         ExecutionRisk,
         DivisionalStatistics,
+        DivisionComparison,
         CompoundFilter,
         DocumentRAG,
         LegalPrecedent
+    }
+
+    public enum EvidenceSufficiencyLevel
+    {
+        Sufficient = 0,
+        Partial,
+        Insufficient,
+        Conflicted,
+        Unauthorized
+    }
+
+    public class EvidenceSufficiencyEvaluation
+    {
+        public EvidenceSufficiencyLevel Level { get; set; } = EvidenceSufficiencyLevel.Sufficient;
+        public List<string> MissingDataElements { get; set; } = new();
+        public List<string> SupportedDataElements { get; set; } = new();
+        public string EvaluationSummary { get; set; } = string.Empty;
+        public double ConfidenceScore { get; set; } = 1.0;
+        public string Explanation { get; set; } = string.Empty;
+        public List<string> Contradictions { get; set; } = new();
+        public List<string> MissingElements { get => MissingDataElements; set => MissingDataElements = value; }
     }
 
     public class LegalQueryPlan
@@ -350,7 +378,13 @@ namespace MVCCaseManagement.Models.AI
         public int? CaseYear { get; set; }
         public string? CNRNumber { get; set; }
         public string? VehicleNumber { get; set; }
+        public string? DriverName { get; set; }
+        public string? DriverTokenNo { get; set; }
+        public string? ClaimantName { get; set; }
+        public string? CourtName { get; set; }
         public string? AdvocateName { get; set; }
+        public string? StageFilter { get; set; }
+        public bool IsNoNextHearingDateFilter { get; set; }
         public int? DivisionId { get; set; }
         public string? DivisionName { get; set; }
         public string? DivisionCode { get; set; }
@@ -424,6 +458,8 @@ namespace MVCCaseManagement.Models.AI
         public int PageNumber { get; set; }
         public string Section { get; set; } = "General";
         public string Text { get; set; } = string.Empty;
+        public double OcrConfidence { get; set; } = 1.0;
+        public bool IsScannedPage { get; set; } = false;
     }
 
     public class DetectedConflictDto
@@ -500,6 +536,7 @@ namespace MVCCaseManagement.Models.AI
         public List<string> MissingInformation { get; set; } = new();
         public List<string> AllowedInferences { get; set; } = new();
         public List<string> SourcesQueried { get; set; } = new();
+        public List<UnifiedSimilarCaseDto> SimilarCases { get; set; } = new();
 
         public void DeduplicateAndRerank(string query)
         {
@@ -614,6 +651,7 @@ namespace MVCCaseManagement.Models.AI
         public string? Model { get; set; }
         public int ExecutionTimeMs { get; set; }
         public VerificationResult? Verification { get; set; }
+        public EvidenceSufficiencyEvaluation? Sufficiency { get; set; }
     }
 }
 

@@ -32,8 +32,8 @@ namespace MVCCaseManagement.Services.AI
         Task<CaseDossier?> ResolveAndBuildDossierAsync(string caseSearchTerm, LegalQueryPlan? plan, int userDivisionId = 5, CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// Quick search to populate autocomplete or case selector dropdowns.
+        /// Quick search to populate autocomplete or case selector dropdowns with scoped division filtering.
         /// </summary>
-        Task<List<CaseSearchItemDto>> SearchCasesAsync(string query, int maxResults = 15, CancellationToken cancellationToken = default);
+        Task<List<CaseSearchItemDto>> SearchCasesAsync(string query, int maxResults = 15, int userDivisionId = 5, CancellationToken cancellationToken = default);
     }
 }
