@@ -1850,10 +1850,13 @@ namespace MVCCaseManagement.Services.AI
                     bool isMvcWanted = lower.Contains("mvc") || lower.Contains("mact") || lower.Contains("accident");
                     bool isLabourWanted = lower.Contains("labour") || lower.Contains("kid") || lower.Contains("industrial");
                     bool isGraWanted = lower.Contains("gratuity") || lower.Contains("gra") || lower.Contains("pg");
-                    bool isPendingOrListRequested = lower.Contains("pending") || lower.Contains("case") || lower.Contains("list") || lower.Contains("show") || lower.Contains("want") || lower.Contains("give");
+                    bool isMfaWanted = lower.Contains("mfa") || lower.Contains("appeal") || lower.Contains("high court") || lower.Contains("hc ");
+                    bool isEpWanted = lower.Contains("execution") || System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(ep|eps)\b");
+                    bool isPendingOrListRequested = lower.Contains("pending") || lower.Contains("case") || lower.Contains("list") || lower.Contains("show") || lower.Contains("want") || lower.Contains("give") || lower.Contains("all");
+                    bool isSpecificModuleRequested = isMvcWanted || isLabourWanted || isGraWanted || isMfaWanted || isEpWanted;
 
                     // 1. Detailed MVC Pending Cases List
-                    if ((isMvcWanted || (!isLabourWanted && !isGraWanted && isPendingOrListRequested)) && mvcPend > 0)
+                    if ((isMvcWanted || (!isSpecificModuleRequested && isPendingOrListRequested)) && mvcPend > 0)
                     {
                         string mvcListSql = @"
                             SELECT TOP 30
@@ -1925,7 +1928,7 @@ namespace MVCCaseManagement.Services.AI
                     }
 
                     // 2. Detailed Labour Pending Cases List
-                    if ((isLabourWanted || (!isMvcWanted && !isGraWanted && isPendingOrListRequested && matchedDivs.Count == 1)) && labPend > 0)
+                    if ((isLabourWanted || (!isSpecificModuleRequested && isPendingOrListRequested && matchedDivs.Count == 1)) && labPend > 0)
                     {
                         string labListSql = @"
                             SELECT TOP 25
@@ -2046,6 +2049,158 @@ namespace MVCCaseManagement.Services.AI
                         catch (Exception exGra)
                         {
                             _logger.LogWarning(exGra, "Error fetching detailed Gratuity pending list for division {DivId}", div.Id);
+                        }
+                    }
+
+                    // 4. Detailed Appeal / High Court MFA Cases List
+                    if (isMfaWanted && appTot > 0)
+                    {
+                        string appListSql = @"
+                            SELECT TOP 50
+                                a.CaseID,
+                                m.MVCNo,
+                                m.MVCYear,
+                                ISNULL(m.VehicleNo, 'N/A') AS VehicleNo,
+                                ISNULL(a.CorpMFANumber, ISNULL(a.ClaimantMFANumber, '')) AS MfaNo,
+                                ISNULL(a.CorpMFAYear, a.ClaimantMFAYear) AS MfaYear,
+                                ISNULL(a.HighCourtBench, 'High Court Bench') AS Bench,
+                                ISNULL(a.CorpMFAAdvocate, ISNULL(a.ClaimantMFAAdvocate, 'Panel Counsel')) AS Advocate,
+                                ISNULL(a.CorpMFAStatus, ISNULL(a.ClaimantMFAStatus, 'Pending')) AS AppealStatus,
+                                CASE WHEN a.StayGranted = 1 THEN 'Yes' ELSE 'No' END AS StayGranted,
+                                ISNULL(a.CorpMFAOutcome, ISNULL(a.ClaimantMFADecision, '')) AS Outcome,
+                                ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = m.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant') AS PetitionerName
+                            FROM APPEAL_DETAILS a
+                            JOIN MVC_CASES m ON a.CaseID = m.CaseID
+                            WHERE m.DivisionID = @DivID
+                            ORDER BY 
+                                CASE WHEN a.CorpMFAYear IS NOT NULL THEN a.CorpMFAYear ELSE a.ClaimantMFAYear END DESC,
+                                a.CaseID DESC";
+
+                        try
+                        {
+                            using var appCmd = new SqlCommand(appListSql, conn);
+                            appCmd.Parameters.AddWithValue("@DivID", div.Id);
+                            using var appRdr = await appCmd.ExecuteReaderAsync(cancellationToken);
+                            var appRows = new List<(int CaseId, string MvcNo, int Year, string Vehicle, string MfaNo, int? MfaYear, string Bench, string Advocate, string Status, string Stay, string Outcome, string Petitioner)>();
+                            while (await appRdr.ReadAsync(cancellationToken))
+                            {
+                                appRows.Add((
+                                    appRdr.GetInt32(0),
+                                    appRdr.IsDBNull(1) ? "" : appRdr.GetString(1),
+                                    appRdr.IsDBNull(2) ? 0 : appRdr.GetInt32(2),
+                                    appRdr.IsDBNull(3) ? "N/A" : appRdr.GetString(3),
+                                    appRdr.IsDBNull(4) ? "" : appRdr.GetString(4),
+                                    appRdr.IsDBNull(5) ? (int?)null : appRdr.GetInt32(5),
+                                    appRdr.IsDBNull(6) ? "High Court" : appRdr.GetString(6),
+                                    appRdr.IsDBNull(7) ? "Panel Counsel" : appRdr.GetString(7),
+                                    appRdr.IsDBNull(8) ? "Pending" : appRdr.GetString(8),
+                                    appRdr.IsDBNull(9) ? "No" : appRdr.GetString(9),
+                                    appRdr.IsDBNull(10) ? "" : appRdr.GetString(10),
+                                    appRdr.IsDBNull(11) ? "Claimant" : appRdr.GetString(11)
+                                ));
+                            }
+
+                            if (appRows.Count > 0)
+                            {
+                                sb.AppendLine();
+                                sb.AppendLine($"### 📑 **High Court MFA & Appeal Cases ({div.Name} — {div.Code})**");
+                                sb.AppendLine($"> Showing **{appRows.Count}** appeal cases in register (Total appeals in division: **{appTot}**, Pending: **{appPend}**):");
+                                sb.AppendLine();
+                                sb.AppendLine("| # | High Court Appeal No | HC Bench | Original Case | Vehicle No | Claimant / Respondent | High Court Advocate | Status | Stay Granted |");
+                                sb.AppendLine("|:---:|---|---|---|---|---|---|:---:|:---:|");
+                                int idx = 1;
+                                foreach (var r in appRows)
+                                {
+                                    string mfaDisplay = !string.IsNullOrWhiteSpace(r.MfaNo) 
+                                        ? (r.MfaYear.HasValue ? $"**MFA/{r.MfaNo}/{r.MfaYear}**" : $"**MFA/{r.MfaNo}**")
+                                        : "*Pending Filing / Entrustment*";
+                                    string stayBadge = r.Stay.Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                                        ? "<span class=\"badge bg-success-subtle text-success border\">Yes</span>"
+                                        : "<span class=\"badge bg-secondary-subtle text-secondary border\">No</span>";
+                                    sb.AppendLine($"| {idx++} | {mfaDisplay} | {r.Bench} | MVC/{r.MvcNo}/{r.Year} | `{r.Vehicle}` | {r.Petitioner} | {r.Advocate} | <span class=\"badge bg-primary-subtle text-primary border\">{r.Status}</span> | {stayBadge} |");
+                                }
+                                sb.AppendLine();
+                                sb.AppendLine($"> 💡 *Tip: Ask `\"Analyze MVC/{appRows[0].MvcNo}/{appRows[0].Year}\"` to inspect trial court records and connected MFA proceedings.*");
+                                sb.AppendLine();
+                            }
+                        }
+                        catch (Exception exApp)
+                        {
+                            _logger.LogWarning(exApp, "Error fetching detailed Appeal list for division {DivId}", div.Id);
+                        }
+                    }
+
+                    // 5. Detailed Execution Petitions (EP) List
+                    if (isEpWanted && (mvcEpTot + labEpTot) > 0)
+                    {
+                        string epListSql = @"
+                            SELECT TOP 50
+                                ep.EPID,
+                                ep.CaseID,
+                                m.MVCNo,
+                                m.MVCYear,
+                                ISNULL(m.VehicleNo, 'N/A') AS VehicleNo,
+                                ISNULL(ep.EPNumber, '') AS EPNumber,
+                                ep.EPYear,
+                                ISNULL(ep.EPStatus, 'Pending') AS EPStatus,
+                                ISNULL(ep.AttachmentWarrant, 'No') AS AttachmentWarrant,
+                                ep.NextHearingDate,
+                                ep.ClaimAmount
+                            FROM MVC_EP_DETAILS ep
+                            JOIN MVC_CASES m ON ep.CaseID = m.CaseID
+                            WHERE ep.DivisionID = @DivID
+                            ORDER BY ep.NextHearingDate ASC, ep.EPID DESC";
+
+                        try
+                        {
+                            using var epCmd = new SqlCommand(epListSql, conn);
+                            epCmd.Parameters.AddWithValue("@DivID", div.Id);
+                            using var epRdr = await epCmd.ExecuteReaderAsync(cancellationToken);
+                            var epRows = new List<(int EpId, int CaseId, string MvcNo, int Year, string Vehicle, string EpNo, int? EpYear, string Status, string Warrant, DateTime? HearingDate, decimal? Claim)>();
+                            while (await epRdr.ReadAsync(cancellationToken))
+                            {
+                                epRows.Add((
+                                    epRdr.GetInt32(0),
+                                    epRdr.GetInt32(1),
+                                    epRdr.IsDBNull(2) ? "" : epRdr.GetString(2),
+                                    epRdr.IsDBNull(3) ? 0 : epRdr.GetInt32(3),
+                                    epRdr.IsDBNull(4) ? "N/A" : epRdr.GetString(4),
+                                    epRdr.IsDBNull(5) ? "" : epRdr.GetString(5),
+                                    epRdr.IsDBNull(6) ? (int?)null : epRdr.GetInt32(6),
+                                    epRdr.IsDBNull(7) ? "Pending" : epRdr.GetString(7),
+                                    epRdr.IsDBNull(8) ? "No" : epRdr.GetString(8),
+                                    epRdr.IsDBNull(9) ? (DateTime?)null : epRdr.GetDateTime(9),
+                                    epRdr.IsDBNull(10) ? (decimal?)null : epRdr.GetDecimal(10)
+                                ));
+                            }
+
+                            if (epRows.Count > 0)
+                            {
+                                sb.AppendLine();
+                                sb.AppendLine($"### ⚡ **Active Execution Petitions (EP) ({div.Name} — {div.Code})**");
+                                sb.AppendLine($"> Showing **{epRows.Count}** execution petitions in register (Total EP in division: **{mvcEpTot + labEpTot}**):");
+                                sb.AppendLine();
+                                sb.AppendLine("| # | EP Number | Original Case | Vehicle No | Status | Attachment Warrant | Next Hearing | Claim (₹) |");
+                                sb.AppendLine("|:---:|---|---|---|:---:|:---:|:---:|:---:|");
+                                int idx = 1;
+                                foreach (var r in epRows)
+                                {
+                                    string epDisplay = !string.IsNullOrWhiteSpace(r.EpNo)
+                                        ? (r.EpYear.HasValue ? $"**EP/{r.EpNo}/{r.EpYear}**" : $"**EP/{r.EpNo}**")
+                                        : $"EP #{r.EpId}";
+                                    string hearingStr = r.HearingDate.HasValue ? r.HearingDate.Value.ToString("dd-MMM-yyyy") : "Not fixed";
+                                    string claimStr = r.Claim.HasValue ? $"{r.Claim.Value:N0}" : "—";
+                                    string warrantBadge = r.Warrant.Equals("Yes", StringComparison.OrdinalIgnoreCase)
+                                        ? "<span class=\"badge bg-danger text-white border\">YES</span>"
+                                        : "<span class=\"badge bg-secondary-subtle text-secondary border\">No</span>";
+                                    sb.AppendLine($"| {idx++} | {epDisplay} | MVC/{r.MvcNo}/{r.Year} | `{r.Vehicle}` | <span class=\"badge bg-warning-subtle text-warning border\">{r.Status}</span> | {warrantBadge} | {hearingStr} | {claimStr} |");
+                                }
+                                sb.AppendLine();
+                            }
+                        }
+                        catch (Exception exEp)
+                        {
+                            _logger.LogWarning(exEp, "Error fetching detailed EP list for division {DivId}", div.Id);
                         }
                     }
                 }

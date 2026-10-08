@@ -195,7 +195,9 @@ namespace MVCCaseManagement.Services.AI
                 plan.IsDeterministicDatabaseQuery = true;
                 result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
                 result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
-                result.ExtractedCaseType = lower.Contains("labour") ? "LABOUR" : (lower.Contains("gratuity") ? "GRATUITY" : "MVC");
+                result.ExtractedCaseType = lower.Contains("labour") ? "LABOUR" 
+                    : (lower.Contains("gratuity") ? "GRATUITY" 
+                    : (lower.Contains("mfa") || lower.Contains("appeal") ? "APPEAL" : "MVC"));
                 result.Reasoning = "Divisional case count and litigation statistics query routed strictly to internal database.";
             }
             else if (mentionsFullAnalysis)
