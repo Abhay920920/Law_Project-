@@ -26,6 +26,7 @@ namespace MVCCaseManagement.Services.AI
         private readonly ILLMService? _llmService;
         private readonly IPromptManagementService _promptService;
         private readonly IAIAuditService _auditService;
+        private readonly IPostGenerationVerifier _verifier;
         private readonly NyayaPathaOptions _options;
         private readonly AIOptions _aiOptions;
         private readonly ILogger<UnifiedLegalResearchService> _logger;
@@ -44,7 +45,8 @@ namespace MVCCaseManagement.Services.AI
             IAIAuditService auditService,
             IOptions<NyayaPathaOptions> options,
             IOptions<AIOptions> aiOptions,
-            ILogger<UnifiedLegalResearchService> logger)
+            ILogger<UnifiedLegalResearchService> logger,
+            IPostGenerationVerifier? verifier = null)
         {
             _queryRouter = queryRouter ?? throw new ArgumentNullException(nameof(queryRouter));
             _contextBuilder = contextBuilder ?? throw new ArgumentNullException(nameof(contextBuilder));
@@ -60,6 +62,7 @@ namespace MVCCaseManagement.Services.AI
             _options = options?.Value ?? new NyayaPathaOptions();
             _aiOptions = aiOptions?.Value ?? new AIOptions();
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _verifier = verifier ?? new PostGenerationVerifier(Microsoft.Extensions.Logging.Abstractions.NullLogger<PostGenerationVerifier>.Instance);
         }
 
         public async Task<LegalResearchResult> ExecuteResearchAsync(
@@ -129,6 +132,21 @@ namespace MVCCaseManagement.Services.AI
                 // 4. Query Routing: Classify what information is required
                 var route = _queryRouter.RouteQuery(request.Question, resolvedCaseType, resolvedCaseId);
                 result.RouteCategory = route.PrimaryCategory;
+                route.Plan.UserDivisionId = request.DivisionId;
+                route.Plan.UserRole = request.UserRole;
+
+                // Phase 13: Enforce Authorization BEFORE Retrieval
+                if (!IsAuthorized(request.DivisionId, request.UserRole, route.Plan))
+                {
+                    stopwatch.Stop();
+                    _logger.LogWarning("Access Denied: User {UserId} in Division {UserDiv} attempted to query Division {TargetDiv}",
+                        request.UserId, request.DivisionId, route.Plan.DivisionId);
+
+                    result.Success = false;
+                    result.ErrorMessage = $"Access Denied: You are not authorized to query litigation records outside your assigned division (Division #{request.DivisionId}).";
+                    result.ExecutionTimeMs = (int)stopwatch.ElapsedMilliseconds;
+                    return result;
+                }
 
                 // Update resolved case if newly detected in question
                 if (route.ExtractedCaseId.HasValue && route.ExtractedCaseId.Value > 0)
@@ -300,26 +318,116 @@ namespace MVCCaseManagement.Services.AI
                 dossier.DetectedConflicts = detectedConflicts;
                 result.Conflicts = detectedConflicts;
 
-                // 9. Assemble Safe Evidence Package & System Prompt
-                string systemPrompt = _promptService.GetSystemPrompt();
-                string formattedUserPrompt = _promptService.BuildUserPrompt(dossier, request.Question, request.QuickAction);
-
-                // Append Conflict Warnings to User Prompt if any were detected
-                if (detectedConflicts.Count > 0)
+                // 9. Assemble Unified EvidencePack (Phase 7 - Evidence Fusion)
+                var evidencePack = new EvidencePack
                 {
-                    var conflictSb = new System.Text.StringBuilder();
-                    conflictSb.AppendLine();
-                    conflictSb.AppendLine("--- DETECTED CONFLICTS BETWEEN SOURCES ---");
-                    foreach (var c in detectedConflicts)
-                    {
-                        conflictSb.AppendLine($"[CONFLICT in {c.FieldName}]: {c.Description}");
-                    }
-                    conflictSb.AppendLine("You must explicitly alert the user to these discrepancies and state that verification is required before relying on the record.");
-                    conflictSb.AppendLine("--- END CONFLICTS ---");
-                    formattedUserPrompt = conflictSb.ToString() + "\n" + formattedUserPrompt;
+                    Query = request.Question,
+                    Plan = route.Plan,
+                    Conflicts = detectedConflicts,
+                    SourcesQueried = sourcesSearched
+                };
+
+                foreach (var kvp in dossier.StructuredFacts)
+                {
+                    evidencePack.VerifiedFacts[kvp.Key] = kvp.Value;
                 }
 
-                // 10. Load Multi-Turn Conversation History
+                if (dossier.SearchedDocumentPassages != null)
+                {
+                    foreach (var doc in dossier.SearchedDocumentPassages)
+                    {
+                        evidencePack.Chunks.Add(new EvidenceChunk
+                        {
+                            DocumentName = doc.DocumentName,
+                            PageNumber = doc.PageNumber,
+                            SectionOrProvision = doc.Section,
+                            Content = doc.MatchedSnippet,
+                            RetrievalScore = doc.RelevanceScore,
+                            AuthorityLevel = SourceAuthorityLevel.NWKRTCDatabase,
+                            Taxonomy = EvidenceTaxonomy.Fact,
+                            CaseId = doc.CaseId,
+                            CaseType = doc.CaseType,
+                            CaseNumber = doc.CaseNumber
+                        });
+                    }
+                }
+
+                if (dossier.RelevantJudgments != null)
+                {
+                    foreach (var j in dossier.RelevantJudgments)
+                    {
+                        evidencePack.Chunks.Add(new EvidenceChunk
+                        {
+                            DocumentName = j.Title,
+                            Court = j.Court,
+                            Content = j.KeyPrinciple,
+                            AuthorityLevel = (j.Court ?? "").Contains("Supreme", StringComparison.OrdinalIgnoreCase)
+                                ? SourceAuthorityLevel.SupremeCourt
+                                : SourceAuthorityLevel.HighCourt,
+                            Taxonomy = EvidenceTaxonomy.Precedent,
+                            EventDate = j.JudgementDate,
+                            SectionOrProvision = j.Citation
+                        });
+                    }
+                }
+
+                if (dossier.ExternalLegalSources != null)
+                {
+                    foreach (var w in dossier.ExternalLegalSources)
+                    {
+                        evidencePack.Chunks.Add(new EvidenceChunk
+                        {
+                            DocumentName = w.Title,
+                            Court = w.Court,
+                            Content = w.Excerpt,
+                            AuthorityLevel = SourceAuthorityLevel.SecondaryLegalWeb,
+                            Taxonomy = EvidenceTaxonomy.ExternalRecord,
+                            EventDate = w.JudgmentDate
+                        });
+                    }
+                }
+
+                if (dossier.ECourtsSummary != null)
+                {
+                    evidencePack.Chunks.Add(new EvidenceChunk
+                    {
+                        DocumentName = $"e-Courts National Register ({dossier.ECourtsSummary.CNRNumber ?? "CNR"})",
+                        Court = dossier.ECourtsSummary.CourtName,
+                        Content = $"{dossier.ECourtsSummary.StatusMessage} Stage: {dossier.ECourtsSummary.CurrentStage}. Next Date: {dossier.ECourtsSummary.NextHearingDate:dd-MM-yyyy}",
+                        AuthorityLevel = SourceAuthorityLevel.OfficialECourts,
+                        Taxonomy = EvidenceTaxonomy.ExternalRecord,
+                        EventDate = dossier.ECourtsSummary.NextHearingDate
+                    });
+                }
+
+                if (dossier.Notings != null)
+                {
+                    foreach (var n in dossier.Notings)
+                    {
+                        evidencePack.Chunks.Add(new EvidenceChunk
+                        {
+                            DocumentName = $"Case Noting by {n.AuthorRole} ({n.AuthorName})",
+                            Content = n.NotingText,
+                            AuthorityLevel = SourceAuthorityLevel.NWKRTCCaseNoting,
+                            Taxonomy = EvidenceTaxonomy.InternalOpinion,
+                            EventDate = n.CreatedDate
+                        });
+                    }
+                }
+
+                // Deduplicate and rerank chunks based on composite relevance, authority, and freshness
+                evidencePack.DeduplicateAndRerank(request.Question);
+
+                var citations = BuildTraceableCitations(dossier);
+                evidencePack.Citations = citations;
+                result.Citations = citations;
+                result.EvidencePack = evidencePack;
+
+                // 10. Assemble Hardened System & User Prompts
+                string systemPrompt = _promptService.GetSystemPrompt();
+                string formattedUserPrompt = _promptService.BuildUserPromptFromEvidencePack(evidencePack, request.Question, request.QuickAction);
+
+                // 11. Load Multi-Turn Conversation History
                 var history = await _auditService.GetMessagesByConversationIdAsync(conversationId, cancellationToken);
                 var messagesToSend = new List<AIMessage>();
 
@@ -338,7 +446,7 @@ namespace MVCCaseManagement.Services.AI
                     MessageText = formattedUserPrompt
                 });
 
-                // 11. Provider-Agnostic LLM Reasoning Engine (or Direct Deterministic Response)
+                // 12. Provider-Agnostic LLM Reasoning Engine (or Direct Deterministic Response)
                 string completion;
                 string activeModel;
 
@@ -385,16 +493,18 @@ namespace MVCCaseManagement.Services.AI
                     }
                 }
 
+                // 13. Phase 10: Mandatory Post-Generation Verification & Cleansing
+                var verification = await _verifier.VerifyAndCleanseAsync(completion, evidencePack, cancellationToken);
+                completion = verification.VerifiedAnswer;
+                result.Verification = verification;
+
                 stopwatch.Stop();
 
-                // 12. Build Traceable Citations
-                var citations = BuildTraceableCitations(dossier);
-
-                // 13. Audit Logging & Conversation Message Persistence
+                // 14. Audit Logging & Conversation Message Persistence
                 await _auditService.SaveMessageAsync(conversationId, "user", request.Question, null, cancellationToken);
                 await _auditService.SaveMessageAsync(conversationId, "assistant", completion, activeModel, cancellationToken);
 
-                string retrievedSummary = $"{string.Join(", ", sourcesSearched)} | Dossier: {dossier.CaseType} #{dossier.CaseNumber}";
+                string retrievedSummary = $"{string.Join(", ", sourcesSearched)} | Dossier: {dossier.CaseType} #{dossier.CaseNumber} | Verified Claims: {verification.VerifiedClaims}/{verification.TotalClaims}";
                 await _auditService.LogAuditAsync(new AIAuditLog
                 {
                     UserID = request.UserId,
@@ -508,9 +618,25 @@ namespace MVCCaseManagement.Services.AI
             return response;
         }
 
-        private static bool IsAuthorized(int divisionId, string role)
+        private static bool IsAuthorized(int divisionId, string role, LegalQueryPlan? plan = null)
         {
-            // Fully open to all NWKRTC Divisions, Central Office, and Roles ($0 Local AI Cost)
+            // Central Office (DivisionID 5 or 0) or leadership roles have Corporation-wide scope
+            bool isCentralOffice = divisionId == 5 || divisionId == 0 ||
+                                   string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(role, "CLO", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(role, "Dy CLO", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(role, "DyCLO", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(role, "MD", StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(role, "CO", StringComparison.OrdinalIgnoreCase);
+
+            if (isCentralOffice) return true;
+
+            // Divisional users are prohibited from querying records of other specific divisions
+            if (plan != null && plan.DivisionId.HasValue && plan.DivisionId.Value > 0 && plan.DivisionId.Value != divisionId)
+            {
+                return false;
+            }
+
             return true;
         }
 

@@ -253,6 +253,115 @@ namespace MVCCaseManagement.Services.AI
             }
         }
 
+        public async Task<List<EvidenceChunk>> RetrieveEvidenceChunksAsync(
+            string query,
+            string? caseType = null,
+            int? caseId = null,
+            int maxChunks = 10,
+            CancellationToken cancellationToken = default)
+        {
+            var chunks = new List<EvidenceChunk>();
+            if (string.IsNullOrWhiteSpace(query))
+                return chunks;
+
+            var candidateDocs = DiscoverCandidateDocuments(caseType, caseId);
+            var queryTerms = query.Split(new[] { ' ', ',', ';', '/', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                                  .Where(t => t.Length >= 3 && !IsCommonStopword(t))
+                                  .ToList();
+            if (!queryTerms.Any()) queryTerms.Add(query.Trim());
+
+            string webRoot = _environment.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+
+            foreach (var docRef in candidateDocs)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                string fullPath = Path.Combine(webRoot, "uploads", docRef.RelativePath.TrimStart('/', '\\'));
+                string docHash = ComputeFileSha256(fullPath);
+                string docType = ClassifyDocumentType(docRef.DocumentName, null);
+
+                var pages = await ExtractPagesAsync(docRef.RelativePath, docRef.CaseType, docRef.CaseId, maxPages: 20, cancellationToken);
+                foreach (var page in pages)
+                {
+                    if (string.IsNullOrWhiteSpace(page.Text)) continue;
+
+                    // Segment page into paragraph chunks
+                    var paragraphs = page.Text.Split(new[] { "\r\n\r\n", "\n\n" }, StringSplitOptions.RemoveEmptyEntries)
+                                              .Where(p => p.Trim().Length > 20)
+                                              .ToList();
+
+                    if (paragraphs.Count == 0) paragraphs.Add(page.Text);
+
+                    int pIdx = 1;
+                    foreach (var para in paragraphs)
+                    {
+                        double score = CalculateMatchScore(para, queryTerms, query);
+                        if (score > 0)
+                        {
+                            string chunkId = $"DOC-{(docHash.Length >= 8 ? docHash.Substring(0, 8) : "GEN")}-P{page.PageNumber}-C{pIdx}";
+                            
+                            chunks.Add(new EvidenceChunk
+                            {
+                                ChunkId = chunkId,
+                                DocumentId = docRef.RelativePath,
+                                DocumentName = docRef.DocumentName,
+                                DocumentHash = docHash,
+                                DocumentType = docType,
+                                CaseId = docRef.CaseId,
+                                CaseType = docRef.CaseType,
+                                CaseNumber = docRef.CaseNumber,
+                                PageNumber = page.PageNumber,
+                                SectionOrProvision = page.Section,
+                                Content = para.Trim(),
+                                RetrievalScore = score,
+                                AuthorityLevel = docType == "Award" || docType == "Order" 
+                                    ? SourceAuthorityLevel.OfficialECourts 
+                                    : SourceAuthorityLevel.NWKRTCDatabase,
+                                Taxonomy = EvidenceTaxonomy.Fact,
+                                IsVerified = true
+                            });
+                        }
+                        pIdx++;
+                    }
+                }
+            }
+
+            return chunks
+                .OrderByDescending(c => c.RetrievalScore)
+                .Take(Math.Max(1, maxChunks))
+                .ToList();
+        }
+
+        private static string ComputeFileSha256(string fullPath)
+        {
+            try
+            {
+                if (!File.Exists(fullPath)) return string.Empty;
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                using var stream = File.OpenRead(fullPath);
+                byte[] hash = sha256.ComputeHash(stream);
+                return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static string ClassifyDocumentType(string filename, string? content)
+        {
+            string fn = (filename ?? "").ToLowerInvariant();
+            if (fn.Contains("award")) return "Award";
+            if (fn.Contains("order") || fn.Contains("stay")) return "Order";
+            if (fn.Contains("petition") || fn.Contains("claim")) return "Petition";
+            if (fn.Contains("fir")) return "FIR";
+            if (fn.Contains("sketch") || fn.Contains("spot")) return "SpotSketch";
+            if (fn.Contains("judgment") || fn.Contains("judgement")) return "Judgement";
+            if (fn.Contains("counter") || fn.Contains("written statement") || fn.Contains("ws")) return "Counter";
+            if (fn.Contains("noting") || fn.Contains("note")) return "Noting";
+            return "Exhibit";
+        }
+
         private static string DetectSectionHeader(string pageText, int pageNumber)
         {
             if (string.IsNullOrWhiteSpace(pageText))

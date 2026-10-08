@@ -120,12 +120,27 @@ namespace MVCCaseManagement.Services.AI
             // Route Evaluation Matrix
             if (!string.IsNullOrWhiteSpace(plan.VehicleNumber) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
             {
-                // A. Vehicle Litigation History Intent
-                plan.Intent = LegalQueryIntent.VehicleHistory;
-                plan.IsDeterministicDatabaseQuery = true;
-                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
-                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
-                result.Reasoning = $"Vehicle litigation and accident claim history query for {plan.VehicleNumber} routed to database.";
+                if (mentionsSupremeOrHighCourt || mentionsSimilarCases)
+                {
+                    plan.Intent = LegalQueryIntent.CompoundFilter;
+                    plan.IsDeterministicDatabaseQuery = false;
+                    plan.RequiresLegalPrecedents = true;
+                    plan.RequiresWebSearch = true;
+                    result.PrimaryCategory = QuerySourceCategory.MultiSource;
+                    result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                    result.RequiredSources.Add(QuerySourceCategory.Judgments);
+                    result.RequiredSources.Add(QuerySourceCategory.LegalWeb);
+                    result.Reasoning = $"Vehicle litigation combined with judicial precedent search for {plan.VehicleNumber}.";
+                }
+                else
+                {
+                    // A. Vehicle Litigation History Intent
+                    plan.Intent = LegalQueryIntent.VehicleHistory;
+                    plan.IsDeterministicDatabaseQuery = true;
+                    result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                    result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                    result.Reasoning = $"Vehicle litigation and accident claim history query for {plan.VehicleNumber} routed to database.";
+                }
             }
             else if (!string.IsNullOrWhiteSpace(plan.AdvocateName) && string.IsNullOrWhiteSpace(result.ExtractedCaseNumber))
             {
@@ -268,9 +283,13 @@ namespace MVCCaseManagement.Services.AI
             // Deduplicate required sources
             result.RequiredSources = result.RequiredSources.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             plan.PlanSummary = result.Reasoning;
+            plan.PerSourceTimeoutSeconds = 15;
 
-            _logger.LogInformation("Query routed to {Category} (Intent: {Intent}). Required sources: {Sources}.",
-                result.PrimaryCategory, plan.Intent, string.Join(", ", result.RequiredSources));
+            // Multi-Stage Query Decomposition & Planning
+            DecomposeQuery(clean, plan, result);
+
+            _logger.LogInformation("Query routed to {Category} (Intent: {Intent}, SubQueries: {SubCount}). Required sources: {Sources}.",
+                result.PrimaryCategory, plan.Intent, plan.SubQueries.Count, string.Join(", ", result.RequiredSources));
 
             return result;
         }
@@ -370,7 +389,7 @@ namespace MVCCaseManagement.Services.AI
 
         private static void ExtractFinancialThreshold(string input, LegalQueryPlan plan)
         {
-            var match = Regex.Match(input, @"(?:above|greater than|exceeds?|exceeding|more than|over|>|>=)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lakhs|lac|lacs|crore|crores|cr)?", RegexOptions.IgnoreCase);
+            var match = Regex.Match(input, @"(?:above|greater than|exceed(?:s|ed|ing)?|more than|over|>|>=)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:\.\d+)?)\s*(lakh|lakhs|lac|lacs|crore|crores|cr)?", RegexOptions.IgnoreCase);
             if (match.Success)
             {
                 if (decimal.TryParse(match.Groups[1].Value, out decimal value))
@@ -517,10 +536,138 @@ namespace MVCCaseManagement.Services.AI
                 result.ExtractedProvisions.Add("Motor Vehicles Act, 1988");
             }
 
-            if (Regex.IsMatch(input, @"Industrial\s+Disputes\s+Act", RegexOptions.IgnoreCase) &&
-                !result.ExtractedProvisions.Any(p => p.Contains("Industrial Disputes Act", StringComparison.OrdinalIgnoreCase)))
+            if (Regex.IsMatch(input, @"Payment\s+of\s+Gratuity\s+Act", RegexOptions.IgnoreCase) &&
+                !result.ExtractedProvisions.Any(p => p.Contains("Payment of Gratuity Act", StringComparison.OrdinalIgnoreCase)))
             {
-                result.ExtractedProvisions.Add("Industrial Disputes Act, 1947");
+                result.ExtractedProvisions.Add("Payment of Gratuity Act, 1972");
+            }
+
+            if (Regex.IsMatch(input, @"(?:Employee'?s?\s+Compensation\s+Act|Workmen'?s?\s+Compensation\s+Act)", RegexOptions.IgnoreCase) &&
+                !result.ExtractedProvisions.Any(p => p.Contains("Compensation Act", StringComparison.OrdinalIgnoreCase)))
+            {
+                result.ExtractedProvisions.Add("Employees' Compensation Act, 1923");
+            }
+
+            if (Regex.IsMatch(input, @"(?:Civil\s+Procedure\s+Code|CPC)", RegexOptions.IgnoreCase) &&
+                !result.ExtractedProvisions.Any(p => p.Contains("CPC", StringComparison.OrdinalIgnoreCase)))
+            {
+                result.ExtractedProvisions.Add("Code of Civil Procedure, 1908 (CPC)");
+            }
+        }
+
+        private static void DecomposeQuery(string input, LegalQueryPlan plan, QueryRouteResult result)
+        {
+            plan.SubQueries.Clear();
+            int step = 1;
+
+            // Detect Requested Output Type
+            string lower = input.ToLowerInvariant();
+            if (lower.Contains("table") || lower.Contains("tabular") || lower.Contains("register"))
+                plan.RequestedOutputTypes.Add("Table");
+            if (lower.Contains("summary") || lower.Contains("briefing") || lower.Contains("overview"))
+                plan.RequestedOutputTypes.Add("Summary");
+            if (lower.Contains("risk") || lower.Contains("exposure") || lower.Contains("liability"))
+                plan.RequestedOutputTypes.Add("RiskAssessment");
+            if (lower.Contains("cause list") || lower.Contains("schedule") || lower.Contains("calendar"))
+                plan.RequestedOutputTypes.Add("CauseList");
+            if (lower.Contains("compare") || lower.Contains("similar") || lower.Contains("precedent"))
+                plan.RequestedOutputTypes.Add("ComparativeAnalysis");
+
+            if (!plan.RequestedOutputTypes.Any())
+                plan.RequestedOutputTypes.Add("Summary");
+
+            // SubQuery 1: Structured Entity / Case Records
+            if (!string.IsNullOrWhiteSpace(plan.VehicleNumber) || 
+                !string.IsNullOrWhiteSpace(plan.CaseNumber) || 
+                !string.IsNullOrWhiteSpace(plan.CNRNumber) ||
+                !string.IsNullOrWhiteSpace(plan.AdvocateName) ||
+                plan.DivisionId.HasValue)
+            {
+                var entities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrWhiteSpace(plan.VehicleNumber)) entities["VehicleNumber"] = plan.VehicleNumber;
+                if (!string.IsNullOrWhiteSpace(plan.CaseNumber)) entities["CaseNumber"] = plan.CaseNumber;
+                if (!string.IsNullOrWhiteSpace(plan.CNRNumber)) entities["CNRNumber"] = plan.CNRNumber;
+                if (!string.IsNullOrWhiteSpace(plan.AdvocateName)) entities["AdvocateName"] = plan.AdvocateName;
+                if (plan.DivisionId.HasValue) entities["DivisionId"] = plan.DivisionId.Value.ToString();
+
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Retrieve internal database litigation records for target entity",
+                    TargetSource = "Database",
+                    QueryText = input,
+                    Entities = entities
+                });
+            }
+
+            // SubQuery 2: Financial Threshold or Hearing Calendar Filters
+            if (plan.AmountThreshold.HasValue || plan.DateRangeStart.HasValue)
+            {
+                var filterEntities = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (plan.AmountThreshold.HasValue) filterEntities["Threshold"] = plan.AmountThreshold.Value.ToString();
+                if (plan.DateRangeStart.HasValue) filterEntities["DateStart"] = plan.DateRangeStart.Value.ToString("yyyy-MM-dd");
+                if (plan.DateRangeEnd.HasValue) filterEntities["DateEnd"] = plan.DateRangeEnd.Value.ToString("yyyy-MM-dd");
+
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Filter records by financial exposure or judicial date calendar",
+                    TargetSource = "Database",
+                    QueryText = input,
+                    Entities = filterEntities
+                });
+            }
+
+            // SubQuery 3: Document Exhibits / Orders / Awards
+            if (plan.RequiresDocuments || result.RequiredSources.Contains(QuerySourceCategory.InternalDocuments))
+            {
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Search uploaded case files, chargesheets, orders, and award copies",
+                    TargetSource = "Document",
+                    QueryText = input,
+                    Entities = new Dictionary<string, string> { ["CaseNumber"] = plan.CaseNumber ?? "" }
+                });
+            }
+
+            // SubQuery 4: e-Courts Live Tracking
+            if (plan.RequiresECourts || result.RequiredSources.Contains(QuerySourceCategory.ECourts))
+            {
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Query National e-Courts NAPIX registry for official court stage and daily orders",
+                    TargetSource = "ECourts",
+                    QueryText = input,
+                    Entities = new Dictionary<string, string> { ["CNR"] = plan.CNRNumber ?? "" }
+                });
+            }
+
+            // SubQuery 5: Judicial Precedents & High Court / Supreme Court Case Law
+            if (plan.RequiresLegalPrecedents || plan.RequiresWebSearch || result.RequiredSources.Contains(QuerySourceCategory.Judgments) || result.RequiredSources.Contains(QuerySourceCategory.LegalWeb))
+            {
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Retrieve binding Supreme Court and High Court precedents and statutory interpretations",
+                    TargetSource = "JudgmentRepo",
+                    QueryText = input,
+                    Entities = new Dictionary<string, string> { ["Provisions"] = string.Join(", ", plan.StatutoryProvisions) }
+                });
+            }
+
+            // SubQuery 6: Comparative Analysis / Similar Cases
+            if (result.RequiredSources.Contains(QuerySourceCategory.SimilarCases))
+            {
+                plan.SubQueries.Add(new DecomposedSubQuery
+                {
+                    Step = step++,
+                    Description = "Evaluate factual and legal similarity against past NWKRTC matters",
+                    TargetSource = "SimilarCases",
+                    QueryText = input,
+                    Entities = new Dictionary<string, string>()
+                });
             }
         }
 

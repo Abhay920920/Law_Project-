@@ -203,7 +203,8 @@ namespace MVCCaseManagement.Controllers
                     DossierSummary = researchResult.DossierSummary,
                     ErrorMessage = researchResult.ErrorMessage,
                     Model = researchResult.Model,
-                    ExecutionTimeMs = researchResult.ExecutionTimeMs
+                    ExecutionTimeMs = researchResult.ExecutionTimeMs,
+                    Verification = researchResult.Verification
                 });
             }
             catch (Exception ex)

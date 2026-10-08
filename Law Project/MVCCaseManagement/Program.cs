@@ -88,6 +88,7 @@ builder.Services.AddScoped<MVCCaseManagement.Services.AI.IUnifiedLegalResearchSe
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.ICaseContextBuilder, MVCCaseManagement.Services.AI.CaseContextBuilder>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IPromptManagementService, MVCCaseManagement.Services.AI.PromptManagementService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IAIAuditService, MVCCaseManagement.Services.AI.AIAuditService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IPostGenerationVerifier, MVCCaseManagement.Services.AI.PostGenerationVerifier>();
 
 
 // Add SMS Service

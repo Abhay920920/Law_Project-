@@ -32,6 +32,8 @@ namespace MVCCaseManagement.Services.AI
         public string? ErrorMessage { get; set; }
         public string Model { get; set; } = string.Empty;
         public int ExecutionTimeMs { get; set; }
+        public VerificationResult? Verification { get; set; }
+        public EvidencePack? EvidencePack { get; set; }
     }
 
     public interface IUnifiedLegalResearchService

@@ -27,5 +27,15 @@ namespace MVCCaseManagement.Services.AI
             int? caseId = null,
             int maxPages = 15,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Hybrid retrieval producing provenance-tracked EvidenceChunks with document hash, classification, and reranking.
+        /// </summary>
+        Task<List<EvidenceChunk>> RetrieveEvidenceChunksAsync(
+            string query,
+            string? caseType = null,
+            int? caseId = null,
+            int maxChunks = 10,
+            CancellationToken cancellationToken = default);
     }
 }

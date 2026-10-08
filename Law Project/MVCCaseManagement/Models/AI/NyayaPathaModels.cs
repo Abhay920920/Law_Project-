@@ -371,6 +371,16 @@ namespace MVCCaseManagement.Models.AI
 
         public string RawQuery { get; set; } = string.Empty;
         public string PlanSummary { get; set; } = string.Empty;
+
+        // Query Decomposition & Planning
+        public List<DecomposedSubQuery> SubQueries { get; set; } = new();
+        public List<string> RequestedOutputTypes { get; set; } = new();
+        public int PerSourceTimeoutSeconds { get; set; } = 15;
+
+        // Security & Scoped Authorization
+        public int UserDivisionId { get; set; } = 5;
+        public string UserRole { get; set; } = "Officer";
+        public bool IsCentralOffice { get; set; } = true;
     }
 
     public class QueryRouteResult
@@ -424,8 +434,158 @@ namespace MVCCaseManagement.Models.AI
         public string SourceB { get; set; } = string.Empty;
         public string ValueB { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
-        public string Severity { get; set; } = "Medium"; // High, Medium, Low
+        public string Severity { get; set; } = "Medium"; // Critical, High, Medium, Low
+        public string? SourceAAuthority { get; set; }
+        public string? SourceBAuthority { get; set; }
+        public DateTime? TimestampA { get; set; }
+        public DateTime? TimestampB { get; set; }
+        public bool IsCritical => string.Equals(Severity, "Critical", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(Severity, "High", StringComparison.OrdinalIgnoreCase);
         public string? RecommendedAction { get; set; }
+    }
+
+    public enum SourceAuthorityLevel
+    {
+        SupremeCourt = 1,
+        HighCourt = 2,
+        Statute = 3,
+        OfficialECourts = 4,
+        NWKRTCDatabase = 5,
+        NWKRTCCaseNoting = 6,
+        SecondaryLegalWeb = 7
+    }
+
+    public enum EvidenceTaxonomy
+    {
+        Fact = 1,
+        LegalRule = 2,
+        Precedent = 3,
+        InternalOpinion = 4,
+        ExternalRecord = 5,
+        Inference = 6
+    }
+
+    public class EvidenceChunk
+    {
+        public string ChunkId { get; set; } = Guid.NewGuid().ToString("N");
+        public string DocumentId { get; set; } = string.Empty;
+        public string DocumentName { get; set; } = string.Empty;
+        public string DocumentHash { get; set; } = string.Empty;
+        public string DocumentType { get; set; } = "CaseRecord"; // Petition, Order, Award, FIR, Noting, Judgment, Statute
+        public int? CaseId { get; set; }
+        public string? CaseType { get; set; }
+        public string? CaseNumber { get; set; }
+        public int? PageNumber { get; set; }
+        public string? SectionOrProvision { get; set; }
+        public string? Court { get; set; }
+        public DateTime? EventDate { get; set; }
+        public SourceAuthorityLevel AuthorityLevel { get; set; } = SourceAuthorityLevel.NWKRTCDatabase;
+        public EvidenceTaxonomy Taxonomy { get; set; } = EvidenceTaxonomy.Fact;
+        public string Content { get; set; } = string.Empty;
+        public double RetrievalScore { get; set; } = 1.0;
+        public double AuthorityScore { get; set; } = 1.0;
+        public double FreshnessScore { get; set; } = 1.0;
+        public double RerankScore { get; set; } = 1.0;
+        public bool IsVerified { get; set; } = true;
+    }
+
+    public class EvidencePack
+    {
+        public string Query { get; set; } = string.Empty;
+        public LegalQueryPlan? Plan { get; set; }
+        public List<EvidenceChunk> Chunks { get; set; } = new();
+        public Dictionary<string, string> VerifiedFacts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<DetectedConflictDto> Conflicts { get; set; } = new();
+        public List<CitationDto> Citations { get; set; } = new();
+        public List<string> MissingInformation { get; set; } = new();
+        public List<string> AllowedInferences { get; set; } = new();
+        public List<string> SourcesQueried { get; set; } = new();
+
+        public void DeduplicateAndRerank(string query)
+        {
+            if (Chunks == null || Chunks.Count == 0) return;
+
+            // Deduplicate by Content hash / exact snippet
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var unique = new List<EvidenceChunk>();
+
+            foreach (var chunk in Chunks)
+            {
+                string key = $"{chunk.DocumentName}_{chunk.PageNumber}_{chunk.Content.Trim()}";
+                if (seen.Add(key))
+                {
+                    unique.Add(chunk);
+                }
+            }
+
+            // Calculate composite reranking score: (0.4 * RetrievalScore) + (0.4 * AuthorityScore) + (0.2 * FreshnessScore)
+            foreach (var chunk in unique)
+            {
+                double authWeight = chunk.AuthorityLevel switch
+                {
+                    SourceAuthorityLevel.SupremeCourt => 1.0,
+                    SourceAuthorityLevel.HighCourt => 0.95,
+                    SourceAuthorityLevel.Statute => 0.95,
+                    SourceAuthorityLevel.OfficialECourts => 0.90,
+                    SourceAuthorityLevel.NWKRTCDatabase => 0.85,
+                    SourceAuthorityLevel.NWKRTCCaseNoting => 0.70,
+                    SourceAuthorityLevel.SecondaryLegalWeb => 0.60,
+                    _ => 0.50
+                };
+                chunk.AuthorityScore = authWeight;
+                chunk.RerankScore = (0.4 * Math.Min(1.0, chunk.RetrievalScore)) + (0.4 * authWeight) + (0.2 * chunk.FreshnessScore);
+            }
+
+            Chunks = unique.OrderByDescending(c => c.RerankScore).ToList();
+        }
+    }
+
+    public class DecomposedSubQuery
+    {
+        public int Step { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public string TargetSource { get; set; } = "Database"; // Database, Document, ECourts, JudgmentRepo, LegalWeb
+        public string QueryText { get; set; } = string.Empty;
+        public Dictionary<string, string> Entities { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public class ExtractedClaim
+    {
+        public string ClaimText { get; set; } = string.Empty;
+        public string EvidenceSnippet { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string Citation { get; set; } = string.Empty;
+        public EvidenceTaxonomy Taxonomy { get; set; } = EvidenceTaxonomy.Fact;
+        public bool IsSupported { get; set; } = true;
+        public string VerificationNote { get; set; } = string.Empty;
+        public double Confidence { get; set; } = 1.0;
+    }
+
+    public class VerificationResult
+    {
+        public bool IsGrounded { get; set; } = true;
+        public int TotalClaims { get; set; }
+        public int VerifiedClaims { get; set; }
+        public int UnsupportedClaims { get; set; }
+        public List<ExtractedClaim> Claims { get; set; } = new();
+        public List<string> FlaggedContradictions { get; set; } = new();
+        public string VerifiedAnswer { get; set; } = string.Empty;
+    }
+
+    public class ConversationStateDto
+    {
+        public int ConversationId { get; set; }
+        public string? ActiveCaseType { get; set; }
+        public int? ActiveCaseId { get; set; }
+        public string? ActiveCaseNumber { get; set; }
+        public string? ActiveCNR { get; set; }
+        public string? ActiveVehicleNo { get; set; }
+        public string? ActiveAdvocate { get; set; }
+        public int? ActiveDivisionId { get; set; }
+        public string? ActiveCourt { get; set; }
+        public string? ActiveLegalIssue { get; set; }
+        public string? ActiveDateRange { get; set; }
+        public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
     }
 
     public class NyayaPathaChatRequest
@@ -453,6 +613,7 @@ namespace MVCCaseManagement.Models.AI
         public string? ErrorMessage { get; set; }
         public string? Model { get; set; }
         public int ExecutionTimeMs { get; set; }
+        public VerificationResult? Verification { get; set; }
     }
 }
 

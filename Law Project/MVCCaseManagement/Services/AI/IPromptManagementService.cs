@@ -20,6 +20,16 @@ namespace MVCCaseManagement.Services.AI
         string BuildUserPrompt(CaseDossier? dossier, string userQuestion, string? quickAction = null);
 
         /// <summary>
+        /// Formats unified EvidencePack into hardened XML-tagged evidence context.
+        /// </summary>
+        string BuildEvidencePackContextXml(EvidencePack pack);
+
+        /// <summary>
+        /// Builds user prompt directly from EvidencePack.
+        /// </summary>
+        string BuildUserPromptFromEvidencePack(EvidencePack pack, string userQuestion, string? quickAction = null);
+
+        /// <summary>
         /// Resolves quick action title into user instruction directive.
         /// </summary>
         string ResolveQuickActionDirective(string quickAction);
