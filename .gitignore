@@ -63,6 +63,10 @@ logs/
 napix_log.txt
 *.sqlite
 *.db
+app_offline.htm
+**/app_offline.htm
+ShadowCopy/
+**/ShadowCopy*/
 
 ## File Uploads & User Media (preserve directories via .gitkeep)
 uploads/*
