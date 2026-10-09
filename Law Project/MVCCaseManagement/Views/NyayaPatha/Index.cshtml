@@ -1661,7 +1661,7 @@
             const $card = $btn.closest('.card');
             const $assistantRow = $btn.closest('.assistant-message-row');
             const $userRow = $assistantRow.prevAll('.user-message-row').first();
-            const userPrompt = $userRow.find('.user-bubble-text').text().trim();
+            const userPrompt = $userRow.length ? $userRow.find('.user-bubble-text').text().trim() : '';
             const contentHtml = $card.find('.message-content').html();
             const rawContent = $card.attr('data-raw-text') || $card.find('.message-content').text() || '';
             const citationsHtml = $card.find('.citations-container').html() || '';
@@ -1696,23 +1696,27 @@
                     <style>
                         @@page {
                             size: A4 portrait;
-                            margin: 15mm 12mm 15mm 12mm;
+                            margin: 14mm 12mm 14mm 12mm;
+                        }
+                        * {
+                            -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
                         }
                         body {
                             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                             color: #0f172a;
                             background: #ffffff;
                             padding: 24px;
-                            font-size: 12.5px;
+                            font-size: 12px;
                             line-height: 1.55;
                         }
                         .official-header {
                             border-bottom: 2.5px solid #0f2331;
                             padding-bottom: 12px;
-                            margin-bottom: 16px;
+                            margin-bottom: 15px;
                         }
                         .logo-box {
-                            height: 60px;
+                            height: 56px;
                             width: auto;
                             max-width: 120px;
                             object-fit: contain;
@@ -1729,16 +1733,16 @@
                             line-height: 1.25;
                         }
                         .corp-subtitle {
-                            font-size: 11px;
+                            font-size: 10.5px;
                             color: #475569;
                             font-weight: 600;
                             margin-top: 2px;
                         }
                         .memo-badge {
-                            background: #0f2331;
-                            color: #ffffff;
-                            font-size: 10.5px;
-                            padding: 4px 10px;
+                            background: #0f2331 !important;
+                            color: #ffffff !important;
+                            font-size: 10px;
+                            padding: 3px 9px;
                             border-radius: 4px;
                             font-weight: 700;
                             letter-spacing: 0.8px;
@@ -1746,10 +1750,10 @@
                             display: inline-block;
                         }
                         .memo-category-badge {
-                            background: #e0f2fe;
-                            color: #0369a1;
-                            border: 1px solid #bae6fd;
-                            font-size: 10px;
+                            background: #e0f2fe !important;
+                            color: #0369a1 !important;
+                            border: 1px solid #bae6fd !important;
+                            font-size: 9.5px;
                             padding: 2px 8px;
                             border-radius: 3px;
                             font-weight: 700;
@@ -1760,61 +1764,86 @@
                         .meta-table {
                             width: 100%;
                             border-collapse: collapse;
-                            margin-bottom: 18px;
+                            margin-bottom: 14px;
                         }
                         .meta-table td {
-                            padding: 6px 10px;
-                            font-size: 11.5px;
+                            padding: 5px 9px;
+                            font-size: 11px;
                             border: 1px solid #cbd5e1;
                             vertical-align: middle;
                         }
                         .meta-label {
-                            background-color: #f1f5f9;
+                            background-color: #f1f5f9 !important;
                             font-weight: 600;
                             color: #334155;
                             width: 20%;
                             white-space: nowrap;
                         }
                         .directive-card {
-                            background: #f8fafc;
-                            border: 1.5px solid #0284c7;
-                            border-left: 5px solid #0284c7;
+                            background: #f8fafc !important;
+                            border: 1.5px solid #0284c7 !important;
+                            border-left: 5px solid #0284c7 !important;
                             border-radius: 4px;
-                            padding: 10px 14px;
-                            margin-bottom: 18px;
+                            padding: 9px 13px;
+                            margin-bottom: 14px;
                             page-break-inside: avoid;
                         }
                         .directive-title {
-                            font-size: 11px;
+                            font-size: 10.5px;
                             font-weight: 800;
                             text-transform: uppercase;
                             color: #0369a1;
                             letter-spacing: 0.5px;
-                            margin-bottom: 4px;
+                            margin-bottom: 3px;
                         }
                         .directive-text {
                             font-size: 11.5px;
                             color: #0f172a;
                             line-height: 1.45;
+                            font-weight: 500;
+                        }
+                        .inquiry-callout {
+                            background: #f8fafc !important;
+                            border: 1px solid #cbd5e1 !important;
+                            border-left: 4px solid #0f2331 !important;
+                            border-radius: 4px;
+                            padding: 8px 12px;
+                            margin-bottom: 14px;
+                            page-break-inside: avoid;
+                        }
+                        .inquiry-title {
+                            font-size: 9.5px;
+                            font-weight: 700;
+                            text-transform: uppercase;
+                            color: #475569;
+                            letter-spacing: 0.5px;
+                            margin-bottom: 3px;
+                        }
+                        .inquiry-query {
+                            font-size: 11.5px;
+                            color: #0f172a;
+                            font-style: italic;
+                            font-weight: 500;
+                            line-height: 1.4;
                         }
                         .memo-body {
-                            font-size: 12px;
+                            font-size: 11.5px;
                             line-height: 1.6;
                             color: #1e293b;
                         }
                         .memo-body table {
                             width: 100%;
                             border-collapse: collapse;
-                            margin: 12px 0;
+                            margin: 10px 0;
                             page-break-inside: avoid;
                         }
                         .memo-body th {
                             background-color: #0f2331 !important;
                             color: #ffffff !important;
-                            font-size: 10.5px;
+                            font-size: 10px;
                             font-weight: 700;
                             text-transform: uppercase;
-                            padding: 7px 9px;
+                            padding: 6px 8px;
                             border: 1px solid #0f2331 !important;
                         }
                         .memo-body td {
@@ -1824,25 +1853,25 @@
                             vertical-align: middle;
                         }
                         .memo-body tr:nth-child(even) td {
-                            background-color: #f8fafc;
+                            background-color: #f8fafc !important;
                         }
                         h1, h2, h3, h4, h5 {
                             color: #0f2331;
                             font-weight: 700;
-                            margin-top: 14px;
+                            margin-top: 12px;
                             margin-bottom: 6px;
                         }
-                        h2, h3 { font-size: 13px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; }
-                        h4, h5 { font-size: 12px; }
+                        h2, h3 { font-size: 12.5px; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 3px; }
+                        h4, h5 { font-size: 11.5px; }
                         .sign-off-section {
-                            margin-top: 36px;
-                            padding-top: 14px;
+                            margin-top: 30px;
+                            padding-top: 12px;
                             border-top: 1px dashed #94a3b8;
                             page-break-inside: avoid;
                         }
                         .hash-badge {
                             font-family: monospace;
-                            font-size: 9.5px;
+                            font-size: 9px;
                             color: #64748b;
                         }
                         @@media print {
@@ -1880,11 +1909,11 @@
                     <table class="meta-table">
                         <tr>
                             <td class="meta-label">Matter / Inquiry:</td>
-                            <td colspan="3"><strong>${meta.subject}</strong></td>
+                            <td colspan="3"><strong style="color: #0f2331; font-size: 11.5px;">${meta.subject}</strong></td>
                         </tr>
                         <tr>
                             <td class="meta-label">Case Ref / Index:</td>
-                            <td><strong class="text-primary">${meta.caseRef}</strong></td>
+                            <td><strong class="text-primary" style="font-family: monospace; font-size: 11.5px;">${meta.caseRef}</strong></td>
                             <td class="meta-label">Division / Unit:</td>
                             <td><strong>${meta.divisionEntity}</strong></td>
                         </tr>
@@ -1892,11 +1921,11 @@
                             <td class="meta-label">Competent Forum:</td>
                             <td>${meta.jurisdiction}</td>
                             <td class="meta-label">Statutory Reference:</td>
-                            <td>${meta.statutoryRef}</td>
+                            <td><strong>${meta.statutoryRef}</strong></td>
                         </tr>
                         <tr>
                             <td class="meta-label">Legal Stage:</td>
-                            <td>${meta.currentStage}</td>
+                            <td><span style="font-weight: 600; color: #0284c7;">${meta.currentStage}</span></td>
                             <td class="meta-label">Generated On:</td>
                             <td>${dateStr} at ${timeStr} | Ref: ${memoRefCode}</td>
                         </tr>
@@ -1907,13 +1936,20 @@
                         <div class="directive-text">${meta.directive}</div>
                     </div>
 
+                    ${meta.showInquiryBox ? `
+                        <div class="inquiry-callout">
+                            <div class="inquiry-title">Official Legal Inquiry / Reference Query:</div>
+                            <div class="inquiry-query">"${meta.escapedPrompt}"</div>
+                        </div>
+                    ` : ''}
+
                     <div class="memo-body">
                         ${contentHtml}
                     </div>
 
                     ${citationsHtml ? `
                         <div class="mt-4 pt-2 border-top border-secondary-subtle">
-                            <div class="fw-bold mb-1.5 text-uppercase" style="font-size: 10.5px; color: #0f2331;">
+                            <div class="fw-bold mb-1.5 text-uppercase" style="font-size: 10px; color: #0f2331;">
                                 <i class="bi bi-shield-check text-success me-1"></i>Verified Sources, Precedents & Statutory Authorities:
                             </div>
                             ${citationsHtml}
@@ -1948,109 +1984,308 @@
         }
 
         function analyzeLegalQueryContext(prompt, responseText, dossierCaseNo, dossierCourt, dossierStage, sessionTitle) {
-            const p = (prompt || '').toLowerCase();
-            const r = (responseText || '').toLowerCase();
+            const rawPrompt = (prompt || '').trim();
+            const rawResponse = (responseText || '').trim();
+            const p = rawPrompt.toLowerCase();
+            const r = rawResponse.toLowerCase();
+            const fullText = rawPrompt + '\n' + rawResponse;
 
-            // Default baseline
-            let subject = prompt ? `Legal Research & Inquiry: ${prompt}` : (sessionTitle || 'Legal Research & Executive Intelligence Memorandum');
-            let matterCategory = 'General Legal Advisory & Statutory Assessment';
-            let statutoryRef = 'Constitution of India, MV Act 1988, ID Act 1947 & Civil Procedure Code 1908';
-            let jurisdiction = dossierCourt && dossierCourt !== 'Central Legal Repository' ? dossierCourt : 'High Court of Karnataka / MACT / Central Legal Directorate';
-            let caseRef = dossierCaseNo && dossierCaseNo !== 'No Active Case Selected' ? dossierCaseNo : 'Official Legal Inquiry';
+            function escapeHtml(str) {
+                if (!str) return '';
+                return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+
+            const isGreeting = !rawPrompt || ['hi', 'hello', 'hey', 'namaste', 'namaskara', 'start', 'test', 'help'].includes(p) || (rawPrompt.length <= 4 && !/\d/.test(rawPrompt));
+
+            // ---------------------------------------------------------
+            // 1. EXTRACT CASE NUMBERS & JUDICIAL IDENTIFIERS
+            // ---------------------------------------------------------
+            let detectedCaseNo = null;
+            let detectedCnr = null;
+            let detectedVehicle = null;
+
+            // CNR Number extraction (16 alphanumeric characters, e.g. KAHC020050702018)
+            const cnrMatch = fullText.match(/\b([A-Z]{4}\d{12})\b/i) || fullText.match(/CNR(?:\s*Number|\s*No\.?)?[\s:*#`]*([A-Z0-9]{16})/i);
+            if (cnrMatch) {
+                detectedCnr = cnrMatch[1].toUpperCase();
+            }
+
+            // Specific Case Number regex (MVC, MFA, KID, ID, PG, EP, WP, WA, SLP, CRL)
+            const caseMatch = fullText.match(/\b(MVC[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|MFA[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|KID[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|ID[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|PG[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|EP[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|WP[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|WA[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*|SLP[\s/.-]*(?:No\.?[\s]*)?\d+[\s/.-]*\d*)\b/i);
+            if (caseMatch) {
+                detectedCaseNo = caseMatch[1].replace(/No\.?\s*/i, '').trim().toUpperCase();
+            }
+
+            // Vehicle Registration (KA-xx-x-xxxx)
+            const vehMatch = fullText.match(/\b(KA[\s-]*(?:[0-9]{2}|[0-9]{1})[\s-]*[A-Z]{1,2}[\s-]*\d{1,4})\b/i);
+            if (vehMatch) {
+                detectedVehicle = vehMatch[1].toUpperCase().replace(/\s+/g, '-');
+            }
+
+            // Active Dossier sanity check: filter out boilerplate placeholders
+            const validDossierCase = (dossierCaseNo && !['select a case', 'no active case selected', 'n/a', ''].includes(dossierCaseNo.toLowerCase().trim())) 
+                ? dossierCaseNo.trim() 
+                : null;
+
+            let caseRef = 'General Legal Advisory (Non-Case Specific)';
+            if (detectedCaseNo && detectedCnr) {
+                caseRef = `${detectedCaseNo} (CNR: ${detectedCnr})`;
+            } else if (detectedCaseNo) {
+                caseRef = detectedCaseNo;
+            } else if (detectedCnr) {
+                caseRef = `CNR: ${detectedCnr}`;
+            } else if (validDossierCase) {
+                caseRef = validDossierCase;
+            } else if (detectedVehicle) {
+                caseRef = `Bus Reg: ${detectedVehicle} (Operational Matter)`;
+            }
+
+            // ---------------------------------------------------------
+            // 2. EXTRACT OPERATING DIVISION / UNIT
+            // ---------------------------------------------------------
             let divisionEntity = 'NWKRTC Central / All Operating Divisions';
-            let currentStage = dossierStage && dossierStage !== 'Ready for Inquiry' ? dossierStage : 'Legal Evaluation / Record Scrutiny';
-            let directive = 'Scrutinize record findings and proceed in accordance with Corporation Legal Standing Orders and procedural timelines.';
-
-            // 1. Division detection
             const divisionMap = [
-                { code: 'NKD', name: 'Uttara Kannada (NKD)', keywords: ['nkd', 'uttara kannada', 'karwar', 'sirsi'] },
-                { code: 'BGM', name: 'Belagavi (BGM)', keywords: ['bgm', 'belagavi', 'belgaum'] },
-                { code: 'HBL', name: 'Hubballi-Dharwad (HBL)', keywords: ['hbl', 'hubballi', 'hubli', 'dharwad'] },
-                { code: 'GDK', name: 'Gadag (GDK)', keywords: ['gdk', 'gadag'] },
-                { code: 'BGK', name: 'Bagalkot (BGK)', keywords: ['bgk', 'bagalkot', 'bagalkote'] },
-                { code: 'CHD', name: 'Chikkodi (CHD)', keywords: ['chd', 'chikkodi'] },
-                { code: 'HVR', name: 'Haveri (HVR)', keywords: ['hvr', 'haveri'] }
+                { name: 'Uttara Kannada Division (NKD)', keywords: ['nkd', 'uttara kannada', 'karwar', 'sirsi', 'kumta', 'ankola', 'bhatkal', 'yellapur', 'ka-30', 'ka-31', 'ka-47'] },
+                { name: 'Belagavi Division (BGM)', keywords: ['bgm', 'belagavi', 'belgaum', 'khanapur', 'bailhongal', 'ka-22'] },
+                { name: 'Hubballi-Dharwad Division (HBL)', keywords: ['hbl', 'hubballi', 'hubli', 'dharwad', 'navanagar', 'ka-25', 'ka-63'] },
+                { name: 'Gadag Division (GDK)', keywords: ['gdk', 'gadag', 'ron', 'shirahatti', 'mundargi', 'ka-26'] },
+                { name: 'Bagalkot Division (BGK)', keywords: ['bgk', 'bagalkot', 'bagalkote', 'jamkhandi', 'mudhol', 'badami', 'ka-29'] },
+                { name: 'Chikkodi Division (CHD)', keywords: ['chd', 'chikkodi', 'athani', 'nipani', 'hukkeri', 'raybag', 'ka-23'] },
+                { name: 'Haveri Division (HVR)', keywords: ['hvr', 'haveri', 'ranebennur', 'byadgi', 'hirekerur', 'ka-27'] }
             ];
             for (const d of divisionMap) {
-                if (d.keywords.some(k => p.includes(k) || r.includes(k))) {
+                if (d.keywords.some(k => p.includes(k) || r.includes(k) || (detectedVehicle && detectedVehicle.toLowerCase().includes(k)))) {
                     divisionEntity = d.name;
                     break;
                 }
             }
 
-            // 2. Specific Case Number extraction (MFA, MVC, KID, ID, PG, EP, WP, WA, SLP)
-            const caseMatch = (prompt + ' ' + responseText).match(/\b(MFA[\s/.-]*\d+[\s/.-]*\d*|MVC[\s/.-]*\d+[\s/.-]*\d*|KID[\s/.-]*\d+[\s/.-]*\d*|ID[\s/.-]*\d+[\s/.-]*\d*|PG[\s/.-]*\d+[\s/.-]*\d*|EP[\s/.-]*\d+[\s/.-]*\d*|WP[\s/.-]*\d+[\s/.-]*\d*|WA[\s/.-]*\d+[\s/.-]*\d*|SLP[\s/.-]*\d+[\s/.-]*\d*)\b/i);
-            if (caseMatch) {
-                caseRef = caseMatch[1].toUpperCase();
+            // ---------------------------------------------------------
+            // 3. EXTRACT PROCEDURAL STAGE & DATES
+            // ---------------------------------------------------------
+            let currentStage = 'Preliminary Legal Scrutiny / Record Review';
+            const stageInResponse = rawResponse.match(/(?:Current Procedural Stage|Active Stage|Procedural Stage|Stage)\s*[:|]\s*\*?([A-Za-z\s-]+)\*?/i);
+            const hearingDateMatch = rawResponse.match(/(?:Next Hearing Date|Judicial Calendar|Hearing Date)\s*[:|]\s*\*?([0-9]{2}[-/][0-9]{2}[-/][0-9]{4}|[0-9]{2}\s+[A-Za-z]{3}\s+[0-9]{4})\*?/i);
+            const nextHearingDate = hearingDateMatch ? hearingDateMatch[1].trim() : null;
+
+            if (stageInResponse && stageInResponse[1].trim().length > 2) {
+                const parsedStage = stageInResponse[1].trim().toUpperCase();
+                currentStage = nextHearingDate ? `${parsedStage} (Hearing: ${nextHearingDate})` : parsedStage;
+            } else if (dossierStage && !['pending', 'ready for inquiry', ''].includes(dossierStage.toLowerCase().trim())) {
+                currentStage = dossierStage.trim();
+            } else if (p.includes('admission') || r.includes('stage: admission') || r.includes('for admission')) {
+                currentStage = 'Appellate Admission / Preliminary Hearing';
+            } else if (p.includes('evidence') || r.includes('petitioner evidence') || r.includes('cross-examination') || r.includes('pw-1')) {
+                currentStage = 'Evidence & Cross-Examination Stage';
+            } else if (p.includes('written statement') || r.includes('written statement') || p.includes('objection')) {
+                currentStage = 'Written Statement / Objection Filing';
+            } else if (p.includes('argument') || r.includes('final arguments') || r.includes('hearing on merits')) {
+                currentStage = 'Final Arguments / Adjudication Stage';
+            } else if (p.includes('execution') || p.includes('attachment') || p.includes('warrant') || r.includes('order xxi')) {
+                currentStage = 'Execution Proceedings / Warrant Stay';
+            } else if (p.includes('appeal') || p.includes('limitation') || r.includes('90 days limitation')) {
+                currentStage = 'Appellate Scrutiny (Limitation Analysis)';
+            } else if (p.includes('lok adalat') || r.includes('lok adalat')) {
+                currentStage = 'Lok Adalat Pre-Conciliation Stage';
+            } else if (isGreeting) {
+                currentStage = 'Desk Scrutiny / Inquiry Initiation';
             }
 
-            // 3. Vehicle Number extraction (KA-xx-x-xxxx)
-            const vehMatch = (prompt + ' ' + responseText).match(/\b(KA[\s-]*\d{1,2}[\s-]*[A-Z]{1,2}[\s-]*\d{1,4})\b/i);
-            const vehRef = vehMatch ? vehMatch[1].toUpperCase() : null;
+            // ---------------------------------------------------------
+            // 4. EXTRACT COMPETENT FORUM / JURISDICTION
+            // ---------------------------------------------------------
+            let jurisdiction = 'High Court of Karnataka / MACT / Central Legal Directorate';
+            const courtInResponse = rawResponse.match(/(?:Court \/ Forum|Official MACT|Court Hall \/ Room|Court Name)\s*[:|]\s*\*?([A-Za-z0-9\s,.-]+ Bench|[A-Za-z0-9\s,.-]+ Court|[A-Za-z0-9\s,.-]+ Tribunal)\*?/i);
 
-            // 4. Categorization based on prompt and response
-            if (p.includes('mfa') || p.includes('appeal') || p.includes('high court') || p.includes('section 173')) {
-                matterCategory = 'High Court Appellate Proceedings (MFA / Appeal)';
-                statutoryRef = 'Section 173 of Motor Vehicles Act, 1988 read with Order XLI CPC, 1908';
-                jurisdiction = 'High Court of Karnataka (Dharwad Bench / Bengaluru)';
-                subject = prompt ? `High Court MFA Appeal Review: ${prompt}` : 'High Court MFA Appeal Proceedings Assessment';
-                currentStage = 'Appellate Adjudication / Limitation & Grounds Analysis';
-                directive = 'Verify certified copy of award, compute 90-day limitation period under Sec 173, verify statutory 50% / ₹25,000 deposit compliance, and draft grounds challenging excessive quantum or erroneous negligence apportionment.';
-                if (caseRef === 'Official Legal Inquiry' && divisionEntity !== 'NWKRTC Central / All Operating Divisions') {
-                    caseRef = `MFA-REG-${divisionEntity.split(' ')[0]}`;
-                }
-            } else if (p.includes('mvc') || p.includes('mact') || p.includes('accident') || p.includes('claimant') || p.includes('compensation') || vehRef) {
-                matterCategory = 'Motor Accident Claims Tribunal Adjudication (MVC / MACT)';
-                statutoryRef = 'Motor Vehicles Act, 1988 (Sections 166, 163A, 140, 149) & KMV Rules';
-                jurisdiction = 'Motor Accident Claims Tribunal (MACT) / Principal District & Sessions Court';
-                subject = prompt ? `MACT Accident Claim Assessment: ${prompt}` : 'MVC Accident Claim Evaluation & Quantum Brief';
-                currentStage = 'Tribunal Proceedings / Evidence & Cross-Examination Stage';
-                directive = 'Cross-examine treating doctor regarding whole-body vs limb disability, produce depot trip sheet & vehicle inspection report, and establish contributory negligence where applicable.';
-                if (vehRef && caseRef === 'Official Legal Inquiry') {
-                    caseRef = `VEH: ${vehRef}`;
-                }
-            } else if (p.includes('labour') || p.includes('labor') || p.includes('kid') || p.includes('i.d.') || p.includes('industrial dispute') || p.includes('dismissal') || p.includes('reinstatement')) {
-                matterCategory = 'Industrial & Labour Court Adjudication (KID / ID Proceedings)';
-                statutoryRef = 'Industrial Disputes Act, 1947 (Sections 10, 11-A, 33-C(2), 33(2)(b))';
-                jurisdiction = 'Labour Court / Industrial Tribunal (Hubballi / Belagavi)';
-                subject = prompt ? `Labour Dispute Examination: ${prompt}` : 'Industrial Dispute Brief & Domestic Enquiry Assessment';
-                currentStage = 'Labour Adjudication / Domestic Enquiry Validity Stage';
-                directive = 'Produce enquiry officer findings, past misconduct default card, establish fairness of domestic enquiry as preliminary issue, and pray for leave to lead independent evidence if enquiry is vitiated.';
-            } else if (p.includes('gratuity') || p.includes('pg ') || p.includes('p.g.') || p.includes('form n') || p.includes('controlling authority')) {
-                matterCategory = 'Payment of Gratuity Proceedings (PG Act Adjudication)';
-                statutoryRef = 'Payment of Gratuity Act, 1972 (Sections 4, 7 & 4(6) Forfeiture Provisions)';
+            if (courtInResponse && courtInResponse[1].trim().length > 5) {
+                jurisdiction = courtInResponse[1].trim();
+            } else if (dossierCourt && !['central legal repository', ''].includes(dossierCourt.toLowerCase().trim())) {
+                jurisdiction = dossierCourt.trim();
+            } else if (r.includes('dharwad bench') || p.includes('dharwad')) {
+                jurisdiction = 'High Court of Karnataka, Dharwad Bench';
+            } else if (r.includes('kalaburagi bench') || p.includes('kalaburagi')) {
+                jurisdiction = 'High Court of Karnataka, Kalaburagi Bench';
+            } else if (r.includes('principal bench') || r.includes('bengaluru bench')) {
+                jurisdiction = 'High Court of Karnataka, Principal Bench, Bengaluru';
+            } else if (p.includes('supreme court') || r.includes('supreme court') || p.includes('apex court')) {
+                jurisdiction = 'Supreme Court of India, New Delhi';
+            } else if (p.includes('high court') || r.includes('high court')) {
+                jurisdiction = 'High Court of Karnataka';
+            } else if (p.includes('labour') || p.includes('industrial tribunal') || r.includes('labour court') || p.includes('kid')) {
+                jurisdiction = 'Labour Court & Industrial Tribunal (Hubballi / Belagavi)';
+            } else if (p.includes('gratuity') || p.includes('controlling authority') || r.includes('controlling authority')) {
                 jurisdiction = 'Controlling Authority / Appellate Authority under Payment of Gratuity Act';
-                subject = prompt ? `Gratuity Claim Evaluation: ${prompt}` : 'Statutory Gratuity Assessment & Liability Analysis';
-                currentStage = 'Statutory Determination / Forfeiture Review Stage';
-                directive = 'Verify continuous service calculation under Section 2A, confirm if statutory ceiling (₹20 Lakhs) applies, verify whether notice of forfeiture under Sec 4(6) was formally issued within limitation.';
-            } else if (p.includes('execution') || p.includes(' e.p.') || p.includes('ep ') || p.includes('attachment') || p.includes('warrant')) {
+            } else if (p.includes('mvc') || p.includes('mact') || r.includes('mact')) {
+                jurisdiction = 'Motor Accident Claims Tribunal (MACT)';
+            } else if (isGreeting) {
+                jurisdiction = 'NWKRTC Central Legal Directorate, Hubballi';
+            }
+
+            // ---------------------------------------------------------
+            // 5. EXTRACT DYNAMIC STATUTORY REFERENCES
+            // ---------------------------------------------------------
+            const statutoryList = [];
+
+            // Motor Vehicles Act 1988
+            if (fullText.match(/\b(?:mv act|motor vehicles act|section 166|section 173|section 163a|section 140|section 149|section 170|mact|mfa|mvc)\b/i)) {
+                const mvSections = [];
+                if (fullText.match(/\b(?:sec|section)\.?\s*166\b/i)) mvSections.push('Sec. 166');
+                if (fullText.match(/\b(?:sec|section)\.?\s*173\b/i)) mvSections.push('Sec. 173');
+                if (fullText.match(/\b(?:sec|section)\.?\s*163[\s-]*a\b/i)) mvSections.push('Sec. 163-A');
+                if (fullText.match(/\b(?:sec|section)\.?\s*140\b/i)) mvSections.push('Sec. 140');
+                if (fullText.match(/\b(?:sec|section)\.?\s*149\b/i)) mvSections.push('Sec. 149');
+                if (fullText.match(/\b(?:sec|section)\.?\s*170\b/i)) mvSections.push('Sec. 170');
+                
+                if (mvSections.length > 0) {
+                    statutoryList.push(`Motor Vehicles Act, 1988 (${mvSections.join(', ')})`);
+                } else {
+                    statutoryList.push('Motor Vehicles Act, 1988 & KMV Rules, 1989');
+                }
+            }
+
+            // Industrial Disputes Act 1947
+            if (fullText.match(/\b(?:industrial dispute|id act|section 10|section 11-a|section 33-c|domestic enquiry|labour court|kid)\b/i)) {
+                const idSections = [];
+                if (fullText.match(/\b(?:sec|section)\.?\s*10\(4-a\)\b/i)) idSections.push('Sec. 10(4-A)');
+                else if (fullText.match(/\b(?:sec|section)\.?\s*10\b/i)) idSections.push('Sec. 10');
+                if (fullText.match(/\b(?:sec|section)\.?\s*11-?a\b/i)) idSections.push('Sec. 11-A');
+                if (fullText.match(/\b(?:sec|section)\.?\s*33-?c\(?2\)?\b/i)) idSections.push('Sec. 33-C(2)');
+                if (fullText.match(/\b(?:sec|section)\.?\s*33\(?2\)?\(?b\)?\b/i)) idSections.push('Sec. 33(2)(b)');
+
+                if (idSections.length > 0) {
+                    statutoryList.push(`Industrial Disputes Act, 1947 (${idSections.join(', ')})`);
+                } else {
+                    statutoryList.push('Industrial Disputes Act, 1947 (Sec. 10, 11-A)');
+                }
+            }
+
+            // Payment of Gratuity Act 1972
+            if (fullText.match(/\b(?:gratuity|payment of gratuity|section 4\(6\)|form n|controlling authority)\b/i)) {
+                statutoryList.push('Payment of Gratuity Act, 1972 (Sec. 4, 4(6) Forfeiture & Sec. 7)');
+            }
+
+            // Civil Procedure Code 1908
+            if (fullText.match(/\b(?:cpc|civil procedure code|order xxi|order xli|execution petition|attachment warrant)\b/i)) {
+                const cpcProvs = [];
+                if (fullText.match(/\border\s*xxi\b/i)) cpcProvs.push('Order XXI (Execution)');
+                if (fullText.match(/\border\s*xli\b/i)) cpcProvs.push('Order XLI (Appeals)');
+                if (cpcProvs.length > 0) {
+                    statutoryList.push(`Code of Civil Procedure, 1908 (${cpcProvs.join(', ')})`);
+                } else {
+                    statutoryList.push('Code of Civil Procedure, 1908');
+                }
+            }
+
+            // Constitution of India
+            if (fullText.match(/\b(?:constitution|article 226|article 141|article 136|writ petition|slp)\b/i)) {
+                const constiArts = [];
+                if (fullText.match(/\barticle\s*226\b/i)) constiArts.push('Article 226');
+                if (fullText.match(/\barticle\s*141\b/i)) constiArts.push('Article 141 (Binding Precedent)');
+                if (fullText.match(/\barticle\s*136\b/i)) constiArts.push('Article 136');
+                if (constiArts.length > 0) {
+                    statutoryList.push(`Constitution of India (${constiArts.join(', ')})`);
+                } else {
+                    statutoryList.push('Constitution of India (Articles 141 & 226)');
+                }
+            }
+
+            // Bharatiya Nyaya Sanhita / IPC
+            if (fullText.match(/\b(?:bns|bharatiya nyaya sanhita|ipc|penal code|sec(?:tion)?\s*106|sec(?:tion)?\s*304a)\b/i)) {
+                statutoryList.push('Bharatiya Nyaya Sanhita, 2023 / IPC 1860');
+            }
+
+            let statutoryRef = statutoryList.length > 0 
+                ? statutoryList.join(' | ') 
+                : (isGreeting ? 'NWKRTC Legal Standing Orders & Corporation Regulations' : 'Constitution of India, MV Act 1988 & Procedural Codes');
+
+            // ---------------------------------------------------------
+            // 6. DYNAMIC MATTER CATEGORY & SUBJECT
+            // ---------------------------------------------------------
+            let matterCategory = 'General Legal Advisory & Statutory Assessment';
+            let subject = '';
+
+            // Extract title from assistant response (first markdown heading like "## [Title]")
+            let responseTitle = null;
+            const titleMatch = rawResponse.match(/^#{1,3}\s*([^\n\r]+)/m);
+            if (titleMatch) {
+                responseTitle = titleMatch[1].replace(/[🏛️📜⚖️📌🔍⚡💡🛡️]/g, '').trim();
+            }
+
+            if (isGreeting) {
+                matterCategory = 'Corporate Legal Consultation & Orientation Desk';
+                subject = 'General Legal Advisory & Intelligence Desk Consultation';
+            } else if (r.includes('official judicial & e-courts record') || r.includes('ecourts') || r.includes('live napix sync')) {
+                matterCategory = 'Official Judicial & e-Courts Record Verification';
+                subject = detectedCaseNo 
+                    ? `Official Judicial & e-Courts Record Verification — ${detectedCaseNo}` 
+                    : 'Live Judicial & e-Courts Status Verification';
+            } else if (p.includes('mfa') || p.includes('appeal') || p.includes('section 173') || r.includes('section 173') || r.includes('mfa')) {
+                matterCategory = 'High Court Appellate Proceedings (MFA / Appeal)';
+                subject = responseTitle ? responseTitle : `Appellate Review & Grounds of Challenge: ${rawPrompt.replace(/^(what are|how to|please|can you)\s+/i, '')}`;
+            } else if (p.includes('contributory') || r.includes('contributory negligence') || p.includes('head-on') || r.includes('apportionment of negligence')) {
+                matterCategory = 'Accident Liability & Contributory Negligence Defense';
+                subject = responseTitle ? responseTitle : 'Contributory Negligence Defense & Liability Apportionment';
+            } else if (p.includes('multiplier') || p.includes('compensation') || p.includes('quantum') || p.includes('sarla verma') || p.includes('pranay sethi')) {
+                matterCategory = 'Motor Accident Quantum & Standardized Multiplier Review';
+                subject = responseTitle ? responseTitle : 'Quantum Assessment, Future Prospects & Multiplier Computation';
+            } else if (p.includes('labour') || p.includes('kid') || p.includes('i.d.') || p.includes('dismissal') || p.includes('domestic enquiry') || r.includes('domestic enquiry')) {
+                matterCategory = 'Industrial & Labour Court Adjudication (KID/ID)';
+                subject = responseTitle ? responseTitle : 'Industrial Dispute Brief & Domestic Enquiry Validity';
+            } else if (p.includes('gratuity') || p.includes('controlling authority') || p.includes('section 4(6)')) {
+                matterCategory = 'Payment of Gratuity Proceedings & Statutory Forfeiture';
+                subject = responseTitle ? responseTitle : 'Payment of Gratuity Claim & Statutory Forfeiture Assessment';
+            } else if (p.includes('execution') || p.includes('attachment') || p.includes('warrant') || p.includes('order xxi')) {
                 matterCategory = 'Execution & Warrant Proceedings (Order XXI CPC)';
-                statutoryRef = 'Code of Civil Procedure, 1908 (Order XXI, Rules 1, 11, 46) & Section 174 MV Act';
-                jurisdiction = 'Executing Court / Tribunal (Order XXI Execution Bench)';
-                subject = prompt ? `Execution Petition Defense & Asset Protection: ${prompt}` : 'Execution Petition & Stay of Warrant Brief';
-                currentStage = 'Decree Enforcement / Attachment Stay Stage';
-                directive = 'Move immediate application for recall/stay of attachment warrant, demonstrate deposit of decretal amount or pending High Court stay order, and protect Corporation bank accounts from garnishee order.';
+                subject = responseTitle ? responseTitle : 'Execution Petition Defense & Stay of Warrant Brief';
             } else if (p.includes('driver') || p.includes('conductor') || p.includes('badge') || p.includes('accident history')) {
                 matterCategory = 'Crew Operational Risk & Driver Accident Profiling';
-                statutoryRef = 'NWKRTC C&R Regulations, Motor Vehicles Act 1988 & Central Standing Orders';
-                jurisdiction = 'Divisional Traffic & Security Vigilance Wing, NWKRTC';
-                subject = prompt ? `Driver & Crew Operational Profile: ${prompt}` : 'Driver Accident History & Vigilance Profile';
-                currentStage = 'Operational Review & Corrective Action Evaluation';
-                directive = 'Review accident recurrence records, schedule refresher defensive driving training at Regional Training Centre, evaluate safety bonus eligibility, and verify disciplinary action compliance.';
-            } else if (p.includes('division') || p.includes('statistics') || p.includes('all cases') || p.includes('register') || p.includes('pending')) {
-                matterCategory = 'Divisional Litigation Audit & Registry Review';
-                statutoryRef = 'NWKRTC Legal Monitoring Directives & Standing Circular Instructions';
-                jurisdiction = 'Divisional Legal Cell & Central Legal Directorate, Hubballi';
-                subject = prompt ? `Divisional Litigation Audit: ${prompt}` : 'Divisional Case Portfolio Status & Compliance Audit';
-                currentStage = 'Periodic Inventory Review / Lok Adalat Target Assessment';
-                directive = 'Expedite overdue written statements, verify panel advocate engagement status, prioritize high-quantum claims for Lok Adalat pre-conciliation, and submit quarterly disposal returns to Central Office.';
-            } else if (p.includes('precedent') || p.includes('judgment') || p.includes('pranay sethi') || p.includes('sarla verma') || p.includes('syed sadiq')) {
-                matterCategory = 'Judicial Precedents & Authoritative Legal Doctrines';
-                statutoryRef = 'Constitution of India (Article 141 Binding Precedent) & Supreme Court Law Reports';
-                jurisdiction = 'Supreme Court of India / High Court of Karnataka';
-                subject = prompt ? `Judicial Doctrine Analysis: ${prompt}` : 'Supreme Court / High Court Legal Precedent Analysis';
-                currentStage = 'Legal Research & Doctrine Application';
-                directive = 'Incorporate settled legal ratios into pending written statements and appeal memos to preclude excessive compensation and enforce standardized multiplier / future prospects tables.';
+                subject = responseTitle ? responseTitle : 'Driver Accident History & Vigilance Risk Profile';
+            } else if (p.includes('precedent') || p.includes('judgment') || r.includes('landmark judgment')) {
+                matterCategory = 'Judicial Precedents & Binding Ratio Decidendi';
+                subject = responseTitle ? responseTitle : 'Judicial Precedent & Ratio Decidendi Examination';
+            } else {
+                if (responseTitle && responseTitle.length > 5) {
+                    subject = responseTitle;
+                } else if (rawPrompt.length > 0) {
+                    const cleanP = rawPrompt.charAt(0).toUpperCase() + rawPrompt.slice(1);
+                    subject = cleanP.length > 80 ? cleanP.substring(0, 77) + '...' : cleanP;
+                } else {
+                    subject = sessionTitle || 'Legal Research & Executive Intelligence Memorandum';
+                }
+            }
+
+            // ---------------------------------------------------------
+            // 7. DYNAMIC EXECUTIVE GUIDANCE & ACTION DIRECTIVE
+            // ---------------------------------------------------------
+            let directive = '';
+
+            // Check if response has explicit directive / recommendation heading
+            const explicitDirectiveMatch = rawResponse.match(/(?:📌\s*Executive Legal Guidance & Action Directive|📌\s*Action Directive|###\s*Action Directive|###\s*Recommended Legal Action|###\s*Executive Recommendation|###\s*Strategic Next Steps)[\s:*#\n]+([^\n\r]+)/i);
+
+            if (explicitDirectiveMatch && explicitDirectiveMatch[1].trim().length > 15) {
+                directive = explicitDirectiveMatch[1].replace(/[*_#`]/g, '').trim();
+            } else if (nextHearingDate && currentStage.includes('ADMISSION')) {
+                const coramText = rawResponse.match(/(?:Presiding Coram|Judicial Officer)\s*[:|]\s*\*?([A-Za-z\s.-]+)\*?/i);
+                const coramName = coramText ? coramText[1].trim() : 'Presiding Bench';
+                directive = `Matter listed before ${coramName} for ADMISSION on ${nextHearingDate}. Instruct Divisional Panel Advocate to verify trial records, ensure Corporation appearance, and resist ex-parte stay.`;
+            } else if (nextHearingDate) {
+                directive = `Matter listed on ${nextHearingDate} for ${currentStage}. Instruct Divisional Law Officer and Panel Advocate to ensure strict adherence to hearing timeline and production of Corporation records.`;
+            } else if (matterCategory.includes('Appellate Proceedings') || matterCategory.includes('High Court')) {
+                directive = 'Verify certified copy of award date, compute 90-day limitation window under Sec 173 MV Act, verify statutory 50% / ₹25,000 deposit compliance, and draft grounds challenging excessive quantum or erroneous negligence apportionment.';
+            } else if (matterCategory.includes('Contributory Negligence')) {
+                directive = 'Produce spot mahazar, IMV inspection report, and driver trip sheet; cross-examine opposing witnesses regarding impact geometry to secure substantial reduction in Corporation compensation liability.';
+            } else if (matterCategory.includes('Industrial & Labour')) {
+                directive = 'Produce enquiry officer findings and past misconduct default card; frame preliminary issue on validity of domestic enquiry under Sec 11-A ID Act; pray for leave to lead independent evidence if enquiry is vitiated.';
+            } else if (matterCategory.includes('Payment of Gratuity')) {
+                directive = 'Verify continuous service computation under Section 2A, confirm whether ₹20 Lakh statutory ceiling applies, and verify whether notice of forfeiture under Sec 4(6) was formally issued within limitation.';
+            } else if (matterCategory.includes('Execution')) {
+                directive = 'Move immediate application for recall/stay of attachment warrant under Order XXI Rule 26 CPC; demonstrate certified award requisition or pending High Court stay to safeguard Corporation assets.';
+            } else if (matterCategory.includes('Judicial Precedents') || matterCategory.includes('Quantum')) {
+                directive = 'Incorporate settled ratios of National Insurance v. Pranay Sethi and Sarla Verma v. DTC into pending pleadings to enforce standardized multiplier and preclude arbitrary future prospects additions.';
+            } else if (isGreeting) {
+                directive = 'Corporate Legal Intelligence system initialized. Submit specific case number, CNR index, or statutory query to synthesize targeted Corporation defense directives.';
+            } else {
+                directive = 'Scrutinize record findings and proceed in accordance with Corporation Legal Standing Orders and procedural timelines.';
             }
 
             return {
@@ -2061,7 +2296,9 @@
                 caseRef: caseRef,
                 divisionEntity: divisionEntity,
                 currentStage: currentStage,
-                directive: directive
+                directive: directive,
+                showInquiryBox: !isGreeting && rawPrompt.length > 5,
+                escapedPrompt: escapeHtml(rawPrompt)
             };
         }
 
