@@ -22,6 +22,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IECourtsNapixService _napixService;
         private readonly IECourtsRepository _ecourtsRepo;
         private readonly ICaseNotingRepository _notingRepo;
+        private readonly MVCCaseManagement.Services.Audit.ICaseActivityLogger _activityLogger;
         private readonly ILogger<CaseController> _logger;
 
         public CaseController(
@@ -34,6 +35,7 @@ namespace MVCCaseManagement.Controllers
             IECourtsNapixService napixService,
             IECourtsRepository ecourtsRepo,
             ICaseNotingRepository notingRepo,
+            MVCCaseManagement.Services.Audit.ICaseActivityLogger activityLogger,
             ILogger<CaseController> logger)
         {
             _masterRepo = masterRepo;
@@ -45,6 +47,7 @@ namespace MVCCaseManagement.Controllers
             _napixService = napixService;
             _ecourtsRepo = ecourtsRepo;
             _notingRepo = notingRepo;
+            _activityLogger = activityLogger;
             _logger = logger;
         }
 
@@ -239,6 +242,7 @@ namespace MVCCaseManagement.Controllers
                     }
 
                     int newCaseId = _caseRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("MVC", newCaseId, $"MVC {model.MVCNo}/{model.MVCYear}", model.VehicleNo, null, model, $"Registered new Third Party Case MVC {model.MVCNo}/{model.MVCYear}");
 
                     TempData["SuccessMessage"] = $"Third Party Case MVC No. {model.MVCNo}/{model.MVCYear} has been registered successfully.";
                     return RedirectToAction("Index");
@@ -436,6 +440,7 @@ namespace MVCCaseManagement.Controllers
                     }
 
                     int newCaseId = _caseRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("MVC", newCaseId, $"MVC {model.MVCNo}/{model.MVCYear}", model.VehicleNo, null, model);
 
                     if (model.LinkedAppeal != null)
                     {
@@ -538,6 +543,7 @@ namespace MVCCaseManagement.Controllers
                  int rbId = _caseRepo.SaveRemindBackCase(model);
                  if (rbId > 0)
                  {
+                     _ = _activityLogger.LogCaseCreatedAsync("MVC", rbId, $"MVC {model.MVCNo}/{model.MVCYear}", model.VehicleNo, null, model, $"Registered Remand Back Case MVC {model.MVCNo}/{model.MVCYear}");
                      return Json(new { success = true, message = "Remand Back details saved successfully to the separate Remand Back table.", id = rbId });
                  }
                  return Json(new { success = false, message = "Failed to save Remand Back details." });
@@ -636,6 +642,7 @@ namespace MVCCaseManagement.Controllers
             if (newId > 0)
             {
                 noting.NotingID = newId;
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", dto.CaseID, $"Case #{dto.CaseID}", "NOTING_ADDED", $"Added case noting: {(dto.NotingText.Length > 80 ? dto.NotingText.Substring(0, 77) + "..." : dto.NotingText)}");
                 return Json(new 
                 { 
                     success = true, 
@@ -685,6 +692,10 @@ namespace MVCCaseManagement.Controllers
             }
 
             bool deleted = _notingRepo.DeleteNoting(dto.NotingID);
+            if (deleted)
+            {
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", existing.CaseID, $"Case #{existing.CaseID}", "NOTING_DELETED", $"Deleted noting #{dto.NotingID}");
+            }
             return Json(new { success = deleted, message = deleted ? "Noting deleted successfully." : "Failed to delete noting." });
         }
 
@@ -875,6 +886,7 @@ namespace MVCCaseManagement.Controllers
                     }
 
                     _caseRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("MVC", model.CaseID, $"MVC {model.MVCNo}/{model.MVCYear}", model.VehicleNo, null, existingCase, model);
 
                     if (model.LinkedAppeal != null)
                     {
@@ -986,6 +998,8 @@ namespace MVCCaseManagement.Controllers
             if (success)
             {
                 var targetDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == model.ToDivisionID);
+                var srcDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == (c != null ? c.DivisionID : 0));
+                _ = _activityLogger.LogCaseTransferredAsync("MVC", model.CaseID, $"MVC {c?.MVCNo}/{c?.MVCYear}", c?.DivisionID ?? 0, model.ToDivisionID, srcDiv?.DivisionNameEnglish ?? "Source Division", targetDiv?.DivisionNameEnglish ?? "Target Division", model.TransferRemarks);
                 TempData["SuccessMessage"] = $"Case successfully transferred to {targetDiv?.DivisionNameEnglish}.";
                 return RedirectToAction("Transfer");
             }
@@ -1201,6 +1215,7 @@ namespace MVCCaseManagement.Controllers
                 payment.CreatedDate = DateTime.Now;
 
                 var paymentId = _paymentRepo.AddPayment(payment);
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", payment.CaseID, $"Case #{payment.CaseID}", "PAYMENT_ADDED", $"Recorded payment of ₹{payment.Amount:N2} (Cheque: {payment.ChequeNumber})", payment);
                 return Json(new { success = true, paymentId });
             }
             catch (Exception ex)
@@ -1216,6 +1231,10 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 var result = _paymentRepo.DeletePayment(paymentId);
+                if (result)
+                {
+                    _ = _activityLogger.LogSubEntityActionAsync("MVC", 0, "Payment Record", "PAYMENT_DELETED", $"Deleted payment record #{paymentId}");
+                }
                 return Json(new { success = result });
             }
             catch (Exception ex)

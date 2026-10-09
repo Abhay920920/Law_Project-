@@ -1236,6 +1236,74 @@ namespace MVCCaseManagement.DAL
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_1_9_NyayaPathaAIMigrationId, migTimer10.ElapsedMilliseconds);
                     }
+
+                    // 15. Migration: CASE_ACTIVITY_LOGS (User & Case Audit Activity Log Sheet)
+                    const string v1_2_0_CaseActivityLogsMigrationId = "20261009_v1_2_0_Case_Activity_Logs";
+                    bool isV120Applied = false;
+                    using (var checkCmd = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_0_CaseActivityLogsMigrationId });
+                        isV120Applied = (int)(checkCmd.ExecuteScalar() ?? 0) > 0;
+                    }
+
+                    if (!isV120Applied)
+                    {
+                        var migTimer11 = Stopwatch.StartNew();
+                        logger.LogInformation("Applying migration: {MigrationId} (Enterprise Case Activity & Audit Log Sheet)...", v1_2_0_CaseActivityLogsMigrationId);
+
+                        string activityLogSql = @"
+                            IF NOT EXISTS (SELECT 1 FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.name = 'CASE_ACTIVITY_LOGS' AND s.name = 'dbo')
+                            BEGIN
+                                CREATE TABLE [dbo].[CASE_ACTIVITY_LOGS] (
+                                    [LogID] BIGINT IDENTITY(1,1) NOT NULL,
+                                    [Timestamp] DATETIME NOT NULL CONSTRAINT [DF_CASE_ACTIVITY_LOGS_Timestamp] DEFAULT (GETDATE()),
+                                    [UserID] INT NULL,
+                                    [Username] NVARCHAR(100) NOT NULL,
+                                    [UserFullName] NVARCHAR(150) NULL,
+                                    [UserRole] NVARCHAR(50) NULL,
+                                    [DivisionID] INT NULL,
+                                    [DivisionName] NVARCHAR(100) NULL,
+                                    [IpAddress] NVARCHAR(50) NULL,
+                                    [Module] NVARCHAR(30) NOT NULL,
+                                    [CaseID] INT NULL,
+                                    [CaseNumber] NVARCHAR(100) NOT NULL,
+                                    [VehicleNo] NVARCHAR(50) NULL,
+                                    [CourtName] NVARCHAR(150) NULL,
+                                    [ActionType] NVARCHAR(30) NOT NULL,
+                                    [ActionSummary] NVARCHAR(500) NOT NULL,
+                                    [ChangedFieldsSummary] NVARCHAR(MAX) NULL,
+                                    [OldValuesJson] NVARCHAR(MAX) NULL,
+                                    [NewValuesJson] NVARCHAR(MAX) NULL,
+                                    CONSTRAINT [PK_CASE_ACTIVITY_LOGS] PRIMARY KEY CLUSTERED ([LogID])
+                                );
+
+                                CREATE NONCLUSTERED INDEX [IX_ACTIVITY_LOGS_Timestamp] ON [dbo].[CASE_ACTIVITY_LOGS] ([Timestamp] DESC);
+                                CREATE NONCLUSTERED INDEX [IX_ACTIVITY_LOGS_Division_Action] ON [dbo].[CASE_ACTIVITY_LOGS] ([DivisionID], [ActionType], [Timestamp] DESC);
+                                CREATE NONCLUSTERED INDEX [IX_ACTIVITY_LOGS_CaseNumber] ON [dbo].[CASE_ACTIVITY_LOGS] ([CaseNumber]);
+                                CREATE NONCLUSTERED INDEX [IX_ACTIVITY_LOGS_Module_Date] ON [dbo].[CASE_ACTIVITY_LOGS] ([Module], [Timestamp] DESC);
+                            END;
+                        ";
+
+                        using (var schemaCmd = new SqlCommand(activityLogSql, conn))
+                        {
+                            schemaCmd.CommandTimeout = 120;
+                            schemaCmd.ExecuteNonQuery();
+                        }
+
+                        migTimer11.Stop();
+
+                        string recordSql12 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd12 = new SqlCommand(recordSql12, conn))
+                        {
+                            recordCmd12.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_0_CaseActivityLogsMigrationId });
+                            recordCmd12.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Enterprise Case Activity & Audit Log Sheet: CASE_ACTIVITY_LOGS" });
+                            recordCmd12.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer11.ElapsedMilliseconds });
+                            recordCmd12.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_0_CaseActivityLogsMigrationId, migTimer11.ElapsedMilliseconds);
+                    }
                 }
                 finally
                 {

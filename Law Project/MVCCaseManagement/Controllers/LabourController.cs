@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Common;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
+using MVCCaseManagement.Models.Audit;
+using MVCCaseManagement.Services.Audit;
 using System.Security.Claims;
 
 namespace MVCCaseManagement.Controllers
@@ -17,10 +19,11 @@ namespace MVCCaseManagement.Controllers
         private readonly ICaseRepository _caseRepo;
         private readonly IECourtsRepository _ecourtsRepo;
         private readonly ICaseNotingRepository _notingRepo;
+        private readonly ICaseActivityLogger _activityLogger;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<LabourController> _logger;
 
-        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, IWebHostEnvironment env, ILogger<LabourController> logger)
+        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, ICaseActivityLogger activityLogger, IWebHostEnvironment env, ILogger<LabourController> logger)
         {
             _labourRepo = labourRepo;
             _labourEPRepo = labourEPRepo;
@@ -29,6 +32,7 @@ namespace MVCCaseManagement.Controllers
             _caseRepo = caseRepo;
             _ecourtsRepo = ecourtsRepo;
             _notingRepo = notingRepo;
+            _activityLogger = activityLogger;
             _env = env;
             _logger = logger;
         }
@@ -361,6 +365,7 @@ namespace MVCCaseManagement.Controllers
                 try
                 {
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("Labour", model.CaseID, model.CaseNumber ?? $"Labour-{model.CaseID}", null, model.OtherCourtDetails, model, $"Labour Case {model.CaseNumber} registered");
                     TempData["SuccessMessage"] = "Labour case registered successfully!";
                     return RedirectToAction("Index");
                 }
@@ -433,6 +438,7 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 int arisingId = _arisingRepo.SaveArisingApplication(model);
+                _ = _activityLogger.LogCaseCreatedAsync("Arising", arisingId > 0 ? arisingId : model.ArisingID, model.CaseNumber ?? $"Arising-{arisingId}", null, model.Parent_CourtName, model, $"Arising Application {model.CaseNumber} registered");
                 TempData["SuccessMessage"] = "Arising Application registered successfully!";
                 return RedirectToAction("ArisingApplication");
             }
@@ -864,7 +870,9 @@ namespace MVCCaseManagement.Controllers
         [HttpPost]
         public IActionResult DeleteArisingApplication(int id)
         {
+            var app = _arisingRepo.GetById(id);
             _arisingRepo.DeleteArisingApplication(id);
+            _ = _activityLogger.LogCaseDeletedAsync("Arising", id, app?.CaseNumber ?? $"Arising-{id}", null, $"Deleted Arising Application {app?.CaseNumber}");
             TempData["SuccessMessage"] = "Arising Application deleted successfully.";
             return RedirectToAction("ArisingApplication");
         }
@@ -1020,6 +1028,7 @@ namespace MVCCaseManagement.Controllers
             if (newId > 0)
             {
                 noting.NotingID = newId;
+                _ = _activityLogger.LogSubEntityActionAsync("Labour", dto.CaseID, $"Labour-{dto.CaseID}", "NOTING_ADDED", $"Case noting added by {fullName} ({role}): {dto.NotingText}", dto);
                 return Json(new 
                 { 
                     success = true, 
@@ -1069,6 +1078,10 @@ namespace MVCCaseManagement.Controllers
             }
 
             bool deleted = _notingRepo.DeleteNoting(dto.NotingID);
+            if (deleted)
+            {
+                _ = _activityLogger.LogSubEntityActionAsync("Labour", existing.CaseID, $"Labour-{existing.CaseID}", "NOTING_DELETED", $"Case noting #{dto.NotingID} deleted: {existing.NotingText}", dto);
+            }
             return Json(new { success = deleted, message = deleted ? "Noting deleted successfully." : "Failed to delete noting." });
         }
 
@@ -2129,6 +2142,7 @@ namespace MVCCaseManagement.Controllers
                   // Fetch existing to preserve Action fields / Connected cases
                   var dbCase = _labourRepo.GetCaseById(model.CaseID);
                   if (dbCase == null) return NotFound();
+                  var oldCase = _labourRepo.GetCaseById(model.CaseID);
 
                   // IDOR check: Division users can only edit their own division's cases
                   if (!isCO && dbCase.DivisionID != userDiv)
@@ -2360,6 +2374,7 @@ namespace MVCCaseManagement.Controllers
                 try
                 {
                     _labourRepo.UpdateCase(dbCase);
+                    _ = _activityLogger.LogCaseUpdatedAsync("Labour", dbCase.CaseID, dbCase.CaseNumber ?? $"Labour-{dbCase.CaseID}", null, dbCase.OtherCourtDetails, oldCase, dbCase, $"Labour Case {dbCase.CaseNumber} updated");
                     TempData["SuccessMessage"] = "Labour case updated successfully!";
                     return RedirectToAction("Index");
                 }

@@ -1,0 +1,505 @@
+@model MVCCaseManagement.Models.Audit.ActivityLogPagedResult
+@{
+    ViewData["Title"] = "Case Activity Log Sheet";
+    var divisions = ViewBag.Divisions as IEnumerable<MVCCaseManagement.Models.Division> ?? Enumerable.Empty<MVCCaseManagement.Models.Division>();
+    bool isDivisionRestricted = ViewBag.IsDivisionRestricted == true;
+    var f = Model.Filter;
+}
+
+<div class="container-fluid px-3 py-2">
+    <!-- Top Header Banner -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="p-1.5 bg-primary bg-opacity-10 text-primary rounded-3 border border-primary border-opacity-25 d-flex align-items-center justify-content-center" style="width: 34px; height: 34px;">
+                    <i class="bi bi-clock-history fs-5"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0 text-dark" style="letter-spacing: -0.3px;">Case Operations & Activity Log Sheet</h5>
+                    <p class="text-muted small mb-0" style="font-size: 0.76rem;">
+                        Real-time audit trail of case entries, modifications, transfers, payments, and deletions across NWKRTC divisions
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 mt-2 mt-md-0 d-print-none">
+            <a href="@Url.Action("ExportCsv", "ActivityLog", f)" class="btn btn-sm btn-outline-success rounded-pill px-3 shadow-xs">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export CSV
+            </a>
+            <button onclick="window.print()" class="btn btn-sm btn-outline-secondary rounded-pill px-3 shadow-xs">
+                <i class="bi bi-printer me-1"></i>Print Log Sheet
+            </button>
+            <a href="@Url.Action("Index", "ActivityLog")" class="btn btn-sm btn-primary rounded-pill px-3 shadow-xs">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </a>
+        </div>
+    </div>
+
+    <!-- Executive KPI Metric Cards -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-xs rounded-3 p-2.5 bg-white border-start border-4 border-primary">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">Today's Operations</div>
+                        <div class="fs-4 fw-bold text-dark mt-0.5">@Model.KpiSummary.TotalToday</div>
+                        <div class="small text-muted" style="font-size: 0.7rem;">Across all legal modules</div>
+                    </div>
+                    <div class="p-2 bg-primary bg-opacity-10 text-primary rounded-circle">
+                        <i class="bi bi-activity fs-5"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-xs rounded-3 p-2.5 bg-white border-start border-4 border-success">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">Cases Entered Today</div>
+                        <div class="fs-4 fw-bold text-success mt-0.5">@Model.KpiSummary.CreatedToday</div>
+                        <div class="small text-muted" style="font-size: 0.7rem;">New registrations recorded</div>
+                    </div>
+                    <div class="p-2 bg-success bg-opacity-10 text-success rounded-circle">
+                        <i class="bi bi-plus-circle-fill fs-5"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-xs rounded-3 p-2.5 bg-white border-start border-4 border-info">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">Cases Edited Today</div>
+                        <div class="fs-4 fw-bold text-info mt-0.5">@Model.KpiSummary.UpdatedToday</div>
+                        <div class="small text-muted" style="font-size: 0.7rem;">Stages, awards & details</div>
+                    </div>
+                    <div class="p-2 bg-info bg-opacity-10 text-info rounded-circle">
+                        <i class="bi bi-pencil-square fs-5"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-xs rounded-3 p-2.5 bg-white border-start border-4 border-warning">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="text-muted text-uppercase fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">Transfers & Removals</div>
+                        <div class="fs-4 fw-bold text-warning-emphasis mt-0.5">@Model.KpiSummary.DeletedTransferredToday</div>
+                        <div class="small text-muted" style="font-size: 0.7rem;">Division moves / archived</div>
+                    </div>
+                    <div class="p-2 bg-warning bg-opacity-10 text-warning-emphasis rounded-circle">
+                        <i class="bi bi-arrow-left-right fs-5"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Control Bar -->
+    <div class="card border shadow-xs rounded-3 mb-3 bg-light-subtle d-print-none">
+        <div class="card-body p-2.5">
+            <form method="get" action="@Url.Action("Index", "ActivityLog")" id="filterForm">
+                <div class="row g-2 align-items-center">
+                    <div class="col-12 col-md-3">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                            <input type="text" name="SearchTerm" value="@f.SearchTerm" class="form-control border-start-0 shadow-none" placeholder="Search Case No, Vehicle, User..." />
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <select name="Module" class="form-select form-select-sm shadow-none" onchange="this.form.submit()">
+                            <option value="all" selected="@(f.Module == "all" ? "selected" : null)">All Modules</option>
+                            <option value="MVC" selected="@(f.Module?.ToUpper() == "MVC" ? "selected" : null)">MVC Claims</option>
+                            <option value="LABOUR" selected="@(f.Module?.ToUpper() == "LABOUR" ? "selected" : null)">Labour / KID</option>
+                            <option value="APPEAL" selected="@(f.Module?.ToUpper() == "APPEAL" ? "selected" : null)">High Court MFA</option>
+                            <option value="EP" selected="@(f.Module?.ToUpper() == "EP" ? "selected" : null)">EP Petitions</option>
+                            <option value="GRATUITY" selected="@(f.Module?.ToUpper() == "GRATUITY" ? "selected" : null)">Gratuity (PG)</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <select name="ActionType" class="form-select form-select-sm shadow-none" onchange="this.form.submit()">
+                            <option value="all" selected="@(f.ActionType == "all" ? "selected" : null)">All Operations</option>
+                            <option value="CREATED" selected="@(f.ActionType?.ToUpper() == "CREATED" ? "selected" : null)">🟢 Entered (Created)</option>
+                            <option value="UPDATED" selected="@(f.ActionType?.ToUpper() == "UPDATED" ? "selected" : null)">🔵 Edited (Updated)</option>
+                            <option value="TRANSFERRED" selected="@(f.ActionType?.ToUpper() == "TRANSFERRED" ? "selected" : null)">🟣 Transferred</option>
+                            <option value="DELETED" selected="@(f.ActionType?.ToUpper() == "DELETED" ? "selected" : null)">🔴 Deleted</option>
+                            <option value="PAYMENT_ADDED" selected="@(f.ActionType?.ToUpper() == "PAYMENT_ADDED" ? "selected" : null)">💵 Payment Added</option>
+                            <option value="NOTING_ADDED" selected="@(f.ActionType?.ToUpper() == "NOTING_ADDED" ? "selected" : null)">📝 Noting Added</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        @if (isDivisionRestricted)
+                        {
+                            <input type="text" class="form-control form-control-sm bg-white" value="@(divisions.FirstOrDefault(d => d.DivisionID == f.DivisionID)?.DivisionNameEnglish ?? "My Division")" readonly />
+                            <input type="hidden" name="DivisionID" value="@f.DivisionID" />
+                        }
+                        else
+                        {
+                            <select name="DivisionID" class="form-select form-select-sm shadow-none" onchange="this.form.submit()">
+                                <option value="">All Operating Divisions</option>
+                                @foreach (var d in divisions)
+                                {
+                                    <option value="@d.DivisionID" selected="@(f.DivisionID == d.DivisionID ? "selected" : null)">@d.DivisionNameEnglish (@d.DivisionCode)</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <select name="DatePreset" class="form-select form-select-sm shadow-none" onchange="handleDatePreset(this.value)">
+                            <option value="all" selected="@(f.DatePreset == "all" ? "selected" : null)">All Time</option>
+                            <option value="today" selected="@(f.DatePreset == "today" ? "selected" : null)">Today</option>
+                            <option value="yesterday" selected="@(f.DatePreset == "yesterday" ? "selected" : null)">Yesterday</option>
+                            <option value="week" selected="@(f.DatePreset == "week" ? "selected" : null)">Last 7 Days</option>
+                            <option value="month" selected="@(f.DatePreset == "month" ? "selected" : null)">This Month</option>
+                            <option value="custom" selected="@(f.DatePreset == "custom" ? "selected" : null)">Custom Date Range</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-1 d-flex gap-1">
+                        <button type="submit" class="btn btn-primary btn-sm w-100 shadow-xs">
+                            <i class="bi bi-funnel me-0.5"></i>Apply
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Custom Date Range Row (Hidden by default unless custom selected) -->
+                <div id="customDateRow" class="row g-2 mt-1 @(f.DatePreset == "custom" ? "" : "d-none")">
+                    <div class="col-md-3 offset-md-7 d-flex align-items-center gap-2">
+                        <span class="small text-muted text-nowrap">From:</span>
+                        <input type="date" name="DateFrom" value="@(f.DateFrom?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+                    </div>
+                    <div class="col-md-2 d-flex align-items-center gap-2">
+                        <span class="small text-muted text-nowrap">To:</span>
+                        <input type="date" name="DateTo" value="@(f.DateTo?.ToString("yyyy-MM-dd"))" class="form-control form-control-sm" />
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Activity Log Table Card -->
+    <div class="card border shadow-xs rounded-3 overflow-hidden bg-white">
+        <div class="card-header bg-white py-2 px-3 border-bottom d-flex justify-content-between align-items-center">
+            <span class="fw-bold small text-dark">
+                <i class="bi bi-journal-text text-primary me-1"></i>Audit Records
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill ms-1">@Model.TotalCount Total</span>
+            </span>
+            <span class="text-muted small" style="font-size: 0.72rem;">
+                Showing Page @Model.Page of @(Model.TotalPages > 0 ? Model.TotalPages : 1)
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.8rem;">
+                <thead class="table-light text-uppercase text-muted" style="font-size: 0.68rem; letter-spacing: 0.5px;">
+                    <tr>
+                        <th style="width: 140px;">Timestamp</th>
+                        <th style="width: 190px;">Officer / Actor</th>
+                        <th style="width: 110px;">Action</th>
+                        <th style="width: 170px;">Case Reference</th>
+                        <th>Summary & Modifications</th>
+                        <th style="width: 100px;" class="text-end">Inspect</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Logs == null || !Model.Logs.Any())
+                    {
+                        <tr>
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <i class="bi bi-shield-check display-6 d-block mb-2 text-secondary opacity-50"></i>
+                                <div class="fw-bold">No activity logs recorded matching current criteria</div>
+                                <p class="small text-muted mb-0">Try clearing filters or selecting a broader date range.</p>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        foreach (var log in Model.Logs)
+                        {
+                            var timeAgo = GetRelativeTime(log.Timestamp);
+                            <tr>
+                                <!-- Timestamp -->
+                                <td>
+                                    <div class="fw-bold text-dark" style="font-size: 0.76rem;">@log.Timestamp.ToString("dd-MMM-yyyy")</div>
+                                    <div class="small text-muted" style="font-size: 0.7rem;">
+                                        @log.Timestamp.ToString("hh:mm tt")
+                                        <span class="badge bg-light text-secondary ms-0.5 rounded px-1" style="font-size: 0.6rem;">@timeAgo</span>
+                                    </div>
+                                </td>
+
+                                <!-- Officer / Actor -->
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="avatar-circle-sm bg-primary-subtle text-primary fw-bold flex-shrink-0 d-flex align-items-center justify-content-center" style="width: 28px; height: 28px; border-radius: 50%; font-size: 0.72rem;">
+                                            @(string.IsNullOrEmpty(log.UserFullName) ? log.Username.Substring(0, 1).ToUpper() : log.UserFullName.Substring(0, 1).ToUpper())
+                                        </div>
+                                        <div class="text-truncate">
+                                            <div class="fw-bold text-dark text-truncate" style="font-size: 0.78rem;" title="@(log.UserFullName ?? log.Username)">
+                                                @(log.UserFullName ?? log.Username)
+                                            </div>
+                                            <div class="d-flex align-items-center gap-1" style="font-size: 0.66rem;">
+                                                <span class="badge bg-secondary-subtle text-secondary py-0 px-1 rounded-pill">@(log.UserRole ?? "User")</span>
+                                                <span class="text-muted text-truncate" title="@log.DivisionName">@(log.DivisionName ?? "Central Office")</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <!-- Action Badge -->
+                                <td>
+                                    @switch (log.ActionType)
+                                    {
+                                        case "CREATED":
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-plus-circle me-1"></i>Entered
+                                            </span>
+                                            break;
+                                        case "UPDATED":
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-pencil me-1"></i>Edited
+                                            </span>
+                                            break;
+                                        case "DELETED":
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-trash me-1"></i>Deleted
+                                            </span>
+                                            break;
+                                        case "TRANSFERRED":
+                                            <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-arrow-left-right me-1"></i>Transferred
+                                            </span>
+                                            break;
+                                        case "PAYMENT_ADDED":
+                                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-cash-stack me-1"></i>Payment +
+                                            </span>
+                                            break;
+                                        case "PAYMENT_DELETED":
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-cash me-1"></i>Payment -
+                                            </span>
+                                            break;
+                                        case "NOTING_ADDED":
+                                            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-chat-left-text me-1"></i>Noting +
+                                            </span>
+                                            break;
+                                        case "NOTING_DELETED":
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                <i class="bi bi-chat-left-text me-1"></i>Noting -
+                                            </span>
+                                            break;
+                                        default:
+                                            <span class="badge bg-light text-dark border rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                                @log.ActionType
+                                            </span>
+                                            break;
+                                    }
+                                </td>
+
+                                <!-- Case Reference -->
+                                <td>
+                                    <div class="d-flex align-items-center gap-1 mb-0.5">
+                                        <span class="badge bg-light text-primary border border-primary-subtle rounded px-1 py-0" style="font-size: 0.62rem; font-weight: 700;">
+                                            @log.Module
+                                        </span>
+                                        @if (log.CaseID.HasValue && log.CaseID > 0)
+                                        {
+                                            string targetUrl = log.Module == "LABOUR" 
+                                                ? Url.Action("Details", "Labour", new { id = log.CaseID }) 
+                                                : Url.Action("Details", "Case", new { id = log.CaseID });
+                                            <a href="@targetUrl" class="fw-bold text-primary text-decoration-none text-truncate" title="Open Case Details" style="font-size: 0.78rem;">
+                                                @log.CaseNumber
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <span class="fw-bold text-dark text-truncate" style="font-size: 0.78rem;">@log.CaseNumber</span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(log.VehicleNo))
+                                    {
+                                        <div class="text-muted" style="font-size: 0.68rem;">
+                                            <i class="bi bi-bus-front me-0.5"></i>@log.VehicleNo
+                                        </div>
+                                    }
+                                </td>
+
+                                <!-- Summary & Modifications -->
+                                <td>
+                                    <div class="text-dark" style="font-size: 0.76rem;">@log.ActionSummary</div>
+                                    @if (!string.IsNullOrEmpty(log.ChangedFieldsSummary) && log.ChangedFieldsSummary != "Initial Case Registration")
+                                    {
+                                        <div class="text-muted small mt-0.5" style="font-size: 0.68rem;">
+                                            <span class="badge bg-light text-secondary border me-1"><i class="bi bi-diff me-0.5"></i>Changes:</span>
+                                            <span class="fst-italic">@log.ChangedFieldsSummary</span>
+                                        </div>
+                                    }
+                                </td>
+
+                                <!-- Actions / Inspect Diff -->
+                                <td class="text-end">
+                                    @if (!string.IsNullOrEmpty(log.OldValuesJson) || !string.IsNullOrEmpty(log.NewValuesJson))
+                                    {
+                                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2 py-0.5 shadow-xs btn-inspect-diff" 
+                                                data-id="@log.LogID" data-caseno="@log.CaseNumber" data-action="@log.ActionType"
+                                                title="Inspect Field-by-Field Modifications" style="font-size: 0.68rem;">
+                                            <i class="bi bi-binoculars me-1"></i>Diff
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size: 0.65rem;">--</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination Footer -->
+        @if (Model.TotalPages > 1)
+        {
+            <div class="card-footer bg-white py-2 px-3 border-top d-flex justify-content-between align-items-center d-print-none">
+                <div class="small text-muted" style="font-size: 0.72rem;">
+                    Showing records @(((Model.Page - 1) * Model.PageSize) + 1) to @(Math.Min(Model.Page * Model.PageSize, Model.TotalCount)) of @Model.TotalCount
+                </div>
+                <nav>
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
+                            <a class="page-link" href="@Url.Action("Index", "ActivityLog", new { Page = Model.Page - 1, SearchTerm = f.SearchTerm, Module = f.Module, ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, DateFrom = f.DateFrom, DateTo = f.DateTo })">Previous</a>
+                        </li>
+                        @for (int p = Math.Max(1, Model.Page - 2); p <= Math.Min(Model.TotalPages, Model.Page + 2); p++)
+                        {
+                            <li class="page-item @(p == Model.Page ? "active" : "")">
+                                <a class="page-link" href="@Url.Action("Index", "ActivityLog", new { Page = p, SearchTerm = f.SearchTerm, Module = f.Module, ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, DateFrom = f.DateFrom, DateTo = f.DateTo })">@p</a>
+                            </li>
+                        }
+                        <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
+                            <a class="page-link" href="@Url.Action("Index", "ActivityLog", new { Page = Model.Page + 1, SearchTerm = f.SearchTerm, Module = f.Module, ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, DateFrom = f.DateFrom, DateTo = f.DateTo })">Next</a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Modal: Field-by-Field Change Inspector -->
+<div class="modal fade" id="diffModal" tabindex="-1" aria-labelledby="diffModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 rounded-3">
+            <div class="modal-header bg-dark text-white py-2 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-diff text-info fs-5"></i>
+                    <div>
+                        <h6 class="modal-title mb-0" id="diffModalLabel">Audit Change Inspector</h6>
+                        <span class="small text-white-50" id="diffModalSubtitle" style="font-size: 0.72rem;">Field Modifications</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div id="diffLoadingSpinner" class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <div class="small text-muted mt-2">Loading historical state comparison...</div>
+                </div>
+                <div id="diffContentArea" class="d-none">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-sm align-middle mb-0" style="font-size: 0.78rem;">
+                            <thead class="table-light text-uppercase text-muted" style="font-size: 0.68rem;">
+                                <tr>
+                                    <th style="width: 28%;">Field / Attribute</th>
+                                    <th style="width: 36%;" class="bg-danger bg-opacity-10 text-danger">Previous State (Before)</th>
+                                    <th style="width: 36%;" class="bg-success bg-opacity-10 text-success">Updated State (After)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="diffTableBody">
+                                <!-- Populated dynamically via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="diffEmptyState" class="text-center py-4 d-none text-muted">
+                    <i class="bi bi-info-circle fs-3 text-secondary d-block mb-1"></i>
+                    <div>No specific property changes detected between snapshots.</div>
+                </div>
+            </div>
+            <div class="modal-footer py-1.5 px-3 bg-light">
+                <button type="button" class="btn btn-secondary btn-sm rounded-pill px-3" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    function handleDatePreset(preset) {
+        if (preset === 'custom') {
+            $('#customDateRow').removeClass('d-none');
+        } else {
+            $('#customDateRow').addClass('d-none');
+            $('#filterForm').submit();
+        }
+    }
+
+    $(document).on('click', '.btn-inspect-diff', function () {
+        const logId = $(this).data('id');
+        const caseNo = $(this).data('caseno');
+        const action = $(this).data('action');
+
+        $('#diffModalSubtitle').text(`${action} on ${caseNo} (Log #${logId})`);
+        $('#diffLoadingSpinner').removeClass('d-none');
+        $('#diffContentArea').addClass('d-none');
+        $('#diffEmptyState').addClass('d-none');
+        $('#diffTableBody').empty();
+
+        const diffModal = new bootstrap.Modal(document.getElementById('diffModal'));
+        diffModal.show();
+
+        $.getJSON('/ActivityLog/GetDiff/' + logId, function (diffs) {
+            $('#diffLoadingSpinner').addClass('d-none');
+
+            if (!diffs || diffs.length === 0) {
+                $('#diffEmptyState').removeClass('d-none');
+                return;
+            }
+
+            $('#diffContentArea').removeClass('d-none');
+            diffs.forEach(function (d) {
+                const oldVal = d.oldValue || '--';
+                const newVal = d.newValue || '--';
+                const row = `
+                    <tr>
+                        <td class="fw-semibold text-dark">${escapeHtml(d.displayName || d.fieldName)}</td>
+                        <td class="bg-danger bg-opacity-10 text-dark font-monospace">${escapeHtml(oldVal)}</td>
+                        <td class="bg-success bg-opacity-10 text-dark font-monospace fw-semibold">${escapeHtml(newVal)}</td>
+                    </tr>
+                `;
+                $('#diffTableBody').append(row);
+            });
+        }).fail(function () {
+            $('#diffLoadingSpinner').addClass('d-none');
+            $('#diffEmptyState').removeClass('d-none').html('<span class="text-danger">Failed to load diff comparison.</span>');
+        });
+    });
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+</script>
+}
+
+@functions {
+    public static string GetRelativeTime(DateTime dt)
+    {
+        var ts = DateTime.Now - dt;
+        if (ts.TotalMinutes < 1) return "Just now";
+        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m ago";
+        if (ts.TotalHours < 24) return $"{(int)ts.TotalHours}h ago";
+        if (ts.TotalDays < 7) return $"{(int)ts.TotalDays}d ago";
+        return dt.ToString("dd-MMM");
+    }
+}
