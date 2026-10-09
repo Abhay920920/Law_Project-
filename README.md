@@ -158,7 +158,24 @@ Navigate to `Law Project/MVCCaseManagement/` and configure `appsettings.json`:
 ```
 
 ### 3. Database Initialisation & Startup
-The application automatically creates required SQL tables, foreign keys, constraints, and non-clustered performance indexes on startup via `DBMigration.EnsureAll()`.
+You have two simple options to set up the database:
+
+#### Option A: Direct SQL Script (Recommended for Full Stack Clones)
+If you are setting up on a new machine or SQL Server instance:
+1. Open SQL Server Management Studio (SSMS) or Azure Data Studio.
+2. Create a new database:
+   ```sql
+   CREATE DATABASE MVCCaseManagementDB;
+   ```
+3. Open and execute the master unified script:
+   👉 **`Law Project/MVCCaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql`**
+4. This instantly sets up:
+   - All 83 tables, primary keys, and foreign keys.
+   - All stored procedures (`sp_SaveAppealFull`, `sp_GetDashboardStats`, NAPIX sync jobs).
+   - Core seed data: Roles (`ROLE_MASTER`), Divisions (`DIVISION_MASTER`), MACT Tribunals (`MACT_MASTER`), and System Users (`USERS`).
+
+#### Option B: Automatic Startup Migration
+The application also automatically creates all required SQL tables, foreign keys, constraints, and non-clustered performance indexes on startup via `DatabaseMigrationRunner.cs` and `DBMigration.EnsureAll()`.
 
 Run the application using the dotnet CLI:
 
