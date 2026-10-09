@@ -1,0 +1,66 @@
+@model IEnumerable<MVCCaseManagement.Models.GratuityAdvocate>
+
+@{
+    ViewData["Title"] = "Gratuity Advocates Master";
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a asp-action="Index">Masters</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Gratuity Advocates</li>
+                </ol>
+            </nav>
+            <h1>Gratuity Advocates List</h1>
+        </div>
+        <a asp-action="GratuityAdvocateCreate" class="btn btn-success"><i class="bi bi-plus-lg"></i> Add New Advocate</a>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">Advocate Name</th>
+                            <th>Specialization</th>
+                            <th>Status</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model)
+                        {
+                            <tr>
+                                <td class="ps-4 fw-bold">@item.AdvocateName</td>
+                                <td>@item.Specialization</td>
+                                <td>
+                                    @if(item.IsActive) { <span class="badge bg-success">Active</span> }
+                                    else { <span class="badge bg-danger">Inactive</span> }
+                                </td>
+                                <td class="text-end pe-4">
+                                    <a asp-action="GratuityAdvocateEdit" asp-route-id="@item.AdvocateID" class="btn btn-sm btn-outline-primary" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form asp-action="GratuityAdvocateDelete" asp-route-id="@item.AdvocateID" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to deactivate this advocate?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                        @if (!Model.Any())
+                        {
+                            <tr>
+                                <td colspan="4" class="text-center py-4 text-muted">No advocates found.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

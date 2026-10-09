@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="kn-IN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - NWKRTC MVC/MACT System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&family=Public+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="~/css/cdn.css" rel="stylesheet" />
+    <link href="~/css/bootstrap-icons.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <!-- Select2 Searchable Dropdown CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    @await RenderSectionAsync("Styles", required: false)
+    <style>
+        /* Global High-Visibility Form Controls - Requested by User */
+        .form-check-input {
+            border: 2px solid #000000 !important;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 1.15em;
+            height: 1.15em;
+        }
+        .form-check-input:checked {
+            background-color: #000000 !important;
+            border-color: #000000 !important;
+            box-shadow: 0 0 0 0.25rem rgba(0, 0, 0, 0.12) !important;
+        }
+        .form-check-label {
+            cursor: pointer;
+            padding-left: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Official Branding Header -->
+    <header class="branding-header d-print-none">
+        <div class="d-flex align-items-center">
+            <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo" asp-append-version="true" />
+            <div class="branding-text">
+                <span class="kannada fw-bold text-dark opacity-75">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</span>
+                <h1 class="mb-0">North Western Karnataka Road Transport Corporation</h1>
+            </div>
+        </div>
+        <div class="ms-auto d-flex align-items-center">
+            
+            <!-- Notification Bell -->
+            <div class="dropdown me-3">
+                <a class="text-dark position-relative d-flex align-items-center justify-content-center bg-white rounded-circle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 40px; height: 40px; text-decoration: none;">
+                    <i class="bi bi-bell-fill fs-5 text-primary"></i>
+                    <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem;">
+                        0
+                    </span>
+                </a>
+                <div class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-0 mt-2" style="width: 320px; max-height: 400px; overflow-y: auto; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+                    <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light rounded-top-4">
+                        <h6 class="mb-0 fw-bold"><i class="bi bi-bell-fill text-primary me-2"></i>Notifications</h6>
+                        <a href="/Notification/Index" class="small text-decoration-none">View All</a>
+                    </div>
+                    <div id="notificationList">
+                        <div class="text-center p-4 text-muted small">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="user-profile-widget me-3 shadow-sm">
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
+                    @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
+                </div>
+                <div class="text-start leading-tight">
+                    <div class="fw-bold text-dark small">@User.FindFirst("FullName")?.Value</div>
+                    <div class="text-muted" style="font-size: 0.7rem;">@User.FindFirst("DivisionName")?.Value</div>
+                </div>
+            </div>
+            <a href="/Account/Logout" class="logout-pill shadow-sm">
+                <i class="bi bi-power me-2"></i> Sign Out
+            </a>
+        </div>
+    </header>
+
+    <div class="main-wrapper">
+        <!-- Sidebar -->
+        <aside class="sidebar d-none d-md-block d-print-none">
+
+            <nav class="nav flex-column flex-grow-1">
+                @{
+                    var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+                    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+                    var currentModuleQuery = Context.Request.Query["module"].ToString();
+                    var divId_Layout = User.FindFirst("DivisionID")?.Value;
+                    bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
+                    var isEP = currentController == "EP";
+                    var isGratuity = currentController == "Gratuity";
+                    var isLabour = currentController == "Labour" || currentController == "LabourEP";
+                    var isReport = currentController == "Report";
+                    // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
+                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD");
+                }
+
+                <a class="nav-link @(currentController == "Home" ? "active" : "")" href="/Home/Index">
+                    <i class="bi bi-house-door"></i>
+                    <div class="link-text">
+                        <span>Home</span>
+                    </div>
+                </a>
+
+                @{
+                    var config = Context.RequestServices.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
+                    bool isAIEnabled = config == null || (config["AI:Enabled"] != "false" && config["NyayaPathaAI:IsEnabled"] != "false");
+                    bool isAuthorizedForAI = isAIEnabled && (User.Identity?.IsAuthenticated == true);
+                }
+                @if (isAuthorizedForAI)
+                {
+                    <a class="nav-link @(currentController == "NyayaPatha" ? "active" : "") fw-bold mb-2" href="/NyayaPatha" 
+                       style="padding: 10px 14px; border-radius: 8px; border-left: 3px solid #3b82f6; background: @(currentController == "NyayaPatha" ? "rgba(37, 99, 235, 0.2)" : "rgba(37, 99, 235, 0.08)");">
+                        <i class="bi bi-robot text-info" style="font-size: 19px; width: 22px; text-align: center; margin-right: 10px;"></i>
+                        <div class="link-text d-flex align-items-center justify-content-between w-100">
+                            <span class="text-white">Nyaya Patha AI</span>
+                            <span class="badge bg-primary rounded-pill px-1.5 py-0.5" style="font-size: 0.62rem; letter-spacing: 0.3px;">AI</span>
+                        </div>
+                    </a>
+                }
+
+                @if (isReport)
+                {
+                    <a class="nav-link @(string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
+                        <i class="bi bi-file-earmark-spreadsheet-fill text-primary me-2"></i>
+                        <span>MVC</span>
+                    </a>
+                    <a class="nav-link @(currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
+                        <i class="bi bi-briefcase-fill text-purple me-2" style="color: #8e2de2;"></i>
+                        <span>Labour</span>
+                    </a>
+                    <a class="nav-link @(currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
+                        <i class="bi bi-cash-stack text-warning me-2"></i>
+                        <span>Gratuity</span>
+                    </a>
+                    <a class="nav-link @(currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
+                        <i class="bi bi-folder-symlink-fill text-info me-2"></i>
+                        <span>Others</span>
+                    </a>
+                    <a class="nav-link @(currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
+                        <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
+                        <span>MMR-ST2</span>
+                    </a>
+                }
+                else if (isLabour)
+                {
+                    <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Labour/Index">
+                        <i class="bi bi-columns-gap"></i>
+                        <span>Labour Dashboard</span>
+                    </a>
+
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/Labour/HighCourtCauseList">
+                            <i class="bi bi-broadcast-pin text-danger"></i>
+                            <span>Live HC Cause List</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" && Context.Request.Query["type"] != "ArisingApplication" ? "active" : "")" href="/Labour/Create">
+                             <i class="bi bi-plus-circle-fill"></i>
+                            <span>New Registration</span>
+                        </a>
+                    }
+
+                    <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" && Context.Request.Query["status"] != "ArisingApplication" ? "active" : "")" href="/Labour/CaseList">
+                        <i class="bi bi-list-ul"></i>
+                        <span>Labour Case List</span>
+                    </a>
+
+                    @if (!isReadOnlyRole && !isCO_Layout)
+                    {
+                        <a class="nav-link @(currentController == "Labour" && 
+                            ((ViewContext.RouteData.Values["action"]?.ToString() == "Create" && Context.Request.Query["type"] == "ArisingApplication") || 
+                             (ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" && Context.Request.Query["status"] == "ArisingApplication") ||
+                             (ViewContext.RouteData.Values["action"]?.ToString() == "CreateArisingApplication") ||
+                             (ViewContext.RouteData.Values["action"]?.ToString() == "ArisingApplication") ||
+                             (ViewContext.RouteData.Values["action"]?.ToString() == "EditArisingApplication")) ? "active" : "")" href="/Labour/ArisingApplication">
+                            <i class="bi bi-layers-half"></i>
+                            <span>Arising Applications</span>
+                        </a>
+                    }
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "Transfer") ? "active" : "")" href="/Labour/Transfer">
+                            <i class="bi bi-arrows-move"></i>
+                            <span>Case Transfer</span>
+                        </a>
+                    }
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "LabourEP" ? "active" : "")" href="/LabourEP">
+                            <i class="bi bi-hammer"></i>
+                            <span>EP (Execution Petitions)</span>
+                        </a>
+                    }
+                    @if (!isReadOnlyRole && isCO_Layout)
+                    {
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ServiceMatters" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageServiceMatter") ? "active" : "")" href="/Labour/ServiceMatters">
+                            <i class="bi bi-file-earmark-text"></i>
+                            <span>Service/Commercial Matters</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantAppeal") ? "active" : "")" href="/Labour/ClaimantAppeals">
+                            <i class="bi bi-person-badge"></i>
+                            <span>Claimant Writ Petition </span>
+                        </a>
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "CCCCases" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageCCCCase") ? "active" : "")" href="/Labour/CCCCases">
+                            <i class="bi bi-shield-shaded"></i>
+                            <span>CCC Cases</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ReviewPetitions" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageReviewPetition") ? "active" : "")" href="/Labour/ReviewPetitions">
+                            <i class="bi bi-file-earmark-diff"></i>
+                            <span>Review Petition Filing</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantWritAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantWritAppeal") ? "active" : "")" href="/Labour/ClaimantWritAppeals">
+                            <i class="bi bi-pencil-square"></i>
+                            <span>Claimant Writ Appeal</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantSLPs" ? "active" : "")" href="/Labour/ClaimantSLPs">
+                            <i class="bi bi-bank"></i>
+                            <span>Claimant SLP</span>
+                        </a>
+                    }
+                }
+                else if (!isGratuity)
+                {
+                    <a class="nav-link @(currentController == "Dashboard" ? "active" : "")" href="/Dashboard">
+                        <i class="bi bi-columns-gap"></i>
+                        <div class="link-text">
+                            <span>Dashboard</span>
+                        </div>
+                    </a>
+
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Case/Create">
+                            <i class="bi bi-plus-circle-fill"></i>
+                            <span>New Registration</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Case" && (ViewContext.RouteData.Values["action"]?.ToString() == "ThirdPartyList" || ViewContext.RouteData.Values["action"]?.ToString() == "RegisterThirdParty") ? "active" : "")" href="/Case/ThirdPartyList">
+                            <i class="bi bi-person-plus-fill"></i>
+                            <span>Third Party Cases</span>
+                        </a>
+                    }
+
+                    <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Case/Index">
+                        <i class="bi bi-stack"></i>
+                        <span>MVC Case List</span>
+                    </a>
+
+
+
+                    @if (!isReadOnlyRole && isCO_Layout)
+                    {
+                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
+                            <i class="bi bi-calendar-event-fill text-warning"></i>
+                            <span>HC Cause List</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Appeal" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantList" || ViewContext.RouteData.Values["action"]?.ToString() == "Register" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimant") ? "active" : "")" href="/Appeal/Register">
+                            <i class="bi bi-person-badge"></i>
+                            <span>Claimant Appeals</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Appeal" && ViewContext.RouteData.Values["action"]?.ToString() == "SLPRegistration" ? "active" : "")" href="/Appeal/SLPRegistration">
+                            <i class="bi bi-journal-plus"></i>
+                            <span>SLP Registration</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Audit" ? "active" : "")" href="/Audit">
+                            <i class="bi bi-shield-fill-check"></i>
+                            <span>Audit Registry</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "Report" ? "active" : "")" href="/Report">
+                            <i class="bi bi-receipt-cutoff"></i>
+                            <span>Petty Bill</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "RemindBack" ? "active" : "")" href="/Case/RemindBack">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            <span>MVC Remand Back Case</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "EP" ? "active" : "")" href="/EP">
+                            <i class="bi bi-hammer"></i>
+                            <span>EP (Execution Petitions)</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Judgement" ? "active" : "")" href="/Judgement">
+                            <i class="bi bi-bank2"></i>
+                            <span>Judgements & Circulars</span>
+                        </a>
+                    }
+                }
+                
+                @if (isGratuity)
+                {
+                     <a class="nav-link @(currentController == "Gratuity" && (ViewContext.RouteData.Values["action"]?.ToString() == "Index" || ViewContext.RouteData.Values["action"]?.ToString() == "") ? "active" : "")" href="/Gratuity">
+                         <i class="bi bi-columns-gap"></i>
+                         <span>Gratuity Dashboard</span>
+                     </a>
+                     @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                     {
+                         <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Gratuity/Create">
+                             <i class="bi bi-plus-circle-fill"></i>
+                             <span>New Registration</span>
+                         </a>
+                     }
+                     <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" ? "active" : "")" href="/Gratuity/CaseList">
+                         <i class="bi bi-list-ul"></i>
+                         <span>Gratuity Case List</span>
+                     </a>
+                     @if (!isReadOnlyRole)
+                     {
+                         <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "AuditCalculation" ? "active" : "")" href="/Gratuity/AuditCalculation">
+                             <i class="bi bi-calculator"></i>
+                             <span>Audit Calculation</span>
+                         </a>
+                         <a class="nav-link @(currentController == "Gratuity" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantAppeal") ? "active" : "")" href="/Gratuity/ClaimantAppeals">
+                             <i class="bi bi-person-badge"></i>
+                             <span>Claimant PGA/APPL/CR</span>
+                         </a>
+                     }
+                }
+
+
+
+                @if (User.IsInRole("Admin"))
+                {
+                    <a class="nav-link @(currentController == "Master" ? "active" : "")" href="/Master">
+                        <i class="bi bi-gear-wide-connected"></i>
+                        <span>Systems Setup</span>
+                    </a>
+                }
+
+                @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO"))
+                {
+                    <a class="nav-link @(currentController == "ApiDashboard" ? "active" : "")" href="/ApiDashboard"
+                       style="position:relative">
+                        <i class="bi bi-speedometer2"></i>
+                        <span>API Dashboard</span>
+                        <span id="quotaDot" style="display:none;position:absolute;top:8px;right:10px;
+                            width:8px;height:8px;border-radius:50%;background:#ef4444;
+                            animation:quotaPulse 1.4s ease-in-out infinite"></span>
+                    </a>
+                }
+            </nav>
+
+            <!-- e-Courts Quick Link -->
+            <div class="px-2 pt-3 mt-auto flex-shrink-0 border-top border-white border-opacity-10 mb-2">
+                <a href="https://services.ecourts.gov.in/ecourtindia_v6/" target="_blank" rel="noopener noreferrer" 
+                   class="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2 py-2" 
+                   style="border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(10px); background: rgba(255,255,255,0.06); font-size: 0.85rem;">
+                    <i class="bi bi-globe"></i>
+                    <span class="fw-semibold">e-Courts India</span>
+                    <i class="bi bi-box-arrow-up-right small opacity-75"></i>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="content-area">
+            @if (ViewContext.RouteData.Values["controller"]?.ToString() == "Dashboard")
+            {
+                <div class="mb-4">
+                    <div class="glass-card p-4">
+                        <div class="row align-items-center">
+                            <div class="col-md-8">
+                                @{
+                    var displayGreeting = "Good Morning";
+                    var hour = DateTime.Now.Hour;
+                    if (hour >= 12 && hour < 17) displayGreeting = "Good Afternoon";
+                    else if (hour >= 17) displayGreeting = "Good Evening";
+
+                    var displayName = User.FindFirst("FullName")?.Value ?? User.FindFirst("DivisionName")?.Value ?? "User";
+                    if (User.IsInRole("MD")) displayName = "Managing Director";
+                    else if (User.IsInRole("CLO")) displayName = "Chief Law Officer";
+                    else if (User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) displayName = "Deputy Chief Law Officer";
+                    else if (User.IsInRole("LO")) displayName = "Law Officer";
+                }
+                                <h3 class="fw-bold text-primary mb-1" id="greetingText">@displayGreeting, @displayName! <span class="ms-1">👋</span></h3>
+                                <p class="text-secondary mb-0">Monitor and manage cases with precision. Your daily case hearing schedule is below.</p>
+                            </div>
+                            <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                                <div class="d-inline-flex align-items-center bg-white p-2 px-3 rounded-pill shadow-sm border border-primary border-opacity-10">
+                                    <i class="bi bi-calendar3 text-primary me-2"></i>
+                                    <div class="fw-bold text-dark small">@DateTime.Now.ToString("dd MMM yyyy")</div>
+                                    <div class="mx-2 text-muted">|</div>
+                                    <i class="bi bi-clock text-primary me-2"></i>
+                                    <div class="fw-bold text-dark small" id="liveClock">@DateTime.Now.ToString("HH:mm")</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (ViewContext.RouteData.Values["controller"]?.ToString() != "Home" && (ViewData["HidePageHeader"] as bool? != true))
+            {
+                <div class="page-header d-print-none mb-4 border-0">
+                    <div>
+                        <h2 class="fw-bold text-dark mb-1">@ViewData["Title"]</h2>
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb mb-0 small opacity-75">
+                                <li class="breadcrumb-item"><a href="/Dashboard" class="text-decoration-none">Home</a></li>
+                                <li class="breadcrumb-item active">@ViewData["Title"]</li>
+                            </ol>
+                        </nav>
+                    </div>
+                </div>
+            }
+
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show mx-4 mt-3" role="alert">
+                    <i class="bi bi-check-circle-fill me-2"></i> @TempData["SuccessMessage"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+            @if (TempData["ErrorMessage"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show mx-4 mt-3" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i> @TempData["ErrorMessage"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            }
+
+            @RenderBody()
+        </main>
+    </div>
+
+    <script src="~/js/jquery.min.js"></script>
+    <script src="~/js/bootstrap.bundle.min.js"></script>
+    <!-- Select2 Searchable Dropdown JS -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+    
+        <script>
+            // Global "Others" Dropdown Handler
+            // To use: Add 'others-dropdown' class to select, 
+            // data-others-target="manualInputId" 
+            // and optionally data-others-hidden="hiddenFieldId"
+            $(document).on("change", ".others-dropdown", function () {
+                var $select = $(this);
+                var targetId = $select.data("others-target");
+                var $target = $("#" + targetId);
+                var val = String($select.val() || "").toLowerCase();
+                var isOthers = (val === "others" || val === "other" || val === "ಸ್ಥಳದಲ್ಲೇ" || val === "ಇತರೆ");
+
+                if (isOthers) {
+                    $target.slideDown(200).prop("required", true).focus();
+                } else {
+                    $target.slideUp(200).prop("required", false).val("");
+                }
+                
+                // Sync hidden field if present
+                var hiddenId = $select.data("others-hidden");
+                if (hiddenId) {
+                    var $hidden = $("#" + hiddenId);
+                    if (!isOthers) {
+                        $hidden.val($select.val());
+                    } else {
+                        $hidden.val($target.val());
+                    }
+                }
+            });
+
+            $(document).on("input change", ".others-manual", function () {
+                var $manual = $(this);
+                var selectId = $manual.data("others-select");
+                var $select = $("#" + selectId);
+                var hiddenId = $manual.data("others-hidden") || $select.data("others-hidden");
+                
+                if (hiddenId) {
+                    var val = String($select.val() || "").toLowerCase();
+                    var isOthers = (val === "others" || val === "other" || val === "ಸ್ಥಳದಲ್ಲೇ" || val === "ಇತರೆ");
+                    if (isOthers) {
+                        $("#" + hiddenId).val($manual.val());
+                    }
+                }
+            });
+            
+            // Initialization for Edit modes and Validation postbacks
+            function initOthersDropdowns() {
+                $(".others-dropdown").each(function() {
+                    var $select = $(this);
+                    var targetId = $select.data("others-target");
+                    var $target = $("#" + targetId);
+                    var hiddenId = $select.data("others-hidden");
+                    
+                    if (hiddenId) {
+                        var hiddenVal = $("#" + hiddenId).val();
+                        if (hiddenVal) {
+                            var exists = false;
+                            $select.find('option').each(function() {
+                                if (this.value === hiddenVal) exists = true;
+                            });
+                            
+                            if (exists) {
+                                $select.val(hiddenVal);
+                                $target.hide();
+                            } else {
+                                // Find the "Others" option value (might be "Others" or "OTHERS")
+                                var othersOpt = $select.find('option').filter(function() {
+                                    var t = (this.value || "").toLowerCase();
+                                    return t === "others" || t === "other";
+                                }).val();
+                                
+                                if (othersOpt) {
+                                    $select.val(othersOpt);
+                                    $target.show().val(hiddenVal).prop("required", true);
+                                }
+                            }
+                        }
+                    } else {
+                         var val = String($select.val() || "").toLowerCase();
+                         if (val === "others" || val === "other") {
+                             $target.show().prop("required", true);
+                         }
+                    }
+                });
+            }
+
+            $(document).ready(function() {
+                initOthersDropdowns();
+                
+                // Initialize Select2 searchable dropdowns globally
+                if ($.fn.select2) {
+                    $('.select2').select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        allowClear: true,
+                        placeholder: function() {
+                            return $(this).data('placeholder') || '-- SELECT --';
+                        }
+                    });
+                }
+                
+                // Heartbeat / Session Keep-Alive script (pings every 10 minutes)
+                (function() {
+                    var heartbeatInterval = 10 * 60 * 1000;
+                    setInterval(function() {
+                        fetch('/Account/Heartbeat')
+                            .then(response => response.json())
+                            .then(data => { if (data.success) console.log('Session refreshed'); })
+                            .catch(err => console.error('Heartbeat failed:', err));
+                    }, heartbeatInterval);
+                })();
+                
+                // Fetch Notifications
+                function loadNotifications() {
+                    $.get('/Notification/GetUnread', function(data) {
+                        if (data && data.count > 0) {
+                            $('#notificationBadge').text(data.count).removeClass('d-none');
+                        } else {
+                            $('#notificationBadge').addClass('d-none');
+                        }
+                        
+                        var html = '';
+                        if (data && data.notifications && data.notifications.length > 0) {
+                            data.notifications.forEach(function(note) {
+                                html += `<div class="dropdown-item p-3 border-bottom text-wrap">
+                                            <div class="d-flex justify-content-between">
+                                                <strong class="small text-primary">${note.title}</strong>
+                                                <small class="text-muted" style="font-size:0.7rem;">Just now</small>
+                                            </div>
+                                            <div class="small mt-1 text-dark">${note.message}</div>
+                                            <div class="mt-2 text-end">
+                                                <button class="btn btn-sm btn-light py-0 px-2 border note-read-btn" data-id="${note.notificationID || note.notificationId}">Mark Read</button>
+                                                ${note.linkUrl ? `<a href="${note.linkUrl}" class="btn btn-sm btn-primary py-0 px-2 ms-1">View</a>` : ''}
+                                            </div>
+                                         </div>`;
+                            });
+                        } else {
+                            html = '<div class="text-center p-4 text-muted small">No new notifications</div>';
+                        }
+                        $('#notificationList').html(html);
+                    }).fail(function() {
+                        $('#notificationList').html('<div class="text-center p-3 text-muted small">Notifications unavailable</div>');
+                    });
+                }
+                
+                loadNotifications();
+                // Refresh notifications every 5 minutes
+                setInterval(loadNotifications, 5 * 60 * 1000);
+                
+                $(document).on('click', '.note-read-btn', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var id = $(this).data('id');
+                    if (!id) return;
+                    var token = $('#__notificationAntiForgeryForm input[name="__RequestVerificationToken"]').val();
+                    $.ajax({
+                        url: '/Notification/MarkAsRead/' + id,
+                        type: 'POST',
+                        data: {
+                            __RequestVerificationToken: token
+                        },
+                        headers: {
+                            "RequestVerificationToken": token
+                        },
+                        success: function() {
+                            loadNotifications();
+                        },
+                        error: function(xhr) {
+                            console.warn('Notification mark read failed:', xhr.status);
+                        }
+                    });
+                });
+            });
+        </script>
+
+        <form id="__notificationAntiForgeryForm" style="display:none;" aria-hidden="true">
+            @Html.AntiForgeryToken()
+        </form>
+
+        <script>
+            // ── Quota warning dot on sidebar link ────────────────────────────
+            (function checkQuota() {
+                fetch('/ApiDashboard/Data')
+                    .then(r => r.ok ? r.json() : null)
+                    .then(d => {
+                        if (!d) return;
+                        const dot = document.getElementById('quotaDot');
+                        if (dot && d.usedPercent >= 80) dot.style.display = 'inline-block';
+                    })
+                    .catch(() => {});
+                // Re-check every 5 minutes
+                setTimeout(checkQuota, 5 * 60 * 1000);
+            })();
+        </script>
+        <style>
+            @@keyframes quotaPulse {
+                0%,100% { opacity:1; transform:scale(1);   }
+                50%      { opacity:.4; transform:scale(.7); }
+            }
+        </style>
+        <script>
+            // Global Shortcut: Ctrl + Shift + Q -> Direct access to Case Operations & Activity Log Sheet
+            window.addEventListener('keydown', function (e) {
+                var isQ = (e.key && (e.key.toLowerCase() === 'q')) || e.code === 'KeyQ' || e.keyCode === 81 || e.which === 81;
+                if (e.ctrlKey && e.shiftKey && isQ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = '@Url.Action("Index", "ActivityLog")';
+                }
+            }, true);
+        </script>
+</body>
+</html>
+

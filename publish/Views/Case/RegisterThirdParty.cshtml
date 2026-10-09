@@ -1,0 +1,905 @@
+@model MVCCaseManagement.Models.MVCCaseViewModel
+@{
+    ViewData["Title"] = "Register Third Party";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-10">
+        <form asp-action="RegisterThirdParty" method="post" id="thirdPartyForm" enctype="multipart/form-data">
+
+            <!-- Page Header -->
+            <div class="d-flex align-items-center mb-4 flex-wrap gap-3">
+                <a href="/Case/ThirdPartyList" class="btn btn-sm btn-outline-secondary rounded-pill px-3 me-1" style="white-space:nowrap;">
+                    <i class="bi bi-arrow-left me-1"></i> Back to List
+                </a>
+                <div class="icon-box bg-info-subtle p-3 rounded-3 me-2">
+                    <i class="bi bi-person-badge fs-2 text-info"></i>
+                </div>
+                <div class="flex-grow-1">
+                    <h3 class="mb-0 fw-bold text-dark">Third Party Registration</h3>
+                    <p class="text-muted mb-0 small"><i class="bi bi-info-circle me-1"></i>Enter details for third-party involvement/claims.</p>
+                </div>
+                <div class="ms-auto">
+                    <button type="submit" class="btn btn-info text-white btn-lg shadow-sm px-4">
+                        <i class="bi bi-cloud-upload me-2"></i> Register Third Party
+                    </button>
+                </div>
+            </div>
+
+            <input type="hidden" asp-for="DivisionID" />
+            <input type="hidden" asp-for="ThirdPartyFlag" value="true" />
+
+            <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+                <div class="card-header bg-white py-3 border-bottom-0 d-flex align-items-center">
+                    <span class="badge bg-info-subtle text-info me-2">SECTION A</span>
+                    <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-text me-2 text-info"></i>CASE IDENTIFICATION</h5>
+                </div>
+                <div class="card-body p-4 pt-0">
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-info text-uppercase">Case Type</label>
+                            <select asp-for="CaseType" class="form-select border-info-subtle" required>
+                                <option value="">-- Choose Case Type --</option>
+                                <option value="Pending">Pending</option>
+                                <option value="Disposed">Disposed</option>
+                                <option value="Ex-parte">Ex-parte</option>
+                                <option value="DNP">DNP (Dismissed For Non-Prosecution)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold">Division</label>
+                            <input class="form-control bg-light" value="@ViewBag.UserDivisionName" readonly />
+                            <input type="hidden" asp-for="MACTID" />
+                        </div>
+
+                        <div class="col-12 mb-2" id="pendingFilingContainer">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="pendingFilingCheck" asp-for="IsPendingForFiling" value="true" />
+                                <label class="form-check-label fw-bold text-info" for="pendingFilingCheck">
+                                    <i class="bi bi-clock-history me-1"></i> Pending for Filing (No MVC No / Year yet)
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6" id="mvcNoCol">
+                            <label class="form-label text-uppercase fw-bold">MVC No</label>
+                            <input asp-for="MVCNo" class="form-control border-info-subtle" id="mvcNoInput" placeholder="e.g. 550" required />
+                        </div>
+                        <div class="col-md-6" id="mvcYearCol">
+                            <label class="form-label text-uppercase fw-bold">MVC Year</label>
+                            <input asp-for="MVCYear" class="form-control border-info-subtle" id="mvcYearInput" type="number" required />
+                        </div>
+                        
+                        <!-- ECOURTS NAPIX LIVE LINKAGE BOX -->
+                        <div class="col-12">
+                            <input type="hidden" asp-for="EstCode" id="mvc-ecourts-est" />
+                            <input type="hidden" asp-for="CaseTypeCode" id="mvc-ecourts-type" />
+                            <div class="card bg-light border-info shadow-sm p-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="fw-bold text-info mb-0"><i class="bi bi-broadcast me-2"></i>eCourts NAPIX Live Gateway Auto-Linkage</h6>
+                                    <span id="cnr-status-badge"></span>
+                                </div>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-8">
+                                        <label for="mvc-cnr-number" class="form-label small font-weight-bold">16-Digit CNR Number</label>
+                                        <div class="input-group input-group-sm">
+                                            <input asp-for="CNRNumber" id="mvc-cnr-number" class="form-control font-monospace" placeholder="16-Digit CNR (e.g. KADW220012342020)" oninput="onCnrInputChange(this.value)" onchange="onCnrInputChange(this.value)" />
+                                            <button type="button" class="btn btn-primary" onclick="fetchAndRenderLiveCnrDetails($('#mvc-cnr-number').val())">
+                                                <i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch Live Details
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>Enter 16-digit CNR to auto-fetch & autofill third-party case details</small>
+                                    </div>
+                                    <div class="col-12 mt-3" id="ecourts-live-preview-card" style="display:none;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-2">
+                             <label class="form-label d-block fw-bold text-secondary small text-uppercase">Vehicle Type</label>
+                             <div class="form-check form-check-inline mt-1">
+                                 <input class="form-check-input" type="radio" asp-for="VehicleType" value="Corporation" id="vtCorp" checked>
+                                 <label class="form-check-label" for="vtCorp">Corporation (NWKRTC)</label>
+                             </div>
+                             <div class="form-check form-check-inline mt-1">
+                                 <input class="form-check-input" type="radio" asp-for="VehicleType" value="Private" id="vtPrivate">
+                                 <label class="form-check-label" for="vtPrivate">Private / Hired / Other</label>
+                             </div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold">Vehicle Number</label>
+                            <input asp-for="VehicleNo" class="form-control border-info-subtle" id="vehicleNoInput" placeholder="KA-XX-F-XXXX" required pattern="^KA-\d{2}-F-\d{4}$" />
+                            <div class="form-text small text-info" id="vehicleHint">Pattern: KA-XX-F-XXXX</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold">Opposite Vehicle Number</label>
+                            <div id="oppositeVehiclesContainer">
+                                <div class="input-group mb-2">
+                                    <input name="OppositeVehicleNumbers[0]" class="form-control op-vehicle-input border-info-subtle" placeholder="XX-XX-XX-XXXX" title="Format: XX-XX-XX-XXXX" pattern="^[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{4}$" />
+                                    <button type="button" class="btn btn-outline-info" id="btnAddOppositeVehicle"><i class="bi bi-plus-lg"></i></button>
+                                </div>
+                            </div>
+                            <div class="form-text small">Optional. Add multiple opposite vehicle numbers. Pattern: XX-XX-XX-XXXX</div>
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold">Date of Accident</label>
+                            <input asp-for="AccidentDate" class="form-control border-info-subtle" type="date" required />
+                        </div>
+                    </div>
+
+                    <hr class="my-4 border-dashed" />
+
+                    <!-- RESPONDENT DETAILS -->
+                    <h6 class="fw-bold text-info mb-3 small text-uppercase"><i class="bi bi-people-fill me-2"></i>Respondent Details</h6>
+                    <div class="dynamic-table-container mb-4">
+                        <table class="table table-sm table-hover mb-0 dynamic-table" id="respondentsTable">
+                            <thead>
+                                <tr>
+                                    <th class="text-uppercase">Respondent Name</th>
+                                    <th class="text-uppercase">Remarks</th>
+                                    <th style="width: 50px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input name="Respondents[0].RespondentName" class="form-control form-control-sm" required /></td>
+                                    <td><input name="Respondents[0].Remarks" class="form-control form-control-sm" /></td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="3" class="p-2">
+                                        <button type="button" class="btn btn-sm btn-link text-decoration-none text-info" id="btnAddRespondent">
+                                            <i class="bi bi-person-plus-fill me-1"></i> Add Respondent
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+
+                    <hr class="my-4 border-dashed" />
+
+                    <!-- CLAIM DETAILS -->
+                    <h6 class="fw-bold text-info mb-3 small text-uppercase"><i class="bi bi-currency-dollar me-2"></i>Claim Details</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <label class="form-label text-uppercase fw-bold small">Date of Claim Petition</label>
+                            <input asp-for="ClaimPetitionDate" type="date" class="form-control border-info-subtle" />
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label text-uppercase fw-bold small">Claim Amount Breakdown</label>
+                            <div class="p-3 border rounded border-info-subtle bg-light">
+                                <div id="claimBreakdownContainer">
+                                    <div class="row g-2 mb-2 claim-row align-items-center">
+                                        <div class="col-md-5">
+                                            <input type="text" class="form-control claim-remark-input" placeholder="REMARK" onchange="calculateTotalClaim()" onkeyup="calculateTotalClaim()" />
+                                        </div>
+                                        <div class="col-md-5">
+                                            <div class="input-group">
+                                                <span class="input-group-text">₹</span>
+                                                <input type="number" step="0.01" class="form-control claim-amount-input" placeholder="0.00" onchange="calculateTotalClaim()" onkeyup="calculateTotalClaim()" />
+                                            </div>
+                                        </div>
+                                        <div class="col-md-2 text-end">
+                                            <button type="button" class="btn btn-outline-primary btn-add-claim w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row g-2 mt-2 pt-2 border-top">
+                                    <div class="col-md-5 text-end">
+                                        <span class="fw-bold text-uppercase mt-2 d-block text-primary">TOTAL CLAIM AMOUNT:</span>
+                                    </div>
+                                    <div class="col-md-5">
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-info-subtle text-primary">₹</span>
+                                            <input asp-for="ClaimAmount" type="number" step="0.01" class="form-control bg-info-subtle fw-bold text-primary" id="totalClaimAmount" readonly />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Hidden field to store combined remarks -->
+                            <input asp-for="ClaimRemark" type="hidden" id="hiddenClaimRemark" />
+                        </div>
+                    </div>
+
+                    <hr class="my-4 border-dashed" />
+
+                    <!-- LEGAL & HEARING DETAILS -->
+                    <h6 class="fw-bold text-info mb-3 small text-uppercase"><i class="bi bi-bank2 me-2"></i>Legal & Hearing Details</h6>
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-12">
+                            <label class="form-label text-uppercase fw-bold small">Advocate Name</label>
+                            <div class="input-group">
+                                <select id="AdvocateSelect" class="form-select border-info-subtle others-dropdown" 
+                                        data-others-target="AdvocateManualEntry" asp-for="AdvocateName">
+                                    <option value="">-- Select Advocate --</option>
+                                    @if (ViewBag.Advocates != null)
+                                    {
+                                        foreach (var adv in ViewBag.Advocates)
+                                        {
+                                            <option value="@adv.AdvocateName">@adv.AdvocateName</option>
+                                        }
+                                    }
+                                    <option value="Others">Others</option>
+                                </select>
+                                <input type="text" id="AdvocateManualEntry" class="form-control border-info-subtle others-manual" 
+                                       data-others-select="AdvocateSelect" placeholder="Type Advocate Name" style="display:none;" />
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-uppercase fw-bold small">Entrustment Number</label>
+                            <input asp-for="EntrustmentNo" type="text" class="form-control border-info-subtle" required />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-uppercase fw-bold small">Entrustment Date</label>
+                            <input asp-for="EntrustmentDate" type="date" class="form-control border-info-subtle" required />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label text-uppercase fw-bold small">Evidence Filed?</label>
+                            <div class="d-flex gap-4 mt-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" asp-for="IsEvidenceFiled" value="true" id="evYes">
+                                    <label class="form-check-label" for="evYes">Yes</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" asp-for="IsEvidenceFiled" value="false" id="evNo" checked>
+                                    <label class="form-check-label" for="evNo">No</label>
+                                </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-5" />
+
+                    <!-- DISPOSAL & CLOSURE -->
+                    <h6 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-shield-lock-fill me-2"></i>DISPOSAL & CLOSURE</h6>
+                    <div class="alert alert-warning bg-white border-warning-subtle d-flex align-items-center mb-4">
+                        <i class="bi bi-exclamation-triangle-fill fs-4 me-3 text-warning"></i>
+                        <div class="small text-dark">
+                            <strong>Note:</strong> Closing a case file will lock primary details. Ensure all disposal data is accurate.
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold small">Disposal Status</label>
+                            <select asp-for="DisposalStatus" class="form-select border-info-subtle" id="disposalStatusSelect">
+                                <option value="">-- Choose Status --</option>
+                                <option value="Disposed">Disposed</option>
+                                <option value="DNP">DNP</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label text-uppercase fw-bold small">Result</label>
+                            <select asp-for="DisposalResult" class="form-select border-info-subtle" id="disposalResultSelect">
+                                <option value="">-- Choose Result --</option>
+                                <option value="Favor">Favor</option>
+                                <option value="Against">Against</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Conditional Disposal Details Block (For Both Favor and Against) -->
+                        <div class="col-md-12" id="againstDetailsSection" style="display: none;">
+                            <!-- EVIDENCE DETAILS -->
+                            <div class="gov-card p-4 mb-4 shadow-sm border-0 rounded-4" id="evidenceSection" style="background-color: #f8faff;">
+                                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                        <i class="bi bi-journal-text fs-5"></i>
+                                    </div>
+                                    <h4 class="mb-0 text-dark fw-bold">C. EVIDENCE DETAILS</h4>
+                                </div>
+
+                                <div class="row g-4">
+                                    <div class="col-md-12">
+                                        <div class="p-3 bg-white rounded border mb-3 shadow-sm">
+                                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-people me-1"></i> 1. Respondent Evidence</label>
+                                            <div id="respEvidenceList">
+                                                <div class="row g-2 mb-2 resp-evidence-row align-items-center">
+                                                    <div class="col-md-5">
+                                                        <input type="text" class="form-control" name="RespondentEvidence[0].Name" placeholder="Respondent Name(s)...">
+                                                    </div>
+                                                    <div class="col-md-5">
+                                                        <input type="text" class="form-control" name="RespondentEvidence[0].Remark" placeholder="Remark...">
+                                                    </div>
+                                                    <div class="col-md-2 text-end">
+                                                        <button type="button" class="btn btn-outline-primary add-resp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-12">
+                                        <div class="p-3 bg-white rounded border shadow-sm">
+                                            <label class="form-label fw-bold text-primary mb-3"><i class="bi bi-building me-1"></i> 2. Corporation Evidence</label>
+                                            <div id="corpEvidenceList">
+                                                <div class="row g-2 mb-2 corp-evidence-row align-items-center">
+                                                    <div class="col-md-5">
+                                                        <input type="text" class="form-control" name="CorpEvidence[0].Name" placeholder="Corporation Witness Name...">
+                                                    </div>
+                                                    <div class="col-md-5">
+                                                        <input type="text" class="form-control" name="CorpEvidence[0].Designation" placeholder="Designation...">
+                                                    </div>
+                                                    <div class="col-md-2 text-end">
+                                                        <button type="button" class="btn btn-outline-primary add-corp-ev w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CERTIFIED COPY DETAILS -->
+                            <div class="gov-card p-4 mb-4 shadow-sm border-0 rounded-4" id="ccDetailsSection" style="background-color: #fafffa;">
+                                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                                    <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                        <i class="bi bi-file-earmark-check fs-5"></i>
+                                    </div>
+                                    <h4 class="mb-0 text-dark fw-bold">CERTIFIED COPY DETAILS</h4>
+                                </div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Copy Disposed On</label>
+                                        <input type="date" class="form-control" asp-for="AdverseAward.DisposedOnDate">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Copy Applied On</label>
+                                        <input type="date" class="form-control" asp-for="AdverseAward.CopyAppliedDate">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Copy Ready On</label>
+                                        <input type="date" class="form-control" asp-for="AdverseAward.CopyIssuedDate">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Copy Delivered On</label>
+                                        <input type="date" class="form-control" asp-for="AdverseAward.CopyDeliveredDate">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label small fw-bold">Copy Received at Division</label>
+                                        <input type="date" class="form-control" asp-for="AdverseAward.CopyReceivedDate">
+                                    </div>
+                                    <div class="col-md-12 mt-3">
+                                        <label class="form-label small fw-bold">Certified Copy Remarks</label>
+                                        <textarea class="form-control" asp-for="AdverseAward.CertifiedCopyRemarks" rows="2" placeholder="Enter notes regarding certified copies..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- OPINIONS & FINAL STATUS -->
+                            <div class="gov-card p-4 mb-4 shadow-sm border-0 bg-white rounded-4" id="opinionsSection">
+                                <div class="d-flex align-items-center mb-4 border-bottom pb-2">
+                                    <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                        <i class="bi bi-chat-left-text-fill fs-5"></i>
+                                    </div>
+                                    <h4 class="mb-0 text-dark fw-bold">I. OPINIONS &amp; FINAL STATUS</h4>
+                                </div>
+
+                                <div class="row g-4">
+                                    <div class="col-md-12">
+                                        <label class="form-label fw-bold text-uppercase small text-secondary"><i class="bi bi-list-check me-1"></i>Award Details Breakdown</label>
+                                                                                 <div class="p-3 border rounded border-secondary-subtle bg-light">
+                                             <div id="awardBreakdownContainer">
+                                                 <div class="row g-2 mb-2 award-row align-items-center">
+                                                     <div class="col-md-5">
+                                                         <input type="text" class="form-control award-remark-input" placeholder="REMARK" onchange="calculateTotalAward()" onkeyup="calculateTotalAward()" />
+                                                     </div>
+                                                     <div class="col-md-5">
+                                                         <div class="input-group">
+                                                             <span class="input-group-text">₹</span>
+                                                             <input type="number" step="0.01" class="form-control award-amount-input" placeholder="0.00" onchange="calculateTotalAward()" onkeyup="calculateTotalAward()" />
+                                                         </div>
+                                                     </div>
+                                                     <div class="col-md-2 text-end">
+                                                         <button type="button" class="btn btn-outline-secondary btn-add-award w-100"><i class="bi bi-plus-lg me-1"></i>Row</button>
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                             <div class="row g-2 mt-2 pt-2 border-top">
+                                                 <div class="col-md-5 text-end">
+                                                     <span class="fw-bold text-uppercase mt-2 d-block text-secondary">TOTAL CLAIM AMOUNT:</span>
+                                                 </div>
+                                                 <div class="col-md-5">
+                                                     <div class="input-group">
+                                                         <span class="input-group-text bg-secondary-subtle text-secondary">₹</span>
+                                                         <input asp-for="AdverseAward.AwardAmount" type="number" step="0.01" class="form-control bg-secondary-subtle fw-bold text-secondary" id="totalAwardAmount" readonly />
+                                                     </div>
+                                                 </div>
+                                             </div>
+                                         </div>
+
+                                                                                  <input asp-for="AdverseAward.InjuryDetails" type="hidden" id="hiddenAwardDetails" />
+                                    </div>
+
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold">Advocate's Opinion</label>
+                                        <textarea class="form-control" asp-for="AdverseAward.AdvocateOpinion" rows="3" placeholder="PROVIDE DETAILED LEGAL OPINION..."></textarea>
+                                    </div>
+                                    
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold">Law Officer's Opinion</label>
+                                        <textarea class="form-control" asp-for="AdverseAward.LOOpinion" rows="3" placeholder="PROVIDE LO COMMENTS..."></textarea>
+                                    </div>
+                                    
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-bold">DC's Final Decision</label>
+                                        <textarea class="form-control" asp-for="AdverseAward.DCOpinion" rows="3" placeholder="PROVIDE DC REMARKS..."></textarea>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold">Final Forwarding Status</label>
+                                        <select class="form-select border-secondary" asp-for="AdverseAward.ForwardingStatus" id="finalForwardSelect">
+                                            <option value="PENDING" selected="">PENDING</option>
+                                            <option value="FORWARDED TO CO">FORWARDED TO CO</option>
+                                            <option value="APPEAL">APPEAL</option>
+                                            <option value="CLOSED">CLOSED</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="col-md-6">
+                                        <label class="form-label fw-bold"><i class="bi bi-file-earmark-pdf me-1 text-danger"></i>Upload Final Judgment</label>
+                                        <input type="file" class="form-control opinion-input" asp-for="AdverseAward.AdverseJudgmentFile" accept=".pdf">
+                                    </div>
+
+                                    <!-- Fields for FORWARDED TO CO under Final Status -->
+                                    <div class="col-md-12" id="finalForwardCOFields" style="display:none;">
+                                        <div class="row g-3 p-3 bg-light rounded border border-warning">
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-warning">Outward Number</label>
+                                                <input type="text" class="form-control forwarded-input" asp-for="AdverseAward.OutwardNumber" placeholder="Enter official outward no...">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-warning">Outward Date</label>
+                                                <input type="date" class="form-control forwarded-input" asp-for="AdverseAward.OutwardDate">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Fields for CLOSED under Final Status -->
+                                    <div class="col-md-12" id="finalClosedFields" style="display:none;">
+                                        <div class="row g-3 p-3 bg-light rounded border border-danger">
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-danger">Closure Number</label>
+                                                <input type="text" class="form-control final-closed-input" asp-for="AdverseAward.EPNumber" placeholder="Enter closure id...">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label fw-bold text-danger">Closure Date</label>
+                                                <input type="date" class="form-control final-closed-input" asp-for="AdverseAward.ClosureDate">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-12 mt-4">
+                                        <div class="p-3 bg-white rounded border shadow-sm">
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                <label class="form-label fw-bold text-primary mb-0"><i class="bi bi-file-earmark-plus me-1"></i> Required Supporting Documents</label>
+                                                <button type="button" class="btn btn-outline-primary btn-sm btn-add-enclosed-doc"><i class="bi bi-plus-lg me-1"></i>Add new document</button>
+                                            </div>
+                                            <div id="enclosedDocsList">
+                                                <div class="row g-2 mb-2 doc-row align-items-center">
+                                                    <div class="col-md-8">
+                                                        <input type="text" class="form-control" name="AdverseAward.EnclosedDocuments[0].DocName" placeholder="Document Description...">
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="number" class="form-control" name="AdverseAward.EnclosedDocuments[0].PageCount" placeholder="Pages...">
+                                                    </div>
+                                                    <div class="col-md-1 text-end">
+                                                        <i class="bi bi-check2-circle text-success fs-5"></i>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/ecourts-cascade.js"></script>
+    <script>
+        $(document).ready(function () {
+            // Pending for filing toggle
+            function togglePendingFiling() {
+                const isPending = $('#pendingFilingCheck').is(':checked');
+                if (isPending) {
+                    $('#mvcNoCol, #mvcYearCol').slideUp();
+                    $('#mvcNoInput, #mvcYearInput').prop('required', false).val('');
+                } else {
+                    $('#mvcNoCol, #mvcYearCol').slideDown();
+                    $('#mvcNoInput, #mvcYearInput').prop('required', true);
+                }
+            }
+            $('#pendingFilingCheck').change(togglePendingFiling);
+            togglePendingFiling(); // Init on load
+            let _latestLiveCnrData = null;
+
+            window.onCnrInputChange = function(val) {
+                const cleanCnr = (val || '').trim().toUpperCase();
+                if (cleanCnr.length === 16) {
+                    fetchAndRenderLiveCnrDetails(cleanCnr);
+                }
+            };
+
+            window.fetchAndRenderLiveCnrDetails = async function(cnr) {
+                const cleanCnr = (cnr || '').trim().toUpperCase();
+                const previewContainer = $('#ecourts-live-preview-card');
+                const statusElem = document.getElementById('cnr-status-badge');
+
+                if (cleanCnr.length !== 16) {
+                    previewContainer.html('<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-triangle me-1"></i> Please enter a valid 16-digit CNR Number before fetching.</div>').slideDown();
+                    return;
+                }
+
+                if (statusElem) statusElem.innerHTML = '<span class="badge bg-info text-dark"><i class="bi bi-arrow-repeat"></i> Fetching eCourts Live Gateway Data...</span>';
+                previewContainer.html('<div class="p-3 text-center text-muted"><div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>Connecting to Live eCourts NAPIX Gateway...</div>').slideDown();
+
+                try {
+                    const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cleanCnr)}`);
+                    const data = await res.json();
+                    if (data.success && data.data) {
+                        _latestLiveCnrData = data;
+                        const s = data.data;
+                        $('#mvc-ecourts-est').val(cleanCnr.substring(0, 6));
+                        if (statusElem) statusElem.innerHTML = `<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> eCourts Verified: ${cleanCnr}</span>`;
+
+                        let html = `
+                            <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
+                                <div class="card-header bg-gradient bg-info text-white py-2 px-3 d-flex justify-content-between align-items-center">
+                                    <span class="fw-bold small"><i class="bi bi-building-check me-2"></i>Live eCourts Case Summary: ${cleanCnr}</span>
+                                    <span class="badge bg-light text-dark fw-bold font-monospace">${s.stage || 'ACTIVE'}</span>
+                                </div>
+                                <div class="card-body p-3">
+                                    <div class="row g-2 mb-3">
+                                        <div class="col-md-4">
+                                            <small class="text-muted d-block">Court Establishment</small>
+                                            <span class="fw-bold text-dark small">${s.establishment_name || s.court_no_judge || 'N/A'}</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <small class="text-muted d-block">Case Number & Type</small>
+                                            <span class="fw-bold text-dark small">${s.case_type || 'MVC'} ${s.case_number || ''}</span>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <small class="text-muted d-block">Next Hearing Date</small>
+                                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-monospace">${s.next_hearing_date || 'Not Scheduled'}</span>
+                                        </div>
+                                        <div class="col-md-6 mt-2">
+                                            <small class="text-muted d-block">Petitioner(s)</small>
+                                            <span class="fw-semibold text-dark small">${s.petitioner || 'N/A'}</span>
+                                        </div>
+                                        <div class="col-md-6 mt-2">
+                                            <small class="text-muted d-block">Respondent(s)</small>
+                                            <span class="fw-semibold text-dark small">${s.respondent || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex justify-content-end gap-2 border-top pt-2">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="$('#ecourts-live-preview-card').slideUp()">
+                                            <i class="bi bi-x-circle me-1"></i> Close Preview
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-success fw-bold shadow-sm" onclick="autofillThirdPartyFromECourts()">
+                                            <i class="bi bi-magic me-1"></i> Autofill Form from eCourts
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        previewContainer.html(html).slideDown();
+                    } else {
+                        if (statusElem) statusElem.innerHTML = `<span class="badge bg-warning text-dark"><i class="bi bi-info-circle"></i> CNR Not Found</span>`;
+                        previewContainer.html(`<div class="alert alert-warning py-2 small mb-0"><i class="bi bi-exclamation-circle me-1"></i> ${data.message || 'No live data found on eCourts Gateway for this CNR.'}</div>`).slideDown();
+                    }
+                } catch (err) {
+                    if (statusElem) statusElem.innerHTML = `<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Gateway Offline</span>`;
+                    previewContainer.html('<div class="alert alert-danger py-2 small mb-0"><i class="bi bi-wifi-off me-1"></i> Unable to connect to eCourts Gateway. Please try again.</div>').slideDown();
+                }
+            };
+
+            window.autofillThirdPartyFromECourts = function() {
+                if (!_latestLiveCnrData || !_latestLiveCnrData.data) return;
+                const s = _latestLiveCnrData.data;
+
+                if (s.case_number) {
+                    const match = s.case_number.match(/(\d+)\s*\/\s*(\d{4})/);
+                    if (match) {
+                        $('input[name="MVCNo"]').val(match[1]);
+                        $('input[name="MVCYear"]').val(match[2]);
+                    } else {
+                        const digits = s.case_number.replace(/\D/g, '');
+                        if (digits) $('input[name="MVCNo"]').val(digits);
+                    }
+                }
+
+                if (s.stage) {
+                    $('input[name="CurrentStage"]').val(s.stage);
+                }
+                if (s.next_hearing_date) {
+                    const dateParts = s.next_hearing_date.split('-');
+                    if (dateParts.length === 3) {
+                        const yyyy = dateParts[2].length === 4 ? dateParts[2] : (dateParts[0].length === 4 ? dateParts[0] : '');
+                        const mm = dateParts[1].padStart(2, '0');
+                        const dd = dateParts[0].length <= 2 ? dateParts[0].padStart(2, '0') : dateParts[2].padStart(2, '0');
+                        if (yyyy) $('input[name="NextHearingDate"]').val(`${yyyy}-${mm}-${dd}`);
+                    }
+                }
+
+                if (s.petitioner) {
+                    $('input[name="Petitioners[0].PetitionerName"]').val(s.petitioner.split(/\r?\n|,/)[0].trim());
+                }
+
+                if (s.respondent) {
+                    $('input[name="Respondents[0].RespondentName"]').val(s.respondent.split(/\r?\n|,/)[0].trim());
+                }
+
+                alert("Case details successfully autofilled from eCourts Live Gateway!");
+            };
+
+            window.triggerMvcCnrDiscovery = async function() {
+                const cnrElem = document.getElementById('mvc-cnr-number');
+                const cnrVal = cnrElem ? cnrElem.value.trim().toUpperCase() : '';
+                const statusElem = document.getElementById('cnr-status-badge');
+
+                if (cnrVal.length === 16) {
+                    fetchAndRenderLiveCnrDetails(cnrVal);
+                } else {
+                    if (statusElem) statusElem.innerHTML = '<span class="badge bg-warning text-dark"><i class="bi bi-exclamation-triangle"></i> Please enter a valid 16-Digit CNR Number</span>';
+                }
+            };
+            // Disposal Result Toggle (Shows Evidence, Certified Copy, Opinions & Final Status for Both Favor & Against)
+            function toggleDisposalResult() {
+                const val = $('#disposalResultSelect').val();
+                if (val === 'Favor' || val === 'Against') {
+                    $('#againstDetailsSection').slideDown();
+                } else {
+                    $('#againstDetailsSection').slideUp();
+                }
+            }
+            $('#disposalResultSelect').change(toggleDisposalResult);
+            toggleDisposalResult(); // Trigger on page load
+
+            // Final Forwarding Status Toggle
+            $('#finalForwardSelect').change(function() {
+                const val = $(this).val();
+                if (val === 'FORWARDED TO CO') {
+                    $('#finalForwardCOFields').slideDown();
+                    $('#finalClosedFields').slideUp();
+                } else if (val === 'CLOSED') {
+                    $('#finalClosedFields').slideDown();
+                    $('#finalForwardCOFields').slideUp();
+                } else {
+                    $('#finalForwardCOFields').slideUp();
+                    $('#finalClosedFields').slideUp();
+                }
+            });
+
+            // Dynamic Evidence - Respondent
+            let respEvIndex = 1;
+            $(document).on('click', '.add-resp-ev', function() {
+                const html = `
+                    <div class="row g-2 mb-2 resp-evidence-row align-items-center animate__animated animate__fadeIn">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Name" placeholder="Respondent Name(s)...">
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="RespondentEvidence[${respEvIndex}].Remark" placeholder="Remark...">
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-resp-ev w-100"><i class="bi bi-trash me-1"></i>Remove</button>
+                        </div>
+                    </div>`;
+                $('#respEvidenceList').append(html);
+                respEvIndex++;
+            });
+            $(document).on('click', '.remove-resp-ev', function() { $(this).closest('.row').remove(); });
+
+            // Dynamic Evidence - Corporation
+            let corpEvIndex = 1;
+            $(document).on('click', '.add-corp-ev', function() {
+                const html = `
+                    <div class="row g-2 mb-2 corp-evidence-row align-items-center animate__animated animate__fadeIn">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Name" placeholder="Corporation Witness Name...">
+                        </div>
+                        <div class="col-md-5">
+                            <input type="text" class="form-control" name="CorpEvidence[${corpEvIndex}].Designation" placeholder="Designation...">
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger remove-corp-ev w-100"><i class="bi bi-trash me-1"></i>Remove</button>
+                        </div>
+                    </div>`;
+                $('#corpEvidenceList').append(html);
+                corpEvIndex++;
+            });
+            $(document).on('click', '.remove-corp-ev', function() { $(this).closest('.row').remove(); });
+
+            // Dynamic Supporting Docs
+            let docIndex = 1;
+            $('.btn-add-enclosed-doc').click(function() {
+                const html = `
+                    <div class="row g-2 mb-2 doc-row align-items-center animate__animated animate__fadeIn">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" name="AdverseAward.EnclosedDocuments[${docIndex}].DocName" placeholder="Document Description...">
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" class="form-control" name="AdverseAward.EnclosedDocuments[${docIndex}].PageCount" placeholder="Pages...">
+                        </div>
+                        <div class="col-md-1 text-end">
+                            <button type="button" class="btn btn-link text-danger p-0 border-0" onclick="$(this).closest('.row').remove()"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>`;
+                $('#enclosedDocsList').append(html);
+                docIndex++;
+            });
+
+
+
+            // Dynamic Respondent Handler
+            let respondentIndex = 1;
+            $('#btnAddRespondent').click(function () {
+                const html = `
+                    <tr class="animate__animated animate__fadeIn">
+                        <td><input name="Respondents[${respondentIndex}].RespondentName" class="form-control form-control-sm" required /></td>
+                        <td><input name="Respondents[${respondentIndex}].Remarks" class="form-control form-control-sm" /></td>
+                        <td><button type="button" class="btn btn-sm btn-outline-danger btn-remove-row"><i class="bi bi-trash"></i></button></td>
+                    </tr>`;
+                $('#respondentsTable tbody').append(html);
+                respondentIndex++;
+            });
+
+            $(document).on('click', '.btn-remove-row', function () {
+                $(this).closest('tr').remove();
+            });
+
+            // Dynamic Vehicle Pattern Handler
+            $('input[name="VehicleType"]').change(function() {
+                const isCorp = $('#vtCorp').is(':checked');
+                const $input = $('#vehicleNoInput');
+                const $hint = $('#vehicleHint');
+
+                if (isCorp) {
+                    $input.attr('placeholder', 'KA-XX-F-XXXX');
+                    $input.attr('pattern', '^KA-\\d{2}-F-\\d{4}$');
+                    $hint.text('Pattern: KA-XX-F-XXXX');
+                } else {
+                    $input.attr('placeholder', 'XX-XX-XX-XXXX');
+                    $input.attr('pattern', '^[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{4}$');
+                    $hint.text('Pattern: XX-XX-XX-XXXX');
+                }
+                $input.val(''); // Clear on type change to avoid invalid state
+            });
+
+            let oppositeVehicleIndex = 1;
+            $('#btnAddOppositeVehicle').click(function () {
+                const html = `
+                    <div class="input-group mb-2 animate__animated animate__fadeIn">
+                        <input name="OppositeVehicleNumbers[${oppositeVehicleIndex}]" class="form-control op-vehicle-input border-info-subtle" placeholder="XX-XX-XX-XXXX" pattern="^[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{2}-[A-Z0-9]{4}$" />
+                        <button type="button" class="btn btn-outline-danger btn-remove-vehicle"><i class="bi bi-trash"></i></button>
+                    </div>`;
+                $('#oppositeVehiclesContainer').append(html);
+                oppositeVehicleIndex++;
+            });
+
+            $(document).on('click', '.btn-remove-vehicle', function () {
+                $(this).closest('.input-group').remove();
+            });
+
+            // Dynamic Claim Breakdown
+            $(document).on('click', '.btn-add-claim', function() {
+                const html = `
+                    <div class="row g-2 mb-2 claim-row align-items-center animate__animated animate__fadeIn">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control claim-remark-input" placeholder="REMARK" onchange="calculateTotalClaim()" onkeyup="calculateTotalClaim()">
+                        </div>
+                        <div class="col-md-5">
+                            <div class="input-group">
+                                <span class="input-group-text">₹</span>
+                                <input type="number" step="0.01" class="form-control claim-amount-input" placeholder="0.00" onchange="calculateTotalClaim()" onkeyup="calculateTotalClaim()">
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger btn-remove-claim w-100"><i class="bi bi-trash me-1"></i>Remove</button>
+                        </div>
+                    </div>`;
+                $('#claimBreakdownContainer').append(html);
+            });
+
+            $(document).on('click', '.btn-remove-claim', function() {
+                $(this).closest('.row').remove();
+                calculateTotalClaim();
+            });
+
+            window.calculateTotalClaim = function() {
+                let total = 0;
+                let remarksArr = [];
+                $('.claim-row').each(function() {
+                    const amt = parseFloat($(this).find('.claim-amount-input').val()) || 0;
+                    const remark = $(this).find('.claim-remark-input').val() || 'Amount';
+                    total += amt;
+                    if (amt > 0 || remark !== 'Amount') {
+                        remarksArr.push(`${remark}: ₹${amt}`);
+                    }
+                });
+                $('#totalClaimAmount').val(total > 0 ? total.toFixed(2) : '');
+                $('#hiddenClaimRemark').val(remarksArr.join(' | '));
+            };
+
+            // Dynamic Award Breakdown
+            $(document).on('click', '.btn-add-award', function() {
+                const html = `
+                    <div class="row g-2 mb-2 award-row align-items-center animate__animated animate__fadeIn">
+                        <div class="col-md-5">
+                            <input type="text" class="form-control award-remark-input" placeholder="REMARK" onchange="calculateTotalAward()" onkeyup="calculateTotalAward()">
+                        </div>
+                        <div class="col-md-5">
+                            <div class="input-group">
+                                <span class="input-group-text">₹</span>
+                                <input type="number" step="0.01" class="form-control award-amount-input" placeholder="0.00" onchange="calculateTotalAward()" onkeyup="calculateTotalAward()">
+                            </div>
+                        </div>
+                        <div class="col-md-2 text-end">
+                            <button type="button" class="btn btn-outline-danger btn-remove-award w-100"><i class="bi bi-trash me-1"></i>Remove</button>
+                        </div>
+                    </div>`;
+                $('#awardBreakdownContainer').append(html);
+            });
+
+            $(document).on('click', '.btn-remove-award', function() {
+                $(this).closest('.row').remove();
+                calculateTotalAward();
+            });
+
+            window.calculateTotalAward = function() {
+                let total = 0;
+                let breakdownArr = [];
+                $('.award-row').each(function() {
+                    const amt = parseFloat($(this).find('.award-amount-input').val()) || 0;
+                    const remark = $(this).find('.award-remark-input').val() || 'Amount';
+                    total += amt;
+                    if (amt > 0 || remark !== 'Amount') {
+                        breakdownArr.push(`${remark}: ₹${amt}`);
+                    }
+                });
+                $('#totalAwardAmount').val(total > 0 ? total.toFixed(2) : '');
+                $('#hiddenAwardDetails').val(breakdownArr.join(' | '));
+            };
+        });
+    </script>
+}
+
+<style>
+    .icon-box {
+        width: 64px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .form-control, .form-select {
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        border: 1px solid #e2e8f0;
+        transition: all 0.2s ease;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #0dcaf0;
+        box-shadow: 0 0 0 0.25rem rgba(13, 202, 240, 0.1);
+    }
+    .card {
+        border: none;
+        transition: transform 0.3s ease;
+    }
+    .animate__fadeIn {
+        animation-duration: 0.5s;
+    }
+</style>

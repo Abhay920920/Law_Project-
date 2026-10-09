@@ -1,0 +1,137 @@
+@{
+    ViewData["Title"] = "Systems Setup";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1><i class="bi bi-database-gear"></i> Systems Setup</h1>
+    </div>
+
+    <div class="row">
+        <!-- Users Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-warning mb-3"><i class="bi bi-people-fill"></i></div>
+                    <h3 class="card-title">Users</h3>
+                    <p class="card-text text-muted">Manage system users, roles, and access.</p>
+                    <a asp-action="Users" class="btn btn-warning btn-lg stretched-link text-white">Manage Users</a>
+                </div>
+            </div>
+        </div>
+        <!-- Advocates Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-primary mb-3"><i class="bi bi-person-badge"></i></div>
+                    <h3 class="card-title">Advocates</h3>
+                    <p class="card-text text-muted">Manage the list of Advocates and their bench classifications.</p>
+                    <a asp-action="Advocates" class="btn btn-primary btn-lg stretched-link">Manage Advocates</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- MACT Courts Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-success mb-3"><i class="bi bi-bank"></i></div>
+                    <h3 class="card-title">MACT Courts</h3>
+                    <p class="card-text text-muted">Manage the list of MACT Courts and their locations.</p>
+                    <a asp-action="MACTs" class="btn btn-success btn-lg stretched-link">Manage Courts</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- High Court Advocates Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-info mb-3"><i class="bi bi-briefcase"></i></div>
+                    <h3 class="card-title">High Court Advocates</h3>
+                    <p class="card-text text-muted">Manage High Court advocates for appeals and litigation.</p>
+                    <a asp-action="HighCourtAdvocates" class="btn btn-info btn-lg stretched-link text-white">Manage HC Advocates</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gratuity Courts Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow border-gratuity-light">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-gratuity mb-3"><i class="bi bi-bank2"></i></div>
+                    <h3 class="card-title">Gratuity Courts</h3>
+                    <p class="card-text text-muted">Manage Labour Courts / ALC for Gratuity cases.</p>
+                    <a asp-action="GratuityCourts" class="btn btn-outline-gratuity btn-lg stretched-link">Manage Courts</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gratuity Advocates Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow border-gratuity-light">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-gratuity mb-3"><i class="bi bi-person-check-fill"></i></div>
+                    <h3 class="card-title">Gratuity Advocates</h3>
+                    <p class="card-text text-muted">Manage assigned advocates for Gratuity litigation.</p>
+                    <a asp-action="GratuityAdvocates" class="btn btn-outline-gratuity btn-lg stretched-link">Manage Advocates</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Labour Courts Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow border-primary">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-primary mb-3"><i class="bi bi-building"></i></div>
+                    <h3 class="card-title">Labour Courts</h3>
+                    <p class="card-text text-muted">Manage the list of Labour Courts (KID/ID/REF).</p>
+                    <a asp-action="LabourCourts" class="btn btn-primary btn-lg stretched-link">Manage Courts</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Labour Advocates Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow border-primary">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-primary mb-3"><i class="bi bi-person-workspace"></i></div>
+                    <h3 class="card-title">Labour Advocates</h3>
+                    <p class="card-text text-muted">Manage the list of Advocates for Labour cases.</p>
+                    <a asp-action="LabourAdvocates" class="btn btn-primary btn-lg stretched-link">Manage Advocates</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Case Deletion Card -->
+        <div class="col-md-4 mb-4">
+            <div class="card h-100 shadow-sm hover-shadow border-danger">
+                <div class="card-body text-center p-5">
+                    <div class="display-4 text-danger mb-3"><i class="bi bi-trash-fill"></i></div>
+                    <h3 class="card-title">Delete Case</h3>
+                    <p class="card-text text-muted">Permanently delete a case across all modules by Number and Year.</p>
+                    <a asp-action="DeleteCase" class="btn btn-danger btn-lg stretched-link">Delete Case</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .text-gratuity { color: #C2185B; }
+    .border-gratuity-light { border-color: #f8bbd0; }
+    .btn-outline-gratuity { 
+        color: #C2185B; 
+        border-color: #C2185B; 
+    }
+    .btn-outline-gratuity:hover {
+        background-color: #C2185B;
+        color: white;
+    }
+    .hover-shadow:hover {
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+        transform: translateY(-5px);
+        transition: all 0.3s;
+    }
+</style>

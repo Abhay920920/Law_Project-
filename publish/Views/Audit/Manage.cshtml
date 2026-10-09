@@ -1,0 +1,823 @@
+@model MVCCaseManagement.Models.EPViewModel
+
+@{
+    ViewData["Title"] = "Manage Audit Details";
+    ViewData["PageHeaderClass"] = "audit-manage-header";
+}
+
+<div class="container-fluid px-4 py-4">
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-check-circle-fill me-2"></i>
+            @TempData["SuccessMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            @TempData["ErrorMessage"]
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+    @if (!ViewData.ModelState.IsValid)
+    {
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            <strong>Please correct the following errors:</strong>
+            <ul class="mb-0 mt-2">
+                @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+                {
+                    <li>@error.ErrorMessage</li>
+                }
+            </ul>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <form asp-action="Manage" method="post" id="auditForm">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="EPID" />
+        <input type="hidden" asp-for="CaseID" />
+        <input type="hidden" asp-for="DivisionID" />
+        <input type="hidden" asp-for="EPNumber" id="EPNumber" />
+        <input type="hidden" asp-for="ArisingFromMVCYear" />
+        <input type="hidden" asp-for="OriginalMVCStatus" />
+        <input type="hidden" asp-for="EPStatus" />
+        <input type="hidden" asp-for="AmountPaid" id="AmountPaid" />
+        <input type="hidden" asp-for="ComplianceStatus" id="ComplianceStatus" />
+        <input type="hidden" asp-for="DateOfCompliance" id="DateOfCompliance" />
+
+        <div class="form-container">
+            <!-- Context Header: EP & MVC ID -->
+            <div class="section-card mb-4 border-0 shadow-sm overflow-hidden">
+                <div class="bg-primary bg-opacity-10 p-3 border-bottom border-primary border-opacity-25 d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                            <i class="bi bi-info-circle"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0 fw-bold text-primary">Auditing Case: MVC @Model.ArisingFromMVCNo / @Model.ArisingFromMVCYear</h6>
+                            <small class="text-muted">MACT: @Model.ArisingFromMACT | EP No: <strong>@(string.IsNullOrEmpty(Model.EPNumber) ? "Pending" : Model.EPNumber)</strong></small>
+                        </div>
+                    </div>
+                    <span class="badge @(Model.ComplianceStatus == "Paid" ? "bg-success" : Model.ComplianceStatus == "Partially Paid" ? "bg-warning text-dark" : "bg-danger") px-3 py-2 rounded-pill fs-6">
+                        <i class="bi bi-shield-check me-1"></i>@(string.IsNullOrEmpty(Model.ComplianceStatus) ? "Pending" : Model.ComplianceStatus)
+                    </span>
+                </div>
+            </div>
+
+            <!-- Essential Audit Fields -->
+            <div class="section-card border-left-success mb-4 shadow-sm">
+                <div class="section-header">
+                    <h6 class="mb-0 text-success fw-bold">Audit Details</h6>
+                </div>
+                <div class="section-body p-4">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">MVC Number</label>
+                            <input asp-for="ArisingFromMVCNo" class="form-control" />
+                        </div>
+                        <div class="col-md-3">
+                            <label asp-for="VehicleNo" class="form-label fw-semibold">Vehicle Number</label>
+                            <input asp-for="VehicleNo" class="form-control" />
+                        </div>
+                        <div class="col-md-3">
+                            <label asp-for="AccidentDate" class="form-label fw-semibold">Accident Date</label>
+                            <input asp-for="AccidentDate" class="form-control" type="date" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold">MACT</label>
+                            <input asp-for="ArisingFromMACT" class="form-control" />
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="AwardAmount" class="form-label fw-semibold"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">₹</span>
+                                <input asp-for="AwardAmount" class="form-control" placeholder="0.00" />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="PetitionDate" class="form-label fw-semibold"></label>
+                            <input asp-for="PetitionDate" class="form-control" type="date" />
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label asp-for="RealizationDate" class="form-label fw-semibold">Realization Date</label>
+                            <input asp-for="RealizationDate" class="form-control" type="date" />
+                            <small class="text-muted">Award/Judgment Date (End of interest calculation)</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="CalculationMethod" class="form-label fw-semibold">Calculation Strategy</label>
+                            <select asp-for="CalculationMethod" class="form-select">
+                                <option value="InterestDeduction">Interest Deduction (Payment covers Interest first)</option>
+                                <option value="PrincipalDeduction">Principal Deduction (Payment reduced from Principal first)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="InterestRate" class="form-label fw-semibold"></label>
+                            <div class="input-group">
+                                <input asp-for="InterestRate" class="form-control" placeholder="0.00" />
+                                <span class="input-group-text bg-light">%</span>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="LiabilityPercentage" class="form-label fw-semibold"></label>
+                            <div class="input-group">
+                                <input asp-for="LiabilityPercentage" class="form-control" placeholder="100.00" />
+                                <span class="input-group-text bg-light">%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Paid Details (Multiple Installments) -->
+            <div class="section-card border-left-primary mb-4 shadow-sm">
+                <div class="section-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 text-primary fw-bold">
+                            <i class="bi bi-cash-stack me-1"></i> Paid Details / Installments
+                        </h6>
+                        <small class="text-muted">Add cheques or payment transactions below</small>
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" id="btnAddPayment">
+                        <i class="bi bi-plus-lg me-1"></i> Add Payment
+                    </button>
+                </div>
+                <div class="section-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-flush align-middle mb-0" id="paymentsTable">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-4" style="width: 200px;">Amount (₹) <span class="text-danger">*</span></th>
+                                    <th style="width: 200px;">Cheque / Ref Number</th>
+                                    <th style="width: 180px;">Cheque / Payment Date</th>
+                                    <th>Remarks</th>
+                                    <th class="text-center" style="width: 80px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (Model.Payments != null && Model.Payments.Count > 0)
+                                {
+                                    for (int i = 0; i < Model.Payments.Count; i++)
+                                    {
+                                        <tr>
+                                            <td class="ps-4">
+                                                <input type="hidden" name="Payments[@i].PaymentID" value="@Model.Payments[i].PaymentID" />
+                                                <input type="hidden" name="Payments[@i].EPID" value="@Model.EPID" />
+                                                <input type="hidden" name="Payments[@i].PaymentDate" value="@(Model.Payments[i].PaymentDate.ToString("yyyy-MM-dd"))" class="payment-date-hidden" />
+                                                <input type="number" step="0.01" name="Payments[@i].Amount" class="form-control form-control-sm payment-amount-input fw-semibold" value="@Model.Payments[i].Amount" placeholder="0.00" required />
+                                            </td>
+                                            <td>
+                                                <input type="text" name="Payments[@i].ChequeNumber" class="form-control form-control-sm payment-cheque-input" value="@Model.Payments[i].ChequeNumber" placeholder="Cheque / DD / Ref No" />
+                                            </td>
+                                            <td>
+                                                <input type="date" name="Payments[@i].ChequeDate" class="form-control form-control-sm payment-date-input" value="@(Model.Payments[i].ChequeDate?.ToString("yyyy-MM-dd"))" />
+                                            </td>
+                                            <td>
+                                                <input type="text" name="Payments[@i].Remarks" class="form-control form-control-sm payment-remarks-input" value="@Model.Payments[i].Remarks" placeholder="Remarks / Purpose" />
+                                            </td>
+                                            <td class="text-center">
+                                                <button type="button" class="btn btn-outline-danger btn-sm border-0 remove-row" title="Delete Payment">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr class="empty-placeholder">
+                                        <td colspan="5" class="text-center py-4 text-muted fst-italic">
+                                            No payment records added yet. Click "Add Payment" to begin.
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calculation Summary -->
+            <div class="section-card border-left-warning mb-4 shadow-sm" id="calculationSection">
+                <div class="section-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-warning fw-bold">
+                        <i class="bi bi-calculator me-2"></i>Audit Calculation Summary
+                    </h6>
+                    <button type="button" class="btn btn-outline-warning btn-sm rounded-pill px-3" onclick="printCalculation()">
+                        <i class="bi bi-printer me-1"></i> Print Calculation
+                    </button>
+                </div>
+                <div class="section-body p-4">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold text-muted">Award Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">₹</span>
+                                <input type="text" id="calcAwardAmount" class="form-control bg-light" readonly />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold text-muted">Interest Amount</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">₹</span>
+                                <input type="text" id="calcInterestAmount" class="form-control bg-light" readonly />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold text-muted">Liability Adjusted</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light">₹</span>
+                                <input type="text" id="calcLiabilityAmount" class="form-control bg-light" readonly />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-semibold text-success">Total Amount Due</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-success-subtle text-success">₹</span>
+                                <input type="text" id="calcTotalDue" class="form-control bg-success-subtle fw-bold" readonly />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-primary">Total Amount Paid</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-primary-subtle text-primary">₹</span>
+                                <input type="text" id="calcTotalPaid" class="form-control bg-primary-subtle fw-bold" readonly />
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold text-danger">Balance Due</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-danger-subtle text-danger">₹</span>
+                                <input type="text" id="calcBalanceDue" class="form-control bg-danger-subtle fw-bold" readonly />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-3">
+                        <div class="col-12">
+                            <label class="form-label fw-semibold text-muted">
+                                <i class="bi bi-receipt me-1"></i>Payment Breakdown
+                            </label>
+                            <div id="paymentBreakdown" class="p-3 bg-light rounded border">
+                                <p class="text-muted small mb-0 text-center">No payments recorded yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Form Actions -->
+            <div class="d-flex justify-content-end gap-2 mt-4 mb-5">
+                <a href="@Url.Action("Index", "Audit")" class="btn btn-light rounded-pill px-4 border">Cancel</a>
+                <button type="submit" class="btn btn-primary rounded-pill px-5 shadow">
+                    <i class="bi bi-shield-check me-1"></i> Finalize Audit Details
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<style>
+    .audit-manage-header {
+        background: linear-gradient(135deg, #eff6ff 0%, #ffffff 100%);
+        border-bottom: 1px solid #dbeafe;
+    }
+    .section-card {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #f1f5f9;
+    }
+    .section-header {
+        padding: 1.25rem 1.5rem;
+        background: #f8fafc;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .section-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+    .border-left-primary { border-left: 5px solid #3b82f6 !important; }
+    .border-left-primary .section-header { background-color: #eff6ff; }
+    
+    .border-left-info { border-left: 5px solid #0ea5e9 !important; }
+    .border-left-info .section-header { background-color: #f0f9ff; }
+    
+    .border-left-warning { border-left: 5px solid #f59e0b !important; }
+    .border-left-warning .section-header { background-color: #fffbeb; }
+    
+    .border-left-success { border-left: 5px solid #10b981 !important; }
+    .border-left-success .section-header { background-color: #f0fdf4; }
+    
+    .border-left-danger { border-left: 5px solid #ef4444 !important; }
+    .border-left-danger .section-header { background-color: #fef2f2; }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+    }
+    .table-flush td, .table-flush th {
+        border-top: none;
+        padding: 0.75rem 0.5rem;
+    }
+</style>
+
+@section Scripts {
+    <script>
+    var auditSteps = [];
+    $(document).ready(function () {
+
+            let rowCount = $('#paymentsTable tbody tr:not(.empty-placeholder)').length;
+
+            const todayIso = new Date().toISOString().split('T')[0];
+
+            $('#btnAddPayment').click(function () {
+                $('.empty-placeholder').remove();
+                
+                const newRow = `
+                    <tr>
+                        <td class="ps-4">
+                            <input type="hidden" name="Payments[${rowCount}].PaymentID" value="0" />
+                            <input type="hidden" name="Payments[${rowCount}].EPID" value="@Model.EPID" />
+                            <input type="hidden" name="Payments[${rowCount}].PaymentDate" value="${todayIso}" class="payment-date-hidden" />
+                            <input type="number" step="0.01" name="Payments[${rowCount}].Amount" class="form-control form-control-sm payment-amount-input fw-semibold" placeholder="0.00" required />
+                        </td>
+                        <td>
+                            <input type="text" name="Payments[${rowCount}].ChequeNumber" class="form-control form-control-sm payment-cheque-input" placeholder="Cheque / DD / Ref No" />
+                        </td>
+                        <td>
+                            <input type="date" name="Payments[${rowCount}].ChequeDate" class="form-control form-control-sm payment-date-input" value="${todayIso}" />
+                        </td>
+                        <td>
+                            <input type="text" name="Payments[${rowCount}].Remarks" class="form-control form-control-sm payment-remarks-input" placeholder="Remarks / Purpose" />
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-outline-danger btn-sm border-0 remove-row" title="Delete Payment">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                
+                $('#paymentsTable tbody').append(newRow);
+                rowCount++;
+                calculateAudit();
+            });
+
+            $(document).on('change', 'input.payment-date-input', function () {
+                const val = $(this).val();
+                if (val) {
+                    $(this).closest('tr').find('input.payment-date-hidden').val(val);
+                }
+            });
+
+            $(document).on('click', '.remove-row', function () {
+                $(this).closest('tr').remove();
+                reindexRows();
+                calculateAudit();
+            });
+
+            function reindexRows() {
+                let idx = 0;
+                $('#paymentsTable tbody tr').each(function () {
+                    if ($(this).hasClass('empty-placeholder')) return;
+                    
+                    $(this).find('input, select, textarea').each(function () {
+                        const name = $(this).attr('name');
+                        if (name && name.indexOf('Payments[') !== -1) {
+                            $(this).attr('name', name.replace(/Payments\[\d+\]/, `Payments[${idx}]`));
+                        }
+                    });
+                    idx++;
+                });
+                rowCount = idx;
+
+                if (rowCount === 0) {
+                    $('#paymentsTable tbody').append(`
+                        <tr class="empty-placeholder">
+                            <td colspan="5" class="text-center py-4 text-muted fst-italic">
+                                No payment records added yet. Click "Add Payment" to begin.
+                            </td>
+                        </tr>
+                    `);
+                }
+            }
+
+            // Sync hidden inputs and sanitize on submit
+            $('#auditForm').on('submit', function () {
+                $('#paymentsTable tbody tr:not(.empty-placeholder)').each(function () {
+                    const amt = parseFloat($(this).find('input[name*="Amount"]').val()) || 0;
+                    if (amt <= 0) {
+                        $(this).remove();
+                    }
+                });
+                reindexRows();
+
+                const totalPaid = parseFloat($('#calcTotalPaid').val()) || 0;
+                $('#AmountPaid').val(totalPaid);
+
+                const balanceDue = parseFloat($('#calcBalanceDue').val()) || 0;
+                if (totalPaid > 0) {
+                    if (balanceDue <= 0.01) {
+                        $('#ComplianceStatus').val('Paid');
+                    } else {
+                        $('#ComplianceStatus').val('Partially Paid');
+                    }
+                } else {
+                    $('#ComplianceStatus').val('Pending');
+                }
+            });
+
+            // Audit Calculation Logic
+            function calculateAudit() {
+                auditSteps = []; // Reset steps
+
+                // Get input values
+                const awardAmount = parseFloat($('#AwardAmount').val()) || 0;
+                const interestRate = parseFloat($('#InterestRate').val()) || 0;
+                const liabilityPct = parseFloat($('#LiabilityPercentage').val()) || 100;
+                const petitionDate = $('#PetitionDate').val();
+                const realizationDate = $('#RealizationDate').val();
+                const calcMethod = $('#CalculationMethod').val(); // 'InterestDeduction' or 'PrincipalDeduction'
+
+                // Apply liability percentage to award amount
+                const adjustedAward = awardAmount * (liabilityPct / 100);
+
+                // Collect all payments from the table
+                let payments = [];
+                $('#paymentsTable tbody tr:not(.empty-placeholder)').each(function() {
+                    const amountInput = $(this).find('input[name*="Amount"]');
+                    const dateInput = $(this).find('input[name*="ChequeDate"]');
+                    const chequeInput = $(this).find('input[name*="ChequeNumber"]');
+
+                    let amount = parseFloat(amountInput.val()) || 0;
+                    let pDate = dateInput.val() ? new Date(dateInput.val()) : new Date();
+                    let chequeNo = chequeInput.val() || '';
+                    
+                    if (amount > 0) {
+                        payments.push({
+                            amount: amount,
+                            date: pDate,
+                            chequeNo: chequeNo
+                        });
+                    }
+                });
+
+                // Sort payments by date
+                payments.sort((a, b) => a.date - b.date);
+
+                // Reducing Balance Variables
+                let currentPrincipal = adjustedAward;
+                let balanceInterest = 0;
+                let totalPaid = 0;
+                let paymentBreakdownHtml = '';
+                
+                let lastDate = petitionDate ? new Date(petitionDate) : new Date();
+                const endDate = realizationDate ? new Date(realizationDate) : new Date();
+                
+                if (petitionDate) lastDate.setHours(12, 0, 0, 0);
+                endDate.setHours(12, 0, 0, 0);
+
+                const renderStep = (title, amount, desc, isNegative = false) => {
+                     const colorClass = isNegative ? "text-danger" : "text-success";
+                     const bgClass = isNegative ? "bg-danger-subtle" : "bg-white";
+                     const sign = isNegative ? "- " : "+ ";
+                     const totalDue = Math.max(0, currentPrincipal + balanceInterest);
+                     
+                     // Store for print
+                     auditSteps.push({
+                         title: title.replace(/<br>/g, ' '),
+                         desc: desc ? desc.replace(/<br>/g, ' ') : '',
+                         amount: (isNegative ? -1 : 1) * amount,
+                         totalDue: totalDue
+                     });
+
+                     return `
+                        <div class="p-2 ${bgClass} border-bottom">
+                            <div class="d-flex justify-content-between">
+                                <span class="text-muted small">
+                                    ${title}
+                                    ${desc ? `<br><small class="text-primary">${desc}</small>` : ''}
+                                </span>
+                                <span class="${colorClass} small fw-bold">${sign}₹ ${amount.toFixed(2)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mt-1 pt-1 border-top">
+                                <span class="fw-semibold small">Net Payable</span>
+                                <span class="fw-bold">₹ ${totalDue.toFixed(2)}</span>
+                            </div>
+                        </div>
+                     `;
+                };
+                
+                // --- Initial State ---
+                paymentBreakdownHtml += `
+                    <div class="p-2 bg-light border-bottom border-primary">
+                        <div class="d-flex justify-content-between">
+                            <span class="fw-semibold text-primary">Principal (After Liability)</span>
+                            <span class="fw-bold text-primary">₹ ${currentPrincipal.toFixed(2)}</span>
+                        </div>
+                        <div class="d-flex justify-content-between mt-1">
+                            <span class="text-muted small">Method</span>
+                            <span class="fw-bold small text-info">${calcMethod === 'PrincipalDeduction' ? 'Principal Deduction' : 'Interest Deduction'}</span>
+                        </div>
+                    </div>`;
+
+                // --- Process Payments ---
+                let isFirstPeriod = true;
+                payments.forEach((payment, index) => {
+                    const paymentDate = payment.date;
+                    paymentDate.setHours(12, 0, 0, 0);
+
+                    // 1. Calculate Interest
+                    if (currentPrincipal > 0) {
+                        const timeDiff = paymentDate - lastDate;
+                        const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+                        
+                        if (days > 0) {
+                            const interest = (currentPrincipal * interestRate * days) / (365 * 100);
+                            balanceInterest += interest;
+                            
+                            let displayFrom = new Date(lastDate);
+                            if (!isFirstPeriod) {
+                                displayFrom.setDate(displayFrom.getDate() + 1);
+                            }
+                            isFirstPeriod = false;
+
+                            paymentBreakdownHtml += renderStep(
+                                `Interest @@ ${interestRate}% on ₹ ${currentPrincipal.toFixed(2)}`, 
+                                interest, 
+                                `From: ${displayFrom.toLocaleDateString('en-IN')} To: ${paymentDate.toLocaleDateString('en-IN')} (${days} days)`
+                            );
+                        }
+                    }
+
+                    // 2. Apply Payment based on Method
+                    totalPaid += payment.amount;
+                    let remainingPayment = payment.amount;
+                    let interestPaid = 0;
+                    let principalPaid = 0;
+
+                    if (calcMethod === 'InterestDeduction') {
+                        // Strategy: Interest First, then Principal
+                        if (balanceInterest > 0) {
+                            interestPaid = Math.min(balanceInterest, remainingPayment);
+                            balanceInterest -= interestPaid;
+                            remainingPayment -= interestPaid;
+                        }
+                        if (remainingPayment > 0) {
+                            principalPaid = remainingPayment;
+                            currentPrincipal -= principalPaid;
+                        }
+                    } else {
+                        // Strategy: Principal Deduction (Principal First)
+                        // Payment clears Principal first. Accumulated interest remains unpaid until principal is cleared.
+                        if (currentPrincipal > 0) {
+                            principalPaid = Math.min(currentPrincipal, remainingPayment);
+                            currentPrincipal -= principalPaid;
+                            remainingPayment -= principalPaid;
+                        }
+                        // Remainder pays interest
+                        if (remainingPayment > 0 && balanceInterest > 0) {
+                            interestPaid = Math.min(balanceInterest, remainingPayment);
+                            balanceInterest -= interestPaid;
+                            remainingPayment -= interestPaid;
+                        }
+                    }
+
+                    paymentBreakdownHtml += renderStep(
+                        `Payment ${index + 1}${payment.chequeNo ? ' (Chq: ' + payment.chequeNo + ')' : ''}`, 
+                        payment.amount, 
+                        `Date: ${paymentDate.toLocaleDateString('en-IN')} <br> (Interest Adj: ₹${interestPaid.toFixed(2)}, Principal Adj: ₹${principalPaid.toFixed(2)})`, 
+                        true
+                    );
+                    
+                    lastDate = paymentDate;
+                });
+
+                // --- Final Period Calculation ---
+                if (currentPrincipal > 0) {
+                     const timeDiff = endDate - lastDate;
+                     const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+                     
+                     if (days > 0) {
+                        const interest = (currentPrincipal * interestRate * days) / (365 * 100);
+                        balanceInterest += interest;
+                        
+                        let displayFrom = new Date(lastDate);
+                        if (!isFirstPeriod) {
+                            displayFrom.setDate(displayFrom.getDate() + 1);
+                        }
+                        
+                        paymentBreakdownHtml += renderStep(
+                            `Interest @@ ${interestRate}% on ₹ ${currentPrincipal.toFixed(2)} ${realizationDate ? 'to Realization Date' : 'to date'}`, 
+                            interest, 
+                            `From: ${displayFrom.toLocaleDateString('en-IN')} To: ${endDate.toLocaleDateString('en-IN')} (${days} days)`
+                        );
+                     }
+                } else if (currentPrincipal <= 0 && balanceInterest <= 0) {
+                     paymentBreakdownHtml += `
+                        <div class="p-2 bg-success-subtle border-bottom">
+                            <div class="text-center">
+                                <span class="text-success fw-bold small">
+                                    <i class="bi bi-check-circle me-1"></i>Fully Paid
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                const finalTotalDue = Math.max(0, currentPrincipal + balanceInterest);
+                const finalInterestAccrued = (finalTotalDue + totalPaid) - adjustedAward;
+
+                // Update Summary Fields
+                $('#calcAwardAmount').val(adjustedAward.toFixed(2));
+                $('#calcInterestAmount').val(finalInterestAccrued.toFixed(2));
+                $('#calcLiabilityAmount').val(adjustedAward.toFixed(2));
+                $('#calcTotalDue').val((adjustedAward + finalInterestAccrued).toFixed(2));
+                $('#calcTotalPaid').val(totalPaid.toFixed(2));
+                $('#calcBalanceDue').val(finalTotalDue.toFixed(2));
+                
+                // Breakdown
+                $('#paymentBreakdown').html(paymentBreakdownHtml);
+            }
+
+            // Trigger calculation on input changes
+            $('#AwardAmount, #InterestRate, #LiabilityPercentage, #PetitionDate, #RealizationDate, #CalculationMethod').on('input change', calculateAudit);
+            
+            // Recalculate when payment amounts or dates change
+            $(document).on('input change', 'input[name*="Amount"], input[name*="ChequeDate"]', calculateAudit);
+
+            // Recalculate after adding/removing rows
+            $('#btnAddPayment').on('click', function() {
+                setTimeout(calculateAudit, 100);
+            });
+            $(document).on('click', '.remove-row', function() {
+                setTimeout(calculateAudit, 100);
+            });
+
+            // Initial calculation
+            calculateAudit();
+
+            // Print Calculation Function (moved inside ready for scope access)
+            window.printCalculation = function() {
+            console.log('printCalculation called, auditSteps length:', auditSteps.length);
+            const mvcNo = $('#ArisingFromMVCNo').val() || 'N/A';
+            const mact = $('#ArisingFromMACT option:selected').text() || 'N/A';
+            // For Manage view, assuming inputs exist with these IDs or Names. 
+            // Based on previous edits, they do exist.
+            const petitionDate = $('#PetitionDate').val() ? new Date($('#PetitionDate').val()).toLocaleDateString('en-IN') : 'N/A';
+            const realizationDate = $('#RealizationDate').val() ? new Date($('#RealizationDate').val()).toLocaleDateString('en-IN') : 'N/A';
+            const interestRate = $('#InterestRate').val() || '0';
+            const liabilityPct = $('#LiabilityPercentage').val() || '100';
+            const calcMethod = $('#CalculationMethod option:selected').text();
+            
+            let breakdownTableHtml = `
+                <table class="breakdown-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 50%;">Particulars / Period</th>
+                            <th style="text-align: right;">Amount (₹)</th>
+                            <th style="text-align: right;">Net Payable (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            if (auditSteps.length > 0) {
+                auditSteps.forEach(step => {
+                    const isCredit = step.amount < 0;
+                    breakdownTableHtml += `
+                        <tr>
+                            <td>
+                                <strong>${step.title}</strong><br>
+                                <small>${step.desc}</small>
+                            </td>
+                            <td style="text-align: right; color: ${isCredit ? '#dc3545' : '#198754'};">
+                                ${isCredit ? '-' : '+'} ₹${Math.abs(step.amount).toFixed(2)}
+                            </td>
+                            <td style="text-align: right; font-weight: bold;">
+                                ₹${step.totalDue.toFixed(2)}
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                breakdownTableHtml += '<tr><td colspan="3" style="text-align: center;">No calculation steps recorded.</td></tr>';
+            }
+            breakdownTableHtml += '</tbody></table>';
+
+            const printContent = `
+                <html>
+                <head>
+                    <title>Audit Calculation - ${mvcNo}</title>
+                    <style>
+                        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; color: #333; }
+                        .container { max-width: 800px; margin: 0 auto; }
+                        h2 { text-align: center; color: #2c3e50; margin-bottom: 5px; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }
+                        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 5px; }
+                        .meta-item { display: flex; flex-direction: column; }
+                        .meta-label { font-size: 0.85em; color: #666; font-weight: bold; text-transform: uppercase; }
+                        .meta-value { font-size: 1em; color: #000; font-weight: 500; }
+                        
+                        h4 { color: #2c3e50; margin-top: 25px; margin-bottom: 10px; border-left: 4px solid #0d6efd; padding-left: 10px; }
+                        
+                        table { width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 0.95em; }
+                        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #dee2e6; }
+                        th { background-color: #e9ecef; font-weight: 600; color: #495057; }
+                        td { color: #212529; }
+                        
+                        .summary-table td:last-child { text-align: right; font-family: Consolas, monospace; font-weight: 600; }
+                        .summary-table th:last-child { text-align: right; }
+                        .total-row { background-color: #e8f5e9; font-weight: bold; font-size: 1.05em; }
+                        
+                        .breakdown-container { border: none; }
+                        .breakdown-table { width: 100%; border: 1px solid #dee2e6; }
+                        .breakdown-table th { background-color: #f8f9fa; border: 1px solid #dee2e6; }
+                        .breakdown-table td { border: 1px solid #dee2e6; vertical-align: top; }
+                        
+                        /* Clean up breakdown HTML for print */
+                        .text-primary { color: #0d6efd; } 
+                        .text-success { color: #198754; }
+                        .text-danger { color: #dc3545; }
+                        .bg-light { background-color: #f8f9fa; }
+                        .bg-danger-subtle { background-color: #fff; }
+                        
+                        .footer { margin-top: 40px; text-align: center; font-size: 0.8em; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
+                        
+                        @@media print { 
+                            .no-print { display: none !important; } 
+                            body { font-size: 12pt; }
+                            .meta-grid { border: 1px solid #ccc; }
+                            h2 { border-bottom: 1px solid #000; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h2>Audit Calculation Report</h2>
+                        
+                        <div class="meta-grid">
+                            <div class="meta-item"><span class="meta-label">MVC Number</span><span class="meta-value">${mvcNo}</span></div>
+                            <div class="meta-item"><span class="meta-label">MACT Tribunal</span><span class="meta-value">${mact}</span></div>
+                            <div class="meta-item"><span class="meta-label">Petition Date</span><span class="meta-value">${petitionDate}</span></div>
+                            <div class="meta-item"><span class="meta-label">Realization Date</span><span class="meta-value">${realizationDate}</span></div>
+                            <div class="meta-item"><span class="meta-label">Rate of Interest</span><span class="meta-value">${interestRate}%</span></div>
+                            <div class="meta-item"><span class="meta-label">Liability</span><span class="meta-value">${liabilityPct}%</span></div>
+                            <div class="meta-item" style="grid-column: 1 / -1; border-top: 1px dashed #ccc; padding-top: 5px; margin-top: 5px;">
+                                <span class="meta-label">Calculation Strategy</span>
+                                <span class="meta-value">${calcMethod}</span>
+                            </div>
+                        </div>
+                        
+                        <h4>Financial Summary</h4>
+                        <table class="summary-table">
+                            <tr><th>Particulars</th><th>Amount (₹)</th></tr>
+                            <tr><td>Adjusted Award Amount (Liability Applied)</td><td>${$('#calcAwardAmount').val()}</td></tr>
+                            <tr><td>Total Interest Accrued</td><td>${$('#calcInterestAmount').val()}</td></tr>
+                            <tr class="total-row"><td>Total Amount Due</td><td>${$('#calcTotalDue').val()}</td></tr>
+                            <tr><td>Total Amount Paid</td><td>${$('#calcTotalPaid').val()}</td></tr>
+                            <tr class="total-row" style="color: #dc3545;"><td>Balance Due</td><td>${$('#calcBalanceDue').val()}</td></tr>
+                        </table>
+                        
+                        <h4>Detailed Calculation Breakdown</h4>
+                        <div class="breakdown-container">
+                            ${breakdownTableHtml}
+                        </div>
+                        
+                        <div class="footer">
+                            Generated on ${new Date().toLocaleString('en-IN')}
+                        </div>
+                        
+                        <div class="no-print" style="text-align: center; margin-top: 30px;">
+                            <button onclick="window.print()" style="padding: 10px 20px; cursor: pointer; background: #0d6efd; color: white; border: none; border-radius: 4px; font-size: 16px;">Print Report</button>
+                            <button onclick="window.close()" style="padding: 10px 20px; cursor: pointer; background: #6c757d; color: white; border: none; border-radius: 4px; font-size: 16px; margin-left: 10px;">Close</button>
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            const printWindow = window.open('', '_blank', 'width=900,height=800');
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+        };
+    });
+</script>
+}

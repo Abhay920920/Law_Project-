@@ -1,0 +1,305 @@
+@model MVCCaseManagement.Models.PettyBillViewModel
+@using MVCCaseManagement.Utils
+@{
+    Layout = null;
+    var amountInWords = NumberText.Convert(Model.NetPayable);
+}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MVC - Award Payment Bill Form</title>
+    <style>
+        @@page {
+            size: A4;
+            margin: 15mm 20mm;
+        }
+        
+        body {
+            font-family: 'Times New Roman', serif;
+            font-size: 12pt;
+            line-height: 1.4;
+            color: #000;
+            background: #fff;
+        }
+        
+        .header {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            font-size: 14pt;
+        }
+        
+        .sub-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 2px solid #000; /* Double line simulation? Image looks like single or underline */
+            padding-bottom: 5px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+
+        .bill-title {
+            text-align: center;
+            font-weight: bold;
+            font-size: 13pt;
+            margin: 15px 0;
+            text-decoration: underline;
+        }
+        
+        .case-info {
+            margin-bottom: 15px;
+            font-style: italic;
+        }
+
+        .case-info div {
+            margin-bottom: 5px;
+        }
+
+        .approval-line {
+            text-align: justify;
+            margin-bottom: 20px;
+        }
+
+        /* Financial Table Layout */
+        .calc-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12pt;
+        }
+
+        .calc-table td {
+            vertical-align: top;
+            padding: 2px 0;
+        }
+
+        .col-label {
+            width: 60%;
+        }
+        
+        .col-currency {
+            width: 10%;
+            text-align: right;
+            padding-right: 5px;
+        }
+
+        .col-amount {
+            width: 30%;
+            text-align: right;
+        }
+
+        .indent {
+            padding-left: 30px;
+        }
+
+        .double-underline {
+            border-bottom: 3px double #000;
+        }
+
+        .single-underline-top {
+            border-top: 1px solid #000;
+        }
+
+        .single-underline-bottom {
+            border-bottom: 1px solid #000;
+        }
+
+        .total-row td {
+            font-weight: bold;
+            padding-top: 5px;
+            padding-bottom: 5px;
+        }
+
+        .deduction-header {
+            margin-top: 10px;
+            font-weight: bold;
+            font-style: italic;
+        }
+
+        .signatures {
+            margin-top: 60px;
+            display: flex;
+            justify-content: space-between;
+            page-break-inside: avoid;
+        }
+
+        .sig-block {
+            text-align: center;
+            width: 250px;
+        }
+
+        @@media print {
+            button { display: none !important; }
+            body { margin: 0; }
+        }
+    </style>
+</head>
+<body>
+    <button onclick="window.print()" style="position: fixed; top: 10px; right: 10px; padding: 10px 20px;">Print</button>
+
+    <!-- Header -->
+    <div class="header">
+        N.W.K.R.T.C. @(Model.DivisionName?.ToUpper() ?? "HAVERI") DIVISION @(Model.DivisionName?.ToUpper() ?? "HAVERI")
+    </div>
+    <div class="sub-header">
+        <span>No: @(Model.FileRefNo ?? "NWKRT/______/LAW/")</span>
+        <span>Date. - @(Model.BillDate?.ToString("dd-MM-yyyy") ?? DateTime.Now.ToString("dd-MM-yyyy"))</span>
+    </div>
+
+    <div class="bill-title">
+        MVC - AWARD PAYMENT BILL FORM (@Model.AwardType.ToUpper())
+    </div>
+
+    <!-- Case Details -->
+    <div class="case-info">
+        <div>MFA No,@(Model.AppealNumber ?? "__________"), MVC No. @Model.MVCNo/@Model.MVCYear, MACT @(Model.MACTName ?? "__________").</div>
+        <div>Accident vehicle No. @(Model.VehicleNo ?? "__________") Date: @(Model.AccidentDate?.ToString("dd-MM-yyyy") ?? "__________").</div>
+        <div>Petitioner Name: <b>@(Model.PetitionerName ?? "____________________")</b> & Others.</div>
+    </div>
+
+    <!-- Approval Text -->
+    <div class="approval-line">
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;The above award approved for payment by competent authority
+        vide letter No.@(Model.ApprovalLetterNo ?? "____") dtd: @(Model.ApprovalDate?.ToString("dd-MM-yyyy") ?? "__-__-____")
+    </div>
+
+    <!-- Calculation Section -->
+    <table class="calc-table">
+        <!-- Receipt Side -->
+        @if (Model.AwardType == "High Court")
+        {
+            <tr>
+                <td class="col-label indent">Original Lower Court Award</td>
+                <td class="col-currency">Rs.</td>
+                <td class="col-amount">@Model.BaseAwardAmount.ToString("N0")/-</td>
+            </tr>
+            <tr>
+                <td class="col-label indent">Revised / Enhanced Amount</td>
+                <td class="col-currency">Rs.</td>
+                <td class="col-amount">@Model.EnhancedAmount.ToString("N0")/-</td>
+            </tr>
+        }
+        else
+        {
+            <tr>
+                <td class="col-label indent">Award Amount</td>
+                <td class="col-currency">Rs.</td>
+                <td class="col-amount">@Model.EnhancedAmount.ToString("N0")/-</td>
+            </tr>
+        }
+        <tr>
+            <td class="col-label" colspan="3"><b>Add: Interest @@ 6% w.e.f. -</b></td>
+        </tr>
+        
+        @{ int i = 1; }
+        @foreach (var entry in Model.InterestEntries)
+        {
+            <tr>
+                <td class="col-label indent">
+                    @i. @(entry.FromDate.ToString("dd-MM-yyyy")) to @(entry.ToDate.ToString("dd-MM-yyyy"))
+                </td>
+                <td class="col-currency">Rs.</td>
+                <td class="col-amount">@entry.Amount.ToString("N0")/-</td>
+            </tr>
+            i++;
+        }
+
+        <tr>
+            <td class="col-label indent">Court cost</td>
+            <td class="col-currency">Rs.</td>
+            <td class="col-amount single-underline-bottom">@Model.CourtCost.ToString("N0")/-</td>
+        </tr>
+
+        <tr class="total-row">
+            <td class="col-label text-center" style="text-align: center; font-style: italic;">Net Payable</td>
+            <td class="col-currency single-underline-bottom">Rs.</td>
+            <td class="col-amount single-underline-bottom">@Model.GrossPayable.ToString("N0")/-</td>
+        </tr>
+
+        <!-- Deduction Side -->
+         <tr>
+             <td class="col-label" colspan="3" style="padding-top: 10px;"><b>Less:</b></td>
+         </tr>
+
+         @{ int j = 1; }
+         @foreach (var payment in Model.PreviousPayments.Where(p => p.IsSelected))
+         {
+             <tr>
+                 <td class="col-label indent">
+                     @j. Chq No.@payment.ChequeNumber dtd. @payment.ChequeDate?.ToString("dd-MM-yyyy")
+                 </td>
+                 <td class="col-currency">Rs.</td>
+                 <td class="col-amount">@payment.Amount.ToString("N0")/-</td>
+             </tr>
+             j++;
+         }
+         
+         @if (Model.TDSAmount > 0)
+         {
+             <tr>
+                 <td class="col-label indent">TDS @(Model.TDSPercentage)%</td>
+                 <td class="col-currency">Rs.</td>
+                 <td class="col-amount">@Model.TDSAmount.ToString("N0")/-</td>
+             </tr>
+         }
+
+         <tr class="total-row">
+            <td class="col-label text-right" style="text-align: left; padding-left: 30px; font-style: italic;">
+                Less already part paid Amount
+            </td>
+            <td class="col-currency single-underline-top single-underline-bottom">Rs.</td>
+            <td class="col-amount single-underline-top single-underline-bottom">@Model.TotalDeductions.ToString("N0")/-</td>
+        </tr>
+    </table>
+
+    <!-- Final Net Amount is implied or usually shown as Balance. 
+         The image cut off, but standard bills show Net/Balance.
+         If 'Net Payable' at top is Gross, then we need a final Balance line.
+         The image showed a footer 'Less already part paid Amount' and a big total.
+         I will add "Balance Payable" to be safe and clear.
+    -->
+    <div style="margin-top: 10px; margin-bottom: 20px; font-weight: bold; font-size: 14pt; padding-left: 100px;">
+        <span style="float:left;">Balance Payable</span>
+        <span style="float:right; text-decoration: underline;">Rs. @Model.NetPayable.ToString("N0")/-</span>
+        <div style="clear:both;"></div>
+    </div>
+
+    <!-- Words -->
+    <div style="margin-bottom: 20px;">
+        (In words <b>@amountInWords</b>)
+    </div>
+
+    <div style="margin-bottom: 15px;">
+        The expenditure incurred is in the interest of the corporation.
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+        <b>Issue Cheque in favour of Senior Civil Judge & AMACT @(Model.MACTName ?? "Ranebennur").</b>
+    </div>
+    
+    <div style="margin-bottom: 15px;">
+        <b>Sanctioned for payment of Rs. @Model.NetPayable.ToString("N0")/-</b>
+    </div>
+
+    <!-- Signatures -->
+    <div class="signatures">
+        <div class="sig-block">
+            Law Officer<br>
+            NWKRTC @(Model.DivisionName) Division<br>
+            @(Model.DivisionName)
+        </div>
+        <div class="sig-block">
+            Divisional Controller<br>
+            NWKRTC @(Model.DivisionName) Division<br>
+            @(Model.DivisionName)<br>
+            <i>(Sanctioning authority)</i>
+        </div>
+    </div>
+    
+    <div style="margin-top: 30px;">
+        <b>Encl:</b> Approval of CLO letter.
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,87 @@
+@model MVCCaseManagement.Models.LabourCase
+@{
+    ViewData["Title"] = "Interim Stay Compliance";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm overflow-hidden">
+                <div class="card-header bg-success text-white py-3">
+                    <h5 class="mb-0"><i class="bi bi-check-circle-fill me-2"></i>Interim Stay Compliance</h5>
+                </div>
+                <div class="card-body p-4">
+                    <div class="alert alert-info border-0 shadow-sm mb-4">
+                        <div class="d-flex">
+                            <i class="bi bi-info-circle-fill fs-4 me-3"></i>
+                            <div>
+                                <h6 class="fw-bold mb-1">Case Details</h6>
+                                <p class="mb-0 small">
+                                    Case No: <strong>@Model.CaseNumber/@Model.CaseYear</strong> | 
+                                    Petitioner: <strong>@Model.PetitionerName</strong>
+                                </p>
+                            </div>
+                        </div>
+                                        </div>
+
+<form asp-action="StayCompliance" method="post" enctype="multipart/form-data">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" asp-for="CaseID" />
+
+                        <div class="row">
+                            <div class="col-md-6 mb-4">
+                                <label class="form-label fw-bold">Compliance Due Date</label>
+                                <input type="date" asp-for="CO_StayComplianceDate" class="form-control" />
+                                <div class="form-text small">Final deadline for compliance.</div>
+                                <span asp-validation-for="CO_StayComplianceDate" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Compliance Remarks</label>
+                            <textarea asp-for="CO_StayComplianceRemark" class="form-control" rows="4" placeholder="Enter details about the stay compliance..."></textarea>
+                            <span asp-validation-for="CO_StayComplianceRemark" class="text-danger small"></span>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Upload Compliance Copy (PDF/Image)</label>
+                            <input type="file" asp-for="StayComplianceFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png" />
+                            <div class="form-text mt-2">Max file size: 5MB. Format: PDF, JPG, PNG</div>
+                            
+                            @if (!string.IsNullOrEmpty(Model.CO_StayComplianceFilePath))
+                            {
+                                <div class="mt-3 p-3 bg-light rounded border">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark-check fs-4 text-success me-2"></i>
+                                            <span class="small text-muted">Currently uploaded file exists</span>
+                                        </div>
+                                        <a href="@Model.CO_StayComplianceFilePath" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye me-1"></i> View Existing
+                                        </a>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <hr class="my-4 opacity-25">
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <a href="@Url.Action("CaseList", new { status = "InterimStayCompliance" })" class="btn btn-light px-4 border">
+                                <i class="bi bi-arrow-left me-1"></i> Back to List
+                            </a>
+                            <button type="submit" class="btn btn-success px-5 shadow-sm">
+                                <i class="bi bi-cloud-arrow-up me-1"></i> Submit Compliance
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}
