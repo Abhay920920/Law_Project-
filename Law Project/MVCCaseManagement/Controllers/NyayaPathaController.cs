@@ -289,6 +289,34 @@ namespace MVCCaseManagement.Controllers
             });
         }
 
+        [HttpGet]
+        public async Task<IActionResult> GetConversations(CancellationToken cancellationToken)
+        {
+            int userId = GetCurrentUserId();
+            var convs = await _auditService.GetConversationsByUserAsync(userId, top: 30, cancellationToken);
+            return Json(convs.Select(c => new
+            {
+                conversationId = c.ConversationID,
+                title = c.Title,
+                caseType = c.CaseType,
+                caseId = c.CaseID,
+                updatedAt = c.UpdatedAt.ToString("dd MMM yyyy, HH:mm"),
+                updatedDateShort = c.UpdatedAt.ToString("dd MMM")
+            }));
+        }
+
+        [HttpPost]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> RenameConversation(int id, string title, CancellationToken cancellationToken)
+        {
+            if (id <= 0 || string.IsNullOrWhiteSpace(title))
+                return Json(new { success = false, message = "Invalid parameters." });
+
+            int userId = GetCurrentUserId();
+            bool updated = await _auditService.UpdateConversationTitleAsync(id, userId, title, cancellationToken);
+            return Json(new { success = updated });
+        }
+
         [HttpPost]
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> DeleteConversation(int id, CancellationToken cancellationToken)
@@ -298,12 +326,16 @@ namespace MVCCaseManagement.Controllers
 
             int userId = GetCurrentUserId();
             bool deleted = await _auditService.DeleteConversationAsync(id, userId, cancellationToken);
-            if (deleted)
-            {
-                return Json(new { success = true });
-            }
+            return Json(new { success = deleted });
+        }
 
-            return Json(new { success = false, message = "Session not found or already deleted." });
+        [HttpPost]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> ClearAllConversations(CancellationToken cancellationToken)
+        {
+            int userId = GetCurrentUserId();
+            bool cleared = await _auditService.ClearAllConversationsAsync(userId, cancellationToken);
+            return Json(new { success = cleared });
         }
 
         [HttpPost]

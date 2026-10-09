@@ -678,36 +678,62 @@
 
                     <!-- Recent Sessions Panel -->
                     <div class="tab-pane fade" id="panel-sessions" role="tabpanel">
-                        <div id="sessionListContainer">
+                        <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                            <span class="fw-bold text-dark" style="font-size: 0.74rem;">
+                                <i class="bi bi-chat-left-quote text-primary me-1"></i>RESEARCH SESSIONS
+                            </span>
                             @if (conversations.Any())
                             {
-                                <div class="list-group list-group-flush">
-                                    @foreach (var c in conversations.Take(5))
-                                    {
-                                        <div class="list-group-item list-group-item-action border rounded-2 py-1.5 px-2 d-flex justify-content-between align-items-center session-item-container mb-1" id="session-item-@c.ConversationID" style="background-color: #f8fafc;">
-                                            <a href="javascript:void(0)" class="text-decoration-none text-dark flex-grow-1 overflow-hidden session-item" 
-                                               data-id="@c.ConversationID" data-casetype="@c.CaseType" data-caseid="@c.CaseID">
-                                                <div class="fw-semibold text-truncate" style="font-size: 0.74rem; max-width: 155px;">@c.Title</div>
-                                                <div class="d-flex align-items-center gap-1 mt-0.5">
-                                                    <span class="badge bg-white text-muted border px-1" style="font-size: 0.6rem;">@c.UpdatedAt.ToString("dd MMM")</span>
-                                                    @if (!string.IsNullOrEmpty(c.CaseType))
-                                                    {
-                                                        <span class="text-muted text-truncate" style="font-size: 0.65rem;">@c.CaseType #@c.CaseID</span>
-                                                    }
-                                                </div>
-                                            </a>
-                                            <button type="button" class="btn btn-sm btn-link text-danger p-0 ms-1 delete-session-btn" 
-                                                    data-id="@c.ConversationID" title="Delete session" style="opacity: 0.65;"
-                                                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">
-                                                <i class="bi bi-trash3" style="font-size: 0.75rem;"></i>
+                                <button type="button" class="btn btn-xs btn-link text-danger p-0 text-decoration-none" id="btnClearAllSessions" title="Clear all history" style="font-size: 0.65rem;">
+                                    <i class="bi bi-trash3 me-0.5"></i>Clear All
+                                </button>
+                            }
+                        </div>
+
+                        <!-- Search Filter for Sessions -->
+                        <div class="mb-2">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white border-end-0 py-0 text-muted" style="font-size: 0.7rem;"><i class="bi bi-search"></i></span>
+                                <input type="text" class="form-control border-start-0 py-0" id="sessionSearchFilter" placeholder="Filter sessions..." style="font-size: 0.7rem; height: 26px;">
+                            </div>
+                        </div>
+
+                        <div id="sessionListContainer" class="d-flex flex-column gap-1">
+                            @if (conversations.Any())
+                            {
+                                @foreach (var c in conversations)
+                                {
+                                    <div class="border rounded-2 p-1.5 d-flex justify-content-between align-items-center session-item-container transition-all" id="session-item-@c.ConversationID" style="background-color: #ffffff;">
+                                        <a href="javascript:void(0)" class="text-decoration-none text-dark flex-grow-1 overflow-hidden session-item me-1" 
+                                           data-id="@c.ConversationID" data-casetype="@c.CaseType" data-caseid="@c.CaseID">
+                                            <div class="fw-semibold text-truncate session-title-text" style="font-size: 0.74rem; max-width: 175px;">@c.Title</div>
+                                            <div class="d-flex align-items-center gap-1 mt-0.5">
+                                                <span class="badge bg-light text-muted border px-1 py-0.5" style="font-size: 0.58rem;">@c.UpdatedAt.ToString("dd MMM, HH:mm")</span>
+                                                @if (!string.IsNullOrEmpty(c.CaseType))
+                                                {
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0.5 text-truncate" style="font-size: 0.58rem; max-width: 100px;">@c.CaseType #@c.CaseID</span>
+                                                }
+                                            </div>
+                                        </a>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <button type="button" class="btn btn-sm btn-link text-muted p-0 rename-session-btn" 
+                                                    data-id="@c.ConversationID" data-title="@c.Title" title="Rename session" style="font-size: 0.7rem;">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-link text-danger p-0 delete-session-btn" 
+                                                    data-id="@c.ConversationID" title="Delete session" style="font-size: 0.72rem;">
+                                                <i class="bi bi-trash3"></i>
                                             </button>
                                         </div>
-                                    }
-                                </div>
+                                    </div>
+                                }
                             }
                             else
                             {
-                                <div class="text-center p-3 text-muted small" style="font-size: 0.72rem;">No prior sessions recorded.</div>
+                                <div class="text-center p-3 text-muted small" style="font-size: 0.72rem;" id="noSessionsNotice">
+                                    <i class="bi bi-chat-square-dots d-block fs-5 text-muted mb-1 opacity-50"></i>
+                                    No prior research sessions recorded.
+                                </div>
                             }
                         </div>
                     </div>
@@ -1166,10 +1192,14 @@
                 success: function (res) {
                     $(`#${thinkingId}`).remove();
                     if (res && res.success) {
+                        const isNewSession = (!payload.conversationId && res.conversationId > 0);
                         currentConversationId = res.conversationId;
                         appendMessage('assistant', res.reply, res.citations, res.model, res.executionTimeMs, res.sourcesSearched, res.conflicts, res.routeCategory, res.followUpContext);
                         if (res.citations && res.citations.length > 0) {
                             renderSourcesPanel({ citations: res.citations });
+                        }
+                        if (isNewSession) {
+                            refreshSessionsList();
                         }
                     } else {
                         const err = (res && res.errorMessage) ? res.errorMessage : 'Unable to process legal research query.';
@@ -2036,10 +2066,12 @@
         }
 
         // 6. New Session & Clear Chat
+        // 6. New Session & Clear Chat
         $('#btnNewChat, #btnClearChat').on('click', function () {
             currentConversationId = 0;
             activeCitationsList = [];
             displayFilteredSources('all');
+            $('.session-item-container').removeClass('border-primary bg-primary-subtle');
             $('#chatTranscript').empty().append($('#welcomeMessage').removeClass('d-none'));
             $('#userPromptInput').val('');
         });
@@ -2049,6 +2081,9 @@
             const convId = $(this).data('id');
             const cType = $(this).data('casetype');
             const cId = $(this).data('caseid');
+
+            $('.session-item-container').removeClass('border-primary bg-primary-subtle');
+            $(`#session-item-${convId}`).addClass('border-primary bg-primary-subtle');
 
             $.getJSON('/NyayaPatha/Conversation/' + convId, function (data) {
                 currentConversationId = data.conversationId;
@@ -2081,11 +2116,11 @@
                 data: { id: convId },
                 headers: { 'RequestVerificationToken': token },
                 success: function (res) {
-                    if (res.success) {
+                    if (res && res.success) {
                         $(`#session-item-${convId}`).fadeOut(200, function () {
                             $(this).remove();
                             if ($('.session-item-container').length === 0) {
-                                $('#sessionListContainer').html('<div class="text-center p-3 text-muted small" style="font-size: 0.72rem;">No prior sessions recorded.</div>');
+                                $('#sessionListContainer').html('<div class="text-center p-3 text-muted small" style="font-size: 0.72rem;" id="noSessionsNotice"><i class="bi bi-chat-square-dots d-block fs-5 text-muted mb-1 opacity-50"></i>No prior research sessions recorded.</div>');
                             }
                         });
                         if (currentConversationId === convId) {
@@ -2101,6 +2136,100 @@
                 }
             });
         });
+
+        // 9. Rename Session Handler
+        $(document).on('click', '.rename-session-btn', function (e) {
+            e.stopPropagation();
+            const convId = $(this).data('id');
+            const currentTitle = $(this).attr('data-title') || '';
+            const newTitle = prompt('Enter new session title:', currentTitle);
+            if (!newTitle || newTitle.trim() === '' || newTitle === currentTitle) return;
+
+            $.ajax({
+                url: '/NyayaPatha/RenameConversation',
+                type: 'POST',
+                data: { id: convId, title: newTitle.trim() },
+                headers: { 'RequestVerificationToken': token },
+                success: function (res) {
+                    if (res && res.success) {
+                        $(`#session-item-${convId} .session-title-text`).text(newTitle.trim());
+                        $(`#session-item-${convId} .rename-session-btn`).attr('data-title', newTitle.trim());
+                    } else {
+                        alert('Could not rename session.');
+                    }
+                }
+            });
+        });
+
+        // 10. Clear All Sessions Handler
+        $('#btnClearAllSessions').on('click', function () {
+            if (!confirm('Are you sure you want to clear all research session history?')) return;
+
+            $.ajax({
+                url: '/NyayaPatha/ClearAllConversations',
+                type: 'POST',
+                headers: { 'RequestVerificationToken': token },
+                success: function (res) {
+                    if (res && res.success) {
+                        $('#sessionListContainer').html('<div class="text-center p-3 text-muted small" style="font-size: 0.72rem;" id="noSessionsNotice"><i class="bi bi-chat-square-dots d-block fs-5 text-muted mb-1 opacity-50"></i>No prior research sessions recorded.</div>');
+                        $('#btnClearAllSessions').remove();
+                        currentConversationId = 0;
+                        $('#chatTranscript').empty().append($('#welcomeMessage').removeClass('d-none'));
+                    } else {
+                        alert('Could not clear sessions.');
+                    }
+                }
+            });
+        });
+
+        // 11. Real-time Session Search Filter
+        $('#sessionSearchFilter').on('input', function () {
+            const query = $(this).val().toLowerCase().trim();
+            $('.session-item-container').each(function () {
+                const title = $(this).find('.session-title-text').text().toLowerCase();
+                const badge = $(this).find('.badge').text().toLowerCase();
+                if (title.includes(query) || badge.includes(query)) {
+                    $(this).removeClass('d-none');
+                } else {
+                    $(this).addClass('d-none');
+                }
+            });
+        });
+
+        // 12. Dynamic Session List Refresh
+        function refreshSessionsList() {
+            $.getJSON('/NyayaPatha/GetConversations', function (data) {
+                if (data && data.length > 0) {
+                    let html = '';
+                    data.forEach(function (c) {
+                        const isActive = c.conversationId === currentConversationId ? 'border-primary bg-primary-subtle' : '';
+                        html += `
+                            <div class="border rounded-2 p-1.5 d-flex justify-content-between align-items-center session-item-container transition-all ${isActive}" id="session-item-${c.conversationId}" style="background-color: #ffffff;">
+                                <a href="javascript:void(0)" class="text-decoration-none text-dark flex-grow-1 overflow-hidden session-item me-1" 
+                                   data-id="${c.conversationId}" data-casetype="${c.caseType || ''}" data-caseid="${c.caseId || ''}">
+                                    <div class="fw-semibold text-truncate session-title-text" style="font-size: 0.74rem; max-width: 175px;">${escapeHtml(c.title)}</div>
+                                    <div class="d-flex align-items-center gap-1 mt-0.5">
+                                        <span class="badge bg-light text-muted border px-1 py-0.5" style="font-size: 0.58rem;">${c.updatedDateShort || ''}</span>
+                                        ${c.caseType ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0.5 text-truncate" style="font-size: 0.58rem; max-width: 100px;">${c.caseType} #${c.caseId}</span>` : ''}
+                                    </div>
+                                </a>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button type="button" class="btn btn-sm btn-link text-muted p-0 rename-session-btn" 
+                                            data-id="${c.conversationId}" data-title="${escapeHtmlAttr(c.title)}" title="Rename session" style="font-size: 0.7rem;">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-link text-danger p-0 delete-session-btn" 
+                                            data-id="${c.conversationId}" title="Delete session" style="font-size: 0.72rem;">
+                                        <i class="bi bi-trash3"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    $('#sessionListContainer').html(html);
+                }
+            });
+        }
 
         // Auto-load initial dossier if passed from Case Details
         if (activeCaseId > 0 && activeCaseType) {

@@ -266,5 +266,59 @@ namespace MVCCaseManagement.Services.AI
                 return false;
             }
         }
+
+        public async Task<bool> UpdateConversationTitleAsync(int conversationId, int userId, string newTitle, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(newTitle)) return false;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    UPDATE AI_CONVERSATIONS 
+                    SET Title = @Title, UpdatedAt = GETDATE()
+                    WHERE ConversationID = @ConversationID AND UserID = @UserID AND IsActive = 1";
+
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@ConversationID", conversationId);
+                cmd.Parameters.AddWithValue("@UserID", userId);
+                cmd.Parameters.AddWithValue("@Title", newTitle.Trim().Length > 100 ? newTitle.Trim().Substring(0, 100) : newTitle.Trim());
+
+                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rows > 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating AI conversation title for {ConversationID}", conversationId);
+                return false;
+            }
+        }
+
+        public async Task<bool> ClearAllConversationsAsync(int userId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    UPDATE AI_CONVERSATIONS 
+                    SET IsActive = 0, UpdatedAt = GETDATE()
+                    WHERE UserID = @UserID AND IsActive = 1";
+
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@UserID", userId);
+
+                int rows = await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return rows >= 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing AI conversations for user {UserID}", userId);
+                return false;
+            }
+        }
     }
 }

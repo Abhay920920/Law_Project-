@@ -20,5 +20,9 @@ namespace MVCCaseManagement.Services.AI
         Task<List<AIMessage>> GetMessagesByConversationIdAsync(int conversationId, CancellationToken cancellationToken = default);
 
         Task<bool> DeleteConversationAsync(int conversationId, int userId, CancellationToken cancellationToken = default);
+
+        Task<bool> UpdateConversationTitleAsync(int conversationId, int userId, string newTitle, CancellationToken cancellationToken = default);
+
+        Task<bool> ClearAllConversationsAsync(int userId, CancellationToken cancellationToken = default);
     }
 }
