@@ -138,6 +138,11 @@ namespace MVCCaseManagement.Services.AI
                                 string judge = h.TryGetProperty("judge_name", out var jn) ? (jn.GetString() ?? "") : "";
                                 string order = h.TryGetProperty("business", out var bsn) ? (bsn.GetString() ?? "") : "Hearing listed";
 
+                                if (string.IsNullOrWhiteSpace(summary.CourtHall) && !string.IsNullOrWhiteSpace(hall))
+                                {
+                                    summary.CourtHall = hall;
+                                }
+
                                 if (eventDate != DateTime.MinValue || !string.IsNullOrWhiteSpace(stage))
                                 {
                                     summary.History.Add(new ECourtsHistoryItemDto

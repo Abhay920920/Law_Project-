@@ -1004,16 +1004,16 @@ namespace MVCCaseManagement.Services.AI
                 sb.AppendLine($"| **CNR Number** | {(string.IsNullOrWhiteSpace(dossier.CNRNumber) || dossier.CNRNumber == "None" ? "⚠️ Not Linked" : "Verified") } | **`{(!string.IsNullOrWhiteSpace(dossier.CNRNumber) && dossier.CNRNumber != "None" ? dossier.CNRNumber : "Not Recorded in Database")}`** |");
                 sb.AppendLine($"| **Court / Forum** | Official MACT | {dossier.CourtName} |");
 
-                string courtHall = dossier.ECourtsSummary?.CourtHall ?? (dossier.StructuredFacts.TryGetValue("Court Hall", out var ch) ? ch : "Not specified");
-                if (courtHall != "Not specified")
-                {
-                    sb.AppendLine($"| **Court Hall / Room** | Presiding Court | **{courtHall}** |");
-                }
-
                 string judgeName = dossier.ECourtsSummary?.JudgeName ?? (dossier.StructuredFacts.TryGetValue("Judge Name", out var jn) ? jn : "Not specified");
                 if (judgeName != "Not specified")
                 {
                     sb.AppendLine($"| **Presiding Coram / Judge** | Judicial Officer | {judgeName} |");
+                }
+
+                string courtHall = dossier.ECourtsSummary?.CourtHall ?? (dossier.StructuredFacts.TryGetValue("Court Hall", out var ch) ? ch : "Not specified");
+                if (courtHall != "Not specified" && !string.Equals(courtHall.Trim(), judgeName.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.AppendLine($"| **Court Hall / Room** | Presiding Court | **{courtHall}** |");
                 }
 
                 string stage = dossier.ECourtsSummary?.CurrentStage ?? dossier.CurrentStage;
