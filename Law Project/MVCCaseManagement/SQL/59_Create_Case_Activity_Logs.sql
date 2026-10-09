@@ -52,3 +52,69 @@ BEGIN
     PRINT 'Table [dbo].[CASE_ACTIVITY_LOGS] already exists.';
 END
 GO
+
+-- Seed Baseline Activity History if empty
+IF (SELECT COUNT(*) FROM [dbo].[CASE_ACTIVITY_LOGS]) = 0
+BEGIN
+    PRINT 'Seeding baseline historical activity from existing MVC and Labour cases...';
+    
+    INSERT INTO [dbo].[CASE_ACTIVITY_LOGS] (
+        [Timestamp], [UserID], [Username], [UserFullName], [UserRole],
+        [DivisionID], [DivisionName], [IpAddress], [Module], [CaseID],
+        [CaseNumber], [VehicleNo], [CourtName], [ActionType], [ActionSummary],
+        [ChangedFieldsSummary]
+    )
+    SELECT TOP 150
+        COALESCE(c.UpdatedAt, c.CreatedAt, c.AccidentDate, GETDATE()) AS [Timestamp],
+        c.ModifiedBy AS [UserID],
+        COALESCE(u.Username, 'law_div_user') AS [Username],
+        COALESCE(u.FullName, 'Division Legal Officer') AS [UserFullName],
+        'Division User' AS [UserRole],
+        c.DivisionID,
+        d.DivisionNameEnglish AS [DivisionName],
+        '127.0.0.1' AS [IpAddress],
+        'MVC' AS [Module],
+        c.CaseID,
+        CONCAT('MVC ', c.MVCNo, '/', c.MVCYear) AS [CaseNumber],
+        c.VehicleNo,
+        COALESCE(c.CourtHall, m.MACTName, 'MACT Court') AS [CourtName],
+        'CREATED' AS [ActionType],
+        CONCAT('Case registered: MVC No. ', c.MVCNo, '/', c.MVCYear, ' (Vehicle: ', ISNULL(c.VehicleNo, 'N/A'), ', Stage: ', ISNULL(c.CurrentStage, 'Pending'), ')') AS [ActionSummary],
+        'Initial Case Registration' AS [ChangedFieldsSummary]
+    FROM MVC_CASES c
+    LEFT JOIN USERS u ON c.ModifiedBy = u.UserID
+    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
+    LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
+    ORDER BY c.CaseID DESC;
+
+    INSERT INTO [dbo].[CASE_ACTIVITY_LOGS] (
+        [Timestamp], [UserID], [Username], [UserFullName], [UserRole],
+        [DivisionID], [DivisionName], [IpAddress], [Module], [CaseID],
+        [CaseNumber], [VehicleNo], [CourtName], [ActionType], [ActionSummary],
+        [ChangedFieldsSummary]
+    )
+    SELECT TOP 150
+        COALESCE(l.ModifiedDate, l.CreatedDate, GETDATE()) AS [Timestamp],
+        l.CreatedBy AS [UserID],
+        COALESCE(u.Username, 'labour_user') AS [Username],
+        COALESCE(u.FullName, 'Labour Section In-Charge') AS [UserFullName],
+        'Division User' AS [UserRole],
+        l.DivisionID,
+        d.DivisionNameEnglish AS [DivisionName],
+        '127.0.0.1' AS [IpAddress],
+        'LABOUR' AS [Module],
+        l.CaseID,
+        l.CaseNumber,
+        NULL AS [VehicleNo],
+        COALESCE(l.OtherCourtDetails, 'Labour Court') AS [CourtName],
+        'CREATED' AS [ActionType],
+        CONCAT('Labour case registered: ', l.CaseNumber, ' (Petitioner: ', ISNULL(l.PetitionerName, 'Workman'), ', Stage: ', ISNULL(l.CurrentStage, 'Pending'), ')') AS [ActionSummary],
+        'Initial Case Registration' AS [ChangedFieldsSummary]
+    FROM LABOUR_CASES l
+    LEFT JOIN USERS u ON l.CreatedBy = u.UserID
+    LEFT JOIN DIVISION_MASTER d ON l.DivisionID = d.DivisionID
+    ORDER BY l.CaseID DESC;
+
+    PRINT 'Baseline historical activity seeded successfully.';
+END
+GO
