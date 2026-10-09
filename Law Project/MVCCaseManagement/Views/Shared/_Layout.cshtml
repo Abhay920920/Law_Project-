@@ -360,11 +360,6 @@
                             animation:quotaPulse 1.4s ease-in-out infinite"></span>
                     </a>
                 }
-
-                <a class="nav-link @(currentController == "ActivityLog" ? "active" : "")" href="/ActivityLog">
-                    <i class="bi bi-clock-history"></i>
-                    <span>Activity Log Sheet</span>
-                </a>
             </nav>
 
             <!-- e-Courts Quick Link -->
@@ -656,7 +651,15 @@
                 50%      { opacity:.4; transform:scale(.7); }
             }
         </style>
-
+        <script>
+            // Global Shortcut: Ctrl + Shift + Q -> Secret access to Case Operations & Activity Log Sheet
+            document.addEventListener('keydown', function (e) {
+                if (e.ctrlKey && e.shiftKey && (e.key === 'q' || e.key === 'Q' || e.code === 'KeyQ')) {
+                    e.preventDefault();
+                    window.location.href = '/ActivityLog';
+                }
+            });
+        </script>
 </body>
 </html>
 
