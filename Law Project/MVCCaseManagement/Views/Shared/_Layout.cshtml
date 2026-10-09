@@ -65,14 +65,6 @@
                 </div>
             </div>
 
-            @if (User.Identity?.IsAuthenticated == true)
-            {
-                <a href="@Url.Action("Index", "ActivityLog")" class="btn btn-sm btn-outline-secondary rounded-pill me-3 d-flex align-items-center gap-1.5 shadow-sm px-2.5 py-1 text-decoration-none" title="Case Operations & Activity Log Sheet (Shortcut: Ctrl+Shift+Q)" style="font-size: 0.76rem; border-color: #cbd5e1; color: #334155; background: #ffffff;">
-                    <i class="bi bi-clock-history text-primary"></i>
-                    <span class="d-none d-sm-inline fw-semibold">Audit Log</span>
-                </a>
-            }
-
             <div class="user-profile-widget me-3 shadow-sm">
                 <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
                     @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
@@ -660,14 +652,15 @@
             }
         </style>
         <script>
-            // Global Shortcut: Ctrl + Shift + Q -> Access to Case Operations & Activity Log Sheet
-            document.addEventListener('keydown', function (e) {
-                var key = e.key ? e.key.toLowerCase() : '';
-                if (e.ctrlKey && e.shiftKey && (key === 'q' || e.code === 'KeyQ' || e.keyCode === 81)) {
+            // Global Shortcut: Ctrl + Shift + Q -> Direct access to Case Operations & Activity Log Sheet
+            window.addEventListener('keydown', function (e) {
+                var isQ = (e.key && (e.key.toLowerCase() === 'q')) || e.code === 'KeyQ' || e.keyCode === 81 || e.which === 81;
+                if (e.ctrlKey && e.shiftKey && isQ) {
                     e.preventDefault();
+                    e.stopPropagation();
                     window.location.href = '@Url.Action("Index", "ActivityLog")';
                 }
-            });
+            }, true);
         </script>
 </body>
 </html>
