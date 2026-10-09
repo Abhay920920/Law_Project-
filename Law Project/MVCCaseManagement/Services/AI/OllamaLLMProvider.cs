@@ -93,9 +93,11 @@ namespace MVCCaseManagement.Services.AI
                     stream = false,
                     options = new
                     {
-                        temperature = request.Temperature,
-                        num_predict = request.MaxTokens > 0 ? request.MaxTokens : 2048,
-                        num_ctx = 8192  // Increased from 4096 to handle large legal analysis prompts
+                        temperature = request.Temperature > 0 ? request.Temperature : 0.2,
+                        num_predict = request.MaxTokens > 0 ? request.MaxTokens : 1024,
+                        num_ctx = 4096,  // Optimized from 8192 to accelerate prompt prefill and reduce RAM/VRAM load
+                        top_p = 0.9,
+                        repeat_penalty = 1.1
                     }
                 };
 

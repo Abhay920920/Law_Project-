@@ -517,136 +517,108 @@ Cite all applicable statutory provisions and legal authorities relevant to this 
             var sb = new StringBuilder();
 
             // 1. <verified_facts>
-            sb.AppendLine("<verified_facts>");
             if (pack.VerifiedFacts != null && pack.VerifiedFacts.Count > 0)
             {
+                sb.AppendLine("<verified_facts>");
                 foreach (var kvp in pack.VerifiedFacts)
                 {
                     sb.AppendLine($"  <fact name=\"{EscapeXml(kvp.Key)}\">{EscapeXml(kvp.Value)}</fact>");
                 }
+                sb.AppendLine("</verified_facts>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No structured database facts populated]");
-            }
-            sb.AppendLine("</verified_facts>");
-            sb.AppendLine();
 
             // 2. <internal_records>
-            sb.AppendLine("<internal_records>");
             var internalChunks = pack.Chunks?.Where(c => c.AuthorityLevel == SourceAuthorityLevel.NWKRTCDatabase || c.AuthorityLevel == SourceAuthorityLevel.NWKRTCCaseNoting).ToList() ?? new();
             if (internalChunks.Count > 0)
             {
+                sb.AppendLine("<internal_records>");
                 foreach (var c in internalChunks.Take(8))
                 {
                     sb.AppendLine($"  <record id=\"{EscapeXml(c.DocumentId)}\" type=\"{EscapeXml(c.DocumentType)}\" date=\"{c.EventDate:yyyy-MM-dd}\">");
                     sb.AppendLine($"    {EscapeXml(c.Content)}");
                     sb.AppendLine("  </record>");
                 }
+                sb.AppendLine("</internal_records>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No internal register records retrieved]");
-            }
-            sb.AppendLine("</internal_records>");
-            sb.AppendLine();
 
             // 3. <documents>
-            sb.AppendLine("<documents>");
             var docChunks = pack.Chunks?.Where(c => c.DocumentType == "Petition" || c.DocumentType == "Award" || c.DocumentType == "Order" || c.DocumentType == "FIR" || c.DocumentType == "Exhibit").ToList() ?? new();
             if (docChunks.Count > 0)
             {
+                sb.AppendLine("<documents>");
                 foreach (var d in docChunks.Take(8))
                 {
                     sb.AppendLine($"  <document name=\"{EscapeXml(d.DocumentName)}\" page=\"{d.PageNumber}\" section=\"{EscapeXml(d.SectionOrProvision)}\">");
                     sb.AppendLine($"    {EscapeXml(d.Content)}");
                     sb.AppendLine("  </document>");
                 }
+                sb.AppendLine("</documents>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No uploaded case documents or exhibits retrieved]");
-            }
-            sb.AppendLine("</documents>");
-            sb.AppendLine();
 
             // 4. <ecourts_records>
-            sb.AppendLine("<ecourts_records>");
             var ecourtsChunks = pack.Chunks?.Where(c => c.AuthorityLevel == SourceAuthorityLevel.OfficialECourts).ToList() ?? new();
             if (ecourtsChunks.Count > 0)
             {
+                sb.AppendLine("<ecourts_records>");
                 foreach (var ec in ecourtsChunks.Take(6))
                 {
                     sb.AppendLine($"  <court_order court=\"{EscapeXml(ec.Court)}\" date=\"{ec.EventDate:yyyy-MM-dd}\">");
                     sb.AppendLine($"    {EscapeXml(ec.Content)}");
                     sb.AppendLine("  </court_order>");
                 }
+                sb.AppendLine("</ecourts_records>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No e-Courts NAPIX registry records retrieved]");
-            }
-            sb.AppendLine("</ecourts_records>");
-            sb.AppendLine();
 
             // 5. <statutes>
-            sb.AppendLine("<statutes>");
             if (pack.Plan?.StatutoryProvisions != null && pack.Plan.StatutoryProvisions.Count > 0)
             {
+                sb.AppendLine("<statutes>");
                 foreach (var stat in pack.Plan.StatutoryProvisions)
                 {
                     sb.AppendLine($"  <provision>{EscapeXml(stat)}</provision>");
                 }
+                sb.AppendLine("</statutes>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No specific statutory provisions extracted]");
-            }
-            sb.AppendLine("</statutes>");
-            sb.AppendLine();
 
             // 6. <precedents>
-            sb.AppendLine("<precedents>");
             var precChunks = pack.Chunks?.Where(c => c.AuthorityLevel == SourceAuthorityLevel.SupremeCourt || c.AuthorityLevel == SourceAuthorityLevel.HighCourt).ToList() ?? new();
             if (precChunks.Count > 0)
             {
+                sb.AppendLine("<precedents>");
                 foreach (var p in precChunks.Take(6))
                 {
                     sb.AppendLine($"  <precedent title=\"{EscapeXml(p.DocumentName)}\" court=\"{EscapeXml(p.Court)}\" authority=\"{p.AuthorityLevel}\">");
                     sb.AppendLine($"    {EscapeXml(p.Content)}");
                     sb.AppendLine("  </precedent>");
                 }
+                sb.AppendLine("</precedents>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No judicial precedents retrieved from repository]");
-            }
-            sb.AppendLine("</precedents>");
-            sb.AppendLine();
 
             // 7. <web_sources>
-            sb.AppendLine("<web_sources>");
             var webChunks = pack.Chunks?.Where(c => c.AuthorityLevel == SourceAuthorityLevel.SecondaryLegalWeb).ToList() ?? new();
             if (webChunks.Count > 0)
             {
+                sb.AppendLine("<web_sources>");
                 foreach (var w in webChunks.Take(5))
                 {
                     sb.AppendLine($"  <source title=\"{EscapeXml(w.DocumentName)}\" court=\"{EscapeXml(w.Court)}\">");
                     sb.AppendLine($"    {EscapeXml(w.Content)}");
                     sb.AppendLine("  </source>");
                 }
+                sb.AppendLine("</web_sources>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No external legal web sources retrieved]");
-            }
-            sb.AppendLine("</web_sources>");
-            sb.AppendLine();
 
             // 7b. <similar_cases>
-            sb.AppendLine("<similar_cases>");
             if (pack.SimilarCases != null && pack.SimilarCases.Count > 0)
             {
+                sb.AppendLine("<similar_cases>");
                 foreach (var sim in pack.SimilarCases)
                 {
                     sb.AppendLine($"  <case number=\"{EscapeXml(sim.CaseNumber)}\" court=\"{EscapeXml(sim.Court)}\" score=\"{sim.SimilarityScore}\">");
@@ -656,18 +628,14 @@ Cite all applicable statutory provisions and legal authorities relevant to this 
                     sb.AppendLine($"    <outcome>{EscapeXml(sim.OutcomeOrStage)}</outcome>");
                     sb.AppendLine("  </case>");
                 }
+                sb.AppendLine("</similar_cases>");
+                sb.AppendLine();
             }
-            else
-            {
-                sb.AppendLine("  [No similar cases found in NWKRTC repository matching current search criteria]");
-            }
-            sb.AppendLine("</similar_cases>");
-            sb.AppendLine();
 
             // 8. <conflicts>
-            sb.AppendLine("<conflicts>");
             if (pack.Conflicts != null && pack.Conflicts.Count > 0)
             {
+                sb.AppendLine("<conflicts>");
                 foreach (var conf in pack.Conflicts)
                 {
                     sb.AppendLine($"  <conflict field=\"{EscapeXml(conf.FieldName)}\" severity=\"{EscapeXml(conf.Severity)}\">");
@@ -677,6 +645,8 @@ Cite all applicable statutory provisions and legal authorities relevant to this 
                     sb.AppendLine($"    <recommended_action>{EscapeXml(conf.RecommendedAction)}</recommended_action>");
                     sb.AppendLine("  </conflict>");
                 }
+                sb.AppendLine("</conflicts>");
+                sb.AppendLine();
             }
             else
             {

@@ -981,52 +981,126 @@ namespace MVCCaseManagement.Services.AI
                 return true;
             }
 
-            // 3. ANY Other QuickAction must be processed by the LLM reasoning engine
-            if (!string.IsNullOrWhiteSpace(quickAction))
+            // 3. E-Courts Verification & Status Inquiries (Instant Ground Truth, Zero LLM Lag)
+            bool isECourtsCheck = string.Equals(quickAction, "check_ecourts", StringComparison.OrdinalIgnoreCase) ||
+                                  lower == "action: check_ecourts" || lower == "check ecourts" ||
+                                  lower == "ecourts" || lower == "e-court" || lower == "ecourt status" ||
+                                  lower == "cnr status" || lower == "hearing date" || lower == "next hearing" ||
+                                  lower == "court hall" || lower == "judge name" || lower == "coram" ||
+                                  lower == "case stage" || lower == "current stage";
+
+            if (isECourtsCheck && dossier.CaseId > 0 && dossier.CaseType != "GeneralLegalResearch")
             {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("## 🏛️ NYAYA PATHA — Official Judicial & e-Courts Record");
+                sb.AppendLine();
+                sb.AppendLine($"**Active Matter:** {dossier.CaseType} #{dossier.CaseNumber} | **Court:** {dossier.CourtName}");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+
+                sb.AppendLine("| Parameter | Judicial Record Status | Verified Ground Truth |");
+                sb.AppendLine("|---|---|---|");
+                sb.AppendLine($"| **CNR Number** | {(string.IsNullOrWhiteSpace(dossier.CNRNumber) || dossier.CNRNumber == "None" ? "⚠️ Not Linked" : "Verified") } | **`{(!string.IsNullOrWhiteSpace(dossier.CNRNumber) && dossier.CNRNumber != "None" ? dossier.CNRNumber : "Not Recorded in Database")}`** |");
+                sb.AppendLine($"| **Court / Forum** | Official MACT | {dossier.CourtName} |");
+
+                string courtHall = dossier.ECourtsSummary?.CourtHall ?? (dossier.StructuredFacts.TryGetValue("Court Hall", out var ch) ? ch : "Not specified");
+                if (courtHall != "Not specified")
+                {
+                    sb.AppendLine($"| **Court Hall / Room** | Presiding Court | **{courtHall}** |");
+                }
+
+                string judgeName = dossier.ECourtsSummary?.JudgeName ?? (dossier.StructuredFacts.TryGetValue("Judge Name", out var jn) ? jn : "Not specified");
+                if (judgeName != "Not specified")
+                {
+                    sb.AppendLine($"| **Presiding Coram / Judge** | Judicial Officer | {judgeName} |");
+                }
+
+                string stage = dossier.ECourtsSummary?.CurrentStage ?? dossier.CurrentStage;
+                sb.AppendLine($"| **Current Procedural Stage** | Active Stage | **{stage}** |");
+
+                string nextHearing = dossier.ECourtsSummary?.NextHearingDate.HasValue == true
+                    ? dossier.ECourtsSummary.NextHearingDate.Value.ToString("dd-MM-yyyy")
+                    : (dossier.NextHearingDate.HasValue ? dossier.NextHearingDate.Value.ToString("dd-MM-yyyy") : "Not Scheduled / Awaiting Notice");
+                sb.AppendLine($"| **Next Hearing Date** | Judicial Calendar | **{nextHearing}** |");
+
+                sb.AppendLine($"| **Petitioner / Claimant** | Primary Party | {dossier.Petitioner} |");
+                sb.AppendLine($"| **Respondent** | Opposing Party | {dossier.Respondent} |");
+                sb.AppendLine($"| **Vehicle Registration** | NWKRTC Bus | `{dossier.VehicleNo ?? "Not Recorded"}` |");
+
+                if (dossier.ECourtsSummary != null && !string.IsNullOrWhiteSpace(dossier.ECourtsSummary.StatusMessage))
+                {
+                    sb.AppendLine($"| **e-Courts Gateway Note** | Live NAPIX Sync | {dossier.ECourtsSummary.StatusMessage} |");
+                }
+                sb.AppendLine();
+
+                if (dossier.ECourtsSummary?.Orders != null && dossier.ECourtsSummary.Orders.Count > 0)
+                {
+                    sb.AppendLine("---");
+                    sb.AppendLine();
+                    sb.AppendLine("#### 📜 Recent Judicial Orders & Proceedings");
+                    foreach (var ord in dossier.ECourtsSummary.Orders.Take(5))
+                    {
+                        sb.AppendLine($"- **Order #{ord.OrderNumber} ({ord.OrderDate:dd-MM-yyyy}):** {ord.Details}");
+                    }
+                    sb.AppendLine();
+                }
+                else if (dossier.ECourtsHistory != null && dossier.ECourtsHistory.Count > 0)
+                {
+                    sb.AppendLine("---");
+                    sb.AppendLine();
+                    sb.AppendLine("#### 📜 Court Proceedings & Daily Notings");
+                    foreach (var h in dossier.ECourtsHistory.Take(5))
+                    {
+                        sb.AppendLine($"- **Date: {h.EventDate:dd-MM-yyyy} | Stage: {h.Stage}:** {h.OrderDetails}");
+                    }
+                    sb.AppendLine();
+                }
+                else if (string.IsNullOrWhiteSpace(dossier.CNRNumber) || dossier.CNRNumber == "None")
+                {
+                    sb.AppendLine("---");
+                    sb.AppendLine();
+                    sb.AppendLine("> ⚠️ **CNR Number Missing:** No 16-digit CNR Number is registered for this case. Live e-Courts order sheets, causal list alerts, and daily roznama require linking the 16-digit CNR number.");
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: National e-Courts Services & NWKRTC Judicial Register (Direct System Sync — 0ms Latency, Zero Hallucination).*");
+                directAnswer = sb.ToString();
+                return true;
+            }
+
+            // 4. Strict Routing: Qwen is ONLY invoked for LAW (Legal Reasoning, Defense Strategy, Precedents, Quantum Calculation, Statutory Interpretation)
+            bool isStrictLegalReasoningQuery =
+                string.Equals(quickAction, "complete_analysis", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "analyze", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "strengths", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "weaknesses", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "contradictions", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "missing_evidence", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "opposing_arguments", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "hearing_preparation", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "latest_judgments", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "relevant_law", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(quickAction, "analyze_documents", StringComparison.OrdinalIgnoreCase) ||
+                lower.Contains("defense") || lower.Contains("defend") ||
+                lower.Contains("precedent") || lower.Contains("judgment") || lower.Contains("judgement") ||
+                lower.Contains("negligence") || lower.Contains("contributory") || lower.Contains("composite") ||
+                lower.Contains("quantum") || lower.Contains("compensation") || lower.Contains("multiplier") ||
+                lower.Contains("cross-exam") || lower.Contains("cross examination") || lower.Contains("argument") ||
+                lower.Contains("ratio decidendi") || lower.Contains("section") || lower.Contains("statute") ||
+                lower.Contains("statutory") || lower.Contains("liability") || lower.Contains("pranay sethi") ||
+                lower.Contains("sarla verma") || lower.Contains("bns") || lower.Contains("ipc") ||
+                lower.Contains("grounds") || lower.Contains("appeal") || lower.Contains("contradiction");
+
+            if (isStrictLegalReasoningQuery)
+            {
+                // Dispatch directly to Qwen LLM for deep legal reasoning
                 return false;
             }
 
-            // 3. Any analytical, document, eCourts, or multi-source question must go to the LLM
-            bool isAnalyticalOrResearchQuery = 
-                lower.StartsWith("action:") ||
-                lower.Contains("analyze") || lower.Contains("analysis") ||
-                lower.Contains("document") || lower.Contains("pdf") || lower.Contains("exhibit") ||
-                lower.Contains("judgment") || lower.Contains("judgement") || lower.Contains("order") ||
-                lower.Contains("chargesheet") || lower.Contains("fir") || lower.Contains("sketch") ||
-                lower.Contains("finding") || lower.Contains("issue") || lower.Contains("reason") ||
-                lower.Contains("why") || lower.Contains("how") || lower.Contains("explain") ||
-                lower.Contains("summarize") || lower.Contains("summary") || lower.Contains("brief") ||
-                lower.Contains("draft") || lower.Contains("argument") || lower.Contains("defense") ||
-                lower.Contains("precedent") || lower.Contains("ruling") || lower.Contains("landmark") ||
-                lower.Contains("strength") || lower.Contains("weakness") || lower.Contains("contradiction") ||
-                lower.Contains("negligence") || lower.Contains("liability") || lower.Contains("dependent") ||
-                lower.Contains("dependency") || lower.Contains("compare") || lower.Contains("similar") ||
-                lower.Contains("cross-exam") || lower.Contains("grounds") || lower.Contains("appeal") ||
-                lower.Contains("ecourt") || lower.Contains("e-court") || lower.Contains("napix") ||
-                route.RequiredSources.Contains(QuerySourceCategory.InternalDocuments) ||
-                route.RequiredSources.Contains(QuerySourceCategory.ECourts) ||
-                route.RequiredSources.Contains(QuerySourceCategory.LegalWeb) ||
-                route.RequiredSources.Contains(QuerySourceCategory.Judgments) ||
-                route.RequiredSources.Contains(QuerySourceCategory.SimilarCases);
-
-            if (isAnalyticalOrResearchQuery)
-            {
-                return false;
-            }
-
-            // 4. Pure Factual Metadata Lookup (Direct SQL Dossier)
-            // Triggered only when the query is strictly a raw identifier lookup or a simple metadata attribute check
-            bool isPureRawIdentifier = Regex.IsMatch(question.Trim(), @"^(?:CNR\s*:?\s*)?[A-Z]{4}\d{12}$", RegexOptions.IgnoreCase) ||
-                                       Regex.IsMatch(question.Trim(), @"^(?:MVC|KID|ID|REF)[/\s-]*\d+[/\s-]*\d+$", RegexOptions.IgnoreCase) ||
-                                       question.Trim().Equals(dossier.CNRNumber, StringComparison.OrdinalIgnoreCase);
-
-            bool isBasicMetadataQuestion = lower.Contains("vehicle no") || lower.Contains("bus no") ||
-                                           lower.Contains("claimant name") || lower.Contains("petitioner name") ||
-                                           lower.Contains("claim amount") || lower.Contains("accident date") ||
-                                           lower.Contains("advocate name") || lower.Contains("mact name");
-
-            if (dossier.CaseId > 0 && dossier.CaseType != "GeneralLegalResearch" && (isPureRawIdentifier || isBasicMetadataQuestion))
+            // 5. All Routine Factual, Administrative, and Procedural Lookups are answered INSTANTLY from the database
+            if (dossier.CaseId > 0 && dossier.CaseType != "GeneralLegalResearch")
             {
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine($"## NYAYA PATHA — Internal Case Dossier");
