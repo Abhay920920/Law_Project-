@@ -1,0 +1,784 @@
+@model IEnumerable<MVCCaseManagement.Models.LabourCase>
+@using MVCCaseManagement.Common
+@{
+    ViewData["Title"] = "Labour Case List";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    bool isCO = ViewBag.IsCentralOffice ?? false;
+    string curStatus = ViewBag.CurrentStatus?.ToString() ?? "";
+    bool isNoAction = string.Equals(curStatus, "NoActionTaken", StringComparison.OrdinalIgnoreCase);
+    bool isWritPetitionClaimant = string.Equals(curStatus, "WritPetitionClaimant", StringComparison.OrdinalIgnoreCase);
+    bool isPending = string.Equals(curStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+    bool isDivisionPending = !isCO && isPending;
+    bool showWaCol = !isNoAction && !isWritPetitionClaimant && !isDivisionPending;
+    bool showWpCol = !isNoAction && !isDivisionPending;
+    bool showECourtsCols = isDivisionPending;
+}
+
+<div class="container-fluid fade-in py-4">
+    <!-- Arising Application Registration Banner -->
+    @if (ViewBag.CurrentStatus == "ArisingApplication" && !isCO)
+    {
+        <div class="alert alert-warning border-0 shadow-sm mb-4" style="background: linear-gradient(135deg, #fff9e6 0%, #fffbeb 100%); border-left: 4px solid #f59e0b !important;">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <div class="bg-white p-2 rounded-circle me-3 shadow-sm text-warning">
+                        <i class="bi bi-layers-half fs-4"></i>
+                    </div>
+                    <div>
+                        <h6 class="alert-heading fw-bold mb-1 text-dark"><i class="bi bi-info-circle me-2"></i>Arising Application Registration</h6>
+                        <p class="mb-0 text-secondary small">
+                            To register a new Arising Application, go to <strong>New Registration</strong> and select <strong>"Arising Application"</strong> as the Case Type.
+                        </p>
+                    </div>
+                </div>
+                <a href="@Url.Action("Create", "Labour")" class="btn btn-warning text-dark shadow-sm rounded-pill px-4 fw-bold">
+                    <i class="bi bi-plus-circle-fill me-2"></i>New Registration
+                </a>
+            </div>
+        </div>
+    }
+
+    <!-- Filter Section -->
+    <div class="glass-filter-card mb-4 p-4">
+        <div class="row g-3">
+            <div class="col-lg-4 col-xl-4">
+                <form method="get" action="@Url.Action("CaseList", "Labour")">
+                    <input type="hidden" name="status" value="@ViewBag.CurrentStatus" />
+                    <label for="tableSearch" class="visually-hidden">Search Cases</label>
+                    <div class="input-group">
+                        <span class="input-group-text border-end-0 ps-3 text-primary border-2" style="border-radius: 6px 0 0 6px;"><i class="bi bi-search"></i></span>
+                        <input type="text" name="search" id="tableSearch" value="@ViewBag.CurrentSearch" class="form-control border-start-0 ps-2 py-2 search-input" style="border-radius: 0 6px 6px 0;" placeholder="Search Case No...">
+                        <button class="btn btn-primary ms-2 px-4 fw-bold shadow-sm" style="border-radius: 6px;" type="submit">Search</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-lg-8 col-xl-8">
+                <div class="d-flex align-items-start gap-3">
+                    <span class="text-secondary small fw-bold text-uppercase mt-2 flex-shrink-0"><i class="bi bi-filter-circle me-1 text-primary"></i>Status:</span>
+                    <div class="d-flex gap-2 flex-wrap flex-grow-1" id="statusFilterGroup">
+                        @if (!User.IsInRole("MD"))
+                        {
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "all" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "all" ? "active" : "")">All Cases</a>
+                        }
+                        @if (isCO)
+                        {
+                            string inboxStatus = "SentToCO";
+                            if (User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) inboxStatus = "PendingDecision";
+                            else if (User.IsInRole("MD")) inboxStatus = "PendingCompetentAuthority";
+
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = inboxStatus })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == inboxStatus ? "active" : "")">Inbox</a>
+                            @if (!User.IsInRole("MD") && !User.IsInRole("CLO") && !User.IsInRole("Dy CLO") && !User.IsInRole("DyCLO"))
+                            {
+                                <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "PendingDecision" })" 
+                                   class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingDecision" ? "active" : "")">Pending Decision</a>
+                            }
+                            @if (!User.IsInRole("MD"))
+                            {
+                                <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "PendingCompetentAuthority" })" 
+                                   class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "PendingCompetentAuthority" ? "active" : "")">Pending at CA</a>
+                            }
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "Reinstatement" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Reinstatement" ? "active" : "")">Reinstatement</a>
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "ArisingApplication" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "ArisingApplication" ? "active" : "")">Arising Application</a>
+                        }
+                        else
+                        {
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "SentToCO" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "SentToCO" ? "active" : "")">Sent to CO</a>
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "Pending" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Pending" ? "active" : "")">Pending</a>
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "InterimStayCompliance" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "InterimStayCompliance" ? "active" : "")">Stay Compliance</a>
+
+                            <a href="@Url.Action("CaseList", new { search = ViewBag.CurrentSearch, status = "Reinstatement" })" 
+                               class="btn btn-sm px-3 py-2 filter-btn @(ViewBag.CurrentStatus == "Reinstatement" ? "active" : "")">Reinstatement</a>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Table -->
+    <div class="table-card mb-4">
+        <div class="table-card-header">
+            <div class="registry-title"><i class="bi bi-folder2-open"></i> Labour Case Registry</div>
+            <div class="text-secondary small fw-bold">Records Found: @Model.Count()</div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0" id="casesTable">
+                    <thead>
+                        <tr>
+                            @if (showWaCol)
+                            {
+                                <th class="ps-4" style="width: 20%; min-width: 180px;">WA Number / Year</th>
+                            }
+                            @if (showWpCol)
+                            {
+                                <th class="@(!showWaCol ? "ps-4" : "")" style="width: 20%; min-width: 180px;">WP Number / Year</th>
+                            }
+                            <th class="@(!showWaCol && !showWpCol ? "ps-4" : "")" style="width: @(showECourtsCols ? "12%" : ((!showWaCol && !showWpCol) ? "20%" : "15%")); min-width: 120px;">Case Type</th>
+                            <th style="width: @(showECourtsCols ? "22%" : ((!showWaCol && !showWpCol) ? "40%" : "25%")); min-width: 180px;">CASE NUMBER/YEAR AND COURT</th>
+                            <th style="width: @(showECourtsCols ? "18%" : ((!showWaCol && !showWpCol) ? "25%" : "20%")); min-width: 160px;">Petitioner &amp; Employee</th>
+
+                            @if (showECourtsCols)
+                            {
+                                <th style="width: 18%; min-width: 150px;"><i class="bi bi-layers text-primary me-1"></i>Current Stage</th>
+                                <th style="width: 18%; min-width: 150px;"><i class="bi bi-calendar-event text-success me-1"></i>Next Date of Hearing</th>
+                            }
+
+                            <th class="text-end pe-4" style="width: @(showECourtsCols ? "12%" : ((!showWaCol && !showWpCol) ? "15%" : "10%")); min-width: 110px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model != null && Model.Any())
+                        {
+                            foreach (var item in Model)
+                            {
+                                <tr>
+                                     @if (showWaCol)
+                                     {
+                                         <!-- 1. WA Number / Year Column -->
+                                         <td class="ps-4">
+                                             @if (!string.IsNullOrEmpty(item.Arising_CO_WA_CaseNumber) && !string.Equals(item.Arising_CO_WA_Status, "DISPOSED", StringComparison.OrdinalIgnoreCase) && string.Equals(item.CO_WA_Status, "DISPOSED", StringComparison.OrdinalIgnoreCase))
+                                             {
+                                                 <!-- Primary WA Disposed, but Arising WA is Pending -->
+                                                 <div class="fw-bold text-danger"><i class="bi bi-diagram-2 me-1"></i>Arising WA @item.Arising_CO_WA_CaseNumber / @(item.Arising_CO_WA_Year?.ToString() ?? "-")</div>
+                                                 <div class="d-flex gap-1 flex-wrap mt-1">
+                                                     <span class="badge bg-primary text-white border" style="font-size: 0.65rem;"><i class="bi bi-building me-1"></i>Corporation</span>
+                                                     <span class="badge bg-warning text-dark border"><i class="bi bi-clock-history me-1"></i>PENDING</span>
+                                                 </div>
+                                                 @if (!string.IsNullOrEmpty(item.CO_WA_CaseNumber))
+                                                 {
+                                                     <div class="text-muted small mt-1" style="font-size: 0.75rem;"><i class="bi bi-diagram-2 me-1"></i>Primary WA @item.CO_WA_CaseNumber / @(item.CO_WA_Year?.ToString() ?? "-") <span class="badge bg-light text-secondary border">DISPOSED</span></div>
+                                                 }
+                                             }
+                                             else
+                                             {
+                                                 @if (!string.IsNullOrEmpty(item.CO_WA_CaseNumber))
+                                                 {
+                                                     <div class="fw-bold text-danger"><i class="bi bi-diagram-2 me-1"></i>WA @item.CO_WA_CaseNumber / @(item.CO_WA_Year?.ToString() ?? "-")</div>
+                                                     <div class="d-flex gap-1 flex-wrap mt-1">
+                                                         <span class="badge bg-primary text-white border" style="font-size: 0.65rem;"><i class="bi bi-building me-1"></i>Corporation</span>
+                                                         @if (!string.IsNullOrEmpty(item.CO_WA_Status))
+                                                         {
+                                                             <span class="badge bg-light text-danger border">@item.CO_WA_Status</span>
+                                                         }
+                                                     </div>
+                                                 }
+                                                 @if (!string.IsNullOrEmpty(item.Arising_CO_WA_CaseNumber) && item.Arising_CO_WA_CaseNumber != item.CO_WA_CaseNumber)
+                                                 {
+                                                     <div class="fw-bold text-danger mt-1" style="font-size: 0.8rem;"><i class="bi bi-file-earmark-arrow-up me-1"></i>Arising WA @item.Arising_CO_WA_CaseNumber / @(item.Arising_CO_WA_Year?.ToString() ?? "-")</div>
+                                                     <div class="d-flex gap-1 flex-wrap mt-1">
+                                                         <span class="badge bg-primary text-white border" style="font-size: 0.65rem;"><i class="bi bi-building me-1"></i>Corporation</span>
+                                                         @if (!string.IsNullOrEmpty(item.Arising_CO_WA_Status))
+                                                         {
+                                                             <span class="badge bg-light text-danger border">@item.Arising_CO_WA_Status</span>
+                                                         }
+                                                     </div>
+                                                 }
+                                             }
+                                             @if (!string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) && (string.Equals(item.CaseType, "Claimant Writ Appeal", StringComparison.OrdinalIgnoreCase) || string.Equals(item.CaseType, "Claimant WA", StringComparison.OrdinalIgnoreCase) || item.CO_Claimant_CaseNumber.Contains("WA", StringComparison.OrdinalIgnoreCase)))
+                                             {
+                                                 <div class="fw-bold text-purple mt-1" style="color: #6f42c1;"><i class="bi bi-person-lines-fill me-1"></i>WA @item.CO_Claimant_CaseNumber / @(item.CO_Claimant_CaseYear?.ToString() ?? item.CaseYear.ToString())</div>
+                                                 <div class="d-flex gap-1 flex-wrap mt-1">
+                                                     <span class="badge text-white border" style="background-color: #7e22ce; font-size: 0.65rem;"><i class="bi bi-person-fill me-1"></i>Claimant</span>
+                                                     @if (!string.IsNullOrEmpty(item.CO_Claimant_CaseStatus))
+                                                     {
+                                                         <span class="badge bg-light text-dark border">@item.CO_Claimant_CaseStatus</span>
+                                                     }
+                                                 </div>
+                                             }
+                                             else if (string.Equals(item.CaseType, "Claimant Writ Appeal", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(item.CO_WA_CaseNumber))
+                                             {
+                                                 var cNo = !string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) ? item.CO_Claimant_CaseNumber : (!string.IsNullOrEmpty(item.CaseNumber) ? item.CaseNumber : "-");
+                                                 var cYr = item.CO_Claimant_CaseYear.HasValue && item.CO_Claimant_CaseYear > 0 ? item.CO_Claimant_CaseYear.Value.ToString() : (item.CaseYear > 0 ? item.CaseYear.ToString() : "-");
+                                                 <div class="fw-bold text-purple" style="color: #6f42c1;"><i class="bi bi-person-lines-fill me-1"></i>WA @cNo / @cYr</div>
+                                                 <div class="d-flex gap-1 flex-wrap mt-1">
+                                                     <span class="badge text-white border" style="background-color: #7e22ce; font-size: 0.65rem;"><i class="bi bi-person-fill me-1"></i>Claimant</span>
+                                                     @if (!string.IsNullOrEmpty(item.CaseStatus))
+                                                     {
+                                                         <span class="badge bg-light text-dark border">@item.CaseStatus</span>
+                                                     }
+                                                 </div>
+                                             }
+                                             else if (string.IsNullOrEmpty(item.CO_WA_CaseNumber) && string.IsNullOrEmpty(item.Arising_CO_WA_CaseNumber) && string.IsNullOrEmpty(item.CO_Claimant_CaseNumber))
+                                             {
+                                                 if (!string.IsNullOrEmpty(item.CO_WA_CaseStatus_Option) && item.CO_WA_CaseStatus_Option.Contains("PENDING", StringComparison.OrdinalIgnoreCase))
+                                                 {
+                                                     <span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-clock-history me-1"></i>Pending Filing</span>
+                                                 }
+                                                 else
+                                                 {
+                                                     <span class="text-secondary small fw-bold">-</span>
+                                                 }
+                                             }
+                                         </td>
+                                     }
+
+                                      @if (showWpCol)
+                                      {
+                                          <!-- 2. WP Number / Year Column -->
+                                          <td class="@(!showWaCol ? "ps-4" : "")">
+                                              @if (!string.IsNullOrEmpty(item.Arising_CO_WP_CaseNumber) && !string.Equals(item.Arising_CO_WP_Status, "DISPOSED", StringComparison.OrdinalIgnoreCase) && string.Equals(item.CO_WP_Status, "DISPOSED", StringComparison.OrdinalIgnoreCase))
+                                              {
+                                                  <!-- Primary WP Disposed, but Arising WP is Pending -->
+                                                  <div class="fw-bold text-primary"><i class="bi bi-file-earmark-arrow-up me-1"></i>Arising WP @item.Arising_CO_WP_CaseNumber / @(item.Arising_CO_WP_Year?.ToString() ?? "-")</div>
+                                                  <span class="badge bg-warning text-dark border mt-1"><i class="bi bi-clock-history me-1"></i>PENDING</span>
+                                                  @if (!string.IsNullOrEmpty(item.CO_WP_CaseNumber))
+                                                  {
+                                                      <div class="text-muted small mt-1" style="font-size: 0.75rem;"><i class="bi bi-file-earmark-text me-1"></i>Primary WP @item.CO_WP_CaseNumber / @(item.CO_WP_Year?.ToString() ?? "-") <span class="badge bg-light text-secondary border">DISPOSED</span></div>
+                                                  }
+                                              }
+                                              else
+                                              {
+                                                  @if (!string.IsNullOrEmpty(item.CO_WP_CaseNumber))
+                                                  {
+                                                      <div class="fw-bold text-primary"><i class="bi bi-file-earmark-text me-1"></i>WP @item.CO_WP_CaseNumber / @(item.CO_WP_Year?.ToString() ?? "-")</div>
+                                                      @if (!string.IsNullOrEmpty(item.CO_WP_Status))
+                                                      {
+                                                          <span class="badge bg-light text-primary border mt-1">@item.CO_WP_Status</span>
+                                                      }
+                                                  }
+                                                  @if (!string.IsNullOrEmpty(item.Arising_CO_WP_CaseNumber) && item.Arising_CO_WP_CaseNumber != item.CO_WP_CaseNumber)
+                                                  {
+                                                      <div class="fw-bold text-warning mt-1" style="font-size: 0.8rem;"><i class="bi bi-file-earmark-arrow-up me-1"></i>Arising WP @item.Arising_CO_WP_CaseNumber / @(item.Arising_CO_WP_Year?.ToString() ?? "-")</div>
+                                                      @if (!string.IsNullOrEmpty(item.Arising_CO_WP_Status))
+                                                      {
+                                                          <span class="badge bg-light text-dark border mt-1">@item.Arising_CO_WP_Status</span>
+                                                      }
+                                                  }
+                                              }
+                                              @if (string.IsNullOrEmpty(item.CO_WP_CaseNumber) && string.IsNullOrEmpty(item.Arising_CO_WP_CaseNumber))
+                                              {
+                                                  if (!string.IsNullOrEmpty(item.CO_Service_WPNumber))
+                                                  {
+                                                      <div class="fw-bold text-info"><i class="bi bi-briefcase me-1"></i>WP @item.CO_Service_WPNumber / @(item.CO_Service_WPYear?.ToString() ?? "-")</div>
+                                                      @if (!string.IsNullOrEmpty(item.CO_Service_Status))
+                                                      {
+                                                          <span class="badge bg-light text-info border mt-1">@item.CO_Service_Status</span>
+                                                      }
+                                                  }
+                                                  else if (!string.IsNullOrEmpty(item.CO_Claimant_CaseNumber))
+                                                  {
+                                                      <div class="fw-bold text-purple" style="color: #6f42c1;"><i class="bi bi-person-lines-fill me-1"></i>WP @item.CO_Claimant_CaseNumber / @(item.CO_Claimant_CaseYear?.ToString() ?? item.CaseYear.ToString())</div>
+                                                      @if (!string.IsNullOrEmpty(item.CO_Claimant_CaseStatus))
+                                                      {
+                                                          <span class="badge bg-light text-dark border mt-1">@item.CO_Claimant_CaseStatus</span>
+                                                      }
+                                                  }
+                                                  else if (!string.IsNullOrEmpty(item.CO_WP_CaseStatus_Option) && !string.Equals(item.CO_WP_CaseStatus_Option, "NONE", StringComparison.OrdinalIgnoreCase))
+                                                  {
+                                                      <span class="badge bg-warning text-dark border px-2 py-1"><i class="bi bi-clock-history me-1"></i>@item.CO_WP_CaseStatus_Option</span>
+                                                  }
+                                                  else
+                                                  {
+                                                      <span class="text-secondary small fw-bold">-</span>
+                                                  }
+                                              }
+                                          </td>
+                                      }
+                                     <td class="@(!showWaCol && !showWpCol ? "ps-4" : "")">
+                                         <span class="badge bg-light text-dark border">@item.CaseType</span>
+                                         @if (isCO && !string.IsNullOrEmpty(item.DivisionName))
+                                         {
+                                             <div class="location-text text-secondary mt-1 fw-bold">
+                                                 <i class="bi bi-geo-alt-fill text-primary me-1"></i>@item.DivisionName
+                                             </div>
+                                         }
+                                     </td>
+                                     <td>
+                                         @{
+                                             var displayNo = !string.IsNullOrEmpty(item.CaseNumber) ? item.CaseNumber : (!string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) ? item.CO_Claimant_CaseNumber : (!string.IsNullOrEmpty(item.CO_WP_CaseNumber) ? item.CO_WP_CaseNumber : "-"));
+                                             var displayYr = item.CaseYear > 0 ? item.CaseYear.ToString() : (item.CO_Claimant_CaseYear.HasValue && item.CO_Claimant_CaseYear > 0 ? item.CO_Claimant_CaseYear.Value.ToString() : (item.CO_WP_Year.HasValue && item.CO_WP_Year > 0 ? item.CO_WP_Year.Value.ToString() : "-"));
+                                             var displayCourt = !string.IsNullOrEmpty(item.CourtName) ? item.CourtName : (!string.IsNullOrEmpty(item.CO_Claimant_Court) ? item.CO_Claimant_Court : (!string.IsNullOrEmpty(item.CO_WP_HighCourtBench) ? item.CO_WP_HighCourtBench : "-"));
+                                         }
+                                         <div class="data-id font-monospace">@displayNo / @displayYr</div>
+                                         <div class="location-text text-muted">@displayCourt</div>
+                                         @if (!string.IsNullOrEmpty(item.CNRNumber))
+                                         {
+                                             <div class="mt-1">
+                                                 <span class="badge bg-primary-subtle text-primary border border-primary font-monospace extra-small" title="e-Courts CNR Linked"><i class="bi bi-wifi me-1"></i>@item.CNRNumber</span>
+                                             </div>
+                                         }
+                                     </td>
+                                     <td>
+                                         <div class="fw-medium">@item.PetitionerName</div>
+                                         @if (!string.IsNullOrEmpty(item.EmployeeNo))
+                                         {
+                                             <small class="text-muted d-block">Emp: @item.EmployeeNo (@item.Designation)</small>
+                                         }
+                                     </td>
+
+                                     @if (showECourtsCols)
+                                     {
+                                         <td class="ecourts-stage-cell" data-cnr="@(item.CNRNumber ?? "")" data-caseid="@item.CaseID">
+                                             @if (!string.IsNullOrEmpty(item.CurrentStage))
+                                             {
+                                                 <span class="badge bg-light text-dark border stage-text text-truncate d-inline-block" style="max-width: 160px;" title="@item.CurrentStage">
+                                                     <i class="bi bi-layers me-1 text-secondary"></i>@item.CurrentStage
+                                                 </span>
+                                             }
+                                             else if (!string.IsNullOrEmpty(item.CNRNumber))
+                                             {
+                                                 <span class="badge bg-light text-muted border stage-text">
+                                                     <span class="spinner-border spinner-border-sm text-primary me-1" style="width: 0.7rem; height: 0.7rem;"></span>Fetching...
+                                                 </span>
+                                             }
+                                             else
+                                             {
+                                                 <span class="text-secondary small fw-bold">-</span>
+                                             }
+                                         </td>
+                                         <td class="ecourts-date-cell" data-cnr="@(item.CNRNumber ?? "")" data-caseid="@item.CaseID">
+                                             @if (item.NextHearingDate.HasValue)
+                                             {
+                                                 <span class="fw-bold text-success date-text">
+                                                     <i class="bi bi-calendar-event me-1"></i>@item.NextHearingDate.Value.ToString("dd-MMM-yyyy")
+                                                 </span>
+                                             }
+                                             else if (!string.IsNullOrEmpty(item.CNRNumber))
+                                             {
+                                                 <span class="badge bg-light text-muted border date-text">
+                                                     <span class="spinner-border spinner-border-sm text-primary me-1" style="width: 0.7rem; height: 0.7rem;"></span>Fetching...
+                                                 </span>
+                                             }
+                                             else
+                                             {
+                                                 <span class="text-secondary small fw-bold">-</span>
+                                             }
+                                         </td>
+                                     }
+
+                                     <td class="text-end pe-4">
+                                         <div class="btn-group align-items-center">
+                                             <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-info rounded-pill px-2 py-1 mx-1" style="font-size: 0.75rem;" title="View Details">
+                                                 <i class="bi bi-eye me-1"></i> View
+                                             </a>
+                                             @if (ViewBag.CurrentStatus != "InterimStayCompliance" && !isCO)
+                                             {
+                                                 if (string.Equals(item.CaseType, "Claimant Writ Appeal", StringComparison.OrdinalIgnoreCase))
+                                                 {
+                                                     <a href="@Url.Action("ManageClaimantWritAppeal", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 mx-1" style="font-size: 0.75rem;" title="Edit">
+                                                         <i class="bi bi-pencil"></i>
+                                                     </a>
+                                                 }
+                                                 else if (string.Equals(item.CaseType, "Claimant Appeal", StringComparison.OrdinalIgnoreCase) || string.Equals(item.CaseType, "Claimant Writ Petition", StringComparison.OrdinalIgnoreCase))
+                                                 {
+                                                     <a href="@Url.Action("ManageClaimantAppeal", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 mx-1" style="font-size: 0.75rem;" title="Edit">
+                                                         <i class="bi bi-pencil"></i>
+                                                     </a>
+                                                 }
+                                                 else
+                                                 {
+                                                     <a href="@Url.Action("Edit", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 mx-1" style="font-size: 0.75rem;" title="Edit">
+                                                         <i class="bi bi-pencil"></i>
+                                                     </a>
+                                                 }
+                                             }
+                                            
+                                            @if (!isCO && ViewBag.CurrentStatus == "InterimStayCompliance")
+                                            {
+                                                <a href="@Url.Action("StayCompliance", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 mx-1" style="font-size: 0.75rem;" title="Stay Compliance">
+                                                    <i class="bi bi-check-circle me-1"></i> Compliance
+                                                </a>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="@((showWaCol ? 1 : 0) + (showWpCol ? 1 : 0) + (showECourtsCols ? 2 : 0) + 4)" class="text-center py-5 text-muted">
+                                    <i class="bi bi-search fs-1 d-block mb-3 opacity-25"></i>
+                                    No cases found matching the criteria.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Pagination -->
+            @if (ViewBag.TotalPages > 1)
+            {
+                <div class="card-footer bg-white py-3 border-top">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination pagination-sm justify-content-center mb-0">
+                            <li class="page-item @(ViewBag.CurrentPage == 1 ? "disabled" : "")">
+                                <a class="page-link shadow-none" href="@Url.Action("CaseList", new { page = ViewBag.CurrentPage - 1, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">&laquo; Previous</a>
+                            </li>
+
+                            @{
+                                int totalVisiblePages = 10;
+                                int startPage = Math.Max(1, (int)ViewBag.CurrentPage - (totalVisiblePages / 2));
+                                int endPage = Math.Min((int)ViewBag.TotalPages, startPage + (totalVisiblePages - 1));
+
+                                if (endPage - startPage < (totalVisiblePages - 1))
+                                {
+                                    startPage = Math.Max(1, endPage - (totalVisiblePages - 1));
+                                }
+
+                                if (startPage > 1)
+                                {
+                                    <li class="page-item">
+                                        <a class="page-link shadow-none" href="@Url.Action("CaseList", new { page = 1, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">1</a>
+                                    </li>
+                                    @if (startPage > 2)
+                                    {
+                                        <li class="page-item disabled"><span class="page-link border-0">...</span></li>
+                                    }
+                                }
+                            }
+
+                            @for (int i = startPage; i <= endPage; i++)
+                            {
+                                <li class="page-item @(ViewBag.CurrentPage == i ? "active" : "")">
+                                    <a class="page-link shadow-none" href="@Url.Action("CaseList", new { page = i, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">@i</a>
+                                </li>
+                            }
+
+                            @{
+                                if (endPage < ViewBag.TotalPages)
+                                {
+                                    @if (endPage < ViewBag.TotalPages - 1)
+                                    {
+                                        <li class="page-item disabled"><span class="page-link border-0">...</span></li>
+                                    }
+                                    <li class="page-item">
+                                        <a class="page-link shadow-none" href="@Url.Action("CaseList", new { page = ViewBag.TotalPages, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">@ViewBag.TotalPages</a>
+                                    </li>
+                                }
+                            }
+
+                            <li class="page-item @(ViewBag.CurrentPage == ViewBag.TotalPages ? "disabled" : "")">
+                                <a class="page-link shadow-none" href="@Url.Action("CaseList", new { page = (int)ViewBag.CurrentPage + 1, search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">Next &raquo;</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    :root {
+        --labour-color: #3b82f6; /* Blue for Labour */
+    }
+
+    .container-fluid {
+        background-color: #d5d8db;
+        min-height: 100vh;
+    }
+
+    /* Filter Card - Professional/Clean */
+    .glass-filter-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+    }
+
+    /* Inputs & Controls */
+    .search-input {
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        font-size: 0.875rem;
+        color: #1e293b;
+        padding: 0.5rem 0.75rem;
+    }
+    .search-input:focus {
+        border-color: var(--labour-color);
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+        outline: none;
+    }
+
+    .input-group-text {
+        border-color: #cbd5e1;
+        background-color: #f8fafc;
+    }
+
+    .filter-btn {
+        font-size: 0.8rem;
+        font-weight: 600;
+        border-radius: 4px;
+        padding: 0.4rem 1rem;
+        color: #475569;
+        background-color: white;
+        border: 1px solid #e2e8f0;
+        letter-spacing: 0.02em;
+        text-decoration: none;
+        transition: all 0.2s ease;
+    }
+
+    .filter-btn.active {
+        background-color: #0f172a !important;
+        color: #ffffff !important;
+        border-color: #0f172a !important;
+    }
+
+    .filter-btn:hover:not(.active) {
+        background-color: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #1e293b;
+    }
+
+    /* Main Table Card - Official Registry Style */
+    .table-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+
+    .table-card-header {
+        background-color: #ffffff;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 1rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .registry-title {
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #0f172a;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        align-items: center;
+    }
+    
+    .registry-title i {
+        color: var(--labour-color);
+        margin-right: 0.5rem;
+    }
+
+    /* Data Typography */
+    .data-id {
+        font-family: var(--bs-font-monospace);
+        font-weight: 700;
+        color: #1e293b;
+        font-size: 0.95rem;
+    }
+
+    .location-text {
+        font-size: 0.8rem;
+        line-height: 1.3;
+    }
+
+    /* DATA TABLE - The Core Registry View */
+    .table-responsive {
+        scrollbar-width: thin;
+    }
+
+    .table {
+        margin-bottom: 0;
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .table thead th {
+        background-color: #f1f5f9;
+        color: #0f172a; /* Changed from red for a more professional look */
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 0.85rem 1rem;
+        border-bottom: 2px solid #e2e8f0;
+        white-space: nowrap;
+    }
+
+    .table tbody td {
+        padding: 0.75rem 1rem;
+        vertical-align: middle;
+        color: #475569;
+        font-size: 0.875rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .table-striped tbody tr:nth-of-type(odd) {
+        background-color: #f9fafb;
+    }
+
+    .table tbody tr:hover {
+        background-color: #f0f9ff !important;
+    }
+
+    /* Status Badges */
+    .badge {
+        padding: 0.4rem 0.75rem;
+        font-weight: 700;
+        border-radius: 9999px;
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .bg-success-soft { background-color: #ecfdf5; color: #065f46;  border: 1px solid #a7f3d0; }
+    .bg-warning-soft { background-color: #fffbeb; color: #92400e;  border: 1px solid #fde68a; }
+    .bg-danger-soft { background-color: #fef2f2; color: #991b1b;  border: 1px solid #fecaca; }
+    .bg-info-soft { background-color: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+    .bg-primary-soft { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .bg-secondary-soft { background-color: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+    /* Pagination Tuning */
+    .card-footer {
+        background-color: #ffffff;
+        border-top: 1px solid #e2e8f0;
+    }
+    
+    .pagination .page-link {
+        border-radius: 4px;
+        margin: 0 3px;
+        border: 1px solid #e2e8f0;
+        color: #475569;
+        font-size: 0.85rem;
+    }
+
+    .pagination .page-item.active .page-link {
+        background-color: var(--labour-color);
+        border-color: var(--labour-color);
+        color: white;
+    }
+</style>
+
+@if (showECourtsCols)
+{
+    @section Scripts {
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+                const stageCells = document.querySelectorAll('.ecourts-stage-cell[data-cnr]');
+                const dateCells = document.querySelectorAll('.ecourts-date-cell[data-cnr]');
+
+                const cnrMap = new Map();
+                stageCells.forEach(cell => {
+                    const cnr = cell.getAttribute('data-cnr')?.trim();
+                    const caseId = cell.getAttribute('data-caseid');
+                    if (cnr && cnr.length === 16) {
+                        if (!cnrMap.has(cnr)) {
+                            cnrMap.set(cnr, { caseId: caseId, stageCells: [], dateCells: [] });
+                        }
+                        cnrMap.get(cnr).stageCells.push(cell);
+                    }
+                });
+
+                dateCells.forEach(cell => {
+                    const cnr = cell.getAttribute('data-cnr')?.trim();
+                    if (cnr && cnrMap.has(cnr)) {
+                        cnrMap.get(cnr).dateCells.push(cell);
+                    }
+                });
+
+                cnrMap.forEach((entry, cnr) => {
+                    const isHc = cnr.startsWith('KAHC') || cnr.includes('HC');
+                    fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}&module=Labour`)
+                        .then(res => res.json())
+                        .then(json => {
+                            if (json && json.success && json.data) {
+                                const d = json.data;
+                                const hist = json.history || [];
+
+                                let extractedDate = d.next_hearing_date || d.next_date || d.date_of_hearing || '';
+                                let extractedStage = d.stage || d.purpose_name || d.purpose || '';
+
+                                if ((!extractedDate || extractedDate === 'Next Date Not Given' || extractedDate.trim() === '') && hist.length > 0) {
+                                    for (let h of hist) {
+                                        const cand = h.hearing_date || h.business_date || h.date || '';
+                                        if (cand && cand !== 'Next Date Not Given' && cand.length >= 8) {
+                                            extractedDate = cand;
+                                            if (!extractedStage) extractedStage = h.purpose_of_listing || h.purpose || h.stage || '';
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                const isDisposed = (d.case_status === 'Disposed' || d.pend_disp === 'D' || (d.decision_date && d.decision_date.length >= 8));
+                                if (isDisposed) {
+                                    extractedDate = d.decision_date ? `Disposed (${d.decision_date})` : 'Disposed';
+                                    extractedStage = d.nature_of_disposal || d.disp_name || 'Disposed';
+                                }
+
+                                entry.stageCells.forEach(c => {
+                                    if (extractedStage) {
+                                        c.innerHTML = `<span class="badge bg-info-subtle text-dark border border-info-subtle text-truncate d-inline-block" style="max-width: 160px;" title="${extractedStage}"><i class="bi bi-layers me-1 text-primary"></i>${extractedStage}</span>`;
+                                    } else {
+                                        const cur = c.querySelector('.stage-text')?.textContent.trim();
+                                        if (!cur || cur === 'Fetching...') {
+                                            c.innerHTML = `<span class="text-secondary small fw-bold">-</span>`;
+                                        }
+                                    }
+                                });
+
+                                entry.dateCells.forEach(c => {
+                                    if (extractedDate) {
+                                        let dateHtml = `<span class="fw-bold text-success"><i class="bi bi-calendar-check me-1"></i>${extractedDate}</span>`;
+                                        const todayStr = new Date().toISOString().slice(0, 10);
+                                        if (extractedDate.includes(todayStr)) {
+                                            dateHtml = `<span class="badge bg-danger text-white px-2 py-1"><i class="bi bi-bell-fill me-1"></i>TODAY: ${extractedDate}</span>`;
+                                        } else if (isDisposed) {
+                                            dateHtml = `<span class="badge bg-secondary px-2 py-1"><i class="bi bi-check2-all me-1"></i>${extractedDate}</span>`;
+                                        }
+                                        c.innerHTML = dateHtml;
+                                    } else {
+                                        const cur = c.querySelector('.date-text')?.textContent.trim();
+                                        if (!cur || cur === 'Fetching...') {
+                                            c.innerHTML = `<span class="text-secondary small fw-bold">-</span>`;
+                                        }
+                                    }
+                                });
+
+                                if (entry.caseId && (extractedDate || extractedStage)) {
+                                    fetch('/Labour/SaveLiveHearingDate', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                        body: `caseId=${encodeURIComponent(entry.caseId)}&cnrNumber=${encodeURIComponent(cnr)}&hearingDate=${encodeURIComponent(extractedDate)}&stage=${encodeURIComponent(extractedStage)}`
+                                    }).catch(() => {});
+                                }
+                            } else {
+                                entry.stageCells.forEach(c => {
+                                    const cur = c.querySelector('.stage-text')?.textContent.trim();
+                                    if (!cur || cur === 'Fetching...') {
+                                        c.innerHTML = '<span class="text-secondary small fw-bold">-</span>';
+                                    }
+                                });
+                                entry.dateCells.forEach(c => {
+                                    const cur = c.querySelector('.date-text')?.textContent.trim();
+                                    if (!cur || cur === 'Fetching...') {
+                                        c.innerHTML = '<span class="text-secondary small fw-bold">-</span>';
+                                    }
+                                });
+                            }
+                        })
+                        .catch(() => {
+                            entry.stageCells.forEach(c => {
+                                const cur = c.querySelector('.stage-text')?.textContent.trim();
+                                if (!cur || cur === 'Fetching...') {
+                                    c.innerHTML = '<span class="text-secondary small fw-bold">-</span>';
+                                }
+                            });
+                            entry.dateCells.forEach(c => {
+                                const cur = c.querySelector('.date-text')?.textContent.trim();
+                                if (!cur || cur === 'Fetching...') {
+                                    c.innerHTML = '<span class="text-secondary small fw-bold">-</span>';
+                                }
+                            });
+                        });
+                });
+            });
+        </script>
+    }
+}

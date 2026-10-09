@@ -1,0 +1,1225 @@
+@model MVCCaseManagement.Models.MVCCaseViewModel
+
+@{
+    ViewData["Title"] = "Case Details - " + Model.MVCNo;
+    ViewData["HidePageHeader"] = true;
+}
+
+<!-- ========================================== -->
+<!-- OFFICIAL FEASIBILITY REPORT PRINT VIEW    -->
+<!-- ========================================== -->
+<div id="print-view" class="d-none d-print-block" style="font-family: 'Times New Roman', serif; font-size: 12pt;">
+    
+    <!-- Main Header -->
+    <div class="text-center mb-4 fw-bold">
+        <h4 class="mb-0 text-uppercase">NWKRTC - @Model.DivisionName</h4>
+    </div>
+
+    <div class="mb-3 text-center"><strong><u>DETAILS OF THE CASE</u></strong></div>
+    
+    <!-- Main Details Table -->
+    <table class="table table-bordered border-dark" style="font-size: 11pt;">
+        <tbody>
+            <tr>
+                <td style="width: 8%;"><strong>Sl No</strong></td>
+                <td style="width: 42%;"><strong>DESCRIPTION</strong></td>
+                <td style="width: 50%;"><strong>DETAILS OF THE CASE</strong></td>
+            </tr>
+            <tr>
+                <td>01</td>
+                <td>Name of the Division</td>
+                <td>@Model.DivisionName</td>
+            </tr>
+            <tr>
+                <td>02</td>
+                <td>MACT Court</td>
+                <td>@Model.MACTName</td>
+            </tr>
+            <tr>
+                <td>03</td>
+                <td>MVC No</td>
+                <td>@Model.MVCNo/@Model.MVCYear</td>
+            </tr>
+            @if (!string.IsNullOrEmpty(Model.CNRNumber))
+            {
+                <tr class="table-info font-weight-bold">
+                    <td>03a</td>
+                    <td>eCourts 16-Digit CNR</td>
+                    <td>
+                        <span class="badge bg-primary fs-6 font-monospace"><i class="bi bi-broadcast me-1"></i> @Model.CNRNumber</span>
+                    </td>
+                </tr>
+            }
+            <tr>
+                <td>04</td>
+                <td>Date of Accident</td>
+                <td>@Model.AccidentDate?.ToString("dd-MM-yyyy")</td>
+            </tr>
+            <tr>
+                <td>05</td>
+                <td>Accident vehicle No</td>
+                <td>@Model.VehicleNo</td>
+            </tr>
+            <tr>
+                <td>06</td>
+                <td>Whether accident ST vehicle is insured with Insurance Company (Domestic/Volvo/other ST vehicle)</td>
+                <td>@(Model.AdverseAward?.IsBusInsured == true ? "Insured - " + Model.AdverseAward.BusInsuranceDetails : "Self insured.")</td>
+            </tr>
+            <tr>
+                <td>06a</td>
+                <td>Whether claimant was passenger in ST Bus</td>
+                <td>@(Model.IsSTPassenger == true ? "Yes" : "No")</td>
+            </tr>
+
+            <tr>
+                <td>07</td>
+                <td>Date of the claim petition</td>
+                <td>@Model.AdverseAward?.ClaimPetitionDate?.ToString("dd-MM-yyyy")</td>
+            </tr>
+            <tr>
+                <td>08</td>
+                <td>Date of judgment</td>
+                <td>@Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy")</td>
+            </tr>
+
+            <tr>
+                <td>10</td>
+                <td>Details of claimant & amount claimed</td>
+                <td>
+                    @if (Model.Petitioners.Any())
+                    {
+                        @for (int i = 0; i < Model.Petitioners.Count; i++)
+                        {
+                            <div>@(i + 1)) @Model.Petitioners[i].PetitionerName (@(Model.Petitioners[i].Relationship == "Others" ? Model.Petitioners[i].RelationshipOthers : Model.Petitioners[i].Relationship))</div>
+                        }
+                        <div>TOTAL CLAIM AMOUNT: Rs. @(Model.ClaimAmount?.ToString("N2"))</div>
+                    }
+                </td>
+            </tr>
+            @if (Model.ThirdPartyFlag && Model.Respondents != null && Model.Respondents.Any())
+            {
+                <tr>
+                    <td>10a</td>
+                    <td>Respondent Details</td>
+                    <td>
+                        @for (int i = 0; i < Model.Respondents.Count; i++)
+                        {
+                            <div>@(i + 1)) @Model.Respondents[i].RespondentName @(!string.IsNullOrEmpty(Model.Respondents[i].Remarks) ? "- " + Model.Respondents[i].Remarks : "")</div>
+                        }
+                    </td>
+                </tr>
+            }
+            <tr>
+                <td>11</td>
+                <td>Statement of objection filed or not (if not reason for not filing objection statement)</td>
+                <td>@(Model.AdverseAward?.ObjectionFiled == true ? "Filed. " + Model.AdverseAward.ObjectionRemarks : "Not Filed")</td>
+            </tr>
+            <tr>
+                <td>12</td>
+                <td>Evidence adduced by petitioner (Including no of witness examined)</td>
+                <td>
+                    @if (Model.AdverseAward?.PetitionerPWNames?.Any() == true)
+                    {
+                        @string.Join(", ", Model.AdverseAward.PetitionerPWNames.Select((pw, idx) => $"PW {idx + 1} - {pw}"))
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>13</td>
+                <td>Whether doctor examined by the petitioner, if yes, name of the doctor</td>
+                <td>
+                    @if (Model.AdverseAward?.Doctors?.Any() == true)
+                    {
+                         @:Yes - @string.Join(", ", Model.AdverseAward.Doctors.Select(d => $"{d.DoctorName} (Treated: {(d.IsTreated ? "Yes" : "No")})"))
+                    }
+                    else
+                    {
+                        <text>No</text>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>14</td>
+                <td>Driver examined or otherwise (if not reason for not examining the driver)</td>
+                <td>
+                    @if (Model.AdverseAward?.RWNames?.Any() == true)
+                    {
+                        @string.Join(", ", Model.AdverseAward.RWNames.Select((rw, idx) => $"RW {idx + 1}"))
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>15</td>
+                <td>Remarks of the unit head on T.R.18 (if ST driver is responsible, Name & punishment imposed against ST driver)</td>
+                <td>@Model.AdverseAward?.TR18Remarks</td>
+            </tr>
+            <tr>
+                <td>16</td>
+                <td>Whether the name of the petitioner /deceased found in the TR 18 (list of injured/died)</td>
+                <td>@(Model.Petitioners.Any() ? "Yes" : "No")</td>
+            </tr>
+            <tr>
+                <td>17</td>
+                <td>Is it alleged Accident (if yes, whether investigation has been conducted)</td>
+                <td>@(Model.AdverseAward?.IsAllegedAccident == true ? "Yes" : "No")</td>
+            </tr>
+            <tr>
+                <td>17a</td>
+                <td>Whether FIR Filed against ST Driver</td>
+                <td>@(Model.AdverseAward?.IsFIRFiled == true ? "Yes" : "No")</td>
+            </tr>
+            <tr>
+                <td>17a-i</td>
+                <td>Whether Chargesheet filed against ST Driver</td>
+                <td>@(Model.AdverseAward?.IsChargeSheetFiled == true ? "Yes" : "No")</td>
+            </tr>
+            <tr>
+                <td>17b</td>
+                <td>Bus Camera Installed / Footage Produced / Photograph Produced</td>
+                <td>
+                    Camera: @(Model.AdverseAward?.IsBusCameraInstalled == true ? "Yes" : "No"), 
+                    Footage: @(Model.AdverseAward?.IsCameraFootageProduced == true ? "Yes" : "No"), 
+                    Photo: @(Model.AdverseAward?.IsPhotographProduced == true ? "Yes" : "No")
+                </td>
+            </tr>
+            <tr>
+                <td>17c</td>
+                <td>Police Sketch Enclosed / Exhibit No</td>
+                <td>@(Model.AdverseAward?.IsPoliceSketchEnclosed == true ? "Yes" : "No") @(!string.IsNullOrEmpty(Model.AdverseAward?.PoliceSketchExhibitNo) ? " (Ex No: " + Model.AdverseAward.PoliceSketchExhibitNo + ")" : "")</td>
+            </tr>
+            <tr>
+                <td>17d</td>
+                <td>Evidence based on Security Report</td>
+                <td>
+                    @(Model.AdverseAward?.IsEvidenceBasedOnSecurityReport == true ? "Yes" : "No")
+                    @if (Model.AdverseAward?.IsEvidenceBasedOnSecurityReport == false && !string.IsNullOrEmpty(Model.AdverseAward?.SecurityReportNoEvidenceReason))
+                    {
+                        <div>Reason: @Model.AdverseAward.SecurityReportNoEvidenceReason</div>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>18</td>
+                <td>Finding on issue of negligence & liability of corporation</td>
+                <td>@Model.DisposalRemarks</td>
+            </tr>
+            <tr>
+                <td>19</td>
+                <td>Whether connected cases pending /disposed & details</td>
+                <td>
+                    @if (Model.ConnectedCases.Any() || (Model.AdverseAward?.ConnectedCases.Any() == true))
+                    {
+                        @* 1. Basic Linkages (Section E) *@
+                        var uniqueCases = Model.ConnectedCases.GroupBy(c => new { c.ConnectedMVCNo, c.ConnectedYear }).Select(g => g.First());
+                        foreach (var conn in uniqueCases)
+                        {
+                            <div class="mb-1"><strong>@conn.ConnectedMVCNo/@conn.ConnectedYear</strong> - @conn.Remarks</div>
+                        }
+
+                        @* 2. Adverse Award Details (Section G) *@
+                        @if (Model.AdverseAward != null && Model.AdverseAward.ConnectedCases.Any())
+                        {
+                            <div class="mt-2 border-top pt-1 small"><strong>Award Details (Adverse):</strong></div>
+                            @foreach (var adv in Model.AdverseAward.ConnectedCases)
+                            {
+                                <div class="mb-3 ps-2 border-start border-2">
+                                    <div class="fw-bold" style="font-size: 10pt;">@adv.ConnectedMVCNo/@adv.ConnectedYear @(!string.IsNullOrEmpty(adv.MACT) ? "- " + adv.MACT : "") (@adv.Status)</div>
+                                    <table class="w-100" style="font-size: 9pt; border-collapse: collapse;">
+                                        <tr>
+                                            <td style="width: 25%; padding: 1px;">Amt: <strong>@adv.AwardDetails?.AwardAmount</strong></td>
+                                            <td style="width: 25%; padding: 1px;">Int: @adv.AwardDetails?.InterestRate%</td>
+                                            <td style="width: 20%; padding: 1px;">Age: @adv.AwardDetails?.VictimAge</td>
+                                            <td style="width: 30%; padding: 1px;">Occ: @adv.AwardDetails?.Occupation</td>
+                                        </tr>
+                                        <tr>
+                                            <td colspan="2" style="padding: 1px;">Income: @adv.AwardDetails?.IncomeConsidered</td>
+                                            <td colspan="2" style="padding: 1px;">Injury: @adv.AwardDetails?.InjuryDetails</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                            }
+                        }
+                    }
+                    else
+                    {
+                        <text>No</text>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>20</td>
+                <td>Whether double petition filed, including in other MACT'S</td>
+                <td>@(Model.DoubleClaimFlag ? "Yes - " + Model.AdverseAward?.DoubleClaimDetails : "No")</td>
+            </tr>
+
+            <tr>
+                <td>21</td>
+                <td>Whether Impleading Application filed by Corporation (if not, reason)</td>
+                <td>
+                    @(Model.AdverseAward?.IsImpleadingAppFiled == true ? "Yes" : "No")
+                    @if (Model.AdverseAward?.IsImpleadingAppFiled == false && !string.IsNullOrEmpty(Model.AdverseAward?.ImpleadingAppNotFiledReason))
+                    {
+                        <div>Reason: @Model.AdverseAward.ImpleadingAppNotFiledReason</div>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>22</td>
+                <td>Manner of Accident</td>
+                <td>
+                    <div>@(string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccident) ? "—" : Model.AdverseAward.MannerOfAccident)</div>
+                    @if (!string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccidentRO))
+                    {
+                        <div class="text-muted extra-small mt-1"><em>RO Report:</em> @Model.AdverseAward.MannerOfAccidentRO</div>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td>22</td>
+                <td>Injury/Death</td>
+                <td>@Model.CaseType</td>
+            </tr>
+            <tr>
+                <td>23</td>
+                <td>Security Investigation Conducted?</td>
+                <td>@(Model.AdverseAward?.SecurityRequired == true ? "Yes" : "No")</td>
+            </tr>
+            <tr>
+                <td>24</td>
+                <td>Whether there is delay in obtaining/sending CC and reasons for delay / EP Status</td>
+                <td>
+                    <div>Case decided on - @Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy")</div>
+                    @if (Model.AdverseAward?.IsEPFiled == true)
+                    {
+                        <div class="fw-bold text-primary mt-1">EP Filed: Yes</div>
+                        <div>Amount Deposited in EP: @(Model.AdverseAward?.IsAmountDepositedInEP == true ? "Yes" : "No")</div>
+                        @if (Model.AdverseAward?.IsAmountDepositedInEP == true && Model.AdverseAward?.EPDepositedAmount.HasValue == true)
+                        {
+                            <div class="fw-bold text-success mt-1">EP Deposited Amount: Rs. @Model.AdverseAward.EPDepositedAmount?.ToString("N2")</div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.EPNumber))
+                        {
+                            <div class="mt-1 small"><strong>EP Number:</strong> @Model.AdverseAward.EPNumber</div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.EPCourt))
+                        {
+                            <div class="mt-1 small"><strong>EP Court:</strong> @Model.AdverseAward.EPCourt</div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.AsPerECourts))
+                        {
+                            <div class="mt-1 small"><strong>EP Status (As per e-Courts):</strong> @Model.AdverseAward.AsPerECourts</div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="mt-1">EP Filed: No</div>
+                    }
+                    <div class="mt-2 pt-1 border-top border-secondary small">
+                        <div>Copy applied on - @Model.AdverseAward?.CopyAppliedDate?.ToString("dd-MM-yyyy")</div>
+                        <div>copy ready on - @Model.AdverseAward?.CopyIssuedDate?.ToString("dd-MM-yyyy")</div>
+                        <div>copy received at division - @Model.AdverseAward?.CopyReceivedDate?.ToString("dd-MM-yyyy")</div>
+                        @if (Model.AdverseAward?.CopyDeliveredDate.HasValue == true)
+                        {
+                            <div>Copy Delivered on - @Model.AdverseAward?.CopyDeliveredDate?.ToString("dd-MM-yyyy")</div>
+                        }
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td>25</td>
+                <td>Compensation awarded:</td>
+                <td>Rs. @(Model.AdverseAward?.AwardAmount?.ToString("N0")) @Model.AdverseAward?.InterestRate% Int.</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>a) Age of the Injury/Death</td>
+                <td>@Model.CaseType - Age: @Model.AdverseAward?.VictimAge years</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>b) Occupation</td>
+                <td>@Model.AdverseAward?.Occupation</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>c) Income</td>
+                <td>Rs. @(Model.AdverseAward?.IncomeConsidered?.ToString("N2")) Per annum</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>d) Injuries suffered / Details of Damages / Breakdown</td>
+                <td>
+                    <div>@Model.AdverseAward?.InjuryDetails</div>
+                    <div class="mt-2 small">
+                        <table class="table table-sm table-bordered border-dark mb-0" style="font-size: 9pt;">
+                            @if (Model.AdverseAward?.InjuryType == "Death")
+                            {
+                                <tr><td>Loss of dependency</td><td class="text-end">@Model.AdverseAward?.LossOfDependency?.ToString("N2")</td></tr>
+                                <tr><td>Loss of consortium</td><td class="text-end">@Model.AdverseAward?.LossOfConsortium?.ToString("N2")</td></tr>
+                                <tr><td>Loss of estate</td><td class="text-end">@Model.AdverseAward?.LossOfEstate?.ToString("N2")</td></tr>
+                                <tr><td>Funeral expenses</td><td class="text-end">@Model.AdverseAward?.FuneralExpenses?.ToString("N2")</td></tr>
+                                <tr><td>Loss of love & affection</td><td class="text-end">@Model.AdverseAward?.LossOfLoveAffection?.ToString("N2")</td></tr>
+                                <tr><td>Medical & Other expense</td><td class="text-end">@Model.AdverseAward?.MedicalExpenseOther?.ToString("N2")</td></tr>
+                            }
+                            else
+                            {
+                                <tr><td>Pain & sufferings</td><td class="text-end">@Model.AdverseAward?.PainSufferings?.ToString("N2")</td></tr>
+                                <tr><td>Conveyance, etc.</td><td class="text-end">@Model.AdverseAward?.ConveyanceAttendant?.ToString("N2")</td></tr>
+                                <tr><td>Loss of future income</td><td class="text-end">@Model.AdverseAward?.LossOfFutureIncome?.ToString("N2")</td></tr>
+                                <tr><td>Loss of income (laid up)</td><td class="text-end">@Model.AdverseAward?.LossOfIncomeLaidUp?.ToString("N2")</td></tr>
+                                <tr><td>Loss of amenities</td><td class="text-end">@Model.AdverseAward?.LossOfAmenities?.ToString("N2")</td></tr>
+                                <tr><td>Future medical exp.</td><td class="text-end">@Model.AdverseAward?.FutureMedicalExpenses?.ToString("N2")</td></tr>
+                                <tr><td>Other expense</td><td class="text-end">@Model.AdverseAward?.InjuryOtherExpense?.ToString("N2")</td></tr>
+                            }
+                        </table>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>e) Victim Status & Income Verification</td>
+                <td>
+                    Salaried: @(Model.AdverseAward?.IsVictimSalaried == true ? "Yes" : "No"),
+                    Verified: @(Model.AdverseAward?.IsIncomeCrossVerified == true ? "Yes" : "No"),
+                    Tallies with Docs: @(Model.AdverseAward?.DoesIncomeTallyWithDocuments == true ? "Yes" : "No")
+                </td>
+            </tr>
+            <tr>
+                <td>26</td>
+                <td>Any other information about the claim, which not covered above (Copy Remarks)</td>
+                <td>@Model.AdverseAward?.CertifiedCopyRemarks</td>
+            </tr>
+            @if (!string.IsNullOrEmpty(Model.AdverseAward?.FutureProspectus))
+            {
+                <tr>
+                    <td>27</td>
+                    <td>Future Prospectus</td>
+                    <td>@Model.AdverseAward.FutureProspectus</td>
+                </tr>
+            }
+            <tr>
+                <td>28</td>
+                <td>Details of the punishment imposed against the Vehicle driver/conductor, for causing accident</td>
+                <td>@Model.AdverseAward?.DriverPunishmentStatus</td>
+            </tr>
+            <tr>
+                <td>29</td>
+                <td>How much Amount of Interim compensation is paid to the relatives of the deceased/injured</td>
+                <td>@(Model.AdverseAward?.InterimCompAmount.HasValue == true ? "Rs. " + Model.AdverseAward.InterimCompAmount?.ToString("N2") : "No")</td>
+            </tr>
+            <tr>
+                <td>30</td>
+                <td>The said interim compensation paid is deducted by the MACT in the awarded amount or not. If not deducted give the details reasons</td>
+                <td>@(Model.AdverseAward?.InterimCompDeducted == true ? "Yes, deducted" : "No")</td>
+            </tr>
+            <tr>
+                <td>31</td>
+                <td>Detailed opinion of the panel advocate</td>
+                <td>@Model.AdverseAward?.AdvocateOpinion</td>
+            </tr>
+            <tr>
+                <td>32</td>
+                <td>Opinion of the L O</td>
+                <td>@Model.AdverseAward?.LOOpinion</td>
+            </tr>
+            <tr>
+                <td>33</td>
+                <td>Opinion of the DC</td>
+                <td>@Model.AdverseAward?.DCOpinion</td>
+            </tr>
+            @if(Model.LinkedAppeal != null)
+            {
+                <tr>
+                    <td>34</td>
+                    <td>Appeal & Compliance details</td>
+                    <td>
+                        <div><strong>Initial Action:</strong> @Model.LinkedAppeal.InitialAction @(Model.LinkedAppeal.ApprovalDate.HasValue ? "(Appr: " + Model.LinkedAppeal.ApprovalDate.Value.ToString("dd-MM-yyyy") + ")" : "")</div>
+                        @if(!string.IsNullOrEmpty(Model.LinkedAppeal.CorpMFANumber))
+                        {
+                            <div><strong>Corp MFA:</strong> @Model.LinkedAppeal.CorpMFANumber/@Model.LinkedAppeal.CorpMFAYear (@Model.LinkedAppeal.CorpMFAStatus) - @Model.LinkedAppeal.HighCourtBench</div>
+                        }
+                        @if(!string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMFANumber) || !string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMVCNumber))
+                        {
+                            <div class="mt-1 border-top pt-1">
+                                <strong>Claimant Appeal Workflow:</strong>
+                                <br/>MFA No: @Model.LinkedAppeal.ClaimantMFANumber / @Model.LinkedAppeal.ClaimantMFAYear
+                                <br/>Bench: @(Model.LinkedAppeal.HighCourtBench == "Others" ? Model.LinkedAppeal.OtherHighCourtBench : Model.LinkedAppeal.HighCourtBench) | Advocate: @Model.LinkedAppeal.ClaimantMFAAdvocate
+                                <br/>Entrustment: @Model.LinkedAppeal.ClaimantMFAEntrustmentNo (@(Model.LinkedAppeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? "")) 
+                                <br/>Decision: @Model.LinkedAppeal.ClaimantMFADecision | Action: @Model.LinkedAppeal.ClaimantActionTaken
+                                @if(!string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantApprovalNo))
+                                {
+                                    <br/><text>Post-Decision Approval: @(Model.LinkedAppeal.ClaimantApprovalNo) (@(Model.LinkedAppeal.ClaimantApprovalDate?.ToString("dd-MM-yyyy") ?? ""))</text>
+                                }
+                            </div>
+                        }
+                        @if(Model.LinkedAppeal.IsClaimantSCAppeal)
+                        {
+                            <div class="mt-1 p-1 bg-light border">
+                                <strong>Claimant SC Tracking:</strong> 
+                                @if(!Model.LinkedAppeal.IsClaimantSCPending)
+                                {
+                                     <span>No: @Model.LinkedAppeal.ClaimantSCNumber / @Model.LinkedAppeal.ClaimantSCYear</span>
+                                }
+                                else { <span>(Pending Filing)</span> }
+                                <br/>Status: @Model.LinkedAppeal.ClaimantSCStatus | Outcome: @Model.LinkedAppeal.ClaimantSCOutcome
+                            </div>
+                        }
+                        <div class="mt-1 pt-1 border-top">
+                            <strong>Final Compliance:</strong> @Model.LinkedAppeal.FinalComplianceStatus 
+                            (Date: @Model.LinkedAppeal.FinalComplianceDate?.ToString("dd-MM-yyyy"))
+                        </div>
+                        @if(Model.LinkedAppeal.AmountDeposited.HasValue)
+                        {
+                            <div><strong>Amt Deposited:</strong> Rs. @Model.LinkedAppeal.AmountDeposited?.ToString("N2")</div>
+                        }
+                        <div class="small fst-italic">Remarks: @Model.LinkedAppeal.FinalRemarks</div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    
+    
+    <!-- Documents List -->
+    <div class="mt-5">
+        <div class="mb-2"><strong>LIST OF DOCUMENTS ENCLOSED</strong></div>
+        <table class="table table-bordered border-dark" style="font-size: 11pt;">
+            <thead>
+                <tr>
+                    <th style="width: 10%;" class="text-center">S.No</th>
+                    <th>Description of Documents</th>
+                    <th style="width: 15%;" class="text-center">Pages</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.AdverseAward?.EnclosedDocuments != null && Model.AdverseAward.EnclosedDocuments.Any())
+                {
+                    int sno = 1;
+                    foreach (var doc in Model.AdverseAward.EnclosedDocuments)
+                    {
+                        <tr>
+                            <td class="text-center">@sno</td>
+                            <td>@doc.DocName</td>
+                            <td class="text-center">@(doc.PageCount?.ToString() ?? "-")</td>
+                        </tr>
+                        sno++;
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="3" class="text-center py-3 italic">No documents identified at the time of registration.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- WEB VIEW (Hidden in Print)                 -->
+<div class="container-fluid px-3 px-md-4 px-xl-5 py-4 d-print-none">
+    @{
+        var aiDivId = User.FindFirst("DivisionID")?.Value;
+        bool isAICentral = aiDivId == "0" || aiDivId == "5";
+        bool isAIRole = User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("CLO") || User.IsInRole("MD");
+    }
+    @if (isAICentral && isAIRole)
+    {
+        <div class="card border-0 shadow-sm rounded-4 mb-3 p-3" style="background: linear-gradient(135deg, rgba(13, 110, 253, 0.08), rgba(111, 66, 193, 0.08)); border-left: 4px solid #0d6efd !important;">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div class="d-flex align-items-center">
+                    <div class="p-2 bg-primary text-white rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                        <i class="bi bi-robot fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="fw-bold mb-0 text-dark">Analyze Case with Nyaya Patha AI</h6>
+                        <small class="text-muted">Instant strength/weakness analysis, contradiction detection, and precedent matching for MVC/@Model.MVCNo/@Model.MVCYear.</small>
+                    </div>
+                </div>
+                <div>
+                    <a href="/NyayaPatha?caseType=MVC&caseId=@Model.CaseID" class="btn btn-primary rounded-pill px-4 shadow-sm fw-semibold">
+                        <i class="bi bi-cpu me-1"></i> Open in Nyaya Patha AI
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+
+    <partial name="_DetailsContent" model="Model" />
+
+    @{
+        var mvcDivId = User.FindFirst("DivisionID")?.Value;
+        var mvcRoleUpper = (User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+        bool canViewNotings = string.IsNullOrEmpty(mvcDivId) || mvcDivId == "0" || mvcDivId == "5"
+            || mvcRoleUpper.Contains("MD") || mvcRoleUpper.Contains("CLO") || mvcRoleUpper.Contains("LO")
+            || mvcRoleUpper.Contains("ADMIN") || mvcRoleUpper.Contains("CENTRAL")
+            || ViewBag.IsCentralOffice == true;
+    }
+    @if (canViewNotings)
+    {
+        var mvcNotingVM = new MVCCaseManagement.Models.CaseNotingViewModel
+        {
+            CaseType = "MVC",
+            CaseID = Model.CaseID,
+            CaseNumberTitle = $"MVC No. {Model.MVCNo}/{Model.MVCYear}",
+            Notings = (ViewBag.CaseNotings as List<MVCCaseManagement.Models.CaseNoting>) ?? new List<MVCCaseManagement.Models.CaseNoting>()
+        };
+        <partial name="_CaseNotingsSection" model="mvcNotingVM" />
+    }
+</div>
+
+<!-- UPDATE CNR NUMBER MODAL -->
+<div class="modal fade" id="updateCnrModal" tabindex="-1" aria-labelledby="updateCnrModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white py-3 px-4">
+                <h5 class="modal-title fw-bold" id="updateCnrModalLabel">
+                    <i class="bi bi-broadcast me-2"></i>Update eCourts 16-Digit CNR Number
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="alert alert-info py-2 px-3 small mb-3 border-0 bg-info-subtle text-info-emphasis rounded-3">
+                    <i class="bi bi-info-circle-fill me-1"></i> Linking a valid 16-digit CNR Number enables real-time eCourts Gateway status synchronization, automated hearing tracking, and order retrieval.
+                </div>
+                <form id="updateCnrForm" onsubmit="event.preventDefault(); submitUpdateCnr();">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="updateCnrCaseId" value="@Model.CaseID" />
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="txtNewCnrNumber" class="form-label fw-bold text-secondary small text-uppercase mb-0">16-Digit CNR Number</label>
+                            <span id="cnrCharCount" class="badge bg-secondary font-monospace">0 / 16 chars</span>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="txtNewCnrNumber" class="form-control font-monospace fs-6 text-uppercase" 
+                                   maxlength="16" placeholder="e.g. KADW200035312025" 
+                                   value="@Model.CNRNumber" oninput="onCnrInputChange(this)" />
+                            <button type="button" class="btn btn-outline-secondary" onclick="verifyCnrLive()" id="btnVerifyCnr" title="Test CNR on eCourts Gateway">
+                                <i class="bi bi-shield-check me-1"></i> Verify
+                            </button>
+                        </div>
+                        <div class="form-text small text-muted mt-1" id="cnrHelperText">
+                            Format: 6-char establishment code + 6-digit case number + 4-digit year (e.g. <code>KADW200035312025</code> or <code>KAHC010012342024</code>)
+                        </div>
+                        <div id="verifyCnrResult" class="mt-2" style="display:none;"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer bg-light px-4 py-3 border-top d-flex justify-content-between">
+                <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3" onclick="unlinkCnrNumber()">
+                    <i class="bi bi-trash3 me-1"></i> Unlink CNR
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" id="btnSaveCnr" onclick="submitUpdateCnr()">
+                        <i class="bi bi-check2-circle me-1"></i> Save & Link CNR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Styles {
+    <style>
+        .bg-info-subtle { background-color: #cff4fc !important; color: #055160 !important; }
+        .bg-secondary-subtle { background-color: #f8f9fa !important; color: #6c757d !important; }
+
+        /* eCourts & Dossier Table Layout Stabilization */
+        #live-history-container table, #live-orders-container table,
+        [id^="tabHistory_"] table, [id^="tabOrders_"] table, [id^="tabIA_"] table {
+            width: 100% !important;
+            min-width: 760px !important;
+            table-layout: fixed !important;
+            border-collapse: separate !important;
+            border-spacing: 0 !important;
+        }
+        #live-history-container th, #live-orders-container th,
+        [id^="tabHistory_"] th, [id^="tabOrders_"] th, [id^="tabIA_"] th {
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 5 !important;
+            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.15) !important;
+        }
+        #live-history-container td, #live-orders-container td,
+        [id^="tabHistory_"] td, [id^="tabOrders_"] td, [id^="tabIA_"] td {
+            vertical-align: middle !important;
+            word-break: break-word !important;
+        }
+        [id^="tabHistory_"] .badge, [id^="tabOrders_"] .badge {
+            white-space: normal !important;
+            text-align: left !important;
+            display: inline-block !important;
+            max-width: 100% !important;
+            line-height: 1.4 !important;
+        }
+        .dossier-tab-nav {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+        }
+        .dossier-tab-nav .nav-item {
+            flex: 1 1 auto !important;
+        }
+        .dossier-tab-nav .nav-link {
+            white-space: nowrap !important;
+            text-align: center !important;
+            padding: 0.45rem 0.75rem !important;
+            font-size: 0.82rem !important;
+        }
+
+        /* PRINT STYLES */
+        @@media print {
+            @@page { size: A4; margin: 2cm; }
+            body { 
+                font-family: 'Times New Roman', serif !important; 
+                background: white !important; 
+                color: black !important;
+                font-size: 12pt !important;
+            }
+            
+            /* Visibility Toggles */
+            .d-print-none { display: none !important; }
+            .d-print-block { display: block !important; }
+            
+            /* Table Styling for Print */
+            .table-bordered { border: 2px solid #000 !important; }
+            .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px 8px !important; }
+            .bg-light { background-color: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+
+            /* Ensure full width */
+            .w-100 { width: 100% !important; }
+            
+            /* Remove URL headers/footers if possible in browser settings */
+        }
+    </style>
+}
+
+@section Scripts {
+    <script src="~/js/ecourts-details.js" asp-append-version="true"></script>
+    <script>
+        // Advance Payment Logic
+        const caseId = @Model.CaseID;
+        
+        // Load payments on page load
+        $(document).ready(function() {
+            loadPayments();
+
+            const cnr = '@(Model.CNRNumber ?? "")'.trim();
+
+            const caseCollapseEl = document.getElementById('collapseCaseNapixSection');
+            if (caseCollapseEl) {
+                caseCollapseEl.addEventListener('show.bs.collapse', function () {
+                    const icon = document.getElementById('iconToggleCaseNapix');
+                    const text = document.getElementById('textToggleCaseNapix');
+                    if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
+                    if (text) { text.textContent = 'Hide NAPIX Details'; }
+                });
+
+                caseCollapseEl.addEventListener('hide.bs.collapse', function () {
+                    const icon = document.getElementById('iconToggleCaseNapix');
+                    const text = document.getElementById('textToggleCaseNapix');
+                    if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
+                    if (text) { text.textContent = 'View NAPIX Details'; }
+                });
+            }
+
+            // If user selects the Orders tab, ensure orders are loaded/rendered
+            const ordersTabBtn = document.getElementById('orders-tab');
+            if (ordersTabBtn) {
+                ordersTabBtn.addEventListener('shown.bs.tab', function () {
+                    const activeCnr = (window.currentActiveCnr || cnr || '').trim();
+                    const container = document.getElementById('live-orders-container');
+                    if (container && (!container.querySelector('table') || container.innerText.includes('Querying'))) {
+                        refreshCaseOrdersLive(activeCnr, @Model.CaseID);
+                    }
+                });
+            }
+
+            // Toggle for Corp MFA NAPIX collapse
+            $(document).on('show.bs.collapse', '[id^="collapseCorpMfaNapix_"]', function () {
+                const id = this.id.replace('collapseCorpMfaNapix_', '');
+                const icon = document.getElementById('iconToggleCorpMfaNapix_' + id);
+                const text = document.getElementById('textToggleCorpMfaNapix_' + id);
+                if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
+                if (text) { text.textContent = 'Hide NAPIX Details'; }
+            });
+
+            $(document).on('hide.bs.collapse', '[id^="collapseCorpMfaNapix_"]', function () {
+                const id = this.id.replace('collapseCorpMfaNapix_', '');
+                const icon = document.getElementById('iconToggleCorpMfaNapix_' + id);
+                const text = document.getElementById('textToggleCorpMfaNapix_' + id);
+                if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
+                if (text) { text.textContent = 'View NAPIX Details'; }
+            });
+
+            // Toggle for Claimant MFA NAPIX collapse
+            $(document).on('show.bs.collapse', '[id^="collapseClaimantMfaNapix_"]', function () {
+                const id = this.id.replace('collapseClaimantMfaNapix_', '');
+                const icon = document.getElementById('iconToggleClaimantMfaNapix_' + id);
+                const text = document.getElementById('textToggleClaimantMfaNapix_' + id);
+                if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
+                if (text) { text.textContent = 'Hide NAPIX Details'; }
+            });
+
+            $(document).on('hide.bs.collapse', '[id^="collapseClaimantMfaNapix_"]', function () {
+                const id = this.id.replace('collapseClaimantMfaNapix_', '');
+                const icon = document.getElementById('iconToggleClaimantMfaNapix_' + id);
+                const text = document.getElementById('textToggleClaimantMfaNapix_' + id);
+                if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
+                if (text) { text.textContent = 'View NAPIX Details'; }
+            });
+
+            // Manual MFA Live eCourts details are triggered via user button click (Rule 7: Database-only page load)
+            
+            // Show add payment modal
+            $('#btnAddPayment').click(function() {
+                $('#paymentForm')[0].reset();
+                $('#paymentModal').modal('show');
+            });
+            
+            // Save payment
+            $('#btnSavePayment').click(function() {
+                const payment = {
+                    caseID: caseId,
+                    amount: parseFloat($('#paymentAmount').val()),
+                    paymentType: $('#paymentType').val(),
+                    chequeNumber: $('#chequeNumber').val() || null,
+                    chequeDate: $('#chequeDate').val() || null,
+                    remarks: $('#paymentRemarks').val() || null
+                };
+                
+                if (!payment.amount || payment.amount <= 0) {
+                    alert('Please enter a valid amount');
+                    return;
+                }
+                
+                var token = $('input[name="__RequestVerificationToken"]').val();
+
+                $.ajax({
+                    url: '/Case/AddPayment',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    headers: {
+                        "RequestVerificationToken": token
+                    },
+                    data: JSON.stringify(payment),
+                    success: function(response) {
+                        if (response.success) {
+                            $('#paymentModal').modal('hide');
+                            loadPayments();
+                        } else {
+                            alert('Error: ' + (response.message || 'Failed to save payment'));
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('Error saving payment. Please try again.');
+                        console.error(xhr);
+                    }
+                });
+            });
+        });
+        
+        // Load payments function
+        function loadPayments() {
+            $.get('/Case/GetPayments', { caseId: caseId }, function(data) {
+                if (Array.isArray(data)) {
+                    renderPayments(data);
+                } else {
+                    console.error("Payment load error:", data);
+                    const msg = data.message || "Unknown error";
+                    $('#paymentsList').html('<div class="list-group-item text-danger small">Error: ' + msg + '</div>');
+                }
+            }).fail(function() {
+                $('#paymentsList').html('<div class="list-group-item text-danger small">Network error loading payments</div>');
+            });
+        }
+        
+        // Render payments list
+        function renderPayments(payments) {
+            const container = $('#paymentsList');
+            container.empty();
+            
+            if (payments.length === 0) {
+                container.html('<div class="list-group-item text-muted small fst-italic">No payments recorded yet.</div>');
+                $('#totalPayments').text('0.00');
+                return;
+            }
+            
+            let total = 0;
+            payments.forEach(payment => {
+                total += payment.amount;
+                
+                const date = payment.chequeDate ? 
+                    new Date(payment.chequeDate).toLocaleDateString('en-IN') : 
+                    new Date(payment.createdDate).toLocaleDateString('en-IN');
+                
+                const html = `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold text-success">₹ ${payment.amount.toLocaleString('en-IN', {minimumFractionDigits: 2})}</div>
+                                <small class="text-muted d-block">
+                                    ${payment.paymentType || 'Payment'} • ${date}
+                                </small>
+                                ${payment.chequeNumber ? '<small class="text-muted d-block">Cheque: ' + payment.chequeNumber + '</small>' : ''}
+                                ${payment.remarks ? '<small class="text-muted d-block fst-italic">' + payment.remarks + '</small>' : ''}
+                            </div>
+                            ${payment.paymentID > 0 ? `
+                                <button class="btn btn-sm btn-outline-danger" onclick="deletePayment(${payment.paymentID})" type="button">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            ` : `
+                                <span class="badge bg-light text-muted border" title="Saved via Petty Bill (Read-Only)">
+                                    <i class="bi bi-lock-fill"></i>
+                                </span>
+                            `}
+                        </div>
+                    </div>
+                `;
+                container.append(html);
+            });
+            
+            $('#totalPayments').text(total.toLocaleString('en-IN', {minimumFractionDigits: 2}));
+        }
+        
+        // Delete payment
+        function deletePayment(paymentId) {
+            if (!confirm('Are you sure you want to delete this payment record?')) {
+                return;
+            }
+            
+            var token = $('input[name="__RequestVerificationToken"]').val();
+
+            $.ajax({
+                url: '/Case/DeletePayment',
+                type: 'POST',
+                data: { paymentId: paymentId },
+                headers: {
+                    "RequestVerificationToken": token
+                },
+                success: function(response) {
+                    if (response.success) {
+                        loadPayments();
+                    } else {
+                        alert('Error deleting payment');
+                    }
+                },
+                error: function() {
+                    alert('Error deleting payment. Please try again.');
+                }
+            });
+        }
+
+        // CNR Number Update and Live Gateway Management
+        window.currentActiveCnr = '@(Model.CNRNumber ?? "")';
+
+        function onCnrInputChange(input) {
+            input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const val = input.value;
+            const len = val.length;
+            const countBadge = $('#cnrCharCount');
+            const helper = $('#cnrHelperText');
+
+            if (len === 0) {
+                countBadge.removeClass('bg-success bg-warning bg-danger').addClass('bg-secondary').text('0 / 16 chars');
+                helper.html('Format: 6-char establishment code + 6-digit case number + 4-digit year (e.g. <code>KADW200035312025</code>)');
+            } else if (len === 16) {
+                countBadge.removeClass('bg-secondary bg-warning bg-danger').addClass('bg-success').html('<i class="bi bi-check2"></i> 16 / 16 chars (Complete)');
+                helper.html('<span class="text-success"><i class="bi bi-check-circle-fill me-1"></i>Valid 16-character CNR length. Click <strong>Verify</strong> or <strong>Save & Link CNR</strong>.</span>');
+                $('#verifyCnrResult').slideUp();
+            } else {
+                const remaining = 16 - len;
+                countBadge.removeClass('bg-secondary bg-success').addClass('bg-warning text-dark').text(`${len} / 16 chars (${remaining} more needed)`);
+                if (len >= 12 && val.endsWith('202')) {
+                    helper.html('<span class="text-danger fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i>Year needs 4 digits (e.g. 2024, 2025, or 2026). Add the final digit of the year.</span>');
+                } else {
+                    helper.html(`Format: 6-char court/est code + 6-digit case no + 4-digit year. Need <strong>${remaining}</strong> more character(s).`);
+                }
+            }
+        }
+
+        function openUpdateCnrModal() {
+            $('#verifyCnrResult').hide().empty();
+            const input = document.getElementById('txtNewCnrNumber');
+            if (input) onCnrInputChange(input);
+            const modalEl = document.getElementById('updateCnrModal');
+            if (modalEl) {
+                const modal = new bootstrap.Modal(modalEl);
+                modal.show();
+            }
+        }
+
+        async function verifyCnrLive() {
+            const cnr = ($('#txtNewCnrNumber').val() || '').trim().toUpperCase();
+            const resultBox = $('#verifyCnrResult');
+            const btn = $('#btnVerifyCnr');
+
+            if (!cnr || cnr.length !== 16) {
+                const remaining = 16 - (cnr ? cnr.length : 0);
+                resultBox.html(`
+                    <div class="alert alert-danger py-2 px-3 small mb-0 rounded-3">
+                        <div class="fw-bold"><i class="bi bi-exclamation-octagon-fill me-1"></i>Invalid CNR Length (${cnr.length}/16 characters)</div>
+                        <div>A valid eCourts CNR must be exactly 16 characters. You entered <code>${cnr}</code> (${cnr.length} chars).</div>
+                        <div class="mt-1">Please add the remaining <strong>${remaining}</strong> character(s) (such as the last digit of the year, e.g. 2024, 2025, or 2026).</div>
+                    </div>
+                `).slideDown();
+                return;
+            }
+
+            const isHc = cnr.startsWith('KAHC') || cnr.includes('HC');
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Verifying...');
+            resultBox.html('<div class="text-muted small py-1"><span class="spinner-border spinner-border-sm text-primary me-1"></span>Checking live eCourts NAPIX Gateway...</div>').slideDown();
+
+            try {
+                const res = await fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=${isHc}`);
+                const data = await res.json();
+                if (data.success && data.data) {
+                    const s = data.data;
+                    resultBox.html(`
+                        <div class="alert alert-success py-2 px-3 small mb-0 rounded-3 shadow-sm">
+                            <div class="fw-bold text-success"><i class="bi bi-check-circle-fill me-1"></i>Verified on eCourts!</div>
+                            <div><strong>Court:</strong> ${s.establishment_name || s.court_no_judge || 'eCourts'}</div>
+                            <div><strong>Case:</strong> ${s.case_type || ''} ${s.case_number || ''} | <strong>Stage:</strong> ${s.stage || 'N/A'}</div>
+                            ${s.next_hearing_date ? `<div><strong>Next Date:</strong> ${s.next_hearing_date}</div>` : ''}
+                        </div>
+                    `).slideDown();
+                } else {
+                    resultBox.html(`<div class="alert alert-warning py-2 px-3 small mb-0 rounded-3"><i class="bi bi-exclamation-circle me-1"></i>${data.message || 'Valid 16-digit CNR format, but not yet indexed on live eCourts.'}</div>`).slideDown();
+                }
+            } catch (e) {
+                resultBox.html('<div class="alert alert-info py-2 px-3 small mb-0 rounded-3"><i class="bi bi-info-circle me-1"></i>Gateway test completed. Format is valid. You can save and link.</div>').slideDown();
+            } finally {
+                btn.prop('disabled', false).html('<i class="bi bi-shield-check me-1"></i> Verify');
+            }
+        }
+
+        async function submitUpdateCnr() {
+            const caseId = $('#updateCnrCaseId').val();
+            const cnr = ($('#txtNewCnrNumber').val() || '').trim().toUpperCase();
+            const btn = $('#btnSaveCnr');
+            const resultBox = $('#verifyCnrResult');
+
+            if (cnr && cnr.length !== 16) {
+                const remaining = 16 - cnr.length;
+                resultBox.html(`
+                    <div class="alert alert-danger py-2 px-3 small mb-0 rounded-3">
+                        <div class="fw-bold"><i class="bi bi-exclamation-octagon-fill me-1"></i>CNR Number must be exactly 16 characters</div>
+                        <div>You entered <code>${cnr}</code> which is only <strong>${cnr.length}</strong> characters.</div>
+                        <div class="mt-1">Please enter the missing <strong>${remaining}</strong> character(s) (e.g. 4-digit filing year like 2024, 2025, or 2026).</div>
+                    </div>
+                `).slideDown();
+                return;
+            }
+
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>Saving...');
+
+            const token = $('input[name="__RequestVerificationToken"]').first().val();
+
+            try {
+                const formData = new FormData();
+                formData.append('caseId', caseId);
+                formData.append('cnrNumber', cnr);
+                if (token) formData.append('__RequestVerificationToken', token);
+
+                const res = await fetch('/Case/UpdateCnr', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.redirected || (res.url && res.url.includes('/Account/Login'))) {
+                    resultBox.html(`
+                        <div class="alert alert-warning py-2 px-3 small mb-0 rounded-3">
+                            <i class="bi bi-box-arrow-in-right me-1"></i>Your session expired. Please <a href="/Account/Login" class="alert-link fw-bold">Login again</a> to save changes.
+                        </div>
+                    `).slideDown();
+                    return;
+                }
+
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    resultBox.html(`
+                        <div class="alert alert-danger py-2 px-3 small mb-0 rounded-3">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i>Server error (${res.status}): ${errorText || res.statusText}
+                        </div>
+                    `).slideDown();
+                    return;
+                }
+
+                const contentType = res.headers.get('content-type') || '';
+                if (!contentType.includes('application/json')) {
+                    const rawText = await res.text();
+                    if (rawText.includes('login') || rawText.includes('Login') || rawText.includes('<!DOCTYPE')) {
+                        resultBox.html(`
+                            <div class="alert alert-warning py-2 px-3 small mb-0 rounded-3">
+                                <i class="bi bi-box-arrow-in-right me-1"></i>Your session expired. Please <a href="/Account/Login" class="alert-link fw-bold">Login again</a>.
+                            </div>
+                        `).slideDown();
+                        return;
+                    }
+                    throw new Error('Unexpected response format from server.');
+                }
+
+                const json = await res.json();
+
+                if (json.success) {
+                    window.currentActiveCnr = json.cnrNumber || '';
+                    $('#txtNewCnrNumber').val(window.currentActiveCnr);
+
+                    const modalEl = document.getElementById('updateCnrModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) modalInstance.hide();
+
+                    if (json.cnrNumber) {
+                        $('#details-cnr-badge').html(`
+                            <span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
+                                <i class="bi bi-broadcast me-1"></i> CNR: ${json.cnrNumber}
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Copy CNR Number" onclick="event.stopPropagation(); navigator.clipboard.writeText('${json.cnrNumber}'); alert('CNR Number copied to clipboard: ${json.cnrNumber}');">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs" onclick="event.stopPropagation(); openUpdateCnrModal()">
+                                <i class="bi bi-pencil-square me-1"></i>Update CNR
+                            </button>
+                            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 fw-bold shadow-xs" id="btnRefreshCaseLive" onclick="event.stopPropagation(); triggerFetchCaseLiveStatus()">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status
+                            </button>
+                        `);
+                        triggerFetchCaseLiveStatus();
+                    } else {
+                        $('#details-cnr-badge').html(`
+                            <span class="badge bg-warning text-dark px-3 py-2">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i> CNR Not Linked
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs" onclick="event.stopPropagation(); openUpdateCnrModal()">
+                                <i class="bi bi-pencil-square me-1"></i>Update CNR
+                            </button>
+                        `);
+                        fetchLiveCnrDetails('', caseId);
+                    }
+
+                    alert(json.message || 'CNR Number updated successfully!');
+                } else {
+                    resultBox.html(`
+                        <div class="alert alert-danger py-2 px-3 small mb-0 rounded-3">
+                            <i class="bi bi-exclamation-octagon-fill me-1"></i>${json.message || 'Unable to update CNR Number.'}
+                        </div>
+                    `).slideDown();
+                }
+            } catch (e) {
+                resultBox.html(`
+                    <div class="alert alert-danger py-2 px-3 small mb-0 rounded-3">
+                        <i class="bi bi-exclamation-circle-fill me-1"></i>An error occurred: ${e.message || e}
+                    </div>
+                `).slideDown();
+            } finally {
+                btn.prop('disabled', false).html('<i class="bi bi-check2-circle me-1"></i> Save & Link CNR');
+            }
+        }
+
+        function unlinkCnrNumber() {
+            if (!confirm('Are you sure you want to unlink the CNR Number from this case?')) return;
+            $('#txtNewCnrNumber').val('');
+            submitUpdateCnr();
+        }
+
+        function triggerFetchCaseLiveStatus() {
+            const cnr = (window.currentActiveCnr || '@(Model.CNRNumber ?? "")').trim();
+            if (!cnr || cnr === '') {
+                openUpdateCnrModal();
+                return;
+            }
+            const caseCollapseEl = document.getElementById('collapseCaseNapixSection');
+            if (caseCollapseEl && !caseCollapseEl.classList.contains('show')) {
+                const bsCollapse = bootstrap.Collapse.getOrCreateInstance(caseCollapseEl, { toggle: false });
+                bsCollapse.show();
+            }
+            // 1. Immediately fetch live CNR details to dynamically update top card, hearing history, and orders
+            if (typeof fetchLiveCnrDetails === 'function') {
+                fetchLiveCnrDetails(cnr, @Model.CaseID);
+            }
+            // 2. Also register priority sync in background engine
+            queueManualSync(cnr, @Model.CaseID, 'MVC');
+        }
+
+        function queueManualSync(cnr, caseId, module) {
+            const msgElem = document.getElementById('live-sync-msg');
+            if (msgElem) {
+                msgElem.innerHTML = '<span class="text-primary"><span class="spinner-border spinner-border-sm me-1"></span> Queuing sync with priority...</span>';
+            }
+
+            const formData = new FormData();
+            formData.append('caseId', caseId);
+            formData.append('cnrNumber', cnr);
+            formData.append('module', module || 'MVC');
+
+            fetch('/ECourts/QueueCaseSync', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data.success) {
+                    if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i> ' + (data.message || 'Failed to queue sync') + '</span>';
+                    return;
+                }
+
+                if (msgElem) {
+                    msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> Sync queued (' + data.status + '). Processing in background...</span>';
+                }
+
+                let attempts = 0;
+                const pollInterval = setInterval(() => {
+                    attempts++;
+                    if (attempts > 30) {
+                        clearInterval(pollInterval);
+                        if (msgElem) msgElem.innerHTML = '<span class="text-warning"><i class="bi bi-clock-history me-1"></i> Sync is taking longer than expected. Refresh page later.</span>';
+                        return;
+                    }
+
+                    fetch('/ECourts/GetQueueStatus?queueId=' + (data.queueId || 0) + '&caseId=' + caseId + '&module=' + (module || 'MVC'))
+                    .then(r => r.json())
+                    .then(statusData => {
+                        if (statusData.status === 'Success') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Synced with e-Courts Gateway!</span>';
+                            }
+                            if (typeof fetchLiveCnrDetails === 'function') {
+                                fetchLiveCnrDetails(cnr, caseId);
+                            }
+                        } else if (statusData.status === 'Failed') {
+                            clearInterval(pollInterval);
+                            if (msgElem) {
+                                msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> Sync Failed: ' + (statusData.error || 'e-Courts error') + '</span>';
+                            }
+                        } else if (msgElem) {
+                            msgElem.innerHTML = '<span class="text-info"><span class="spinner-border spinner-border-sm me-1"></span> ' + statusData.status + '... (Attempt ' + attempts + ')</span>';
+                        }
+                    })
+                    .catch(() => {});
+                }, 2000);
+            })
+            .catch(err => {
+                if (msgElem) msgElem.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i> Error connecting to sync queue</span>';
+            });
+        }
+
+        function ensureMfaSectionOpen(appealId) {
+            const rawId = String(appealId || '').replace('_claimant', '');
+            const el = document.getElementById('collapseCorpMfaNapix_' + rawId) || 
+                       document.getElementById('collapseClaimantMfaNapix_' + rawId) ||
+                       document.getElementById('collapseCorpMfaNapix_' + appealId) || 
+                       document.getElementById('collapseClaimantMfaNapix_' + appealId);
+            if (el && !el.classList.contains('show')) {
+                const bsCollapse = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+                bsCollapse.show();
+            }
+        }
+    </script>
+}

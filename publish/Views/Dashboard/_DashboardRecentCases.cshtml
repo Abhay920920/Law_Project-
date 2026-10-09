@@ -1,0 +1,63 @@
+@model List<MVCCaseManagement.Models.RecentCaseViewModel>
+
+<div class="table-responsive rounded-3 overflow-hidden border">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="table-header-primary">
+            <tr>
+                <th class="ps-4">MVC No.</th>
+                <th>MACT Name</th>
+                <th>Hearing Date</th>
+                <th>Outcome</th>
+                <th class="text-center">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null && Model.Count > 0)
+            {
+                foreach (var caseItem in Model)
+                {
+                    <tr>
+                        <td class="ps-4"><span class="fw-bold text-dark">@caseItem.MVCNo</span></td>
+                        <td><span class="text-muted small">@caseItem.MACTName</span></td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-calendar3 me-2 text-primary small"></i>
+                                @(caseItem.NextHearingDate.HasValue 
+                                    ? caseItem.NextHearingDate.Value.ToString("dd-MMM-yyyy") 
+                                    : "N/A")
+                            </div>
+                        </td>
+                        <td>
+                            @if (string.IsNullOrEmpty(caseItem.DisposalResult) || caseItem.DisposalResult == "Pending")
+                            {
+                                <span class="badge badge-pending px-3 py-2 rounded-pill fw-medium">Pending</span>
+                            }
+                            else if (caseItem.DisposalResult == "Favor")
+                            {
+                                <span class="badge badge-favor px-3 py-2 rounded-pill fw-medium">Favor</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-against px-3 py-2 rounded-pill fw-medium">Against</span>
+                            }
+                        </td>
+                        <td class="text-center">
+                            <a href="/Case/Details/@caseItem.CaseID" class="btn btn-sm btn-primary rounded-pill px-3">
+                                <i class="bi bi-eye-fill"></i> View Details
+                            </a>
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="5" class="py-5 text-center text-muted">
+                        <i class="bi bi-inbox fs-1 d-block mb-3 opacity-25"></i>
+                        <p class="mb-0">No cases scheduled for this date.</p>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

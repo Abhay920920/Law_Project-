@@ -1,0 +1,127 @@
+@model MVCCaseManagement.Models.JudgementViewModel
+
+@{
+    ViewData["Title"] = "Edit Judgement / Circular";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var hasExistingFile = !string.IsNullOrEmpty(Model.FilePath);
+    var fileName = hasExistingFile ? System.IO.Path.GetFileName(Model.FilePath) : "";
+}
+
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0" style="border-radius: 10px; overflow: hidden;">
+                <div class="card-header bg-white border-bottom py-3 px-4 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h4 class="mb-0 fw-bold text-primary">
+                            <i class="bi bi-pencil-square me-2"></i>Edit Repository Record
+                        </h4>
+                        <div class="small text-muted mt-1">Update details, authority, remarks, or upload a replacement document.</div>
+                    </div>
+                    <span class="badge @(Model.Category == "Circular" ? "bg-teal-subtle text-teal" : "bg-primary-subtle text-primary") px-3 py-1.5 fw-bold text-uppercase" style="font-size: 0.72rem;">
+                        @Model.Category
+                    </span>
+                </div>
+                <div class="card-body p-4">
+                    <form asp-action="Edit" enctype="multipart/form-data" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" asp-for="JudgementID" />
+                        <input type="hidden" asp-for="FilePath" />
+
+                        <div class="mb-3">
+                            <label asp-for="Category" class="form-label fw-bold text-dark small text-uppercase">Record Category <span class="text-danger">*</span></label>
+                            <select asp-for="Category" class="form-select shadow-xs" required>
+                                <option value="Judgement">Judgement</option>
+                                <option value="Circular">Circular</option>
+                            </select>
+                            <span asp-validation-for="Category" class="text-danger small"></span>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Title" class="form-label fw-bold text-dark small text-uppercase">Title / Case / Subject <span class="text-danger">*</span></label>
+                            <input asp-for="Title" class="form-control shadow-xs" placeholder="Enter Title or Official Reference Number" required />
+                            <span asp-validation-for="Title" class="text-danger small"></span>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label asp-for="Court" class="form-label fw-bold text-dark small text-uppercase">Court / Issuing Authority</label>
+                                <input asp-for="Court" class="form-control shadow-xs" placeholder="e.g. High Court of Karnataka / Central Office" />
+                                <span asp-validation-for="Court" class="text-danger small"></span>
+                            </div>
+                            <div class="col-md-6">
+                                <label asp-for="JudgementDate" class="form-label fw-bold text-dark small text-uppercase">Order / Issue Date</label>
+                                <input asp-for="JudgementDate" class="form-control shadow-xs" type="date" />
+                                <span asp-validation-for="JudgementDate" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="Remarks" class="form-label fw-bold text-dark small text-uppercase">Remarks / Key Holdings / Brief Summary</label>
+                            <textarea asp-for="Remarks" class="form-control shadow-xs" rows="3" placeholder="Add legal key points, ratio decidendi, or circular directives..."></textarea>
+                            <span asp-validation-for="Remarks" class="text-danger small"></span>
+                        </div>
+
+                        <!-- Current File & File Replacement Section -->
+                        <div class="card bg-light border-light-subtle p-3 mb-4 rounded-3 shadow-xs">
+                            <label class="form-label fw-bold text-dark small text-uppercase mb-2">
+                                <i class="bi bi-paperclip me-1 text-primary"></i>Uploaded Document Management
+                            </label>
+
+                            @if (hasExistingFile)
+                            {
+                                <div class="p-2.5 mb-3 bg-white rounded-2 border border-secondary-subtle d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="p-2 bg-primary-subtle text-primary rounded-2">
+                                            <i class="bi bi-file-earmark-pdf-fill fs-5"></i>
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold small text-dark text-truncate" style="max-width: 380px;">@fileName</div>
+                                            <div class="text-muted" style="font-size: 0.72rem;">Current file on server</div>
+                                        </div>
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a href="@Model.FilePath" target="_blank" class="btn btn-outline-primary btn-sm px-3 shadow-xs">
+                                            <i class="bi bi-box-arrow-up-right me-1"></i>View File
+                                        </a>
+                                        <div class="form-check ms-2 mb-0">
+                                            <input class="form-check-input" type="checkbox" name="removeFile" value="true" id="chkRemoveFile">
+                                            <label class="form-check-label small text-danger fw-semibold" for="chkRemoveFile">
+                                                Remove File
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-secondary py-2 px-3 small mb-3">
+                                    <i class="bi bi-info-circle me-1"></i>No document file currently uploaded for this record.
+                                </div>
+                            }
+
+                            <div>
+                                <label asp-for="JudgementFile" class="form-label fw-semibold text-secondary small">
+                                    @(hasExistingFile ? "Upload Replacement File (Optional):" : "Attach Document File:")
+                                </label>
+                                <input asp-for="JudgementFile" class="form-control" type="file" />
+                                <div class="form-text text-muted" style="font-size: 0.73rem;">
+                                    Supported formats: PDF, DOC, DOCX, JPG, PNG. Max allowed file size: 20MB. Leave empty to preserve current file.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                            <a href="/Judgement" class="btn btn-outline-secondary px-4 fw-medium">
+                                <i class="bi bi-arrow-left me-1"></i>Cancel & Return
+                            </a>
+                            <button type="submit" class="btn btn-primary px-4 fw-bold shadow-sm">
+                                <i class="bi bi-check-circle me-1"></i>Save Changes
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

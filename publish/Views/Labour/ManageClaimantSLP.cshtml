@@ -1,0 +1,318 @@
+@model MVCCaseManagement.Models.LabourCase
+
+@{
+    ViewData["Title"] = (Model.CaseID > 0 ? "Edit" : "Register") + " Claimant SLP ";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+    :root {
+        --primary-blue: #2563eb;
+        --dark-blue: #1e3a8a;
+        --border-color: #e2e8f0;
+        --bg-light: #f8fafc;
+        --text-main: #334155;
+    }
+
+    body {
+        background-color: #f1f5f9;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .premium-container {
+        max-width: 1200px;
+        margin: auto;
+        padding: 20px;
+    }
+
+    .glass-card {
+        background: #ffffff;
+        border: 1px solid var(--border-color);
+        border-radius: 1rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        margin-bottom: 2rem;
+    }
+
+    .card-header-premium {
+        background: var(--bg-light);
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .card-header-premium i {
+        font-size: 1.25rem;
+        color: var(--primary-blue);
+    }
+
+    .card-title {
+        font-weight: 700;
+        margin: 0;
+        color: var(--dark-blue);
+        text-transform: uppercase;
+        font-size: 0.9rem;
+        letter-spacing: 0.5px;
+    }
+
+    .form-label {
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-control, .form-select {
+        border-radius: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        border: 1px solid #cbd5e1;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: var(--primary-blue);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .btn-action {
+        background: var(--primary-blue);
+        color: white;
+        font-weight: 600;
+        padding: 0.75rem 2rem;
+        border-radius: 0.5rem;
+        border: none;
+        transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+        background: var(--dark-blue);
+        transform: translateY(-1px);
+    }
+
+    .section-divider {
+        height: 1px;
+        background: var(--border-color);
+        margin: 2rem 0;
+    }
+</style>
+
+<div class="premium-container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-dark mb-1">
+                <i class="bi bi-bank2 text-primary me-2"></i> @(Model.CaseID > 0 ? "Edit" : "New") SLP Registration
+            </h2>
+            <p class="text-muted small"><i class="bi bi-info-circle me-1"></i> Registering Supreme Court SLP arising from High Court Orders</p>
+        </div>
+        <a href="@Url.Action("ClaimantSLPs", "Labour")" class="btn btn-outline-secondary btn-sm px-4 rounded-pill">
+            <i class="bi bi-arrow-left me-1"></i> BACK TO LIST
+        </a>
+    </div>
+
+    <form asp-action="ManageClaimantSLP" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="CaseID" />
+        <input type="hidden" asp-for="DivisionID" />
+
+        <!-- Arising Section -->
+        <div class="glass-card">
+            <div class="card-header-premium">
+                <i class="bi bi-journal-arrow-up"></i>
+                <h3 class="card-title">I. Arising Out Of Details (WP / WA)</h3>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-4 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label">Arising Type</label>
+                        <select class="form-select" id="searchType">
+                            <option value="KID">KID</option>
+                            <option value="ID">ID</option>
+                            <option value="APPLICATION">APPLICATION</option>
+                            <option value="REF">REF</option>
+                            <option value="OTHERS">OTHERS</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Arising No</label>
+                        <input type="text" class="form-control" id="searchNo" placeholder="No..." />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Year</label>
+                        <input type="number" class="form-control" id="searchYear" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-dark w-100" onclick="searchParentForSLP()">
+                            <i class="bi bi-search me-1"></i> SEARCH
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                         <span id="searchResultBadge" class="badge bg-secondary w-100 py-2" style="display:none;">FOUND</span>
+                    </div>
+
+                    <!-- Hidden Fields for Arising -->
+                    <input type="hidden" asp-for="Arising_OriginalCaseNumber" id="Arising_OriginalCaseNumber" />
+                    <input type="hidden" asp-for="Arising_OriginalCaseYear" id="Arising_OriginalCaseYear" />
+                    <input type="hidden" asp-for="Arising_OriginalCourt" id="Arising_OriginalCourt" />
+                    <input type="hidden" asp-for="PetitionerName" id="PetitionerName" />
+                </div>
+            </div>
+        </div>
+
+        <!-- SLP Identification Section -->
+        <div class="glass-card">
+            <div class="card-header-premium">
+                <i class="bi bi-hash"></i>
+                <h3 class="card-title">II. SLP Identification</h3>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-4">
+                    <div class="col-md-3">
+                        <label class="form-label">Diary Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCDiaryNumber" placeholder="Diary No" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Diary Year</label>
+                        <input type="number" class="form-control" asp-for="ClaimantSCYear" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">SLP[C] Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCNumber" placeholder="SLP No" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">SLP[C] Year</label>
+                        <input type="number" class="form-control" asp-for="ClaimantSLPYear" placeholder="YYYY" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filing & Advocate Section -->
+        <div class="glass-card">
+            <div class="card-header-premium">
+                <i class="bi bi-file-earmark-check"></i>
+                <h3 class="card-title">III. SLP Filing Details</h3>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="form-label">Entrustment Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCEntrustmentNo" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Entrustment Date</label>
+                        <input type="date" class="form-control" asp-for="ClaimantSCEntrustmentDate" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">SC Advocate Name</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCAdvocate" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">SLP Status</label>
+                        <select class="form-select" asp-for="ClaimantSCStatus" id="slpStatus">
+                            <option value="Pending">Pending</option>
+                            <option value="Disposed">Disposed</option>
+                        </select>
+                    </div>
+
+                    <!-- Outcome & Decision Section (Conditional) -->
+                    <div class="col-md-12" id="outcomeSectionSLP" style="display:none;">
+                        <div class="p-4 rounded-4 bg-light border border-primary border-opacity-10 mt-3 shadow-sm">
+                            <h6 class="fw-bold text-primary mb-3"><i class="bi bi-check-circle me-2"></i> Outcome & Decision</h6>
+                            <div class="row g-4">
+                                <div class="col-md-4">
+                                    <label class="form-label">Nature of Decision</label>
+                                    <select class="form-select bg-white" asp-for="CO_Disposal_Nature">
+                                        <option value="">Select...</option>
+                                        <option>Favor of Corporation</option>
+                                        <option>Against Corporation</option>
+                                        <option>Remanded</option>
+                                        <option>Settled</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Decision Taken / Action</label>
+                                    <select class="form-select bg-white" asp-for="CO_Disposal_Decision">
+                                        <option value="">Select...</option>
+                                        <option>Appeal to be filed</option>
+                                        <option>Close Case</option>
+                                        <option>Compliance required</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Judgment Copy</label>
+                                    <input type="file" class="form-control bg-white" asp-for="JudgmentCopyFile" accept=".pdf" />
+                                    @if (!string.IsNullOrEmpty(Model.JudgmentCopyPath))
+                                    {
+                                        <div class="mt-2 small">
+                                            <a href="~/uploads/@Model.JudgmentCopyPath" target="_blank" class="text-primary text-decoration-none fw-bold">
+                                                <i class="bi bi-file-earmark-pdf me-1"></i> View Judgment
+                                            </a>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center py-4">
+            <button type="submit" class="btn btn-action px-5 shadow">
+                <i class="bi bi-check2-all me-2"></i> @(Model.CaseID > 0 ? "UPDATE" : "REGISTER") SLP RECORD
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            // SLP Status Toggle
+            $('#slpStatus').on('change', function() {
+                if ($(this).val() === 'Disposed') {
+                    $('#outcomeSectionSLP').slideDown();
+                } else {
+                    $('#outcomeSectionSLP').slideUp();
+                }
+            });
+
+            // Initial check
+            if ($('#slpStatus').val() === 'Disposed') {
+                $('#outcomeSectionSLP').show();
+            }
+        });
+
+        function searchParentForSLP() {
+            var type = $('#searchType').val();
+            var no = $('#searchNo').val();
+            var year = $('#searchYear').val();
+
+            if (!no || !year) {
+                alert("Please enter both Number and Year.");
+                return;
+            }
+
+            $.get('@Url.Action("SearchArisingCase", "Labour")', { caseNo: no, year: year, caseType: type }, function(data) {
+                if (data.success) {
+                    $('#Arising_OriginalCaseNumber').val(data.caseNumber);
+                    $('#Arising_OriginalCaseYear').val(data.caseYear);
+                    $('#Arising_OriginalCourt').val(data.courtName);
+                    $('#PetitionerName').val(data.petitionerName);
+                    
+                    $('#searchResultBadge').removeClass('bg-secondary bg-danger').addClass('bg-success').text('CASE FOUND').fadeIn();
+                    
+                    // Optional: highlight the success
+                    setTimeout(() => {
+                        $('#searchResultBadge').fadeOut();
+                    }, 3000);
+                } else {
+                    $('#searchResultBadge').removeClass('bg-secondary bg-success').addClass('bg-danger').text('NOT FOUND').fadeIn();
+                    alert(data.message || "Case not found.");
+                }
+            });
+        }
+    </script>
+}

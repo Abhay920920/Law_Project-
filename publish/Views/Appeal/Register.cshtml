@@ -1,0 +1,804 @@
+@model MVCCaseManagement.Models.AppealViewModel
+
+@{
+    ViewData["Title"] = "New Claimant Appeal Registration";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-primary mb-0">New Claimant Appeal Registration</h2>
+            <p class="text-muted">Register a new appeal filed by a claimant / petitioner</p>
+        </div>
+        <a asp-action="ClaimantList" class="btn btn-outline-secondary">Back to Registry</a>
+    </div>
+
+    <form asp-action="SaveClaimant" method="post" enctype="multipart/form-data" id="registrationForm">
+        <input type="hidden" asp-for="CaseID" id="hfCaseID" />
+        <input type="hidden" asp-for="MVCNo" id="hfMVCNo" />
+        <input type="hidden" asp-for="DivisionName" id="hfDivisionName" />
+
+        <!-- 1. MFA DETAILS (PRIORITY) & e-COURTS LINKING -->
+        <div class="card shadow border-0 mb-4 bg-light border-start border-4 border-primary">
+            <div class="card-header bg-primary text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="bi bi-card-list me-2"></i>Step 1: High Court MFA Details & e-Courts Live Sync</h6>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold text-primary">Claimant MFA Number</label>
+                        <input type="text" class="form-control form-control-lg border-2 shadow-sm" asp-for="ClaimantMFANumber" id="txtMFANo" placeholder="e.g., 100298" required />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold text-primary">MFA Year</label>
+                        <input type="number" class="form-control form-control-lg border-2 shadow-sm" asp-for="ClaimantMFAYear" id="txtMFAYear" placeholder="2019" required />
+                    </div>
+                    <div class="col-md-3">
+                        <button type="button" class="btn btn-outline-info btn-lg w-100 fw-bold shadow-sm" id="btnSyncEcourtsClaimant" onclick="syncClaimantECourts()">
+                            <i class="bi bi-cloud-arrow-down-fill me-1"></i> e-Courts Sync
+                        </button>
+                    </div>
+
+                    <!-- Direct CNR Entry with Direct Model Binding -->
+                    <div class="col-12 mt-3">
+                        <label class="form-label fw-bold text-info"><i class="bi bi-upc-scan me-1"></i>High Court CNR Number (Claimant MFA)</label>
+                        <div class="input-group input-group-lg shadow-sm">
+                            <span class="input-group-text bg-info text-white fw-bold">
+                                <i class="bi bi-shield-check me-1"></i> CNR Number
+                            </span>
+                            <input type="text" class="form-control font-monospace fw-bold text-uppercase border-2"
+                                   id="directClaimantCnrInput"
+                                   name="ClaimantMFACNRNumber"
+                                   asp-for="ClaimantMFACNRNumber"
+                                   placeholder="e.g. KAHC020060752019"
+                                   value="@Model?.ClaimantMFACNRNumber"
+                                   maxlength="20" />
+                            <button class="btn btn-info text-white fw-bold px-4" type="button" id="btnSyncEcourtsClaimant" onclick="syncClaimantECourts()">
+                                <i class="bi bi-lightning-charge-fill me-1"></i> Sync Live Data
+                            </button>
+                        </div>
+                        <small class="text-muted">Enter CNR number to sync live e-Courts records, or save directly with appeal registration.</small>
+                    </div>
+
+                    <!-- Live e-Courts Status Card -->
+                    <div class="col-12 mt-3" id="claimantEcourtsCard" style="@(string.IsNullOrEmpty(Model?.ClaimantMFACNRNumber) ? "display:none;" : "")">
+                        <div class="card border-info border-start border-4 bg-white shadow-sm">
+                            <div class="card-body py-3 px-3">
+                                <h6 class="text-info fw-bold mb-2"><i class="bi bi-wifi me-1"></i> e-Courts High Court Live Status</h6>
+                                <div class="row g-2 small">
+                                    <div class="col-md-3"><strong>CNR:</strong> <span id="lblClaimantCNR" class="font-monospace text-primary fw-bold">@(Model?.ClaimantMFACNRNumber ?? "—")</span></div>
+                                    <div class="col-md-3"><strong>Next Hearing:</strong> <span id="lblClaimantNextHearing" class="fw-bold">—</span></div>
+                                    <div class="col-md-3"><strong>Stage:</strong> <span id="lblClaimantStage" class="badge bg-info text-dark">—</span></div>
+                                    <div class="col-md-3"><strong>Status:</strong> <span id="lblClaimantStatus" class="badge bg-success">Verified</span></div>
+                                    <div class="col-md-6 mt-2" id="claimantPetitionerRow" style="display:none;"><strong>Petitioner:</strong> <span id="lblClaimantPetitioner"></span></div>
+                                    <div class="col-md-6 mt-2" id="claimantRespondentRow" style="display:none;"><strong>Respondent:</strong> <span id="lblClaimantRespondent"></span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. ARISING MVC DETAILS (SEARCHABLE) -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-info">
+            <div class="card-body p-4">
+                <h6 class="fw-bold text-info mb-4 text-uppercase small ls-1"><i class="bi bi-search me-2"></i>Step 2: Arising MVC Details</h6>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Arising MVC Number</label>
+                        <input type="text" class="form-control" id="txtMVCNo" asp-for="ClaimantMVCNumber" placeholder="Search MVC No" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">MVC Year</label>
+                        <input type="number" class="form-control" id="txtMVCYear" asp-for="ClaimantMVCYear" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">MACT / Tribunal</label>
+                        <select class="form-select" id="ddlMACT" asp-for="MACTID">
+                            <option value="">Select MACT...</option>
+                            @if (ViewBag.MACTs != null)
+                            {
+                                foreach (var m in ViewBag.MACTs)
+                                {
+                                    <option value="@m.MACTID">@m.MACTName (@m.Location)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="btn-group w-100 shadow-sm">
+                            <button type="button" class="btn btn-outline-info fw-bold" id="btnSearchMVC">
+                                <i class="bi bi-search me-1"></i> Search
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary fw-bold" id="btnViewMVC">
+                                <i class="bi bi-eye me-1"></i> View MVC Details
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-12 mt-2">
+                        <div id="mvcStatusAlert" class="alert alert-soft-secondary py-2 mb-0 d-none d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                                <span id="mvcStatusText">MVC Status: N/A</span>
+                            </div>
+                            <a href="#" id="linkViewFullDetails" target="_blank" class="btn btn-sm btn-link text-decoration-none fw-bold p-0 d-none">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> View Full Details
+                            </a>
+                        </div>
+                        <input type="hidden" asp-for="ClaimantMVCCurrentStatus" id="hfMVCStatus" />
+                        <input type="hidden" asp-for="ClaimantDivisionID" id="hfClaimantDivisionID" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. OTHER APPEAL FIELDS (FROM ManageClaimant) -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3 border-bottom"><h6 class="mb-0 fw-bold text-dark">Step 3: Appeal Filing Details</h6></div>
+            <div class="card-body">
+                <div class="row g-3">
+
+                    <div class="col-md-4">
+                        <label class="form-label">High Court Bench</label>
+                        <select class="form-select" asp-for="HighCourtBench" id="highCourtBench">
+                            <option value="">Select Bench...</option>
+                            <option>Dharwad</option>
+                            <option>Kalaburagi</option>
+                            <option>Bangalore</option>
+                            <option>Others</option>
+                        </select>
+                        <input type="text" class="form-control mt-2" asp-for="OtherHighCourtBench" id="otherBenchInput" placeholder="Enter Bench Name" style="display:none;" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Entrustment Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantMFAEntrustmentNo" /> 
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Entrustment Date</label>
+                        <input type="date" class="form-control" asp-for="ClaimantMFAEntrustmentDate" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Advocate Name</label>
+                        <select class="form-select" asp-for="ClaimantMFAAdvocate">
+                            <option value="">Select Advocate...</option>
+                            @if(ViewBag.HCAdvocates != null)
+                            {
+                                foreach(var adv in (IEnumerable<MVCCaseManagement.Models.HighCourtAdvocate>)ViewBag.HCAdvocates)
+                                {
+                                    <option value="@adv.AdvocateName">@adv.AdvocateName (@adv.Bench)</option>
+                                }
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Status of MFA</label>
+                        <select class="form-select" asp-for="ClaimantMFAStatus" id="claimantMFAStatus">
+                            <option>Pending</option>
+                            <option>Disposed</option>
+                            <option>DNP</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-12" id="claimantOutcomeMainSection" style="display:none;">
+                        <hr class="my-3"/>
+                        <div class="bg-light p-3 rounded shadow-sm border">
+                            <label class="fw-bold mb-3 d-block">Outcome & Decision:</label>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Nature of Decision</label>
+                                    <select class="form-select" asp-for="ClaimantMFADecision">
+                                        <option value="">Select...</option>
+                                        <option>In Favour of Corporation</option>
+                                        <option>Against Corporation</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Decision Taken / Action</label>
+                                    <select class="form-select" asp-for="ClaimantActionTaken" id="claimantActionTaken">
+                                        <option value="">Select...</option>
+                                        <option>Pending for Decision</option>
+                                        <option>Pending before Competent Authority</option>
+                                        <option>Appeal</option>
+                                        <option>Close</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-12 mt-3">
+                                    <label class="form-label fw-bold">MFA Judgment Copy</label>
+                                    <div class="input-group">
+                                        <input type="file" class="form-control" asp-for="MFAJudgmentCopyFile" />
+                                        @if (!string.IsNullOrEmpty(Model.MFAJudgmentCopyPath))
+                                        {
+                                            <a href="@Model.MFAJudgmentCopyPath" target="_blank" class="btn btn-outline-danger" id="linkMFAJudgment">
+                                                <i class="bi bi-file-earmark-pdf"></i>
+                                            </a>
+                                        }
+                                        <a href="#" target="_blank" class="btn btn-outline-danger d-none" id="btnViewMFAJudgment">
+                                            <i class="bi bi-file-earmark-pdf"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-12" id="claimantClosureSection" style="display:none;">
+                        <div class="bg-warning bg-opacity-10 p-3 rounded border border-warning border-opacity-25 mt-2 shadow-sm">
+                            <h6 class="small fw-bold text-dark"><i class="bi bi-info-circle me-1"></i> Closure Approval</h6>
+                            <div class="row g-2">
+                                <div class="col-md-6">
+                                    <label class="form-label small">Approval Outward Number</label>
+                                    <input type="text" class="form-control" asp-for="ClaimantApprovalNo" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small">Approval Date</label>
+                                    <input type="date" class="form-control" asp-for="ClaimantApprovalDate" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center py-3">
+                <h6 class="mb-0 fw-bold">Supreme Court Appeal (If Any)</h6>
+                <div class="form-check form-switch m-0">
+                    <input class="form-check-input" type="checkbox" asp-for="IsClaimantSCAppeal" id="chkSCAppeal">
+                    <label class="form-check-label text-white small" for="chkSCAppeal">Active</label>
+                </div>
+            </div>
+            <div class="card-body py-4" id="scAppealSection" style="display:none;">
+                  <div class="form-check mb-4" id="scPendingContainer">
+                       <input class="form-check-input" type="checkbox" asp-for="IsClaimantSCPending" id="chkSCPending">
+                       <label class="form-check-label fw-bold text-muted small" for="chkSCPending">
+                           Pending for Filing (No SC Appeal Number yet)
+                       </label>
+                  </div>
+
+                <div class="row g-3">
+                    <div class="col-12" id="scFilingDetails">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Diary Number</label>
+                                <input type="text" class="form-control" asp-for="ClaimantSCDiaryNumber" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Diary Year</label>
+                                <input type="number" class="form-control" asp-for="ClaimantSCYear" />
+                            </div>
+                            <div class="col-md-4" id="divClaimantSCNumber">
+                                <label class="form-label">SLP[C] Number</label>
+                                <input type="text" class="form-control" asp-for="ClaimantSCNumber" />
+                            </div>
+                            <div class="col-md-4" id="divClaimantSLPYear">
+                                <label class="form-label">SLP[C] Year</label>
+                                <input type="number" class="form-control" asp-for="ClaimantSLPYear" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Filed By</label>
+                                <select class="form-select" asp-for="ClaimantSCFiledBy">
+                                    <option value="">Select...</option>
+                                    <option>Corporation</option>
+                                    <option>Claimant</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Entrustment Number</label>
+                                <input type="text" class="form-control" asp-for="ClaimantSCEntrustmentNo" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label class="form-label">Entrustment Date</label>
+                        <input type="date" class="form-control" asp-for="ClaimantSCEntrustmentDate" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Advocate Name</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCAdvocate" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" asp-for="ClaimantSCStatus" id="claimantSCStatus">
+                            <option>Pending</option>
+                            <option>Disposed</option>
+                        </select>
+                    </div>
+
+                    <!-- SC Outcome Section -->
+                    <div class="col-12" id="scOutcomeSection" style="display:none;">
+                        <hr class="my-3"/>
+                        <div class="bg-light p-3 rounded shadow-sm border">
+                            <label class="fw-bold mb-3 d-block">Supreme Court Outcome:</label>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Outcome</label>
+                                    <select class="form-select" asp-for="ClaimantSCOutcome">
+                                        <option value="">Select...</option>
+                                        <option>In Favour of Corporation</option>
+                                        <option>Against Corporation</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Decision Taken / Action</label>
+                                    <select class="form-select" asp-for="ClaimantSCActionTaken" id="claimantSCActionTaken">
+                                        <option value="">Select...</option>
+                                        <option>Pending for Decision</option>
+                                        <option>Pending before Competent Authority</option>
+                                        <option>Appeal</option>
+                                        <option>Close</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4" id="scClosureSection" style="display:none;">
+                                    <div class="p-2 border rounded bg-white shadow-sm">
+                                        <label class="fw-bold small d-block mb-1">Closure Details</label>
+                                        <div class="row g-2">
+                                            <div class="col-6">
+                                                <input type="text" class="form-control form-control-sm" asp-for="ClaimantSCClosureNo" placeholder="Order No" />
+                                            </div>
+                                            <div class="col-6">
+                                                <input type="date" class="form-control form-control-sm" asp-for="ClaimantSCClosureDate" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-5 mb-5 text-end">
+            <button type="submit" class="btn btn-primary btn-lg px-5 shadow fw-bold"><i class="bi bi-save2 me-2"></i> Register Claimant Appeal</button>
+        </div>
+    </form>
+</div>
+
+<!-- MVC Details Modal -->
+<div class="modal fade" id="mvcDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-secondary text-white">
+                <h5 class="modal-title fw-bold">MVC Case Information</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="mvcDetailsContent" class="p-3">
+                    <p class="text-center text-muted">No MVC data searched yet.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .alert-soft-secondary { background-color: #f8f9fa; border: 1px solid #dee2e6; color: #6c757d; }
+    .ls-1 { letter-spacing: 0.5px; }
+</style>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            function populateForm(data) {
+                // Populate hidden fields
+                $("#hfCaseID").val(data.caseID);
+                $("#hfMVCNo").val(data.mvcNo);
+                $("#hfDivisionName").val(data.divisionName);
+                $("#hfClaimantDivisionID").val(data.divisionID);
+                
+                var status = data.disposalResult || data.currentStage || "Pending";
+                $("#hfMVCStatus").val(status);
+                
+                // Show status alert
+                $("#mvcStatusText").text("Linked MVC Case ID: " + data.caseID + " | Status: " + status + " (" + data.divisionName + ")");
+                $("#mvcStatusAlert").removeClass("d-none").addClass("alert-success").removeClass("alert-soft-secondary text-muted");
+                
+                // Show "View Full Details" link
+                $("#linkViewFullDetails").attr("href", "/Case/Details/" + data.caseID).removeClass("d-none");
+
+                // Populate Step 2 fields if they are empty
+                if (!$("#txtMVCNo").val()) $("#txtMVCNo").val(data.mvcNo);
+                if (!$("#txtMVCYear").val()) $("#txtMVCYear").val(data.mvcYear);
+                if (!$("#ddlMACT").val()) $("#ddlMACT").val(data.mactid);
+
+                // AUTO-POPULATE APPEAL DETAILS IF EXISTS
+                if (data.linkedAppeal) {
+                    const app = data.linkedAppeal;
+                    
+                    // MFA Details (from Step 1)
+                    if (app.claimantMFANumber) $("#txtMFANo").val(app.claimantMFANumber);
+                    if (app.claimantMFAYear) $("#txtMFAYear").val(app.claimantMFAYear);
+
+                    // Step 3: Appeal Filing Details
+                    if (app.highCourtBench) {
+                        var benchSelect = $("#highCourtBench");
+                        var optionExists = benchSelect.find("option").filter(function() {
+                            return $(this).val() === app.highCourtBench;
+                        }).length > 0;
+
+                        if (optionExists) {
+                            benchSelect.val(app.highCourtBench);
+                            $("#otherBenchInput").hide();
+                        } else {
+                            benchSelect.val("Others");
+                            $("#otherBenchInput").val(app.highCourtBench).show();
+                        }
+                    }
+                    
+                    if (app.claimantMFAEntrustmentNo) $("input[name='ClaimantMFAEntrustmentNo']").val(app.claimantMFAEntrustmentNo);
+                    if (app.claimantMFAEntrustmentDate) {
+                        const date = new Date(app.claimantMFAEntrustmentDate);
+                        const formattedDate = date.toISOString().split('T')[0];
+                        $("input[name='ClaimantMFAEntrustmentDate']").val(formattedDate);
+                    }
+                    
+                    if (app.claimantMFAAdvocate) $("select[name='ClaimantMFAAdvocate']").val(app.claimantMFAAdvocate);
+                    
+                    if (app.claimantMFAStatus) {
+                        $("#claimantMFAStatus").val(app.claimantMFAStatus).trigger('change');
+                    }
+
+                    // Outcomes
+                    if (app.claimantMFADecision) $("select[name='ClaimantMFADecision']").val(app.claimantMFADecision);
+
+                    
+                    if (app.mfaJudgmentCopyPath) {
+                        $("#btnViewMFAJudgment").attr("href", app.mfaJudgmentCopyPath).removeClass("d-none");
+                        $("#linkMFAJudgment").addClass("d-none");
+                    } else {
+                        $("#btnViewMFAJudgment").addClass("d-none");
+                    }
+
+                    if (app.claimantActionTaken) {
+                        $("#claimantActionTaken").val(app.claimantActionTaken).trigger('change');
+                    }
+                    
+                    if (app.claimantApprovalNo) $("input[name='ClaimantApprovalNo']").val(app.claimantApprovalNo);
+                    if (app.claimantApprovalDate) {
+                        const date = new Date(app.claimantApprovalDate);
+                        const formattedDate = date.toISOString().split('T')[0];
+                        $("input[name='ClaimantApprovalDate']").val(formattedDate);
+                    }
+
+                    // SC Details
+                    if (app.isClaimantSCAppeal) {
+                        $("#chkSCAppeal").prop('checked', true).trigger('change');
+                        $("#chkSCPending").prop('checked', app.isClaimantSCPending).trigger('change');
+                        
+                        if (app.claimantSCDiaryNumber) $("input[name='ClaimantSCDiaryNumber']").val(app.claimantSCDiaryNumber);
+                        if (app.claimantSCYear) $("input[name='ClaimantSCYear']").val(app.claimantSCYear);
+                        if (app.claimantSCNumber) $("input[name='ClaimantSCNumber']").val(app.claimantSCNumber);
+                        if (app.claimantSLPYear) $("input[name='ClaimantSLPYear']").val(app.claimantSLPYear);
+                        if (app.claimantSCFiledBy) $("select[name='ClaimantSCFiledBy']").val(app.claimantSCFiledBy);
+                        if (app.claimantSCEntrustmentNo) $("input[name='ClaimantSCEntrustmentNo']").val(app.claimantSCEntrustmentNo);
+                        if (app.claimantSCEntrustmentDate) {
+                            const date = new Date(app.claimantSCEntrustmentDate);
+                            const formattedDate = date.toISOString().split('T')[0];
+                            $("input[name='ClaimantSCEntrustmentDate']").val(formattedDate);
+                        }
+                        if (app.claimantSCAdvocate) $("input[name='ClaimantSCAdvocate']").val(app.claimantSCAdvocate);
+                        if (app.claimantSCStatus) $("#claimantSCStatus").val(app.claimantSCStatus).trigger('change');
+                        
+                        if (app.claimantSCOutcome) $("select[name='ClaimantSCOutcome']").val(app.claimantSCOutcome);
+                        if (app.claimantSCActionTaken) $("#claimantSCActionTaken").val(app.claimantSCActionTaken).trigger('change');
+                        if (app.claimantSCClosureNo) $("input[name='ClaimantSCClosureNo']").val(app.claimantSCClosureNo);
+                        if (app.claimantSCClosureDate) {
+                            const date = new Date(app.claimantSCClosureDate);
+                            const formattedDate = date.toISOString().split('T')[0];
+                            $("input[name='ClaimantSCClosureDate']").val(formattedDate);
+                        }
+                    }
+                }
+            }
+
+
+
+            // Search MVC Details
+            $("#btnSearchMVC").click(function() {
+                var mvcNo = $("#txtMVCNo").val();
+                var mvcYear = $("#txtMVCYear").val();
+                var mactId = $("#ddlMACT").val();
+
+                if (!mvcNo || !mvcYear || !mactId) {
+                    alert("Please enter MVC No, Year and select MACT for search.");
+                    return;
+                }
+
+                $.get("/Appeal/GetMVCDetails", { mvcNo: mvcNo, mvcYear: mvcYear, mactId: mactId }, function(data) {
+                    populateForm(data);
+                }).fail(function() {
+                    alert("No MVC record found with these details. You can still continue registration for old cases.");
+                    $("#hfCaseID").val(0);
+                    $("#mvcStatusAlert").removeClass("d-none").addClass("alert-warning").removeClass("alert-success");
+                    $("#mvcStatusText").text("Note: Proceeding without an existing MVC record link.");
+                    $("#linkViewFullDetails").addClass("d-none");
+                });
+            });
+
+            // View MVC Details
+            $("#btnViewMVC").click(function() {
+                var mvcNo = $("#txtMVCNo").val();
+                var mvcYear = $("#txtMVCYear").val();
+                var mactId = $("#ddlMACT").val();
+
+                if (!mvcNo || !mvcYear || !mactId) {
+                    alert("Please enter search criteria first.");
+                    return;
+                }
+
+                $.get("/Appeal/GetMVCDetails", { mvcNo: mvcNo, mvcYear: mvcYear, mactId: mactId }, function(data) {
+                    var html = `
+                        <div class="row g-3">
+                            <div class="col-12 text-end mb-2">
+                                <a href="/Case/Details/${data.caseID}" target="_blank" class="btn btn-sm btn-outline-primary fw-bold">
+                                    <i class="bi bi-pencil-square me-1"></i> View & Edit Full Case Details
+                                </a>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-2"><i class="bi bi-info-circle me-2"></i>Basic Information</h6>
+                                <table class="table table-sm table-bordered">
+                                    <tr><th class="bg-light" width="40%">MVC Number</th><td>${data.mvcNo || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Year</th><td>${data.mvcYear || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">MACT</th><td>${data.mactName || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Division</th><td>${data.divisionName || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Case Type</th><td>${data.caseType || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Current Stage</th><td><span class="badge bg-info">${data.currentStage || 'N/A'}</span></td></tr>
+                                    <tr><th class="bg-light">Disposal Result</th><td><span class="badge ${data.disposalResult === 'Against' ? 'bg-danger' : data.disposalResult === 'In Favor' ? 'bg-success' : 'bg-secondary'}">${data.disposalResult || 'Pending'}</span></td></tr>
+                                    ${data.forwardingStatus ? `<tr><th class="bg-light">Forwarding Status</th><td><span class="badge bg-warning text-dark">${data.forwardingStatus}</span></td></tr>` : ''}
+                                </table>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-primary mb-2"><i class="bi bi-car-front me-2"></i>Accident Details</h6>
+                                <table class="table table-sm table-bordered">
+                                    <tr><th class="bg-light" width="40%">Accident Date</th><td>${data.accidentDate ? new Date(data.accidentDate).toLocaleDateString('en-IN') : 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Vehicle No</th><td>${data.vehicleNo || 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Claim Amount</th><td class="fw-bold text-success">₹ ${data.claimAmount ? data.claimAmount.toLocaleString('en-IN') : '0.00'}</td></tr>
+                                </table>
+                                <h6 class="text-primary mb-2 mt-3"><i class="bi bi-people me-2"></i>Parties</h6>
+                                <table class="table table-sm table-bordered">
+                                    <tr><th class="bg-light" width="40%">Petitioner(s)</th><td class="small">${data.petitioners && data.petitioners.length > 0 ? data.petitioners.map((p, i) => `${i+1}. ${p.petitionerName || 'N/A'} (${p.relationship || ''})`).join('<br>') : 'N/A'}</td></tr>
+                                    <tr><th class="bg-light">Respondent(s)</th><td class="small">${data.respondents && data.respondents.length > 0 ? data.respondents.map((r, i) => `${i+1}. ${r.respondentName || 'N/A'}`).join('<br>') : 'N/A'}</td></tr>
+                                </table>
+                            </div>
+                        </div>
+                        ${data.adverseAward ? `
+                        <div class="mt-3">
+                            <h6 class="text-primary mb-2"><i class="bi bi-hammer me-2"></i>Award Details</h6>
+                            <table class="table table-sm table-bordered">
+                                <tr><th class="bg-light" width="20%">Award Amount</th><td class="fw-bold text-success">₹ ${data.adverseAward.awardAmount ? data.adverseAward.awardAmount.toLocaleString('en-IN') : '0.00'}</td><th class="bg-light" width="20%">Interest Rate</th><td>${data.adverseAward.interestRate || 0}%</td></tr>
+                                <tr><th class="bg-light">Award Date</th><td>${data.adverseAward.awardDate ? new Date(data.adverseAward.awardDate).toLocaleDateString('en-IN') : 'N/A'}</td><th class="bg-light">Victim Age</th><td>${data.adverseAward.victimAge || 'N/A'} years</td></tr>
+                                <tr><th class="bg-light">Occupation</th><td>${data.adverseAward.occupation || 'N/A'}</td><th class="bg-light">Income</th><td>₹ ${data.adverseAward.incomeConsidered ? data.adverseAward.incomeConsidered.toLocaleString('en-IN') : '0.00'}</td></tr>
+                                <tr><th class="bg-light">Injury Details</th><td colspan="3" class="small">${data.adverseAward.injuryDetails || 'N/A'}</td></tr>
+                            </table>
+                        </div>
+                        ` : ''}
+                        ${data.linkedAppeal ? `
+                        <div class="mt-3">
+                            <h6 class="text-primary mb-2"><i class="bi bi-arrow-up-circle me-2"></i>Appeal & Compliance Details</h6>
+                            <table class="table table-sm table-bordered">
+                                <tr><th class="bg-light" width="20%">Initial Action</th><td colspan="3">${data.linkedAppeal.initialAction || 'N/A'}</td></tr>
+                                ${data.linkedAppeal.corpMFANumber ? `<tr><th class="bg-light">Corp MFA</th><td>${data.linkedAppeal.corpMFANumber}/${data.linkedAppeal.corpMFAYear}</td><th class="bg-light">Status</th><td><span class="badge bg-info">${data.linkedAppeal.corpMFAStatus}</span></td></tr>` : ''}
+                                ${data.linkedAppeal.claimantMFANumber ? `<tr><th class="bg-light">Claimant MFA</th><td>${data.linkedAppeal.claimantMFANumber}/${data.linkedAppeal.claimantMFAYear}</td><th class="bg-light">Status</th><td><span class="badge bg-info">${data.linkedAppeal.claimantMFAStatus}</span></td></tr>` : ''}
+                                ${data.linkedAppeal.finalComplianceStatus ? `
+                                <tr><th class="bg-light">Compliance</th><td>${data.linkedAppeal.finalComplianceStatus}</td><th class="bg-light">Date</th><td>${data.linkedAppeal.finalComplianceDate ? new Date(data.linkedAppeal.finalComplianceDate).toLocaleDateString('en-IN') : 'N/A'}</td></tr>
+                                ${data.linkedAppeal.amountDeposited ? `<tr><th class="bg-light">Amount Deposited</th><td colspan="3" class="fw-bold text-success">₹ ${data.linkedAppeal.amountDeposited.toLocaleString('en-IN')}</td></tr>` : ''}
+                                <tr><th class="bg-light">Remarks</th><td colspan="3" class="small fst-italic">${data.linkedAppeal.finalRemarks || 'N/A'}</td></tr>
+                                ` : ''}
+                            </table>
+                        </div>
+                        ` : ''}
+                        ${data.connectedCases && data.connectedCases.length > 0 ? `
+                        <div class="mt-3">
+                            <h6 class="text-primary mb-2"><i class="bi bi-link-45deg me-2"></i>Connected Cases</h6>
+                            <ul class="list-group list-group-flush small">
+                                ${data.connectedCases.map(c => `<li class="list-group-item"><strong>${c.connectedMVCNo}/${c.connectedYear}</strong> - ${c.remarks || 'No remarks'}</li>`).join('')}
+                            </ul>
+                        </div>
+                        ` : ''}
+                    `;
+                    $("#mvcDetailsContent").html(html);
+                    $("#mvcDetailsModal").modal('show');
+                }).fail(function() {
+                    alert("Case details not found.");
+                });
+            });
+
+            // Manage Form Sections
+            function toggleClaimantOutcome() {
+                const status = $("#claimantMFAStatus").val();
+                if (status === "Pending") {
+                    $("#claimantOutcomeMainSection").slideUp(200);
+                } else {
+                    $("#claimantOutcomeMainSection").slideDown(200);
+                }
+            }
+
+            function toggleClaimantClosure() {
+                const action = $("#claimantActionTaken").val();
+                if (action === "Close") {
+                    $("#claimantClosureSection").slideDown(200);
+                } else {
+                    $("#claimantClosureSection").slideUp(200);
+                }
+            }
+
+            function toggleSCSection() {
+                if($("#chkSCAppeal").is(":checked")) {
+                    $("#scAppealSection").slideDown(200);
+                } else {
+                    $("#scAppealSection").slideUp(200);
+                }
+            }
+
+            function toggleSCPending() {
+                const isPending = $("#chkSCPending").is(":checked");
+                const diaryNum = $("#ClaimantSCDiaryNumber").val();
+                const diaryYear = $("#ClaimantSCYear").val();
+                const slpNum = $("#ClaimantSCNumber").val();
+
+                if (isPending) {
+                    $("#divClaimantSCNumber").hide();
+                    $("#divClaimantSLPYear").hide();
+                    $("#scPendingContainer").show();
+                } else {
+                    $("#divClaimantSCNumber").show();
+                    $("#divClaimantSLPYear").show();
+                    if ((diaryNum && diaryYear) || slpNum) {
+                        $("#scPendingContainer").hide();
+                    } else {
+                        $("#scPendingContainer").show();
+                    }
+                }
+            }
+
+            function toggleSCOutcome() {
+                const status = $("#claimantSCStatus").val();
+                if (status === "Disposed") {
+                    $("#scOutcomeSection").slideDown(200);
+                } else {
+                    $("#scOutcomeSection").slideUp(200);
+                }
+            }
+
+            function toggleSCClosure() {
+                const action = $("#claimantSCActionTaken").val();
+                if (action === "Close") {
+                    $("#scClosureSection").slideDown(200);
+                } else {
+                    $("#scClosureSection").slideUp(200);
+                }
+            }
+
+
+            function toggleBench() {
+                if ($("#highCourtBench").val() === "Others") {
+                    $("#otherBenchInput").slideDown(200);
+                } else {
+                    $("#otherBenchInput").slideUp(200);
+                }
+            }
+
+
+            $("#claimantMFAStatus").change(toggleClaimantOutcome);
+            $("#claimantActionTaken").change(toggleClaimantClosure);
+            $("#chkSCAppeal").change(toggleSCSection);
+            $("#chkSCPending").change(toggleSCPending);
+            $("#claimantSCStatus").change(toggleSCOutcome);
+            $("#claimantSCActionTaken").change(toggleSCClosure);
+            $("#highCourtBench").change(toggleBench);
+
+            // Real-time input listeners
+            $("#ClaimantSCDiaryNumber, #ClaimantSCYear, #ClaimantSCNumber").on("input", toggleSCPending);
+
+            // Initial states
+            toggleClaimantOutcome();
+            toggleClaimantClosure();
+            toggleSCSection();
+            toggleSCPending();
+            toggleSCOutcome();
+            toggleSCClosure();
+            toggleBench();
+        });
+
+        $(document).on("input change blur", "#directClaimantCnrInput", function() {
+            var val = ($(this).val() || "").trim().toUpperCase();
+            $(this).val(val);
+            if (val.length >= 12) {
+                $("#lblClaimantCNR").text(val);
+                $("#claimantEcourtsCard").slideDown(200);
+            }
+        });
+
+        $("#registrationForm").on("submit", function() {
+            var cnr = ($("#directClaimantCnrInput").val() || "").trim().toUpperCase();
+            if (cnr) {
+                $("#directClaimantCnrInput").val(cnr);
+            }
+        });
+
+        window.syncClaimantECourts = function() {
+            const directCnr = $("#directClaimantCnrInput").val() ? $("#directClaimantCnrInput").val().trim().toUpperCase() : "";
+            const mfaNo = $("#txtMFANo").val() ? $("#txtMFANo").val().trim() : "";
+            const mfaYear = $("#txtMFAYear").val() ? $("#txtMFAYear").val().trim() : "";
+            const bench = $("#highCourtBench").val() || "Dharwad";
+
+            let estCode = "KAHC02";
+            if (bench.indexOf("Kalaburagi") !== -1 || bench.indexOf("Gulbarga") !== -1) estCode = "KAHC03";
+            else if (bench.indexOf("Bangalore") !== -1 || bench.indexOf("Bengaluru") !== -1) estCode = "KAHC01";
+
+            const btn = $("#btnSyncEcourtsClaimant");
+            btn.prop("disabled", true).html('<i class="bi bi-hourglass-split me-1"></i> Syncing...');
+
+            if (directCnr && directCnr.length >= 12) {
+                fetchCnrDetails(directCnr);
+                return;
+            }
+
+            if (!mfaNo || !mfaYear) {
+                alert("Please enter Claimant MFA Number and Year (or enter High Court CNR directly).");
+                btn.prop("disabled", false).html('<i class="bi bi-lightning-charge-fill me-1"></i> Sync Live Data');
+                return;
+            }
+
+            $.get(`/ECourts/AutoDiscoverCNR?estCode=${estCode}&caseType=MFA&regNo=${mfaNo}&regYear=${mfaYear}&isHighCourt=true`)
+                .done(function(res) {
+                    if (res && res.success && res.cnr) {
+                        const foundCnr = res.cnr;
+                        $("#directClaimantCnrInput").val(foundCnr);
+                        fetchCnrDetails(foundCnr);
+                    } else {
+                        alert(res && res.message ? res.message : "MFA case not found in e-Courts High Court portal.");
+                        btn.prop("disabled", false).html('<i class="bi bi-lightning-charge-fill me-1"></i> Sync Live Data');
+                    }
+                })
+                .fail(function() {
+                    alert("Failed to connect to e-Courts live gateway.");
+                    btn.prop("disabled", false).html('<i class="bi bi-lightning-charge-fill me-1"></i> Sync Live Data');
+                });
+
+            function fetchCnrDetails(cnr) {
+                $.get(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=true`)
+                    .done(function(res) {
+                        if (res && res.success && res.data) {
+                            const d = res.data;
+                            $("#directClaimantCnrInput").val(cnr);
+                            $("#lblClaimantCNR").text(cnr);
+                            $("#lblClaimantNextHearing").text(d.next_hearing_date || d.next_hearing || "—");
+                            $("#lblClaimantStage").text(d.stage || d.case_status || d.status || "—");
+                            if (d.petitioner) { $("#lblClaimantPetitioner").text(d.petitioner); $("#claimantPetitionerRow").show(); }
+                            if (d.respondent) { $("#lblClaimantRespondent").text(d.respondent); $("#claimantRespondentRow").show(); }
+                            
+                            // Auto-populate case number and year if empty
+                            if (!$("#txtMFANo").val() && d.case_number) {
+                                $("#txtMFANo").val(d.case_number);
+                            }
+                            if (!$("#txtMFAYear").val() && d.registration_date) {
+                                var yr = d.registration_date.match(/\d{4}/);
+                                if (yr) $("#txtMFAYear").val(yr[0]);
+                            }
+
+                            $("#claimantEcourtsCard").slideDown(300);
+                            alert("Claimant MFA e-Courts data fetched & linked successfully!");
+                        } else {
+                            $("#directClaimantCnrInput").val(cnr);
+                            $("#lblClaimantCNR").text(cnr);
+                            $("#claimantEcourtsCard").slideDown(300);
+                            alert("CNR " + cnr + " entered and linked with appeal.");
+                        }
+                    })
+                    .always(function() {
+                        btn.prop("disabled", false).html('<i class="bi bi-lightning-charge-fill me-1"></i> Sync Live Data');
+                    });
+            }
+        };
+    </script>
+}

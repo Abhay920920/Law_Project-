@@ -1,0 +1,182 @@
+@using MVCCaseManagement.DAL
+@inject IMasterRepository MasterRepo
+@{
+    ViewData["Title"] = "Global Case Deletion";
+    var macts = MasterRepo.GetAllMACTs();
+    var gratuityCourts = MasterRepo.GetAllGratuityCourts();
+    var labourCourts = MasterRepo.GetAllLabourCourts();
+}
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-9">
+            <div class="card shadow-lg border-0 rounded-3">
+                <div class="card-header bg-gradient-danger text-white p-4">
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-shield-lock-fill fs-2 me-3"></i>
+                        <div>
+                            <h3 class="mb-0 fw-bold">Master Case Deletion Tool</h3>
+                            <p class="mb-0 opacity-75">Securely remove records across all division modules</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body p-5">
+                    <div class="alert alert-soft-danger border-start border-danger border-4 mb-4">
+                        <div class="d-flex">
+                            <i class="bi bi-exclamation-octagon-fill text-danger fs-4 me-3"></i>
+                            <div>
+                                <h5 class="text-danger fw-bold">Critical Warning</h5>
+                                <p class="mb-0 text-dark">This action is <strong>irreversible</strong>. Deleting a case will also remove all associated records including payments, appeals, history, and documents. Use with extreme caution.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (TempData["SuccessMessage"] != null)
+                    {
+                        <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="bi bi-check-circle-fill me-2"></i> @TempData["SuccessMessage"]
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    }
+                    @if (TempData["WarningMessage"] != null)
+                    {
+                        <div class="alert alert-warning alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i> @TempData["WarningMessage"]
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    }
+                    @if (TempData["ErrorMessage"] != null)
+                    {
+                        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+                            <i class="bi bi-x-circle-fill me-2"></i> @TempData["ErrorMessage"]
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    }
+
+                    <form asp-action="DeleteCaseConfirm" method="post" id="deleteForm" class="needs-validation" novalidate>
+                        <div class="row g-4">
+                            <!-- Module Selection -->
+                            <div class="col-12">
+                                <label class="form-label fw-bold text-secondary">Select Module</label>
+                                <div class="d-flex gap-3 flex-wrap">
+                                    <input type="radio" class="btn-check" name="module" id="modMVC" value="MVC" checked>
+                                    <label class="btn btn-outline-danger px-4 py-2" for="modMVC">MVC Cases</label>
+
+                                    <input type="radio" class="btn-check" name="module" id="modLabour" value="Labour">
+                                    <label class="btn btn-outline-danger px-4 py-2" for="modLabour">Labour Cases</label>
+
+                                    <input type="radio" class="btn-check" name="module" id="modGratuity" value="Gratuity">
+                                    <label class="btn btn-outline-danger px-4 py-2" for="modGratuity">Gratuity Cases</label>
+
+                                    <input type="radio" class="btn-check" name="module" id="modAll" value="All">
+                                    <label class="btn btn-outline-secondary px-4 py-2" for="modAll">Global (All Modules)</label>
+                                </div>
+                            </div>
+
+                            <!-- Case Number -->
+                            <div class="col-md-6">
+                                <label for="caseNumber" class="form-label fw-bold" id="lblNumber">MVC Number <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control form-control-lg border-2 shadow-sm" id="caseNumber" name="caseNumber" required placeholder="Enter Number">
+                                <div class="invalid-feedback">Required.</div>
+                            </div>
+
+                            <!-- Case Year -->
+                            <div class="col-md-6" id="yearContainer">
+                                <label for="caseYear" class="form-label fw-bold">Case Year <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control form-control-lg border-2 shadow-sm" id="caseYear" name="caseYear" required placeholder="YYYY" value="@DateTime.Now.Year">
+                                <div class="invalid-feedback">Invalid year.</div>
+                            </div>
+
+                            <!-- MVC Only: MACT Court -->
+                            <div class="col-12" id="mvcMactContainer">
+                                <label for="mactId" class="form-label fw-bold">MACT Court (Optional for narrow search)</label>
+                                <select class="form-select form-select-lg border-2 shadow-sm" id="mactId" name="mactId">
+                                    <option value="0">-- All MACT Courts --</option>
+                                    @foreach (var m in macts) { <option value="@m.MACTID">@m.MACTName</option> }
+                                </select>
+                            </div>
+
+                            <!-- Other Modules: Court Name -->
+                            <div class="col-12 d-none" id="courtNameContainer">
+                                <label for="courtName" class="form-label fw-bold">Court Name / Authority (Optional)</label>
+                                <input type="text" class="form-control form-control-lg border-2 shadow-sm" id="courtName" name="courtName" placeholder="Search by Court Name">
+                            </div>
+                        </div>
+
+                        <div class="mt-5 p-4 bg-light rounded-3 border">
+                            <div class="form-check custom-check">
+                                <input type="checkbox" class="form-check-input" id="confirmCheck" required>
+                                <label class="form-check-label fw-bold text-danger ms-2" for="confirmCheck">
+                                    I acknowledge that I am an Administrator and wish to PERMANENTLY delete these records.
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 d-flex justify-content-between align-items-center">
+                            <a asp-action="Index" class="btn btn-link text-secondary text-decoration-none fw-bold">
+                                <i class="bi bi-arrow-left me-1"></i> Back to Dashboard
+                            </a>
+                            <button type="submit" class="btn btn-danger btn-xl shadow px-5 py-3 fw-bold disabled" id="btnDelete">
+                                <i class="bi bi-trash3-fill me-2"></i> CONFIRM DELETION
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-gradient-danger { background: linear-gradient(45deg, #dc3545, #b02a37); }
+    .alert-soft-danger { background-color: #fce8e8; border-color: #f5c2c7; }
+    .btn-xl { font-size: 1.1rem; border-radius: 8px; transition: all 0.3s ease; }
+    .btn-xl:hover:not(.disabled) { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4); }
+    .form-control:focus, .form-select:focus { border-color: #dc3545; box-shadow: 0 0 0 0.25rem rgba(220, 53, 69, 0.1); }
+    .custom-check .form-check-input:checked { background-color: #dc3545; border-color: #dc3545; }
+</style>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            function updateUI() {
+                const mod = $('input[name="module"]:checked').val();
+                
+                // Reset visibility
+                $('#mvcMactContainer, #yearContainer, #courtNameContainer').addClass('d-none');
+                $('#caseYear').prop('required', true);
+
+                if (mod === 'MVC') {
+                    $('#lblNumber').text('MVC Number *');
+                    $('#mvcMactContainer, #yearContainer').removeClass('d-none');
+                } else if (mod === 'Labour') {
+                    $('#lblNumber').text('Labour Case Number *');
+                    $('#yearContainer, #courtNameContainer').removeClass('d-none');
+                } else if (mod === 'Gratuity') {
+                    $('#lblNumber').text('PGA / CR Number *');
+                    $('#yearContainer').removeClass('d-none');
+                } else {
+                    $('#lblNumber').text('Reference Number *');
+                    $('#yearContainer').removeClass('d-none');
+                }
+            }
+
+            $('input[name="module"]').on('change', updateUI);
+            updateUI();
+
+            $('#confirmCheck').on('change', function() {
+                $('#btnDelete').toggleClass('disabled', !$(this).is(':checked'));
+            });
+
+            $('#deleteForm').on('submit', function(e) {
+                const mod = $('input[name="module"]:checked').val();
+                let msg = `Are you ABSOLUTELY sure? This will delete the case FROM ${mod.toUpperCase()} and all related data.`;
+                if(mod === 'All') msg = "WARNING: Global deletion will search ALL modules. Continue?";
+                
+                if(!confirm(msg)) {
+                    e.preventDefault();
+                }
+            });
+        });
+    </script>
+}

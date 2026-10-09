@@ -1,0 +1,139 @@
+@model MVCCaseManagement.Models.TransferViewModel
+@{
+    ViewData["Title"] = "Case Transfer Management";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-8">
+        <div class="case-section-card silent-indigo mb-4 shadow-sm">
+            <div class="card-header bg-indigo bg-opacity-10 d-flex align-items-center">
+                <span class="official-badge-id me-3">ACTION</span>
+                <h5 class="mb-0 fw-bold"><i class="bi bi-arrows-move me-2"></i>Initiate Case Transfer</h5>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-muted small mb-4">
+                    <i class="bi bi-info-circle me-1 text-primary"></i> 
+                    Search for an existing MVC case to reassign it to a different division.
+                </p>
+
+                <!-- Step 1: Search -->
+                <div class="row g-3 align-items-end mb-4 p-3 bg-light rounded-4 border">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Case Number (KID/ID/REF)</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-hash text-primary"></i></span>
+                            <input type="text" id="searchMVCNo" class="form-control border-start-0" placeholder="e.g. KID 150/2023" />
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold text-muted text-uppercase">Year</label>
+                        <input type="number" id="searchYear" class="form-control" value="@DateTime.Now.Year" />
+                    </div>
+                    <div class="col-md-4">
+                        <button type="button" id="btnSearch" class="btn btn-primary w-100 shadow-sm">
+                            <i class="bi bi-search me-2"></i> Search Labour Case
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Confirmation & Transfer Form -->
+                <form asp-action="ProcessTransfer" asp-controller="Labour" method="post" id="transferForm" style="display:none;">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" asp-for="CaseID" id="hdnCaseID" />
+                    <input type="hidden" asp-for="FromDivisionID" />
+
+                    <div class="case-details-box p-4 rounded-4 border border-primary border-opacity-25 mb-4 bg-white shadow-sm">
+                        <h6 class="fw-bold text-primary border-bottom pb-2 mb-3">Labour Case Information Found</h6>
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.65rem;">Employee Name</small>
+                                <div id="lblPetitioner" class="fw-bold fs-5">-</div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.65rem;">Found in Division</small>
+                                <div id="lblCurrentDiv" class="badge bg-info-subtle text-info px-3 py-2">-</div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.65rem;">Court Name</small>
+                                <div id="lblCourt" class="text-dark">-</div>
+                            </div>
+                            <div class="col-md-6">
+                                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.65rem;">Employee No / Status</small>
+                                <div id="lblEmpDetails" class="text-dark">-</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-md-6">
+                            <label asp-for="ToDivisionID" class="form-label small fw-bold text-muted text-uppercase">Transfer to Division</label>
+                            <select asp-for="ToDivisionID" class="form-select shadow-sm border-primary border-opacity-25" asp-items="@(new SelectList(ViewBag.Divisions, "DivisionID", "DivisionNameEnglish"))">
+                                <option value="">-- Select Target Division --</option>
+                            </select>
+                            <span asp-validation-for="ToDivisionID" class="text-danger small"></span>
+                        </div>
+                        <div class="col-md-12">
+                            <label asp-for="TransferRemarks" class="form-label small fw-bold text-muted text-uppercase">Reason for Transfer</label>
+                            <textarea asp-for="TransferRemarks" class="form-control" rows="3" placeholder="Explain why this case is being transferred..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-3 border-top d-flex justify-content-end gap-3">
+                        <button type="reset" class="btn btn-outline-secondary px-4 rounded-pill" onclick="$('#transferForm').slideUp();">
+                            Cancel
+                        </button>
+                        <button type="submit" class="btn btn-primary btn-lg px-5 shadow rounded-pill">
+                            <i class="bi bi-arrow-right-circle-fill me-2"></i> Confirm Transfer
+                        </button>
+                    </div>
+                </form>
+
+                <div id="noCaseResult" class="text-center py-5 border rounded-4 bg-light" style="display:none;">
+                    <i class="bi bi-search fs-1 text-muted opacity-25"></i>
+                    <p class="mt-2 text-muted">No matching case found for the provided details.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        $(document).ready(function() {
+            $('#btnSearch').click(function() {
+                var mvcNo = $('#searchMVCNo').val();
+                var year = $('#searchYear').val();
+                
+                if (!mvcNo) {
+                    alert('Please enter MVC Number');
+                    return;
+                }
+
+                $(this).html('<span class="spinner-border spinner-border-sm me-2"></span> Searching...').prop('disabled', true);
+                
+                $.get('@Url.Action("SearchTransferCase", "Labour")', { mvcNo: mvcNo, year: year }, function(res) {
+                    $('#btnSearch').html('<i class="bi bi-search me-2"></i> Search Labour Case').prop('disabled', false);
+                    
+                    if (res.success) {
+                        $('#hdnCaseID').val(res.caseId);
+                        $('#lblPetitioner').text(res.petitioner);
+                        $('#lblCourt').text(res.courtName);
+                        $('#lblEmpDetails').html(res.employeeNo + ' <span class="badge bg-secondary ms-2">' + res.workingStatus + '</span>');
+                        $('#lblCurrentDiv').text(res.currentDivision);
+                        
+                        $('#noCaseResult').hide();
+                        $('#transferForm').slideDown();
+                    } else {
+                        $('#transferForm').hide();
+                        $('#noCaseResult').fadeIn();
+                    }
+                }).fail(function() {
+                    $('#btnSearch').html('<i class="bi bi-search me-2"></i> Search Labour Case').prop('disabled', false);
+                    alert('Error searching for case');
+                });
+            });
+        });
+    </script>
+}

@@ -64,6 +64,12 @@ if not exist "%WEB_OUT%\uploads" mkdir "%WEB_OUT%\uploads"
 if not exist "%WEB_OUT%\wwwroot\uploads" mkdir "%WEB_OUT%\wwwroot\uploads"
 if not exist "%API_OUT%\logs" mkdir "%API_OUT%\logs"
 
+:: Synchronize to root publish directory if present
+if exist "%~dp0publish" (
+    echo Syncing web build to %~dp0publish...
+    xcopy /y /e /i "%WEB_OUT%\*" "%~dp0publish\" >nul
+)
+
 echo.
 echo =======================================================================
 echo   PUBLISH SUCCESSFUL!

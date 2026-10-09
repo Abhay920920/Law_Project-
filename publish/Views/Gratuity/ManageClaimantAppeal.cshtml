@@ -1,0 +1,230 @@
+@model MVCCaseManagement.Models.GratuityViewModel
+
+@{
+    ViewData["Title"] = "Manage Claimant Appeal (Gratuity)";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-gratuity mb-1">
+                <i class="bi bi-person-badge me-2"></i> Manage Claimant Appeal
+            </h2>
+            <p class="text-muted mb-0">Update WP/Appeal details filed by the Claimant for PGA No: <strong>@Model.PGANumber</strong></p>
+        </div>
+        <a href="@Url.Action("ClaimantAppeals")" class="btn btn-outline-secondary rounded-pill">
+            <i class="bi bi-arrow-left me-2"></i> Back to List
+        </a>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white p-3 border-bottom">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <span class="badge bg-light text-dark border p-2">
+                        <i class="bi bi-person me-1"></i> Claimant: @Model.ClaimantName
+                    </span>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <span class="badge bg-light text-dark border p-2">
+                        <i class="bi bi-file-earmark-text me-1"></i> PGA No: @Model.PGANumber
+                    </span>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-4">
+            <form asp-action="ManageClaimantAppeal" method="post" class="needs-validation" novalidate>
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="CaseID" />
+
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantDivisionID" class="form-label">Division Name</label>
+                        <select asp-for="ClaimantDivisionID" asp-items="Model.DivisionList" class="form-select">
+                            <option value="">Select Division</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Tribunal</label>
+                        <input type="text" class="form-control bg-light" value="Labor Court / Controlling Auth" readonly />
+                    </div>
+
+                    <div class="col-12"><hr class="my-2"/></div>
+                    <div class="col-12"><h6 class="fw-bold text-gratuity">Arising out of Gratuity Case:</h6></div>
+
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantArisingWPNumber" class="form-label">WP Number</label>
+                        <input asp-for="ClaimantArisingWPNumber" class="form-control" placeholder="Enter WP Number" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantArisingWPYear" class="form-label">WP Year</label>
+                        <input asp-for="ClaimantArisingWPYear" class="form-control" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantMVCCurrentStatus" class="form-label">Current Status</label>
+                        <input asp-for="ClaimantMVCCurrentStatus" class="form-control" placeholder="e.g., Pending, Disposed" />
+                    </div>
+
+                    <div class="col-12"><hr class="my-3"/></div>
+                    <div class="col-12"><h6 class="fw-bold text-gratuity">WP / Appeal Details:</h6></div>
+
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantWPNumber" class="form-label">WP Number</label>
+                        <input asp-for="ClaimantWPNumber" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantWPYear" class="form-label">Year</label>
+                        <input asp-for="ClaimantWPYear" class="form-control" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPEntrustmentNo" class="form-label">Entrustment Number</label>
+                        <input asp-for="ClaimantWPEntrustmentNo" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPEntrustmentDate" class="form-label">Entrustment Date</label>
+                        <input asp-for="ClaimantWPEntrustmentDate" type="date" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPAdvocate" class="form-label">Advocate Name</label>
+                        <input asp-for="ClaimantWPAdvocate" class="form-control" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPStatus" class="form-label">Status of WP</label>
+                        <select asp-for="ClaimantWPStatus" class="form-select" id="claimantWPStatus">
+                            <option value="">Select Status</option>
+                            <option>Pending</option>
+                            <option>Disposed</option>
+                            <option>DNP</option>
+                        </select>
+                    </div>
+
+                    <div class="col-12" id="claimantOutcomeMainSection" style="display:none;">
+                        <div class="row g-3">
+                            <div class="col-12"><hr class="my-3"/></div>
+                            <div class="col-12"><h6 class="fw-bold text-gratuity">Outcome:</h6></div>
+
+                            <div class="col-md-4">
+                                <label asp-for="ClaimantWPDecision" class="form-label">Nature of Decision</label>
+                                <select asp-for="ClaimantWPDecision" class="form-select">
+                                    <option value="">Select...</option>
+                                    <option>In Favour of Corporation</option>
+                                    <option>Against Corporation</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label asp-for="ClaimantActionTaken" class="form-label">Decision Taken</label>
+                                <select asp-for="ClaimantActionTaken" class="form-select" id="claimantActionTaken">
+                                    <option value="">Select...</option>
+                                    <option>Pending for Decision</option>
+                                    <option>Pending before Competent Authority</option>
+                                    <option>Appeal</option>
+                                    <option>Close</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12" id="claimantClosureSection" style="display:none;">
+                        <div class="bg-light p-3 rounded mt-2 border">
+                            <h6 class="small fw-bold border-bottom pb-2 mb-3">If Closed</h6>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label asp-for="ClaimantApprovalNo" class="form-label small">Approval Outward Number</label>
+                                    <input asp-for="ClaimantApprovalNo" class="form-control" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label asp-for="ClaimantApprovalDate" class="form-label small">Date</label>
+                                    <input asp-for="ClaimantApprovalDate" type="date" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5 pt-3 border-top text-end">
+                    <button type="submit" class="btn btn-gratuity px-5 rounded-pill shadow-sm">
+                        <i class="bi bi-save me-2"></i> Save Appeal Details
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            function toggleClaimantOutcome() {
+                const status = $("#claimantWPStatus").val();
+                if (status === "Pending" || !status) {
+                    $("#claimantOutcomeMainSection").slideUp(300);
+                    $("#claimantClosureSection").slideUp(300);
+                } else {
+                    $("#claimantOutcomeMainSection").slideDown(300);
+                    toggleClaimantClosureSection();
+                }
+            }
+
+            function toggleClaimantClosureSection() {
+                const actionTaken = $("#claimantActionTaken").val();
+                if (actionTaken === 'Close') {
+                    $("#claimantClosureSection").slideDown(300);
+                } else {
+                    $("#claimantClosureSection").slideUp(300);
+                }
+            }
+
+            $("#claimantWPStatus").on("change", toggleClaimantOutcome);
+            $("#claimantActionTaken").on("change", toggleClaimantClosureSection);
+
+            // Initial call
+            toggleClaimantOutcome();
+        });
+    </script>
+}
+
+@section Styles {
+    <style>
+        :root {
+            --gratuity-color: #C2185B;
+        }
+        body, .content-area {
+            background-color: #d5d8db !important;
+        }
+        .bg-gratuity { background-color: var(--gratuity-color) !important; }
+        .text-gratuity { color: var(--gratuity-color) !important; }
+        .btn-gratuity { 
+            background-color: var(--gratuity-color); 
+            color: white !important; 
+            border: none;
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+        .btn-gratuity:hover { 
+            background-color: #880E4F !important; 
+            color: white !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(194,24,91,0.2) !important;
+        }
+        .ls-1 { letter-spacing: 1px; }
+        .form-label {
+            margin-bottom: 0.3rem;
+            color: #444;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .card {
+            border-radius: 12px !important;
+            overflow: hidden;
+        }
+        .card-header {
+            border-bottom: none;
+        }
+    </style>
+}

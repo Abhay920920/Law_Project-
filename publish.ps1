@@ -102,6 +102,12 @@ New-Item -ItemType Directory -Force -Path (Join-Path $webOut "uploads") | Out-Nu
 New-Item -ItemType Directory -Force -Path (Join-Path $webOut "wwwroot\uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $apiOut "logs") | Out-Null
 
+$rootPublish = Join-Path $scriptDir "publish"
+if (Test-Path $rootPublish) {
+    Write-Host "  Syncing to $rootPublish..." -ForegroundColor Gray
+    Copy-Item -Path "$webOut\*" -Destination $rootPublish -Recurse -Force
+}
+
 Write-Host ""
 Write-Host "=======================================================================" -ForegroundColor Cyan
 Write-Host "  PUBLISH COMPLETE!" -ForegroundColor Green

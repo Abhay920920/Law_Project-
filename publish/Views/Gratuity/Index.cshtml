@@ -1,0 +1,413 @@
+@model IEnumerable<MVCCaseManagement.Models.GratuityCase>
+
+@{
+    ViewData["Title"] = "Gratuity Cases Dashboard";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var userDiv = User.FindFirst("DivisionID")?.Value;
+    bool isCO = string.IsNullOrEmpty(userDiv) || userDiv == "0" || userDiv == "5";
+}
+
+@section Styles {
+    <style>
+        .chart-container-sm {
+            position: relative;
+            height: 90px;
+            width: 90px;
+            margin: 0 auto;
+        }
+        .chart-label-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+        }
+        .chart-label-value {
+            font-size: 1.1rem;
+            font-weight: 900;
+            line-height: 1;
+            color: #334155;
+        }
+        .chart-label-text {
+            font-size: 0.5rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #64748b;
+            margin-top: 1px;
+        }
+        .glass-card-white {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+    <style>
+        /* Modern Pulse Stat Cards - Centered Version */
+        .pulse-stat-card {
+            border-radius: 1.25rem;
+            padding: 0.75rem 1rem;
+            color: white;
+            position: relative;
+            overflow: hidden;
+            height: 100%;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            border: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Horizontally center children */
+            justify-content: center; /* Vertically center children */
+            text-align: center;
+            min-height: 120px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+        }
+
+        .pulse-stat-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .pulse-stat-card .label {
+            font-size: 0.7rem;
+            font-weight: 700;
+            opacity: 0.9;
+            margin-bottom: 0.25rem;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            z-index: 1;
+            line-height: 1.2;
+            width: 100%;
+        }
+
+        .pulse-stat-card .value {
+            font-size: 2.25rem;
+            font-weight: 900;
+            line-height: 1;
+            margin: 0.15rem 0;
+            z-index: 1;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .pulse-stat-card .icon-btm {
+            font-size: 1.1rem;
+            margin-top: 0.5rem;
+            opacity: 0.75;
+            z-index: 1;
+        }
+
+        .pulse-stat-card .bg-shape {
+            position: absolute;
+            top: -10px;
+            right: -20px;
+            width: 120px;
+            height: 120px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 70%);
+            border-radius: 50%;
+            z-index: 0;
+        }
+
+        .bg-pulse-indigo { background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); }
+        .bg-pulse-amber { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+        .bg-pulse-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+        .bg-pulse-rose { background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%); }
+
+        body, .content-area {
+            background-color: #d5d8db !important;
+        }
+
+        .glass-header {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 1.5rem;
+            padding: 0.75rem 1.25rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+}
+
+<div class="mb-3">
+    <div class="glass-card p-3">
+        <div class="row align-items-center">
+            <div class="col-md-8">
+                @{
+                    var displayGreetingGrat = "Good Morning";
+                    var hourGrat = DateTime.Now.Hour;
+                    if (hourGrat >= 12 && hourGrat < 17) displayGreetingGrat = "Good Afternoon";
+                    else if (hourGrat >= 17) displayGreetingGrat = "Good Evening";
+
+                    var displayNameGrat = User.FindFirst("FullName")?.Value ?? User.FindFirst("DivisionName")?.Value ?? "User";
+                    if (User.IsInRole("MD")) displayNameGrat = "Managing Director";
+                    else if (User.IsInRole("CLO")) displayNameGrat = "Chief Law Officer";
+                    else if (User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) displayNameGrat = "Deputy Chief Law Officer";
+                    else if (User.IsInRole("LO")) displayNameGrat = "Law Officer";
+                }
+                <h3 class="fw-bold text-gratuity mb-1" id="greetingText">@displayGreetingGrat, @displayNameGrat! <span class="ms-1">👋</span></h3>
+                <p class="text-secondary mb-0">Monitor and manage gratuity cases with precision. Your daily case hearing schedule is below.</p>
+            </div>
+            <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                <div class="d-inline-flex align-items-center bg-white p-2 px-3 rounded-pill shadow-sm border border-gratuity border-opacity-10">
+                    <i class="bi bi-calendar3 text-gratuity me-2"></i>
+                    <div class="fw-bold text-dark small">@DateTime.Now.ToString("dd MMM yyyy")</div>
+                    <div class="mx-2 text-muted">|</div>
+                    <i class="bi bi-clock text-gratuity me-2"></i>
+                    <div class="fw-bold text-dark small" id="liveClock">@DateTime.Now.ToString("HH:mm")</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-3">
+    <div class="col-12">
+        <div class="glass-header shadow-sm">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <h4 class="fw-bold mb-0 text-dark">Case Registry Overview</h4>
+            </div>
+            <p class="text-secondary mb-2 small">Manage gratuity claims, payments, and controlling authority orders</p>
+            
+            <div class="row g-3">
+                @if (!isCO)
+                {
+                    <div class="col-12 col-md-6 col-xl">
+                        <a href="@Url.Action("CaseList", new { status = "PGACRPending" })" class="pulse-stat-card bg-pulse-indigo text-decoration-none d-block">
+                            <div class="bg-shape"></div>
+                            <div class="label">PGA/CR Pending</div>
+                            <div class="value">@ViewBag.PGACRPendingCount</div>
+                            <i class="bi bi-file-earmark-text icon-btm"></i>
+                        </a>
+                    </div>
+                    <div class="col-12 col-md-6 col-xl">
+                        <a href="@Url.Action("CaseList", new { status = "PGAApplCRPending" })" class="pulse-stat-card bg-pulse-amber text-decoration-none d-block">
+                            <div class="bg-shape"></div>
+                            <div class="label">PGA/Appl/CR Pending</div>
+                            <div class="value">@ViewBag.PGAApplCRPendingCount</div>
+                            <i class="bi bi-clock-history icon-btm"></i>
+                        </a>
+                    </div>
+                }
+                else
+                {
+                    <div class="col-12 col-md-6 col-xl">
+                        <a href="@Url.Action("CaseList", new { status = "NoAction" })" class="pulse-stat-card bg-pulse-indigo text-decoration-none d-block">
+                            <div class="bg-shape"></div>
+                            <div class="label">No Action Taken</div>
+                            <div class="value">@ViewBag.NoActionTakenCount</div>
+                            <i class="bi bi-exclamation-circle icon-btm"></i>
+                        </a>
+                    </div>
+                }
+
+                <div class="col-12 col-md-6 col-xl">
+                    <a href="@Url.Action("CaseList", new { status = "PendingDecision" })" class="pulse-stat-card bg-pulse-emerald text-decoration-none d-block">
+                        <div class="bg-shape"></div>
+                        <div class="label">Pending for Decision</div>
+                        <div class="value">@ViewBag.PendingCLOLOCount</div>
+                        <i class="bi bi-person-badge icon-btm"></i>
+                    </a>
+                </div>
+                
+                <div class="col-12 col-md-6 col-xl">
+                    <a href="@Url.Action("CaseList", new { status = "PendingCompetentAuthority" })" class="pulse-stat-card bg-pulse-rose text-decoration-none d-block">
+                        <div class="bg-shape"></div>
+                        <div class="label">Pending before Comp. Auth</div>
+                        <div class="value">@ViewBag.PendingCompetentAuthorityCount</div>
+                        <i class="bi bi-building-check icon-btm"></i>
+                    </a>
+                </div>
+
+                <div class="col-12 col-md-6 col-xl">
+                    <a href="@Url.Action("CaseList", new { status = "WPPending" })" class="pulse-stat-card bg-pulse-amber text-decoration-none d-block">
+                        <div class="bg-shape"></div>
+                        <div class="label">High Court (WP) Pending</div>
+                        <div class="value">@ViewBag.WPPendingCount</div>
+                        <i class="bi bi-bank icon-btm"></i>
+                    </a>
+                </div>
+                
+                <div class="col-12 col-md-6 col-xl">
+                    <a href="@Url.Action("CaseList", new { status = "WritAppealPending" })" class="pulse-stat-card bg-pulse-indigo text-decoration-none d-block">
+                        <div class="bg-shape"></div>
+                        <div class="label">Writ Appeal (DB) Pending</div>
+                        <div class="value">@ViewBag.WritAppealPendingCount</div>
+                        <i class="bi bi-diagram-3 icon-btm"></i>
+                    </a>
+                </div>
+                
+                <div class="col-12 col-md-6 col-xl">
+                    <a href="@Url.Action("CaseList", new { status = "SLPPending" })" class="pulse-stat-card bg-pulse-rose text-decoration-none d-block">
+                        <div class="bg-shape"></div>
+                        <div class="label">Supreme Court (SLP) Pending</div>
+                        <div class="value">@ViewBag.SLPPendingCount</div>
+                        <i class="bi bi-hammer icon-btm"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scheduled Hearings -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <h5 class="card-title fw-bold mb-0"><i class="bi bi-calendar-check me-2 text-gratuity"></i>Scheduled Hearings</h5>
+        <div class="d-flex gap-2">
+            <div class="input-group input-group-sm" style="width: 400px;">
+                <span class="input-group-text bg-white border-gratuity border-opacity-25 text-muted small">FROM</span>
+                <input type="date" id="hearingDateFrom" class="form-control border-gratuity border-opacity-25" value="@ViewBag.SelectedDate" />
+                <span class="input-group-text bg-white border-gratuity border-opacity-25 text-muted small">TO</span>
+                <input type="date" id="hearingDateTo" class="form-control border-gratuity border-opacity-25" value="@ViewBag.SelectedDate" />
+                <button class="btn btn-gratuity px-3" id="btnFilterHearings"><i class="bi bi-search"></i></button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-3">
+        <div class="d-flex justify-content-end mb-3">
+            <span class="badge rounded-pill bg-gratuity px-3 py-2 shadow-sm" id="dateDisplayIndicator">TODAY</span>
+        </div>
+        <div id="hearingsContainer" class="transition-all">
+            @await Html.PartialAsync("_DashboardRecentCases", (List<MVCCaseManagement.Models.RecentCaseViewModel>)ViewBag.RecentCases)
+        </div>
+    </div>
+</div>
+
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        $(document).ready(function() {
+
+            function filterHearings() {
+                const fromDate = $('#hearingDateFrom').val();
+                const toDate = $('#hearingDateTo').val();
+                
+                if (!fromDate) return;
+
+                $('#hearingsContainer').css('opacity', '0.5');
+                
+                const today = new Date().toISOString().split('T')[0];
+                if (fromDate === today && toDate === today) {
+                    $('#dateDisplayIndicator').text('TODAY').removeClass('bg-secondary').addClass('bg-gratuity');
+                } else if (fromDate === toDate) {
+                    const d = new Date(fromDate);
+                    $('#dateDisplayIndicator').text(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })).removeClass('bg-gratuity').addClass('bg-secondary');
+                } else {
+                    const dFrom = new Date(fromDate);
+                    const dTo = new Date(toDate);
+                    const formatted = dFrom.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' - ' + dTo.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                    $('#dateDisplayIndicator').text(formatted).removeClass('bg-gratuity').addClass('bg-secondary');
+                }
+
+                $.get('/Gratuity/GetCasesByDate', { date: fromDate, endDate: toDate }, function(data) {
+                    $('#hearingsContainer').html(data).css('opacity', '1');
+                }).fail(function() {
+                    $('#hearingsContainer').css('opacity', '1');
+                    alert('Error fetching cases.');
+                });
+            }
+
+            $('#btnFilterHearings').on('click', filterHearings);
+            $('#hearingDateFrom, #hearingDateTo').on('keypress', function(e) { if (e.which === 13) filterHearings(); });
+            $('#hearingDateFrom').on('change', function() {
+                const fromDate = $(this).val();
+                if ($('#hearingDateTo').val() < fromDate) $('#hearingDateTo').val(fromDate);
+            });
+        });
+    </script>
+}
+
+<style>
+    /* Modern Pulse Stat Cards - Centered Version */
+    .pulse-stat-card {
+        border-radius: 1.25rem;
+        padding: 1.25rem;
+        color: white;
+        position: relative;
+        overflow: hidden;
+        height: 100%;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        border: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* Horizontally center children */
+        justify-content: center; /* Vertically center children */
+        text-align: center;
+        min-height: 160px;
+        box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+    }
+
+    .pulse-stat-card:hover {
+        transform: translateY(-5px) scale(1.02);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .pulse-stat-card .label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        opacity: 0.9;
+        margin-bottom: 0.5rem;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+        z-index: 1;
+        line-height: 1.3;
+        width: 100%;
+    }
+
+    .pulse-stat-card .value {
+        font-size: 3rem;
+        font-weight: 900;
+        line-height: 1;
+        margin: 0.25rem 0;
+        z-index: 1;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .pulse-stat-card .icon-btm {
+        font-size: 1.1rem;
+        margin-top: 0.5rem;
+        opacity: 0.75;
+        z-index: 1;
+    }
+
+    .pulse-stat-card .bg-shape {
+        position: absolute;
+        top: -10px;
+        right: -20px;
+        width: 120px;
+        height: 120px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 70%);
+        border-radius: 50%;
+        z-index: 0;
+    }
+
+    .bg-pulse-indigo { background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); }
+    .bg-pulse-amber { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+    .bg-pulse-emerald { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+
+    .text-gratuity { color: #C2185B !important; }
+    .bg-gratuity-light { background-color: #FCE4EC !important; }
+    .bg-gratuity { background-color: #C2185B !important; }
+    .border-gratuity { border-color: #C2185B !important; }
+    
+    .btn-gratuity { 
+        background-color: #C2185B; 
+        color: white; 
+        border: none;
+        transition: all 0.3s;
+    }
+    .btn-gratuity:hover { 
+        background-color: #880E4F; 
+        color: white;
+        transform: translateY(-2px);
+    }
+    
+    .fw-black { font-weight: 900; }
+    
+    .bg-warning-light { background-color: #fffbeb !important; }
+    .bg-success-light { background-color: #f0fdf4 !important; }
+    .bg-info-light { background-color: #f0f9ff !important; }
+
+    .uppercase { text-transform: uppercase; }
+    .letter-spacing-1 { letter-spacing: 0.05em; }
+</style>
