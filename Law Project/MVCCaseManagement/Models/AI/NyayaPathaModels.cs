@@ -181,6 +181,7 @@ namespace MVCCaseManagement.Models.AI
         public string? CurrentStage { get; set; }
         public DateTime? NextHearingDate { get; set; }
         public string? JudgeName { get; set; }
+        public string? CourtHall { get; set; }
         public string? Petitioner { get; set; }
         public string? Respondent { get; set; }
         public DateTime? FilingDate { get; set; }

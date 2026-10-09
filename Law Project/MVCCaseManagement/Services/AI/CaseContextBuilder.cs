@@ -289,11 +289,29 @@ namespace MVCCaseManagement.Services.AI
                 }
             }
 
-            // 5. Relevant Judgments from JUDGEMENT_REPO
-            string searchTerms = $"{mvc.VehicleType} accident compensation 166 163A";
+            // 5. Relevant Judgments from JUDGEMENT_REPO (Context-Aware Precedent Selection)
+            bool isChildMatter = (!string.IsNullOrWhiteSpace(petitionerNames) && (petitionerNames.Contains("Minor", StringComparison.OrdinalIgnoreCase) || petitionerNames.Contains("child", StringComparison.OrdinalIgnoreCase))) ||
+                                 (mvc.AdverseAward?.TR18Remarks != null && mvc.AdverseAward.TR18Remarks.Contains("child", StringComparison.OrdinalIgnoreCase));
+            bool isDeathCase = string.Equals(mvc.ClaimType, "Death", StringComparison.OrdinalIgnoreCase) ||
+                               (mvc.AdverseAward?.IsDeceasedInTR18 == true) ||
+                               (!string.IsNullOrWhiteSpace(petitionerNames) && (petitionerNames.Contains("W/o", StringComparison.OrdinalIgnoreCase) || petitionerNames.Contains("(Wife)", StringComparison.OrdinalIgnoreCase)));
+
+            string searchTerms = isDeathCase
+                ? "fatal death accident compensation Sarla Verma Pranay Sethi dependency"
+                : "injury accident compensation permanent disability limb";
+
             var judgements = await _legalSearch.SearchJudgementsAsync(searchTerms, 3, cancellationToken);
             foreach (var j in judgements)
             {
+                // Never attach child injury/death precedents to adult matters
+                bool isChildPrecedent = (j.Title != null && j.Title.StartsWith("MASTER ", StringComparison.OrdinalIgnoreCase)) ||
+                                        (j.Remarks != null && (j.Remarks.Contains("CHILD INJURY", StringComparison.OrdinalIgnoreCase) || j.Remarks.Contains("CHILD DEATH", StringComparison.OrdinalIgnoreCase)));
+
+                if (isChildPrecedent && !isChildMatter)
+                {
+                    continue; // Skip irrelevant child precedents for adult claims
+                }
+
                 dossier.RelevantJudgments.Add(new RelevantJudgmentDto
                 {
                     JudgementId = j.JudgementID,

@@ -66,6 +66,7 @@ namespace MVCCaseManagement.Services.AI
                     summary.NextHearingDate = localTracked.NextHearingDate;
                     summary.CourtName = localTracked.CourtNo ?? (localTracked.IsHighCourt ? "High Court of Karnataka" : "District / Subordinate Court");
                     summary.JudgeName = localTracked.JudgeName;
+                    summary.CourtHall = localTracked.CourtNo;
                     summary.Petitioner = localTracked.PetitionerName;
                     summary.Respondent = localTracked.RespondentName;
                     summary.IsVerified = true;

@@ -353,7 +353,10 @@ namespace MVCCaseManagement.Services.AI
                     }
                 }
 
-                if (dossier.RelevantJudgments != null)
+                bool includeJudgments = route.RequiredSources.Contains(QuerySourceCategory.Judgments);
+                bool includeWeb = route.RequiredSources.Contains(QuerySourceCategory.LegalWeb) || request.IncludeWeb;
+
+                if (includeJudgments && dossier.RelevantJudgments != null)
                 {
                     foreach (var j in dossier.RelevantJudgments)
                     {
@@ -372,7 +375,7 @@ namespace MVCCaseManagement.Services.AI
                     }
                 }
 
-                if (dossier.ExternalLegalSources != null)
+                if (includeWeb && dossier.ExternalLegalSources != null)
                 {
                     foreach (var w in dossier.ExternalLegalSources)
                     {
@@ -419,7 +422,7 @@ namespace MVCCaseManagement.Services.AI
                 // Deduplicate and rerank chunks based on composite relevance, authority, and freshness
                 evidencePack.DeduplicateAndRerank(request.Question);
 
-                var citations = BuildTraceableCitations(dossier);
+                var citations = BuildTraceableCitations(dossier, route, request.Question);
                 evidencePack.Citations = citations;
                 result.Citations = citations;
                 result.EvidencePack = evidencePack;
@@ -702,43 +705,67 @@ namespace MVCCaseManagement.Services.AI
             return true;
         }
 
-        private static List<CitationDto> BuildTraceableCitations(CaseDossier dossier)
+        private static List<CitationDto> BuildTraceableCitations(
+            CaseDossier dossier, 
+            QueryRouteResult? route = null, 
+            string? question = null)
         {
             var list = new List<CitationDto>();
             if (dossier == null) return list;
 
-            // 1. External Web Precedents & Authoritative Judgments
-            foreach (var w in dossier.ExternalLegalSources.Take(8))
+            bool includeJudgments = route != null && route.RequiredSources.Contains(QuerySourceCategory.Judgments);
+            bool includeWeb = route != null && route.RequiredSources.Contains(QuerySourceCategory.LegalWeb);
+
+            if (!string.IsNullOrWhiteSpace(question))
             {
-                list.Add(new CitationDto
+                string qLower = question.ToLowerInvariant();
+                if (qLower.Contains("precedent") || qLower.Contains("judgment") || qLower.Contains("judgement") ||
+                    qLower.Contains("ruling") || qLower.Contains("ratio") || qLower.Contains("supreme court") ||
+                    qLower.Contains("high court") || qLower.Contains("case law") || qLower.Contains("compensation calculation") ||
+                    qLower.Contains("latest_judgments"))
                 {
-                    SourceType = "WebPrecedent",
-                    SourceCategory = "Web",
-                    Title = w.Title,
-                    CaseNumber = w.CaseNumber,
-                    Court = w.Court,
-                    Date = w.JudgmentDate?.ToString("dd-MM-yyyy"),
-                    WebUrl = w.Url,
-                    Domain = w.SourceDomain,
-                    IsVerified = w.IsVerifiedDomain,
-                    Excerpt = w.Excerpt.Length > 160 ? w.Excerpt.Substring(0, 160) + "..." : w.Excerpt
-                });
+                    includeJudgments = true;
+                }
             }
 
-            // 2. Precedents from Internal Judgement Repo
-            foreach (var j in dossier.RelevantJudgments.Take(4))
+            // 1. External Web Precedents & Authoritative Judgments (Only when requested / relevant)
+            if (includeWeb && dossier.ExternalLegalSources != null)
             {
-                list.Add(new CitationDto
+                foreach (var w in dossier.ExternalLegalSources.Take(8))
                 {
-                    SourceType = "LegalPrecedent",
-                    SourceCategory = "Internal",
-                    Title = j.Title,
-                    CaseNumber = j.Citation,
-                    Court = j.Court,
-                    Date = j.JudgementDate?.ToString("dd-MM-yyyy"),
-                    RecordId = j.JudgementId.ToString(),
-                    Excerpt = j.KeyPrinciple.Length > 160 ? j.KeyPrinciple.Substring(0, 160) + "..." : j.KeyPrinciple
-                });
+                    list.Add(new CitationDto
+                    {
+                        SourceType = "WebPrecedent",
+                        SourceCategory = "Web",
+                        Title = w.Title,
+                        CaseNumber = w.CaseNumber,
+                        Court = w.Court,
+                        Date = w.JudgmentDate?.ToString("dd-MM-yyyy"),
+                        WebUrl = w.Url,
+                        Domain = w.SourceDomain,
+                        IsVerified = w.IsVerifiedDomain,
+                        Excerpt = w.Excerpt.Length > 160 ? w.Excerpt.Substring(0, 160) + "..." : w.Excerpt
+                    });
+                }
+            }
+
+            // 2. Precedents from Internal Judgement Repo (Only when requested / relevant)
+            if (includeJudgments && dossier.RelevantJudgments != null)
+            {
+                foreach (var j in dossier.RelevantJudgments.Take(4))
+                {
+                    list.Add(new CitationDto
+                    {
+                        SourceType = "LegalPrecedent",
+                        SourceCategory = "Internal",
+                        Title = j.Title,
+                        CaseNumber = j.Citation,
+                        Court = j.Court,
+                        Date = j.JudgementDate?.ToString("dd-MM-yyyy"),
+                        RecordId = j.JudgementId.ToString(),
+                        Excerpt = j.KeyPrinciple.Length > 160 ? j.KeyPrinciple.Substring(0, 160) + "..." : j.KeyPrinciple
+                    });
+                }
             }
 
             // 3. Document Passages (Preserving Document, Page Number, Section)
@@ -1326,6 +1353,13 @@ namespace MVCCaseManagement.Services.AI
             sb.AppendLine("> ℹ️ *Offline Legal Intelligence Synthesizer (Local AI reasoning model is currently unstarted or unreachable; response synthesized directly from verified NWKRTC case records, database facts, and statutory provisions).*");
             sb.AppendLine();
 
+            string lowerQ = (question ?? string.Empty).ToLowerInvariant().Trim();
+            bool isECourtsQuery = lowerQ == "check_ecourts" || lowerQ == "check ecourts" ||
+                                  lowerQ == "action: check_ecourts" || lowerQ.Contains("ecourt") ||
+                                  lowerQ.Contains("e-court") || lowerQ.Contains("cnr") ||
+                                  lowerQ.Contains("hearing") || lowerQ.Contains("stage") ||
+                                  lowerQ.Contains("coram") || lowerQ.Contains("daily order");
+
             // 2. If active case dossier exists, summarize facts
             if (dossier != null && dossier.CaseId > 0 && dossier.CaseType != "GeneralLegalResearch")
             {
@@ -1341,7 +1375,46 @@ namespace MVCCaseManagement.Services.AI
                     sb.AppendLine($"- **Next Hearing Date:** {dossier.NextHearingDate.Value:dd-MMM-yyyy}");
                 sb.AppendLine();
 
-                if (dossier.StructuredFacts.Count > 0)
+                if (isECourtsQuery)
+                {
+                    sb.AppendLine("#### 🏛️ Judicial Record & e-Courts Verification Status");
+                    if (!string.IsNullOrWhiteSpace(dossier.CNRNumber) && dossier.CNRNumber != "None")
+                    {
+                        sb.AppendLine($"- **CNR Number:** `{dossier.CNRNumber}`");
+                        if (dossier.ECourtsSummary != null)
+                        {
+                            sb.AppendLine($"- **e-Courts Forum:** {dossier.ECourtsSummary.CourtName ?? dossier.CourtName}");
+                            sb.AppendLine($"- **Current Judicial Stage:** **{dossier.ECourtsSummary.CurrentStage ?? dossier.CurrentStage}**");
+                            sb.AppendLine($"- **Next Scheduled Hearing:** {(dossier.ECourtsSummary.NextHearingDate.HasValue ? dossier.ECourtsSummary.NextHearingDate.Value.ToString("dd-MMM-yyyy") : (dossier.NextHearingDate.HasValue ? dossier.NextHearingDate.Value.ToString("dd-MMM-yyyy") : "Not scheduled / Listed"))}");
+                            sb.AppendLine($"- **Presiding Judge / Coram:** {dossier.ECourtsSummary.JudgeName ?? (dossier.StructuredFacts.TryGetValue("Judge Name", out var jn) ? jn : "Not specified")}");
+                            sb.AppendLine($"- **Court Hall:** {dossier.ECourtsSummary.CourtHall ?? (dossier.StructuredFacts.TryGetValue("Court Hall", out var ch) ? ch : "Not specified")}");
+                            sb.AppendLine($"- **Verification Status:** {dossier.ECourtsSummary.StatusMessage}");
+
+                            if (dossier.ECourtsSummary.Orders.Count > 0)
+                            {
+                                sb.AppendLine("- **Recent Judicial Orders:**");
+                                foreach (var o in dossier.ECourtsSummary.Orders.Take(3))
+                                {
+                                    sb.AppendLine($"  - *Order #{o.OrderNumber} ({o.OrderDate:dd-MMM-yyyy}):* {o.Details}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine($"- **Registry Status:** CNR `{dossier.CNRNumber}` recorded in NWKRTC database.");
+                            sb.AppendLine($"- **Next Scheduled Hearing:** {(dossier.NextHearingDate.HasValue ? dossier.NextHearingDate.Value.ToString("dd-MMM-yyyy") : "Not scheduled")}");
+                            sb.AppendLine("- **Notice:** Live NAPIX e-Courts gateway was inconclusive or local network offline. Internal case records are current.");
+                        }
+                    }
+                    else
+                    {
+                        sb.AppendLine("- ⚠️ **CNR Number Not Linked:** No 16-digit CNR Number (e.g. `KADW...` or `KARB...`) is recorded in the NWKRTC database for this case.");
+                        sb.AppendLine("- **Action Required:** Update this case in Case Management with the official 16-digit CNR Number to enable real-time NJDG synchronization, daily order sheets, and automatic hearing alerts.");
+                    }
+                    sb.AppendLine();
+                }
+
+                if (dossier.StructuredFacts.Count > 0 && !isECourtsQuery)
                 {
                     sb.AppendLine("#### 📊 Case Parameters & Financials");
                     foreach (var fact in dossier.StructuredFacts.Take(6))
@@ -1351,7 +1424,13 @@ namespace MVCCaseManagement.Services.AI
                     sb.AppendLine();
                 }
 
-                if (dossier.RelevantJudgments.Count > 0)
+                // Precedents are only relevant if the user explicitly inquired about legal rulings, precedents, or compensation
+                bool asksForPrecedents = lowerQ.Contains("precedent") || lowerQ.Contains("judgment") || 
+                                         lowerQ.Contains("judgement") || lowerQ.Contains("compensation") || 
+                                         lowerQ.Contains("ruling") || lowerQ.Contains("ratio") ||
+                                         lowerQ.Contains("defense") || lowerQ.Contains("liability");
+
+                if (dossier.RelevantJudgments.Count > 0 && asksForPrecedents)
                 {
                     sb.AppendLine("#### 🏛️ Relevant Precedents & Legal Repository Matches");
                     foreach (var j in dossier.RelevantJudgments.Take(3))
