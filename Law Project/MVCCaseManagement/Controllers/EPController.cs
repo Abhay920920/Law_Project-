@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using System.Security.Claims;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -12,12 +13,14 @@ namespace MVCCaseManagement.Controllers
         private readonly IEPRepository _epRepo;
         private readonly ICaseRepository _caseRepo;
         private readonly IMasterRepository _masterRepo;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public EPController(IEPRepository epRepo, ICaseRepository caseRepo, IMasterRepository masterRepo)
+        public EPController(IEPRepository epRepo, ICaseRepository caseRepo, IMasterRepository masterRepo, ICaseActivityLogger activityLogger)
         {
             _epRepo = epRepo;
             _caseRepo = caseRepo;
             _masterRepo = masterRepo;
+            _activityLogger = activityLogger;
         }
 
         public IActionResult Index(int page = 1, string search = "", string status = "all")
@@ -120,6 +123,15 @@ namespace MVCCaseManagement.Controllers
                     int epId = _epRepo.SaveEP(model);
                     if (epId > 0)
                     {
+                        _ = _activityLogger.LogCaseCreatedAsync(
+                            "EP",
+                            epId,
+                            $"EP {model.EPNumber}",
+                            model.VehicleNo,
+                            model.EPCourt,
+                            model,
+                            $"Registered Execution Petition (EP) #{model.EPNumber} (Arising from MVC: {model.ArisingFromMVCNo}/{model.ArisingFromMVCYear}, Court: {model.EPCourt})");
+
                         TempData["SuccessMessage"] = "EP Details saved successfully!";
                         return RedirectToAction(nameof(Index));
                     }
@@ -165,6 +177,16 @@ namespace MVCCaseManagement.Controllers
                     bool updated = _epRepo.UpdateEP(model);
                     if (updated)
                     {
+                        _ = _activityLogger.LogCaseUpdatedAsync(
+                            "EP",
+                            model.EPID,
+                            $"EP {model.EPNumber}",
+                            model.VehicleNo,
+                            model.EPCourt,
+                            null,
+                            model,
+                            $"Updated Execution Petition (EP) #{model.EPNumber} (Court: {model.EPCourt}, Stage: {model.EPStatus ?? "N/A"})");
+
                         TempData["SuccessMessage"] = "EP Details updated successfully!";
                         return RedirectToAction(nameof(Index));
                     }

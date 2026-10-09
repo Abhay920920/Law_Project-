@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.Common;
+using MVCCaseManagement.Services.Audit;
 using System.Security.Claims;
 
 namespace MVCCaseManagement.Controllers
@@ -15,14 +16,16 @@ namespace MVCCaseManagement.Controllers
         private readonly IMasterRepository _masterRepo;
         private readonly ICaseRepository _caseRepo;
         private readonly IWebHostEnvironment _environment;
+        private readonly ICaseActivityLogger _activityLogger;
         private readonly ILogger<GratuityController> _logger;
 
-        public GratuityController(IGratuityRepository gratuityRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IWebHostEnvironment environment, ILogger<GratuityController> logger)
+        public GratuityController(IGratuityRepository gratuityRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger, ILogger<GratuityController> logger)
         {
             _gratuityRepo = gratuityRepo;
             _masterRepo = masterRepo;
             _caseRepo = caseRepo;
             _environment = environment;
+            _activityLogger = activityLogger;
             _logger = logger;
         }
 
@@ -279,6 +282,7 @@ namespace MVCCaseManagement.Controllers
                     var gratuityCase = (GratuityCase)model;
 
                     await _gratuityRepo.AddCase(gratuityCase);
+                    _ = _activityLogger.LogCaseCreatedAsync("GRATUITY", gratuityCase.CaseID, gratuityCase.PGANumber, null, gratuityCase.CourtType, gratuityCase, $"Registered new Gratuity Case #{gratuityCase.PGANumber}");
                     TempData["SuccessMessage"] = "Gratuity Case created successfully!";
                     return RedirectToAction(nameof(Index));
                 }
@@ -856,6 +860,7 @@ namespace MVCCaseManagement.Controllers
                 existing.IsViewedByCO = model.IsViewedByCO;
  
                 await _gratuityRepo.UpdateCase(existing);
+                _ = _activityLogger.LogCaseUpdatedAsync("GRATUITY", existing.CaseID, existing.PGANumber, null, existing.CourtType, null, existing, $"Updated Gratuity case #{existing.PGANumber}");
                 TempData["SuccessMessage"] = "Gratuity Case updated successfully!";
                 return RedirectToAction(nameof(Index));
             }
@@ -944,6 +949,7 @@ namespace MVCCaseManagement.Controllers
             dbCase.ModifiedDate = DateTime.Now;
 
             await _gratuityRepo.UpdateCase(dbCase);
+            _ = _activityLogger.LogSubEntityActionAsync("GRATUITY", dbCase.CaseID, dbCase.PGANumber, "CENTRAL_OFFICER_REVIEW", $"CLO Action recorded: {model.DisposalResult} (Date: {model.ApprovalDate:yyyy-MM-dd})", new { DisposalResult = model.DisposalResult, ApprovalDate = model.ApprovalDate });
 
             TempData["SuccessMessage"] = "Action recorded successfully.";
             return RedirectToAction("Details", new { id = model.CaseID });
@@ -1172,6 +1178,7 @@ namespace MVCCaseManagement.Controllers
             existing.ModifiedDate = DateTime.Now;
 
             await _gratuityRepo.UpdateCase(existing);
+            _ = _activityLogger.LogCaseUpdatedAsync("GRATUITY", existing.CaseID, existing.PGANumber, null, existing.CourtType, null, existing, $"Central Office Action recorded on Gratuity case #{existing.PGANumber}");
             TempData["SuccessMessage"] = "Action updated successfully!";
             return RedirectToAction(nameof(Index));
         }
@@ -1374,6 +1381,7 @@ namespace MVCCaseManagement.Controllers
              existingCase.CreatedBy = User.Identity?.Name; // Or ModifiedBy if exists
 
              await _gratuityRepo.UpdateCase(existingCase);
+             _ = _activityLogger.LogCaseUpdatedAsync("GRATUITY", existingCase.CaseID, $"Claimant WP {existingCase.ClaimantWPNumber}/{existingCase.ClaimantWPYear}", null, existingCase.AppealCourt ?? "High Court", null, model, $"Updated Gratuity Claimant Appeal WP #{existingCase.ClaimantWPNumber}/{existingCase.ClaimantWPYear}");
              
              TempData["SuccessMessage"] = "Claimant Appeal details updated successfully!";
              return RedirectToAction("ClaimantAppeals");
@@ -1414,6 +1422,7 @@ namespace MVCCaseManagement.Controllers
                 int id = await _gratuityRepo.AddCase(gratuityCase);
                 if (id > 0)
                 {
+                    _ = _activityLogger.LogCaseCreatedAsync("GRATUITY", id, $"Claimant WP {model.ClaimantWPNumber}/{model.ClaimantWPYear}", null, model.AppealCourt ?? "High Court", model, $"Registered new Gratuity Claimant Appeal WP #{model.ClaimantWPNumber}/{model.ClaimantWPYear}");
                     TempData["SuccessMessage"] = "New Claimant Appeal created successfully!";
                     return RedirectToAction("ClaimantAppeals");
                 }

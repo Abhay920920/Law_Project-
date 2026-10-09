@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -14,12 +15,14 @@ namespace MVCCaseManagement.Controllers
         private readonly IEPRepository _epRepo;
         private readonly IMasterRepository _masterRepo;
         private readonly ICaseRepository _caseRepo;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public AuditController(IEPRepository epRepo, IMasterRepository masterRepo, ICaseRepository caseRepo)
+        public AuditController(IEPRepository epRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, ICaseActivityLogger activityLogger)
         {
             _epRepo = epRepo;
             _masterRepo = masterRepo;
             _caseRepo = caseRepo;
+            _activityLogger = activityLogger;
         }
 
         public IActionResult Index()
@@ -74,6 +77,15 @@ namespace MVCCaseManagement.Controllers
                 int epId = _epRepo.SaveEP(model);
                 if (epId > 0)
                 {
+                    _ = _activityLogger.LogCaseCreatedAsync(
+                        "AUDIT",
+                        epId,
+                        $"Audit EP {model.EPNumber}",
+                        model.VehicleNo,
+                        model.EPCourt,
+                        model,
+                        $"Created Audit Calculation Entry #{model.EPNumber} (Arising from MVC: {model.ArisingFromMVCNo}/{model.ArisingFromMVCYear}, Court: {model.EPCourt})");
+
                     TempData["SuccessMessage"] = "Audit entry created successfully.";
                     return RedirectToAction(nameof(Index));
                 }
@@ -133,6 +145,16 @@ namespace MVCCaseManagement.Controllers
                 bool success = _epRepo.UpdateEP(model);
                 if (success)
                 {
+                    _ = _activityLogger.LogCaseUpdatedAsync(
+                        "AUDIT",
+                        model.EPID,
+                        $"Audit EP {model.EPNumber}",
+                        model.VehicleNo,
+                        model.EPCourt,
+                        null,
+                        model,
+                        $"Updated Audit Calculation & Payments #{model.EPNumber} (Court: {model.EPCourt}, Stage: {model.EPStatus ?? "N/A"}, Payments count: {model.Payments?.Count ?? 0})");
+
                     TempData["SuccessMessage"] = "Audit entry and payment records updated successfully.";
                     return RedirectToAction(nameof(Index));
                 }

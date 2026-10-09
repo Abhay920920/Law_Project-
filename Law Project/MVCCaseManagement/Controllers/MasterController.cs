@@ -3,6 +3,7 @@ using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using Microsoft.AspNetCore.Authorization;
 using MVCCaseManagement.Common; // For PasswordHelper
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -11,11 +12,13 @@ namespace MVCCaseManagement.Controllers
     {
         private readonly IMasterRepository _masterRepo;
         private readonly IUserRepository _userRepo;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public MasterController(IMasterRepository masterRepo, IUserRepository userRepo)
+        public MasterController(IMasterRepository masterRepo, IUserRepository userRepo, ICaseActivityLogger activityLogger)
         {
             _masterRepo = masterRepo;
             _userRepo = userRepo;
+            _activityLogger = activityLogger;
         }
 
         public IActionResult Index()
@@ -70,6 +73,15 @@ namespace MVCCaseManagement.Controllers
                     IsActive = model.IsActive
                 };
                 _userRepo.AddUser(userEntity);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "MASTER",
+                    userEntity.UserID,
+                    userEntity.Username,
+                    "USER_CREATED",
+                    $"Created system user '{userEntity.Username}' ({userEntity.FullName}) with Role ID {userEntity.RoleID}, Division ID {userEntity.DivisionID}",
+                    new { userEntity.Username, userEntity.FullName, userEntity.Email, userEntity.RoleID, userEntity.DivisionID });
+
                 return RedirectToAction("Users");
             }
             PopulateDropdowns();
@@ -116,6 +128,15 @@ namespace MVCCaseManagement.Controllers
                 };
 
                 _userRepo.UpdateUser(userEntity);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "MASTER",
+                    userEntity.UserID,
+                    model.Username ?? $"User #{userEntity.UserID}",
+                    "USER_UPDATED",
+                    $"Updated system user '{model.Username}' ({userEntity.FullName}), Active: {userEntity.IsActive}, Role: {userEntity.RoleID}, Div: {userEntity.DivisionID}",
+                    new { userEntity.UserID, model.Username, userEntity.FullName, userEntity.RoleID, userEntity.DivisionID, userEntity.IsActive });
+
                 return RedirectToAction("Users");
             }
             PopulateDropdowns();
@@ -127,6 +148,15 @@ namespace MVCCaseManagement.Controllers
         public IActionResult UserDelete(int id)
         {
             _userRepo.DeactivateUser(id);
+
+            _ = _activityLogger.LogSubEntityActionAsync(
+                "MASTER",
+                id,
+                $"User #{id}",
+                "USER_DEACTIVATED",
+                $"Deactivated system user #{id}",
+                new { UserID = id });
+
             return RedirectToAction("Users");
         }
 
@@ -571,6 +601,13 @@ namespace MVCCaseManagement.Controllers
                 
                 if (deletedCount > 0)
                 {
+                    _ = _activityLogger.LogCaseDeletedAsync(
+                        module?.ToUpper() ?? "CASE",
+                        0,
+                        trimmedNo,
+                        null,
+                        $"Admin Global Deletion: Deleted {deletedCount} record(s) for {module} Case #{trimmedNo}/{caseYear} (Court: {courtName})");
+
                     TempData["SuccessMessage"] = $"Successfully deleted {deletedCount} record(s) matching your criteria.";
                 }
                 else

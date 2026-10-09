@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using System.Security.Claims;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -11,11 +12,13 @@ namespace MVCCaseManagement.Controllers
     {
         private readonly IJudgementRepository _repo;
         private readonly IWebHostEnvironment _environment;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public JudgementController(IJudgementRepository repo, IWebHostEnvironment environment)
+        public JudgementController(IJudgementRepository repo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger)
         {
             _repo = repo;
             _environment = environment;
+            _activityLogger = activityLogger;
         }
 
         public IActionResult Index()
@@ -52,6 +55,15 @@ namespace MVCCaseManagement.Controllers
 
                 model.UploadedBy = User.FindFirstValue("FullName");
                 _repo.SaveJudgement(model);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "JUDGEMENT",
+                    model.JudgementID,
+                    model.Title ?? "Judgement",
+                    "JUDGEMENT_CREATED",
+                    $"Uploaded / Created judgement '{model.Title}' (Category: {model.Category ?? "Judgement"}, Court: {model.Court ?? "N/A"})",
+                    model);
+
                 return RedirectToAction("Index");
             }
             return View(model);
@@ -133,6 +145,15 @@ namespace MVCCaseManagement.Controllers
 
                 model.UploadedBy = existing.UploadedBy ?? User.FindFirstValue("FullName");
                 _repo.UpdateJudgement(model);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "JUDGEMENT",
+                    model.JudgementID,
+                    model.Title ?? "Judgement",
+                    "JUDGEMENT_UPDATED",
+                    $"Updated judgement '{model.Title}' (Category: {model.Category ?? "Judgement"}, Court: {model.Court ?? "N/A"})",
+                    model);
+
                 TempData["SuccessMessage"] = "Judgement updated successfully.";
                 return RedirectToAction("Index");
             }
@@ -166,6 +187,15 @@ namespace MVCCaseManagement.Controllers
                 }
 
                 _repo.DeleteJudgement(id);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "JUDGEMENT",
+                    id,
+                    judgement.Title ?? $"Judgement #{id}",
+                    "JUDGEMENT_DELETED",
+                    $"Deleted judgement '{judgement.Title}' (#{id})",
+                    judgement);
+
                 TempData["SuccessMessage"] = "Judgement deleted successfully.";
             }
 

@@ -3,6 +3,7 @@ using MVCCaseManagement.Models;
 using MVCCaseManagement.DAL;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -14,14 +15,22 @@ namespace MVCCaseManagement.Controllers
         private readonly IMasterRepository _masterRepo;
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<AppealController> _logger;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public AppealController(ICaseRepository caseRepo, IAppealRepository appealRepo, IMasterRepository masterRepo, IWebHostEnvironment environment, ILogger<AppealController> logger)
+        public AppealController(
+            ICaseRepository caseRepo, 
+            IAppealRepository appealRepo, 
+            IMasterRepository masterRepo, 
+            IWebHostEnvironment environment, 
+            ILogger<AppealController> logger,
+            ICaseActivityLogger activityLogger)
         {
             _caseRepo = caseRepo;
             _appealRepo = appealRepo;
             _masterRepo = masterRepo;
             _environment = environment;
             _logger = logger;
+            _activityLogger = activityLogger;
         }
 
         [HttpGet]
@@ -269,6 +278,16 @@ namespace MVCCaseManagement.Controllers
                 {
                     _appealRepo.SaveAppeal(model);
                     
+                    _ = _activityLogger.LogCaseUpdatedAsync(
+                        "APPEAL",
+                        model.CaseID,
+                        $"MFA {model.CorpMFANumber}/{model.CorpMFAYear}",
+                        null,
+                        model.HighCourtBench ?? "High Court",
+                        null,
+                        model,
+                        $"Saved High Court Appeal MFA #{model.CorpMFANumber}/{model.CorpMFAYear} (Bench: {model.HighCourtBench}, Stage: {model.CorpMFAStage ?? "N/A"})");
+
                     var userName = User.Claims.FirstOrDefault(c => c.Type == "FullName")?.Value ?? User.Identity?.Name ?? "User";
                     TempData["SuccessMessage"] = $"Details are saved successfully. Details are updated by {userName}.";
                     
@@ -336,6 +355,15 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _appealRepo.SaveAppeal(dbAppeal);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "APPEAL",
+                    model.CaseID,
+                    $"Appeal #{model.CaseID}",
+                    "CENTRAL_OFFICER_REVIEW",
+                    $"Law Officer (LO) action recorded: {model.ActionTaken_LO} | Opinion: {model.Opinion_LO}",
+                    model);
+
                 TempData["SuccessMessage"] = "Law Officer action recorded successfully.";
             }
             catch (Exception ex)
@@ -386,6 +414,15 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _appealRepo.SaveAppeal(dbAppeal);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "APPEAL",
+                    model.CaseID,
+                    $"Appeal #{model.CaseID}",
+                    "CENTRAL_OFFICER_REVIEW",
+                    $"Deputy Chief Law Officer (Dy CLO) action recorded: {model.ActionTaken_DyCLO} | Opinion: {model.Opinion_DyCLO}",
+                    model);
+
                 TempData["SuccessMessage"] = "Deputy Chief Law Officer action recorded successfully.";
             }
             catch (Exception ex)
@@ -457,6 +494,15 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _appealRepo.SaveAppeal(dbAppeal);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "APPEAL",
+                    model.CaseID,
+                    $"Appeal #{model.CaseID}",
+                    "CENTRAL_OFFICER_REVIEW",
+                    $"Chief Law Officer (CLO) action recorded: {actionVal} | Opinion: {model.Opinion_CLO}",
+                    model);
+
                 TempData["SuccessMessage"] = "Chief Law Officer action recorded successfully.";
             }
             catch (Exception ex)
@@ -507,6 +553,15 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _appealRepo.SaveAppeal(dbAppeal);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "APPEAL",
+                    model.CaseID,
+                    $"Appeal #{model.CaseID}",
+                    "CENTRAL_OFFICER_REVIEW",
+                    $"Managing Director (MD) action recorded: {model.ActionTaken_MD} | Opinion: {model.Opinion_MD}",
+                    model);
+
                 TempData["SuccessMessage"] = "Managing Director action recorded successfully.";
             }
             catch (Exception ex)
@@ -712,6 +767,16 @@ namespace MVCCaseManagement.Controllers
             {
                 _appealRepo.SaveAppeal(model);
             }
+
+            _ = _activityLogger.LogCaseUpdatedAsync(
+                "APPEAL",
+                model.CaseID,
+                $"Claimant MFA {model.ClaimantMFANumber}/{model.ClaimantMFAYear}",
+                null,
+                model.HighCourtBench ?? "High Court",
+                null,
+                model,
+                $"Claimant Appeal MFA #{model.ClaimantMFANumber}/{model.ClaimantMFAYear} registered/updated (Advocate: {model.ClaimantMFAAdvocate}, Status: {model.ClaimantMFAStatus})");
             
             TempData["SuccessMessage"] = "Claimant Appeal registered/updated successfully.";
             return RedirectToAction("ClaimantList");
@@ -757,6 +822,14 @@ namespace MVCCaseManagement.Controllers
                     appeal.FinalRemarks = remark;
 
                 _appealRepo.SaveAppeal(appeal);
+
+                _ = _activityLogger.LogSubEntityActionAsync(
+                    "APPEAL",
+                    caseId,
+                    $"Appeal #{caseId}",
+                    "COMPLIANCE_RECORDED",
+                    $"Appeal Final Compliance recorded: Amount ₹{amount:N2}, Date: {complianceDate:dd/MM/yyyy}, Cheque/Ref: {chequeDetails}",
+                    new { caseId, complianceDate, amount, chequeDetails });
 
                 var userName = User.Identity?.Name ?? "User";
                 return Json(new { success = true, message = $"Compliance details saved successfully by {userName}." });

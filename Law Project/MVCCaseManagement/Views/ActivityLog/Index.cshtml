@@ -260,9 +260,33 @@
            class="module-pill-tab @(f.Module?.ToUpper() == "APPEAL" ? "active" : "")">
             <i class="bi bi-building"></i>High Court Appeals
         </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "GRATUITY", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "GRATUITY" ? "active" : "")">
+            <i class="bi bi-award"></i>Gratuity
+        </a>
         <a href="@Url.Action("Index", "ActivityLog", new { Module = "EP", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
            class="module-pill-tab @(f.Module?.ToUpper() == "EP" ? "active" : "")">
-            <i class="bi bi-shield-check"></i>EP Petitions
+            <i class="bi bi-shield-check"></i>MVC EP
+        </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "LABOUR_EP", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "LABOUR_EP" ? "active" : "")">
+            <i class="bi bi-layers"></i>Labour EP
+        </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "AUDIT", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "AUDIT" ? "active" : "")">
+            <i class="bi bi-calculator"></i>Audit EP
+        </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "JUDGEMENT", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "JUDGEMENT" ? "active" : "")">
+            <i class="bi bi-book"></i>Judgements
+        </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "MASTER", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "MASTER" ? "active" : "")">
+            <i class="bi bi-gear"></i>Master Data
+        </a>
+        <a href="@Url.Action("Index", "ActivityLog", new { Module = "ACCOUNT", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
+           class="module-pill-tab @(f.Module?.ToUpper() == "ACCOUNT" ? "active" : "")">
+            <i class="bi bi-person-badge"></i>User Sessions
         </a>
     </div>
 
@@ -287,12 +311,16 @@
                             <option value="all" selected="@(f.ActionType == "all" ? "selected" : null)">⚡ All Operations</option>
                             <option value="CREATED" selected="@(f.ActionType?.ToUpper() == "CREATED" ? "selected" : null)">🟢 Entered (Created)</option>
                             <option value="UPDATED" selected="@(f.ActionType?.ToUpper() == "UPDATED" ? "selected" : null)">🔵 Edited (Updated)</option>
+                            <option value="CENTRAL_OFFICER_REVIEW" selected="@(f.ActionType?.ToUpper() == "CENTRAL_OFFICER_REVIEW" ? "selected" : null)">⚖️ Central Officer Action</option>
+                            <option value="COMPLIANCE_RECORDED" selected="@(f.ActionType?.ToUpper() == "COMPLIANCE_RECORDED" ? "selected" : null)">🛡️ Compliance Recorded</option>
                             <option value="TRANSFERRED" selected="@(f.ActionType?.ToUpper() == "TRANSFERRED" ? "selected" : null)">🟣 Transferred</option>
                             <option value="DELETED" selected="@(f.ActionType?.ToUpper() == "DELETED" ? "selected" : null)">🔴 Deleted</option>
                             <option value="PAYMENT_ADDED" selected="@(f.ActionType?.ToUpper() == "PAYMENT_ADDED" ? "selected" : null)">💵 Payment Added</option>
                             <option value="PAYMENT_DELETED" selected="@(f.ActionType?.ToUpper() == "PAYMENT_DELETED" ? "selected" : null)">💸 Payment Removed</option>
                             <option value="NOTING_ADDED" selected="@(f.ActionType?.ToUpper() == "NOTING_ADDED" ? "selected" : null)">📝 Noting Added</option>
                             <option value="NOTING_DELETED" selected="@(f.ActionType?.ToUpper() == "NOTING_DELETED" ? "selected" : null)">🗑️ Noting Deleted</option>
+                            <option value="DOCUMENT_UPLOADED" selected="@(f.ActionType?.ToUpper() == "DOCUMENT_UPLOADED" ? "selected" : null)">📎 Document Uploaded</option>
+                            <option value="USER_LOGIN" selected="@(f.ActionType?.ToUpper() == "USER_LOGIN" ? "selected" : null)">🔑 User Login</option>
                         </select>
                     </div>
 
@@ -441,9 +469,7 @@
                                             </div>
                                         </div>
                                     </div>
-                                </td>
-
-                                <!-- Action Badge -->
+                                     <!-- Action Badge -->
                                 <td>
                                     @switch (log.ActionType)
                                     {
@@ -455,6 +481,46 @@
                                         case "UPDATED":
                                             <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-pencil-fill me-1"></i>Edited
+                                            </span>
+                                            break;
+                                        case "CENTRAL_OFFICER_REVIEW":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-white border" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-person-badge-fill me-1"></i>CO Review
+                                            </span>
+                                            break;
+                                        case "COMPLIANCE_RECORDED":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle" style="background: rgba(16, 185, 129, 0.12); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-shield-fill-check me-1"></i>Compliance
+                                            </span>
+                                            break;
+                                        case "DOCUMENT_UPLOADED":
+                                            <span class="badge rounded-pill px-2.5 py-1 border border-info-subtle" style="background: rgba(6, 182, 212, 0.12); color: #0891b2; font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-paperclip me-1"></i>Document
+                                            </span>
+                                            break;
+                                        case "USER_LOGIN":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(37, 99, 235, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-box-arrow-in-right me-1"></i>Login
+                                            </span>
+                                            break;
+                                        case "USER_LOGOUT":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-secondary border border-secondary-subtle" style="background: rgba(100, 116, 139, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-box-arrow-right me-1"></i>Logout
+                                            </span>
+                                            break;
+                                        case "USER_CREATED":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle" style="background: rgba(16, 185, 129, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-person-plus-fill me-1"></i>User Added
+                                            </span>
+                                            break;
+                                        case "USER_UPDATED":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-person-gear me-1"></i>User Edited
+                                            </span>
+                                            break;
+                                        case "USER_DEACTIVATED":
+                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                                <i class="bi bi-person-x-fill me-1"></i>Deactivated
                                             </span>
                                             break;
                                         case "DELETED":
@@ -497,16 +563,68 @@
 
                                 <!-- Case Reference -->
                                 <td>
+                                    @{
+                                        string modBadgeStyle = (log.Module ?? "").ToUpper() switch
+                                        {
+                                            "MVC" => "background: rgba(59, 130, 246, 0.12); color: #1d4ed8; border: 1px solid rgba(59, 130, 246, 0.25);",
+                                            "LABOUR" => "background: rgba(13, 148, 136, 0.12); color: #0f766e; border: 1px solid rgba(13, 148, 136, 0.25);",
+                                            "ARISING" => "background: rgba(147, 51, 234, 0.12); color: #7e22ce; border: 1px solid rgba(147, 51, 234, 0.25);",
+                                            "APPEAL" => "background: rgba(99, 102, 241, 0.12); color: #4338ca; border: 1px solid rgba(99, 102, 241, 0.25);",
+                                            "GRATUITY" => "background: rgba(16, 185, 129, 0.12); color: #047857; border: 1px solid rgba(16, 185, 129, 0.25);",
+                                            "EP" => "background: rgba(245, 158, 11, 0.12); color: #b45309; border: 1px solid rgba(245, 158, 11, 0.25);",
+                                            "LABOUR_EP" => "background: rgba(234, 88, 12, 0.12); color: #c2410c; border: 1px solid rgba(234, 88, 12, 0.25);",
+                                            "AUDIT" => "background: rgba(14, 165, 233, 0.12); color: #0369a1; border: 1px solid rgba(14, 165, 233, 0.25);",
+                                            "JUDGEMENT" => "background: rgba(244, 63, 94, 0.12); color: #be123c; border: 1px solid rgba(244, 63, 94, 0.25);",
+                                            "MASTER" => "background: rgba(100, 116, 139, 0.12); color: #334155; border: 1px solid rgba(100, 116, 139, 0.25);",
+                                            "ACCOUNT" => "background: rgba(71, 85, 105, 0.12); color: #1e293b; border: 1px solid rgba(71, 85, 105, 0.25);",
+                                            _ => "background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1;"
+                                        };
+
+                                        string targetUrl = "#";
+                                        if (log.CaseID.HasValue && log.CaseID > 0)
+                                        {
+                                            switch ((log.Module ?? "").ToUpper())
+                                            {
+                                                case "LABOUR":
+                                                    targetUrl = Url.Action("Details", "Labour", new { id = log.CaseID });
+                                                    break;
+                                                case "ARISING":
+                                                    targetUrl = Url.Action("EditArisingApplication", "Labour", new { id = log.CaseID });
+                                                    break;
+                                                case "GRATUITY":
+                                                    targetUrl = Url.Action("Details", "Gratuity", new { id = log.CaseID });
+                                                    break;
+                                                case "APPEAL":
+                                                    targetUrl = Url.Action("Manage", "Appeal", new { id = log.CaseID });
+                                                    break;
+                                                case "EP":
+                                                    targetUrl = Url.Action("Edit", "EP", new { id = log.CaseID });
+                                                    break;
+                                                case "LABOUR_EP":
+                                                    targetUrl = Url.Action("Details", "LabourEP", new { id = log.CaseID });
+                                                    break;
+                                                case "AUDIT":
+                                                    targetUrl = Url.Action("Manage", "Audit", new { id = log.CaseID });
+                                                    break;
+                                                case "JUDGEMENT":
+                                                    targetUrl = Url.Action("Index", "Judgement");
+                                                    break;
+                                                case "MASTER":
+                                                    targetUrl = Url.Action("Users", "Master");
+                                                    break;
+                                                default:
+                                                    targetUrl = Url.Action("Details", "Case", new { id = log.CaseID });
+                                                    break;
+                                            }
+                                        }
+                                    }
                                     <div class="d-flex align-items-center gap-1.5 mb-1">
-                                        <span class="badge text-dark rounded px-1.5 py-0.5 border" style="background: #f1f5f9; font-size: 0.62rem; font-weight: 700;">
+                                        <span class="badge rounded px-1.5 py-0.5" style="@modBadgeStyle font-size: 0.62rem; font-weight: 700;">
                                             @log.Module
                                         </span>
-                                        @if (log.CaseID.HasValue && log.CaseID > 0)
+                                        @if (targetUrl != "#")
                                         {
-                                            string targetUrl = log.Module == "LABOUR" 
-                                                ? Url.Action("Details", "Labour", new { id = log.CaseID }) 
-                                                : Url.Action("Details", "Case", new { id = log.CaseID });
-                                            <a href="@targetUrl" class="fw-bold text-primary text-decoration-none text-truncate" title="Open Case Record" style="font-size: 0.78rem;">
+                                            <a href="@targetUrl" class="fw-bold text-primary text-decoration-none text-truncate" title="Open Record" style="font-size: 0.78rem;">
                                                 @log.CaseNumber
                                                 <i class="bi bi-box-arrow-up-right small ms-0.5 opacity-75" style="font-size: 0.62rem;"></i>
                                             </a>

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using System.Security.Claims;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -13,13 +14,15 @@ namespace MVCCaseManagement.Controllers
         private readonly ILabourRepository _caseRepo;
         private readonly IArisingApplicationRepository _arisingRepo;
         private readonly IMasterRepository _masterRepo;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public LabourEPController(ILabourEPRepository epRepo, ILabourRepository caseRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo)
+        public LabourEPController(ILabourEPRepository epRepo, ILabourRepository caseRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseActivityLogger activityLogger)
         {
             _epRepo = epRepo;
             _caseRepo = caseRepo;
             _arisingRepo = arisingRepo;
             _masterRepo = masterRepo;
+            _activityLogger = activityLogger;
         }
 
         public IActionResult Index(int page = 1, string search = "", string status = "all")
@@ -146,6 +149,15 @@ namespace MVCCaseManagement.Controllers
                     int epId = _epRepo.SaveEP(model);
                     if (epId > 0)
                     {
+                        _ = _activityLogger.LogCaseCreatedAsync(
+                            "LABOUR_EP",
+                            epId,
+                            $"Labour EP {model.EPNumber}/{model.EPYear}",
+                            null,
+                            model.EPCourt,
+                            model,
+                            $"Registered Labour Execution Petition #{model.EPNumber}/{model.EPYear} (Linked to Arising App: {model.ArisingFromCaseNo}/{model.ArisingFromCaseYear}, Court: {model.EPCourt})");
+
                         TempData["SuccessMessage"] = $"Labour EP #{model.EPNumber}/{model.EPYear} saved and successfully linked to Arising Application No {model.ArisingFromCaseNo}/{model.ArisingFromCaseYear}!";
                         return RedirectToAction(nameof(Index));
                     }
@@ -212,6 +224,16 @@ namespace MVCCaseManagement.Controllers
                     bool updated = _epRepo.UpdateEP(model);
                     if (updated)
                     {
+                        _ = _activityLogger.LogCaseUpdatedAsync(
+                            "LABOUR_EP",
+                            model.EPID,
+                            $"Labour EP {model.EPNumber}/{model.EPYear}",
+                            null,
+                            model.EPCourt,
+                            null,
+                            model,
+                            $"Updated Labour Execution Petition #{model.EPNumber}/{model.EPYear} (Court: {model.EPCourt}, Stage: {model.EPStatus ?? "N/A"})");
+
                         TempData["SuccessMessage"] = $"Labour EP #{model.EPNumber}/{model.EPYear} updated and successfully linked to Arising Application No {model.ArisingFromCaseNo}/{model.ArisingFromCaseYear}!";
                         return RedirectToAction(nameof(Index));
                     }

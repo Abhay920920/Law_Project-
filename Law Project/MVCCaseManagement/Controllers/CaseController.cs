@@ -1037,6 +1037,8 @@ namespace MVCCaseManagement.Controllers
             if (success)
             {
                 var targetDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == toDivisionId);
+                var srcDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == (c != null ? c.DivisionID : 0));
+                _ = _activityLogger.LogCaseTransferredAsync("MVC", caseId, $"MVC {c.MVCNo}/{c.MVCYear}", c.DivisionID, toDivisionId, srcDiv?.DivisionNameEnglish ?? "Source Division", targetDiv?.DivisionNameEnglish ?? "Target Division", remarks);
                 TempData["TransferSuccess"] = $"Case MVC {c.MVCNo}/{c.MVCYear} successfully transferred to {targetDiv?.DivisionNameEnglish}.";
             }
             else
@@ -1380,6 +1382,8 @@ namespace MVCCaseManagement.Controllers
 
             if (updated)
             {
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", caseId, $"MVC {dbCase.MVCNo}/{dbCase.MVCYear}", "CNR_UPDATED", string.IsNullOrEmpty(cleanCnr) ? "Unlinked CNR Number" : $"Updated CNR to {cleanCnr} (Est: {estCode})", new { CNRNumber = cleanCnr, EstCode = estCode });
+
                 if (!string.IsNullOrEmpty(cleanCnr))
                 {
                     try

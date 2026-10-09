@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Caching.Memory;
 using System.Security.Claims;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -17,13 +18,15 @@ namespace MVCCaseManagement.Controllers
         private readonly ISMSService _smsService;
         private readonly IMemoryCache _cache;
         private readonly ILogger<AccountController> _logger;
+        private readonly ICaseActivityLogger _activityLogger;
 
-        public AccountController(IUserRepository userRepository, ISMSService smsService, IMemoryCache cache, ILogger<AccountController> logger)
+        public AccountController(IUserRepository userRepository, ISMSService smsService, IMemoryCache cache, ILogger<AccountController> logger, ICaseActivityLogger activityLogger)
         {
             _userRepository = userRepository;
             _smsService = smsService;
             _cache = cache;
             _logger = logger;
+            _activityLogger = activityLogger;
         }
 
         [HttpGet]
@@ -248,10 +251,27 @@ namespace MVCCaseManagement.Controllers
 
             // Update last login
             _userRepository.UpdateLastLogin(user.UserID);
+
+            _ = _activityLogger.LogSubEntityActionAsync(
+                "ACCOUNT",
+                user.UserID,
+                user.Username,
+                "USER_LOGIN",
+                $"User '{user.Username}' ({user.FullName}) logged in successfully. Role: {user.RoleName}, Division: {user.DivisionName ?? "Central Office"}",
+                new { user.UserID, user.Username, user.FullName, user.RoleName, user.DivisionID });
         }
 
         public async Task<IActionResult> Logout()
         {
+            var username = User.Identity?.Name ?? "User";
+            _ = _activityLogger.LogSubEntityActionAsync(
+                "ACCOUNT",
+                0,
+                username,
+                "USER_LOGOUT",
+                $"User '{username}' logged out of system",
+                new { username });
+
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             HttpContext.Session.Clear();
             return RedirectToAction("Login", "Account");

@@ -124,6 +124,10 @@ namespace MVCCaseManagement.Controllers
 
             int userId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out int uid) ? uid : 0;
             bool updated = _labourRepo.UpdateLiveSyncInfo(caseId, parsedDate, stage, courtHall, userId);
+            if (updated)
+            {
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Case #{caseId}", "HEARING_SYNCED", $"Live hearing date synced to {hearingDate} (Stage: {stage})");
+            }
 
             // Also register in eCourts background tracking if valid CNR provided
             if (!string.IsNullOrWhiteSpace(cnrNumber))
@@ -623,6 +627,7 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _arisingRepo.UpdateArisingApplication(existing);
+                _ = _activityLogger.LogCaseUpdatedAsync("ARISING", existing.ArisingID, $"Arising {existing.CaseNumber}/{existing.CaseYear}", null, existing.CourtName, null, existing, $"Central Office Action recorded on Arising Application #{existing.CaseNumber}/{existing.CaseYear}");
                 TempData["SuccessMessage"] = "Action recorded successfully.";
                 return RedirectToAction("ArisingApplication");
             }
@@ -828,6 +833,7 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 _arisingRepo.UpdateArisingApplication(model);
+                _ = _activityLogger.LogCaseUpdatedAsync("ARISING", model.ArisingID, $"Arising {model.CaseNumber}/{model.CaseYear}", null, model.CourtName, existing, model, $"Updated Arising Application #{model.CaseNumber}/{model.CaseYear}");
                 TempData["SuccessMessage"] = "Arising Application updated successfully!";
                 return RedirectToAction("ArisingApplication");
             }
@@ -1125,6 +1131,8 @@ namespace MVCCaseManagement.Controllers
 
             if (updated)
             {
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "CNR_UPDATED", string.IsNullOrEmpty(cleanCnr) ? "Unlinked CNR Number" : $"Updated CNR to {cleanCnr}", new { CNRNumber = cleanCnr, EstCode = estCode });
+
                 if (!string.IsNullOrEmpty(cleanCnr))
                 {
                     try
@@ -1194,6 +1202,8 @@ namespace MVCCaseManagement.Controllers
 
             if (updated)
             {
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "APPEAL_CNR_UPDATED", string.IsNullOrEmpty(cleanCnr) ? $"Unlinked {normalizedType} CNR" : $"Updated {normalizedType} CNR to {cleanCnr}", new { AppealType = normalizedType, CNRNumber = cleanCnr });
+
                 if (!string.IsNullOrEmpty(cleanCnr))
                 {
                     try
@@ -1364,6 +1374,7 @@ namespace MVCCaseManagement.Controllers
             {
                 int svcId = (model.ServiceID.HasValue && model.ServiceID.Value > 0) ? model.ServiceID.Value : model.CaseID;
                 _labourRepo.UpdateServiceMatterRoleAction(svcId, "LO", model.ActionTaken_LO, model.ApprovalDate_LO, model.Opinion_LO, userId);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", svcId, $"Service Matter #{svcId}", "CENTRAL_OFFICER_REVIEW", $"Law Officer (LO) action recorded: {model.ActionTaken_LO}", new { Action = model.ActionTaken_LO, ApprovalDate = model.ApprovalDate_LO, Opinion = model.Opinion_LO });
                 TempData["SuccessMessage"] = "Law Officer action recorded successfully.";
                 return RedirectToAction("ServiceMatterDetails", new { id = svcId });
             }
@@ -1377,6 +1388,7 @@ namespace MVCCaseManagement.Controllers
             dbCase.ModifiedBy = userId;
 
             _labourRepo.UpdateCase(dbCase);
+            _ = _activityLogger.LogSubEntityActionAsync("LABOUR", model.CaseID, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "CENTRAL_OFFICER_REVIEW", $"Law Officer (LO) proposal recorded: {model.ActionTaken_LO}", new { Action = model.ActionTaken_LO, ApprovalDate = model.ApprovalDate_LO, Opinion = model.Opinion_LO });
 
             TempData["SuccessMessage"] = "Law Officer action recorded successfully.";
             return RedirectToAction("Details", new { id = model.CaseID });
@@ -1438,6 +1450,7 @@ namespace MVCCaseManagement.Controllers
             {
                 int svcId = (model.ServiceID.HasValue && model.ServiceID.Value > 0) ? model.ServiceID.Value : model.CaseID;
                 _labourRepo.UpdateServiceMatterRoleAction(svcId, "Dy CLO", model.ActionTaken_DyCLO, model.ApprovalDate_DyCLO, model.Opinion_DyCLO, userId);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", svcId, $"Service Matter #{svcId}", "CENTRAL_OFFICER_REVIEW", $"Deputy CLO review recorded: {model.ActionTaken_DyCLO}", new { Action = model.ActionTaken_DyCLO, ApprovalDate = model.ApprovalDate_DyCLO, Opinion = model.Opinion_DyCLO });
                 TempData["SuccessMessage"] = "Deputy Chief Law Officer action recorded successfully.";
                 return RedirectToAction("ServiceMatterDetails", new { id = svcId });
             }
@@ -1451,6 +1464,7 @@ namespace MVCCaseManagement.Controllers
             dbCase.ModifiedBy = userId;
 
             _labourRepo.UpdateCase(dbCase);
+            _ = _activityLogger.LogSubEntityActionAsync("LABOUR", model.CaseID, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "CENTRAL_OFFICER_REVIEW", $"Deputy CLO review recorded: {model.ActionTaken_DyCLO}", new { Action = model.ActionTaken_DyCLO, ApprovalDate = model.ApprovalDate_DyCLO, Opinion = model.Opinion_DyCLO });
 
             TempData["SuccessMessage"] = "Deputy Chief Law Officer action recorded successfully.";
             return RedirectToAction("Details", new { id = model.CaseID });
@@ -1516,6 +1530,7 @@ namespace MVCCaseManagement.Controllers
             {
                 int svcId = (model.ServiceID.HasValue && model.ServiceID.Value > 0) ? model.ServiceID.Value : model.CaseID;
                 _labourRepo.UpdateServiceMatterRoleAction(svcId, "CLO", actionVal, approvalDateVal, model.Opinion_CLO, userId);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", svcId, $"Service Matter #{svcId}", "CENTRAL_OFFICER_REVIEW", $"Chief Law Officer (CLO) decision: {actionVal}", new { Action = actionVal, ApprovalDate = approvalDateVal, Opinion = model.Opinion_CLO });
                 TempData["SuccessMessage"] = "Chief Law Officer action recorded successfully.";
                 return RedirectToAction("ServiceMatterDetails", new { id = svcId });
             }
@@ -1545,6 +1560,7 @@ namespace MVCCaseManagement.Controllers
 
             dbCase.ModifiedBy = userId;
             _labourRepo.UpdateCase(dbCase);
+            _ = _activityLogger.LogSubEntityActionAsync("LABOUR", model.CaseID, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "CENTRAL_OFFICER_REVIEW", $"Chief Law Officer (CLO) decision: {actionVal}", new { Action = actionVal, ApprovalDate = approvalDateVal, Opinion = model.Opinion_CLO });
 
             TempData["SuccessMessage"] = "Chief Law Officer action recorded successfully.";
             return RedirectToAction("Details", new { id = model.CaseID });
@@ -1606,6 +1622,7 @@ namespace MVCCaseManagement.Controllers
             {
                 int svcId = (model.ServiceID.HasValue && model.ServiceID.Value > 0) ? model.ServiceID.Value : model.CaseID;
                 _labourRepo.UpdateServiceMatterRoleAction(svcId, "MD", model.ActionTaken_MD, model.ApprovalDate_MD, model.Opinion_MD, userId);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", svcId, $"Service Matter #{svcId}", "CENTRAL_OFFICER_REVIEW", $"Managing Director (MD) sanction: {model.ActionTaken_MD}", new { Action = model.ActionTaken_MD, ApprovalDate = model.ApprovalDate_MD, Opinion = model.Opinion_MD });
                 TempData["SuccessMessage"] = "Managing Director action recorded successfully.";
                 return RedirectToAction("ServiceMatterDetails", new { id = svcId });
             }
@@ -1629,6 +1646,7 @@ namespace MVCCaseManagement.Controllers
 
             dbCase.ModifiedBy = userId;
             _labourRepo.UpdateCase(dbCase);
+            _ = _activityLogger.LogSubEntityActionAsync("LABOUR", model.CaseID, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", "CENTRAL_OFFICER_REVIEW", $"Managing Director (MD) sanction: {model.ActionTaken_MD}", new { Action = model.ActionTaken_MD, ApprovalDate = model.ApprovalDate_MD, Opinion = model.Opinion_MD });
 
             TempData["SuccessMessage"] = "Managing Director action recorded successfully.";
             return RedirectToAction("Details", new { id = model.CaseID });
@@ -1677,6 +1695,7 @@ namespace MVCCaseManagement.Controllers
 
             int userId = HttpContext.Session.GetInt32(SessionKeys.UserID) ?? 0;
             _arisingRepo.UpdateArisingRoleAction(model.ArisingID, "LO", model.ActionTaken_LO, model.ApprovalDate_LO, model.Opinion_LO, userId);
+            _ = _activityLogger.LogSubEntityActionAsync("ARISING", model.ArisingID, $"Arising #{model.ArisingID}", "CENTRAL_OFFICER_REVIEW", $"Law Officer (LO) action: {model.ActionTaken_LO}", new { Action = model.ActionTaken_LO, ApprovalDate = model.ApprovalDate_LO, Opinion = model.Opinion_LO });
 
             TempData["SuccessMessage"] = "Law Officer action recorded successfully.";
             return RedirectToAction("DetailsArisingApplication", new { id = model.ArisingID });
@@ -1721,6 +1740,7 @@ namespace MVCCaseManagement.Controllers
 
             int userId = HttpContext.Session.GetInt32(SessionKeys.UserID) ?? 0;
             _arisingRepo.UpdateArisingRoleAction(model.ArisingID, "Dy CLO", model.ActionTaken_DyCLO, model.ApprovalDate_DyCLO, model.Opinion_DyCLO, userId);
+            _ = _activityLogger.LogSubEntityActionAsync("ARISING", model.ArisingID, $"Arising #{model.ArisingID}", "CENTRAL_OFFICER_REVIEW", $"Deputy CLO review: {model.ActionTaken_DyCLO}", new { Action = model.ActionTaken_DyCLO, ApprovalDate = model.ApprovalDate_DyCLO, Opinion = model.Opinion_DyCLO });
 
             TempData["SuccessMessage"] = "Deputy Chief Law Officer action recorded successfully.";
             return RedirectToAction("DetailsArisingApplication", new { id = model.ArisingID });
@@ -1768,6 +1788,7 @@ namespace MVCCaseManagement.Controllers
             DateTime? approvalDateVal = model.ApprovalDate_CLO ?? model.CO_ApprovalDate;
 
             _arisingRepo.UpdateArisingRoleAction(model.ArisingID, "CLO", actionVal, approvalDateVal, model.Opinion_CLO, userId);
+            _ = _activityLogger.LogSubEntityActionAsync("ARISING", model.ArisingID, $"Arising #{model.ArisingID}", "CENTRAL_OFFICER_REVIEW", $"Chief Law Officer (CLO) decision: {actionVal}", new { Action = actionVal, ApprovalDate = approvalDateVal, Opinion = model.Opinion_CLO });
 
             TempData["SuccessMessage"] = "Chief Law Officer action recorded successfully.";
             return RedirectToAction("DetailsArisingApplication", new { id = model.ArisingID });
@@ -1812,6 +1833,7 @@ namespace MVCCaseManagement.Controllers
 
             int userId = HttpContext.Session.GetInt32(SessionKeys.UserID) ?? 0;
             _arisingRepo.UpdateArisingRoleAction(model.ArisingID, "MD", model.ActionTaken_MD, model.ApprovalDate_MD, model.Opinion_MD, userId);
+            _ = _activityLogger.LogSubEntityActionAsync("ARISING", model.ArisingID, $"Arising #{model.ArisingID}", "CENTRAL_OFFICER_REVIEW", $"Managing Director (MD) sanction: {model.ActionTaken_MD}", new { Action = model.ActionTaken_MD, ApprovalDate = model.ApprovalDate_MD, Opinion = model.Opinion_MD });
 
             TempData["SuccessMessage"] = "Managing Director action recorded successfully.";
             return RedirectToAction("DetailsArisingApplication", new { id = model.ArisingID });
@@ -1858,6 +1880,7 @@ namespace MVCCaseManagement.Controllers
             existing.ModifiedBy = HttpContext.Session.GetInt32(SessionKeys.UserID);
 
             _labourRepo.UpdateCase(existing);
+            _ = _activityLogger.LogSubEntityActionAsync("LABOUR", model.CaseID, $"Labour {existing.CaseNumber}/{existing.CaseYear}", "STAY_COMPLIANCE_UPDATED", "Stay compliance details and orders updated", new { Remark = model.CO_StayComplianceRemark });
             TempData["SuccessMessage"] = "Stay compliance details updated successfully.";
             return RedirectToAction("CaseList", new { status = "InterimStayCompliance" });
         }
@@ -2106,6 +2129,7 @@ namespace MVCCaseManagement.Controllers
                 try
                 {
                     _labourRepo.UpdateCase(dbCase);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", dbCase.CaseID, $"Labour {dbCase.CaseNumber}/{dbCase.CaseYear}", null, dbCase.CourtName, null, dbCase, $"Central Office Action updated on Labour Case #{dbCase.CaseNumber}/{dbCase.CaseYear}");
                     TempData["SuccessMessage"] = "Labour case action updated successfully!";
                     return RedirectToAction("Details", new { id = dbCase.CaseID });
                 }
@@ -2641,6 +2665,9 @@ namespace MVCCaseManagement.Controllers
             if (success)
             {
                 var targetDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == model.ToDivisionID);
+                var srcDiv = _masterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == model.FromDivisionID);
+                var c = _labourRepo.GetCaseById(model.CaseID);
+                _ = _activityLogger.LogCaseTransferredAsync("LABOUR", model.CaseID, $"Labour {c?.CaseNumber}/{c?.CaseYear}", model.FromDivisionID, model.ToDivisionID, srcDiv?.DivisionNameEnglish ?? "Source Division", targetDiv?.DivisionNameEnglish ?? "Target Division", model.TransferRemarks);
                 TempData["SuccessMessage"] = $"Labour Case successfully transferred to {targetDiv?.DivisionNameEnglish}.";
                 return RedirectToAction("Transfer");
             }
@@ -2770,6 +2797,7 @@ namespace MVCCaseManagement.Controllers
                 {
                     model.ModifiedBy = HttpContext.Session.GetInt32(SessionKeys.UserID);
                     _labourRepo.UpdateServiceMatter(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.ServiceID.Value, $"WP {model.CO_Service_WPNumber}/{model.CO_Service_WPYear}", null, "High Court", null, model, $"Updated Service Matter WP #{model.CO_Service_WPNumber}/{model.CO_Service_WPYear}");
                     TempData["SuccessMessage"] = "Service Matter Updated Successfully";
                 }
                 else
@@ -2777,6 +2805,7 @@ namespace MVCCaseManagement.Controllers
                     model.CreatedBy = HttpContext.Session.GetInt32(SessionKeys.UserID);
                     model.CaseType = "Service Matter";
                     _labourRepo.SaveServiceMatter(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.ServiceID ?? 0, $"WP {model.CO_Service_WPNumber}/{model.CO_Service_WPYear}", null, "High Court", model, $"Registered new Service Matter WP #{model.CO_Service_WPNumber}/{model.CO_Service_WPYear}");
                     TempData["SuccessMessage"] = "Service Matter Registered Successfully";
                 }
                 return RedirectToAction("ServiceMatters");
@@ -2853,12 +2882,14 @@ namespace MVCCaseManagement.Controllers
                 if (model.CaseID > 0)
                 {
                     _labourRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.CaseID, $"SLP {model.ClaimantSCNumber ?? model.CaseNumber}", null, "Supreme Court", null, model, $"Updated Claimant SLP #{model.ClaimantSCNumber ?? model.CaseNumber}");
                     TempData["SuccessMessage"] = "SLP Details Updated Successfully";
                 }
                 else
                 {
                     model.CaseType = "Claimant SLP";
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.CaseID, $"SLP {model.ClaimantSCNumber ?? model.CaseNumber}", null, "Supreme Court", model, $"Registered new Claimant SLP #{model.ClaimantSCNumber ?? model.CaseNumber}");
                     TempData["SuccessMessage"] = "SLP Registered Successfully";
                 }
                 return RedirectToAction("ClaimantSLPs");
@@ -2919,6 +2950,7 @@ namespace MVCCaseManagement.Controllers
                 if (model.CaseID > 0)
                 {
                     _labourRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.CaseID, $"Claimant {model.CaseNumber}/{model.CaseYear}", null, model.CourtName, null, model, $"Updated Claimant Petition #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Claimant Petition Updated Successfully";
                 }
                 else
@@ -2928,6 +2960,7 @@ namespace MVCCaseManagement.Controllers
                         model.CaseType = "Claimant Appeal";
                     }
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.CaseID, $"Claimant {model.CaseNumber}/{model.CaseYear}", null, model.CourtName, model, $"Registered new Claimant Petition #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Claimant Petition Registered Successfully";
                 }
                 return RedirectToAction("ClaimantAppeals");
@@ -3009,11 +3042,13 @@ namespace MVCCaseManagement.Controllers
                 if (model.CaseID > 0)
                 {
                     _labourRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.CaseID, $"CCC {model.CaseNumber}/{model.CaseYear}", null, "High Court", null, model, $"Updated Contempt of Court (CCC) Case #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "CCC Case Updated Successfully";
                 }
                 else
                 {
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.CaseID, $"CCC {model.CaseNumber}/{model.CaseYear}", null, "High Court", model, $"Registered new Contempt of Court (CCC) Case #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "CCC Case Registered Successfully";
                 }
                 return RedirectToAction("CCCCases");
@@ -3095,11 +3130,13 @@ namespace MVCCaseManagement.Controllers
                 if (model.CaseID > 0)
                 {
                     _labourRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.CaseID, $"RP {model.CaseNumber}/{model.CaseYear}", null, "High Court", null, model, $"Updated Review Petition #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Review Petition Updated Successfully";
                 }
                 else
                 {
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.CaseID, $"RP {model.CaseNumber}/{model.CaseYear}", null, "High Court", model, $"Registered new Review Petition #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Review Petition Registered Successfully";
                 }
                 return RedirectToAction("ReviewPetitions");
@@ -3162,12 +3199,14 @@ namespace MVCCaseManagement.Controllers
                 if (model.CaseID > 0)
                 {
                     _labourRepo.UpdateCase(model);
+                    _ = _activityLogger.LogCaseUpdatedAsync("LABOUR", model.CaseID, $"WA {model.CaseNumber}/{model.CaseYear}", null, "High Court", null, model, $"Updated Claimant Writ Appeal #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Claimant Writ Appeal Updated Successfully";
                 }
                 else
                 {
                     model.CaseType = "Claimant Writ Appeal";
                     _labourRepo.SaveCase(model);
+                    _ = _activityLogger.LogCaseCreatedAsync("LABOUR", model.CaseID, $"WA {model.CaseNumber}/{model.CaseYear}", null, "High Court", model, $"Registered new Claimant Writ Appeal #{model.CaseNumber}/{model.CaseYear}");
                     TempData["SuccessMessage"] = "Claimant Writ Appeal Registered Successfully";
                 }
                 return RedirectToAction("ClaimantWritAppeals");
@@ -3205,6 +3244,7 @@ namespace MVCCaseManagement.Controllers
                 };
 
                 _labourRepo.AddReinstatedDocument(doc);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour #{caseId}", "DOCUMENT_UPLOADED", $"Uploaded reinstatement document: {documentName}");
 
                 return Json(new { success = true, message = "Document uploaded successfully." });
             }
@@ -3253,6 +3293,7 @@ namespace MVCCaseManagement.Controllers
                     return Json(new { success = false, message = "No valid files were uploaded." });
                 }
 
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour #{caseId}", "DOCUMENT_UPLOADED", $"Uploaded {count} reinstatement document(s)");
                 return Json(new { success = true, message = $"{count} document(s) uploaded successfully." });
             }
             catch (Exception ex)
@@ -3323,6 +3364,7 @@ namespace MVCCaseManagement.Controllers
                     return Json(new { success = false, message = "Please select at least one document to upload." });
                 }
 
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour {caseObj.CaseNumber}/{caseObj.CaseYear}", "DOCUMENT_UPLOADED", $"Uploaded {count} case document(s)");
                 return Json(new { success = true, message = $"{count} document(s) uploaded successfully." });
             }
             catch (Exception ex)
@@ -3361,6 +3403,7 @@ namespace MVCCaseManagement.Controllers
                 };
 
                 _labourRepo.AddReinstatedDocument(doc);
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour #{caseId}", "DOCUMENT_UPLOADED", $"Uploaded document: {finalDocName}");
 
                 return Json(new { success = true, message = "Document uploaded successfully." });
             }
@@ -3391,6 +3434,7 @@ namespace MVCCaseManagement.Controllers
                 };
 
                 _arisingRepo.AddPayment(payment);
+                _ = _activityLogger.LogSubEntityActionAsync("ARISING", arisingId, $"Arising #{arisingId}", "PAYMENT_ADDED", $"Recorded payment of ₹{amount:N2} (Cheque: {chequeNumber})", payment);
                 return Json(new { success = true, message = "Payment recorded successfully." });
             }
             catch (Exception ex)
@@ -3405,6 +3449,10 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 bool deleted = _arisingRepo.DeletePayment(paymentId);
+                if (deleted)
+                {
+                    _ = _activityLogger.LogSubEntityActionAsync("ARISING", 0, "Arising Payment", "PAYMENT_DELETED", $"Deleted arising payment record #{paymentId}");
+                }
                 return Json(new { success = deleted, message = deleted ? "Payment deleted." : "Payment not found." });
             }
             catch (Exception ex)
@@ -3419,6 +3467,10 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 bool updated = _arisingRepo.UpdateAwardAmount(arisingId, awardAmount);
+                if (updated)
+                {
+                    _ = _activityLogger.LogSubEntityActionAsync("ARISING", arisingId, $"Arising #{arisingId}", "AWARD_AMOUNT_UPDATED", $"Updated award amount to ₹{awardAmount:N2}");
+                }
                 return Json(new { success = updated, message = updated ? "Award amount updated." : "Failed to update award amount." });
             }
             catch (Exception ex)
