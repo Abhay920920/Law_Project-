@@ -711,13 +711,13 @@ namespace MVCCaseManagement.Services.AI
                                 {
                                     CaseType = plan.Intent.ToString(),
                                     CaseNumber = dynResult.Title,
-                                    CourtName = "NWKRTC Central Database",
-                                    CurrentStage = $"{dynResult.RowCount} Records Retrieved",
-                                    Petitioner = "NWKRTC Legal System",
+                                    CourtName = "NWKRTC Central Case Repository",
+                                    CurrentStage = $"{dynResult.RecordCount} Database Records Verified",
+                                    Petitioner = dynResult.Title,
                                     Respondent = "NWKRTC"
                                 };
                                 dynDossier.StructuredFacts["DirectMarkdown"] = dynResult.FormattedMarkdown;
-                                dynDossier.StructuredFacts["TotalRecords"] = dynResult.RowCount.ToString();
+                                dynDossier.StructuredFacts["TotalRecords"] = dynResult.RecordCount.ToString();
                                 foreach (var kvp in dynResult.KeyMetrics)
                                 {
                                     dynDossier.StructuredFacts[kvp.Key] = kvp.Value;

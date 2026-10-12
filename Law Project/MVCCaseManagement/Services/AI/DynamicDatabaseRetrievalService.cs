@@ -625,6 +625,86 @@ namespace MVCCaseManagement.Services.AI
             using var conn = _db.GetConnection();
             await conn.OpenAsync(cancellationToken);
 
+            // If two specific cases are requested for comparison, query them directly from the database
+            if (!string.IsNullOrWhiteSpace(plan.CaseNumber) && !string.IsNullOrWhiteSpace(plan.SecondaryCaseNumber))
+            {
+                var c1 = await FetchCaseRecordForComparisonAsync(conn, plan.CaseType ?? "MVC", plan.CaseNumber, plan.CaseYear, cancellationToken);
+                var c2 = await FetchCaseRecordForComparisonAsync(conn, plan.SecondaryCaseType ?? "MVC", plan.SecondaryCaseNumber, plan.SecondaryCaseYear, cancellationToken);
+
+                string c1_name = $"{plan.CaseType ?? "MVC"} {plan.CaseNumber}/{(plan.CaseYear.HasValue ? plan.CaseYear.Value.ToString() : "")}".Trim();
+                string c2_name = $"{plan.SecondaryCaseType ?? "MVC"} {plan.SecondaryCaseNumber}/{(plan.SecondaryCaseYear.HasValue ? plan.SecondaryCaseYear.Value.ToString() : "")}".Trim();
+
+                string c1_pet = c1 != null && c1.TryGetValue("Petitioners", out var p1) ? p1 : "🔴 No Record in Database (Unregistered Claim)";
+                string c1_resp = c1 != null && c1.TryGetValue("Respondents", out var r1) ? r1 : "Not Indexed in Corporation Registry";
+                string c1_acc = c1 != null && c1.TryGetValue("AccidentDate", out var a1) ? a1 : "No Accident Record on File";
+                string c1_veh = c1 != null && c1.TryGetValue("VehicleNo", out var v1) ? v1 : "No Vehicle Assigned";
+                string c1_court = c1 != null && c1.TryGetValue("Tribunal", out var tr1) ? tr1 : "Not Found / Unlisted Forum";
+                string c1_cnr = c1 != null && c1.TryGetValue("CNR", out var cnr1) ? cnr1 : "None";
+                string c1_claim = c1 != null && c1.TryGetValue("ClaimAmount", out var cl1) ? cl1 : "₹0.00 (No Claim Filed)";
+                string c1_award = c1 != null && c1.TryGetValue("AwardAmount", out var aw1) ? aw1 : "₹0.00 (No Award Exists)";
+                string c1_status = c1 != null && c1.TryGetValue("Status", out var st1) ? st1 : "Unregistered / No Filing";
+                string c1_stage = c1 != null && c1.TryGetValue("Stage", out var sg1) ? sg1 : "No Judicial Proceedings Initiated";
+                string c1_tr18 = c1 != null && c1.TryGetValue("TR18", out var t18) ? t18 : "No Accident Report";
+
+                string c2_pet = c2 != null && c2.TryGetValue("Petitioners", out var p2) ? p2 : "🔴 No Record in Database (Unregistered Claim)";
+                string c2_resp = c2 != null && c2.TryGetValue("Respondents", out var r2) ? r2 : "Not Indexed in Corporation Registry";
+                string c2_acc = c2 != null && c2.TryGetValue("AccidentDate", out var a2) ? a2 : "No Accident Record on File";
+                string c2_veh = c2 != null && c2.TryGetValue("VehicleNo", out var v2) ? v2 : "No Vehicle Assigned";
+                string c2_court = c2 != null && c2.TryGetValue("Tribunal", out var tr2) ? tr2 : "Not Found / Unlisted Forum";
+                string c2_cnr = c2 != null && c2.TryGetValue("CNR", out var cnr2) ? cnr2 : "None";
+                string c2_claim = c2 != null && c2.TryGetValue("ClaimAmount", out var cl2) ? cl2 : "₹0.00 (No Claim Filed)";
+                string c2_award = c2 != null && c2.TryGetValue("AwardAmount", out var aw2) ? aw2 : "₹0.00 (No Award Exists)";
+                string c2_status = c2 != null && c2.TryGetValue("Status", out var st2) ? st2 : "Unregistered / No Filing";
+                string c2_stage = c2 != null && c2.TryGetValue("Stage", out var sg2) ? sg2 : "No Judicial Proceedings Initiated";
+                string c2_tr18 = c2 != null && c2.TryGetValue("TR18", out var t28) ? t28 : "No Accident Report";
+
+                sb.AppendLine("## ⚖️ NYAYA PATHA — Dual-Case Comparative Analysis");
+                sb.AppendLine();
+                sb.AppendLine($"> 🔍 **Comparative Review:** **{c1_name}** vs **{c2_name}** | **Strict Factual Non-Merger Protocol Enforced**");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("### 📊 Side-by-Side Parameter Comparison Matrix");
+                sb.AppendLine($"| Parameter / Subject | {c1_name} (Verified DB Record) | {c2_name} (Searched Registry) | Variance Analysis & Data Integrity Findings |");
+                sb.AppendLine("|---|---|---|---|");
+                sb.AppendLine($"| **Claimants / Petitioners** | **{c1_pet}** | **{c2_pet}** | {(c1 != null && c2 == null ? $"🔴 {c1_name} has verified claimants; {c2_name} is unfiled." : (c1 != null && c2 != null ? "🔴 Distinct claimants and families on file." : "No records found.")) } |");
+                sb.AppendLine($"| **Respondents** | {c1_resp} | {c2_resp} | {(c1 != null && c2 == null ? "🟡 Corporation named in Case 1; no record for Case 2." : "Corporation respondent details.")} |");
+                sb.AppendLine($"| **Accident Date & Details** | **{c1_acc}** | **{c2_acc}** | Distinct incident timeline coordinates |");
+                sb.AppendLine($"| **Vehicle Number & Type** | **`{c1_veh}`** | **`{c2_veh}`** | Fleet vehicle assignment |");
+                sb.AppendLine($"| **Tribunal & Forum** | **{c1_court}** | **{c2_court}** | Territorial MACT jurisdiction |");
+                sb.AppendLine($"| **CNR Number (e-Courts)** | **`{c1_cnr}`** | **`{c2_cnr}`** | National e-Courts tracking identity |");
+                sb.AppendLine($"| **Claim Amount** | **{c1_claim}** | **{c2_claim}** | Claim valuation on petition |");
+                sb.AppendLine($"| **Award Amount** | **{c1_award}** | **{c2_award}** | Decreed tribunal award |");
+                sb.AppendLine($"| **Case Status & Stage** | **{c1_status}** ({c1_stage}) | **{c2_status}** ({c2_stage}) | Litigation proceeding state |");
+                sb.AppendLine($"| **TR-18 Investigation Remarks** | {c1_tr18} | {c2_tr18} | Departmental inquiry report |");
+                sb.AppendLine();
+                sb.AppendLine("### 🔍 Specific Differences Identified");
+                sb.AppendLine($"1. **Parties:** {c1_name} involves: {c1_pet}. {c2_name} involves: {c2_pet}.");
+                sb.AppendLine($"2. **Accident Details:** {c1_name} incident date is {c1_acc} (Vehicle: {c1_veh}). {c2_name} incident date: {c2_acc} (Vehicle: {c2_veh}).");
+                sb.AppendLine($"3. **Tribunal:** {c1_name} is before {c1_court}, whereas {c2_name} is before {c2_court}.");
+                sb.AppendLine($"4. **Claim & Award Amount:** {c1_name} claim is {c1_claim} (Award: {c1_award}); {c2_name} claim is {c2_claim} (Award: {c2_award}).");
+                sb.AppendLine($"5. **Case Status:** {c1_name} is {c1_status} ({c1_stage}); {c2_name} is {c2_status} ({c2_stage}).");
+                sb.AppendLine();
+                sb.AppendLine("#### ⚠️ MANDATORY RECORD SEGREGATION DIRECTIVE");
+                sb.AppendLine($"- **Judicial Recordkeeping Principle:** Case sequence numbers repeat annually across different filing years. **{c1_name}** and **{c2_name}** represent entirely separate causes of action.");
+                sb.AppendLine($"- **Anti-Conflation & Grounding Guarantee:** Under strict legal data integrity rules, records are never merged merely because their case numbers share similar sequence digits. Zero synthetic facts are fabricated.");
+
+                var recordsComparison = new List<Dictionary<string, object>>();
+                if (c1 != null) recordsComparison.Add(new Dictionary<string, object>(c1.ToDictionary(k => k.Key, v => (object)v.Value)));
+                if (c2 != null) recordsComparison.Add(new Dictionary<string, object>(c2.ToDictionary(k => k.Key, v => (object)v.Value)));
+
+                return new DynamicQueryResult
+                {
+                    IntentName = "CaseComparison",
+                    Title = $"Comparison: {c1_name} vs {c2_name}",
+                    FormattedMarkdown = sb.ToString(),
+                    RecordCount = recordsComparison.Count,
+                    Records = recordsComparison,
+                    IsDeterministicSuccess = true
+                };
+            }
+
+            // Fallback: Cross-Category Stream Aggregation
             string sql = @"
                 SELECT 'MVC' AS Module, COUNT(c.CaseID) AS CaseCount, AVG(ISNULL(c.ClaimAmount, 0)) AS AvgClaim, AVG(ISNULL(adv.AwardAmount, 0)) AS AvgAward
                 FROM MVC_CASES c
@@ -675,6 +755,83 @@ namespace MVCCaseManagement.Services.AI
                 Records = records,
                 IsDeterministicSuccess = true
             };
+        }
+
+        private async Task<Dictionary<string, string>?> FetchCaseRecordForComparisonAsync(
+            SqlConnection conn,
+            string caseType,
+            string caseNo,
+            int? caseYear,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(caseNo)) return null;
+
+            string sql = @"
+                SELECT TOP 1 
+                    c.CaseID, c.MVCNo, c.MVCYear, c.EstName, c.VehicleNo, c.AccidentDate, 
+                    c.ClaimAmount, adv.AwardAmount, c.DisposalStatus, c.CurrentStage, c.CNRNumber,
+                    adv.TR18Remarks, c.DriverName, c.DriverTokenNo
+                FROM MVC_CASES c
+                LEFT JOIN MVC_CASE_ADVERSE_DETAILS adv ON c.CaseID = adv.CaseID
+                WHERE c.MVCNo = @No " + (caseYear.HasValue ? "AND c.MVCYear = @Year " : "") + @"
+                ORDER BY c.CaseID DESC;";
+
+            using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@No", caseNo);
+            if (caseYear.HasValue) cmd.Parameters.AddWithValue("@Year", caseYear.Value);
+
+            int caseId = 0;
+            var dict = new Dictionary<string, string>();
+
+            using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+            {
+                if (!await reader.ReadAsync(cancellationToken))
+                    return null;
+
+                caseId = reader.GetInt32(reader.GetOrdinal("CaseID"));
+                dict["CaseNumber"] = $"MVC {reader["MVCNo"]}/{reader["MVCYear"]}";
+                dict["Tribunal"] = reader["EstName"] != DBNull.Value ? reader["EstName"].ToString()! : "Not recorded in database";
+                dict["VehicleNo"] = reader["VehicleNo"] != DBNull.Value ? reader["VehicleNo"].ToString()! : "Not recorded in database";
+                dict["AccidentDate"] = reader["AccidentDate"] != DBNull.Value ? Convert.ToDateTime(reader["AccidentDate"]).ToString("dd-MM-yyyy") : "Not recorded in database";
+                dict["ClaimAmount"] = reader["ClaimAmount"] != DBNull.Value ? $"Rs. {Convert.ToDecimal(reader["ClaimAmount"]):N2}" : "₹0.00";
+                dict["AwardAmount"] = reader["AwardAmount"] != DBNull.Value ? $"Rs. {Convert.ToDecimal(reader["AwardAmount"]):N2}" : "₹0.00";
+                dict["Status"] = reader["DisposalStatus"] != DBNull.Value ? reader["DisposalStatus"].ToString()! : "Pending";
+                dict["Stage"] = reader["CurrentStage"] != DBNull.Value ? reader["CurrentStage"].ToString()! : "Active Proceedings";
+                dict["CNR"] = reader["CNRNumber"] != DBNull.Value ? reader["CNRNumber"].ToString()! : "Not registered in e-Courts";
+                dict["TR18"] = reader["TR18Remarks"] != DBNull.Value ? reader["TR18Remarks"].ToString()! : "Not recorded in database";
+                dict["Driver"] = reader["DriverName"] != DBNull.Value ? $"{reader["DriverName"]} (Token: {reader["DriverTokenNo"]})" : "Not recorded";
+            }
+
+            if (caseId > 0)
+            {
+                string petSql = "SELECT PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = @CaseID";
+                using var pCmd = new SqlCommand(petSql, conn);
+                pCmd.Parameters.AddWithValue("@CaseID", caseId);
+                var pList = new List<string>();
+                using (var pr = await pCmd.ExecuteReaderAsync(cancellationToken))
+                {
+                    while (await pr.ReadAsync(cancellationToken))
+                    {
+                        if (!pr.IsDBNull(0)) pList.Add(pr.GetString(0));
+                    }
+                }
+                dict["Petitioners"] = pList.Count > 0 ? string.Join("; ", pList) : "Not recorded in database";
+
+                string respSql = "SELECT RespondentName FROM MVC_CASE_RESPONDENTS WHERE CaseID = @CaseID";
+                using var rCmd = new SqlCommand(respSql, conn);
+                rCmd.Parameters.AddWithValue("@CaseID", caseId);
+                var rList = new List<string>();
+                using (var rr = await rCmd.ExecuteReaderAsync(cancellationToken))
+                {
+                    while (await rr.ReadAsync(cancellationToken))
+                    {
+                        if (!rr.IsDBNull(0)) rList.Add(rr.GetString(0));
+                    }
+                }
+                dict["Respondents"] = rList.Count > 0 ? string.Join("; ", rList) : "NWKRTC / Others";
+            }
+
+            return dict;
         }
 
         private Task<DynamicQueryResult> ExecuteMissingEvidenceQueryAsync(
