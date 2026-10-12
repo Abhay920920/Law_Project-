@@ -31,7 +31,17 @@ namespace MVCCaseManagement.Controllers
 
         public IActionResult Index()
         {
+            int divisionId = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
             ViewBag.MACTList = _masterRepo.GetAllMACTs();
+            try
+            {
+                ViewBag.AuditedCases = _epRepo.GetAuditedCasesForBilling(divisionId, 15);
+            }
+            catch (Exception exAudited)
+            {
+                _logger.LogWarning(exAudited, "Could not load audited cases for billing queue");
+                ViewBag.AuditedCases = new List<EPViewModel>();
+            }
             return View();
         }
 
@@ -1080,9 +1090,8 @@ namespace MVCCaseManagement.Controllers
                 var fullCase = _caseRepo.GetCaseById(caseDetails.CaseID);
                 _logger.LogInformation("GetCaseDetails: CaseID={CaseID}, MVC={MVCNo}/{MVCYear}", fullCase.CaseID, fullCase.MVCNo, fullCase.MVCYear);
 
-                // Get EP payments if exists
-                var epList = _epRepo.GetAllEPs(0);
-                var epDetails = epList.FirstOrDefault(ep => ep.CaseID == caseDetails.CaseID);
+                // Get EP / Audit details and verified payments
+                var epDetails = _epRepo.GetEPByCaseId(fullCase.CaseID);
                 
                 List<PreviousPayment> payments = new();
                 if (epDetails != null && epDetails.Payments != null)
@@ -1198,6 +1207,12 @@ namespace MVCCaseManagement.Controllers
                     awardAmount = fullCase.AdverseAward?.AwardAmount ?? 0,
                     liableAmount = fullCase.AdverseAward?.LiableAmount ?? 0,
                     isAppeal = !string.IsNullOrEmpty(fullCase.LinkedAppeal?.CorpMFANumber) || !string.IsNullOrEmpty(fullCase.LinkedAppeal?.ClaimantMFANumber),
+                    calculationMethod = epDetails?.CalculationMethod ?? "PrincipalDeduction",
+                    realizationDate = epDetails?.RealizationDate?.ToString("yyyy-MM-dd") ?? "",
+                    interestRate = epDetails?.InterestRate ?? fullCase.AdverseAward?.InterestRate ?? 6.0m,
+                    epId = epDetails?.EPID ?? 0,
+                    auditComplianceStatus = epDetails?.ComplianceStatus ?? "Pending",
+                    auditTotalPaid = epDetails?.AmountPaid ?? 0,
                     previousPayments = payments
                 };
 
@@ -1230,16 +1245,27 @@ namespace MVCCaseManagement.Controllers
                     // Update existing bill
                     bool success = _pettyBillRepo.UpdatePettyBill(model);
                     billId = model.BillID;
-                    
-                    return Json(new { success = true, billId = billId, message = "Bill updated successfully!" });
                 }
                 else
                 {
                     // Save new bill
                     billId = _pettyBillRepo.SavePettyBill(model);
-                    
-                    return Json(new { success = true, billId = billId, message = "Bill saved successfully!" });
                 }
+
+                // Link bill to EP/Audit record
+                if (model.CaseID.HasValue && model.CaseID.Value > 0)
+                {
+                    try
+                    {
+                        _epRepo.UpdatePettyBillLink(model.CaseID.Value, model.BillDate ?? DateTime.Today, model.NetPayable);
+                    }
+                    catch (Exception exLink)
+                    {
+                        _logger.LogWarning(exLink, "Could not update EP PettyBillLink for CaseID {CaseID}", model.CaseID.Value);
+                    }
+                }
+
+                return Json(new { success = true, billId = billId, message = model.BillID > 0 ? "Bill updated successfully!" : "Bill saved successfully!" });
             }
             catch (Exception ex)
             {

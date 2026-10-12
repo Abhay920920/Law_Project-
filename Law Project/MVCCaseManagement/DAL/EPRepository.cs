@@ -595,5 +595,61 @@ namespace MVCCaseManagement.DAL
             }
             return payments;
         }
+
+        public EPViewModel? GetEPByCaseId(int caseId)
+        {
+            string query = @"
+                SELECT ep.*, mc.MVCNo, mc.MVCYear 
+                FROM MVC_EP_DETAILS ep
+                LEFT JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
+                WHERE ep.CaseID = @CaseID";
+            
+            DataTable dt = _db.ExecuteQuery(query, new[] { new SqlParameter("@CaseID", caseId) });
+            if (dt.Rows.Count == 0) return null;
+            return MapRowToViewModel(dt.Rows[0]);
+        }
+
+        public IEnumerable<EPViewModel> GetAuditedCasesForBilling(int divisionId = 0, int limit = 20)
+        {
+            var eps = new List<EPViewModel>();
+            string query = @"
+                SELECT TOP (@Limit) ep.*, mc.MVCNo, mc.MVCYear 
+                FROM MVC_EP_DETAILS ep
+                LEFT JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
+                WHERE ep.ArisingFromMVCNo IS NOT NULL AND ep.ArisingFromMVCNo <> ''
+                  AND (ep.AwardAmount IS NOT NULL OR ep.AmountPaid > 0)";
+            
+            var parameters = new List<SqlParameter> { new SqlParameter("@Limit", limit) };
+            if (divisionId > 0 && divisionId != 5)
+            {
+                query += " AND COALESCE(ep.DivisionID, mc.DivisionID) = @DivisionID";
+                parameters.Add(new SqlParameter("@DivisionID", divisionId));
+            }
+            query += " ORDER BY ep.ModifiedDate DESC, ep.EPID DESC";
+            
+            DataTable dt = _db.ExecuteQuery(query, parameters.ToArray());
+            foreach (DataRow row in dt.Rows)
+            {
+                eps.Add(MapRowToViewModel(row));
+            }
+            return eps;
+        }
+
+        public bool UpdatePettyBillLink(int caseId, DateTime billDate, decimal billAmount)
+        {
+            string query = @"
+                UPDATE MVC_EP_DETAILS 
+                SET PettyBillDate = @BillDate,
+                    PettyBillAmount = @BillAmount,
+                    IsSentToAccounts = 1,
+                    DateSentToAccounts = COALESCE(DateSentToAccounts, @BillDate)
+                WHERE CaseID = @CaseID";
+            
+            return _db.ExecuteNonQuery(query, new[] { 
+                new SqlParameter("@CaseID", caseId),
+                new SqlParameter("@BillDate", billDate),
+                new SqlParameter("@BillAmount", billAmount)
+            }) > 0;
+        }
     }
 }

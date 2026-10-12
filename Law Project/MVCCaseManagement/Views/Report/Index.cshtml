@@ -32,6 +32,65 @@
         <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-receipt me-2"></i>Generate Petty Bill</h5>
     </div>
     <div class="card-body p-4">
+        @if (ViewBag.AuditedCases != null && ((IEnumerable<MVCCaseManagement.Models.EPViewModel>)ViewBag.AuditedCases).Any())
+        {
+            <div class="card shadow-sm border-0 mb-4 bg-light">
+                <div class="card-header bg-white border-bottom-0 pt-3 px-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold text-success"><i class="bi bi-shield-check me-2"></i>Audited Cases Awaiting Petty Bill Generation</h6>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">@(((IEnumerable<MVCCaseManagement.Models.EPViewModel>)ViewBag.AuditedCases).Count()) Cases Ready</span>
+                </div>
+                <div class="card-body p-3">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0 bg-white rounded border">
+                            <thead class="table-light small">
+                                <tr>
+                                    <th>MVC No / Year</th>
+                                    <th>MACT Court</th>
+                                    <th>Award Amount</th>
+                                    <th>Paid via Cheques</th>
+                                    <th>Audit Status</th>
+                                    <th>Petty Bill Status</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ep in (IEnumerable<MVCCaseManagement.Models.EPViewModel>)ViewBag.AuditedCases)
+                                {
+                                    <tr>
+                                        <td class="fw-bold text-primary">MVC @ep.ArisingFromMVCNo / @ep.ArisingFromMVCYear</td>
+                                        <td>@ep.ArisingFromMACT</td>
+                                        <td>₹ @(ep.AwardAmount?.ToString("N2") ?? "0.00")</td>
+                                        <td class="text-success fw-semibold">₹ @(ep.AmountPaid?.ToString("N2") ?? "0.00")</td>
+                                        <td>
+                                            <span class="badge @(ep.ComplianceStatus == "Paid" ? "bg-success" : ep.ComplianceStatus == "Partially Paid" ? "bg-warning text-dark" : "bg-danger")">
+                                                @(ep.ComplianceStatus ?? "Pending")
+                                            </span>
+                                        </td>
+                                        <td>
+                                            @if (ep.PettyBillAmount.HasValue)
+                                            {
+                                                <span class="badge bg-info-subtle text-info border border-info">Bill: ₹ @ep.PettyBillAmount.Value.ToString("N2")</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary-subtle text-secondary">Pending Bill</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 btn-load-audit" 
+                                                    data-mvc="@ep.ArisingFromMVCNo" data-year="@ep.ArisingFromMVCYear" data-mact="@ep.ArisingFromMACT">
+                                                <i class="bi bi-receipt-cutoff me-1"></i> Create Bill
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+
         <!-- Search Section -->
         <h6 class="section-title">Step 1: Search Case</h6>
         <div class="row g-3 mb-4">
@@ -79,6 +138,15 @@
             <input type="hidden" name="BillID" id="hidBillID" value="0">
             <input type="hidden" name="CaseID" id="hidCaseID">
             
+            <!-- Audit Sync Banner (Shown if case has Audit record) -->
+            <div id="auditSyncAlert" class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center" style="display:none;">
+                <i class="bi bi-shield-check fs-4 me-2 text-primary"></i>
+                <div class="small">
+                    <strong>Audited Case Linked:</strong> Audit compliance status is <span id="auditComplianceText" class="badge bg-primary"></span>.
+                    Cheques & verified parameters have been synchronized with zero data loss.
+                </div>
+            </div>
+
             <!-- Case Details -->
             <h6 class="section-title">Step 2: Verify Details</h6>
             <div class="row g-3 mb-4">
@@ -538,6 +606,23 @@ $(document).ready(function() {
                     console.warn('No previous payments found or empty array');
                 }
 
+                // Audit Parameter Sync
+                if (res.epId && res.epId > 0) {
+                    $('#auditSyncAlert').slideDown();
+                    $('#auditComplianceText').text(res.auditComplianceStatus || 'Audited');
+                    if (res.calculationMethod) {
+                        $('#calcMethod').val(res.calculationMethod);
+                    }
+                    if (res.realizationDate) {
+                        $('#billDate').val(res.realizationDate);
+                    }
+                    if (res.interestRate && res.interestRate > 0) {
+                        $('#interestRate').val(res.interestRate);
+                    }
+                } else {
+                    $('#auditSyncAlert').hide();
+                }
+
                 $('#billForm').slideDown();
                 
                 // Fetch saved bills for this case
@@ -833,6 +918,33 @@ $(document).ready(function() {
             error: function() { alert('Error deleting bill'); }
         });
     });
+
+    // Load Audited Case from table button
+    $(document).on('click', '.btn-load-audit', function() {
+        const mvc = $(this).data('mvc');
+        const year = $(this).data('year');
+        const mact = $(this).data('mact');
+        $('#searchMVCNo').val(mvc);
+        $('#searchYear').val(year);
+        if (mact) $('#searchMACT').val(mact);
+        $('#btnSearch').click();
+        $('html, body').animate({ scrollTop: $('#searchMVCNo').offset().top - 40 }, 400);
+    });
+
+    // Check URL parameters for auto-load from Audit module
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramMvc = urlParams.get('mvcNo');
+    const paramYear = urlParams.get('year');
+    const paramMact = urlParams.get('mact');
+
+    if (paramMvc && paramYear) {
+        $('#searchMVCNo').val(paramMvc);
+        $('#searchYear').val(paramYear);
+        if (paramMact) $('#searchMACT').val(paramMact);
+        setTimeout(function() {
+            $('#btnSearch').click();
+        }, 250);
+    }
 
 });
 </script>

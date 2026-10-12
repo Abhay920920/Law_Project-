@@ -153,11 +153,26 @@
                                         {
                                             <span class="text-muted small fst-italic">No Payment Recorded</span>
                                         }
+                                        @if (item.PettyBillAmount.HasValue)
+                                        {
+                                            <div class="mt-1">
+                                                <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill" style="font-size:0.72rem;">
+                                                    <i class="bi bi-receipt me-1"></i>Bill: ₹ @item.PettyBillAmount.Value.ToString("N2")
+                                                </span>
+                                            </div>
+                                        }
                                     </td>
                                     <td class="text-center">
-                                        <a href="@Url.Action("Manage", "Audit", new { id = item.EPID })" class="btn btn-sm btn-primary rounded-pill px-4 shadow-sm">
-                                            <i class="bi bi-pencil-square me-1"></i> Manage Audit
-                                        </a>
+                                        <div class="d-inline-flex gap-1">
+                                            <a href="@Url.Action("Manage", "Audit", new { id = item.EPID })" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm">
+                                                <i class="bi bi-pencil-square me-1"></i> Manage
+                                            </a>
+                                            <a href="@Url.Action("Index", "Report", new { mvcNo = item.ArisingFromMVCNo, year = item.ArisingFromMVCYear, mact = item.ArisingFromMACT })" 
+                                               class="btn btn-sm @(item.PettyBillAmount.HasValue ? "btn-outline-success" : "btn-outline-primary") rounded-pill px-3 shadow-sm"
+                                               title="@(item.PettyBillAmount.HasValue ? $"Bill Generated: ₹{item.PettyBillAmount.Value:N2}" : "Generate Petty Bill")">
+                                                <i class="bi bi-receipt-cutoff me-1"></i> @(item.PettyBillAmount.HasValue ? "View Bill" : "Petty Bill")
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                             }

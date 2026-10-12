@@ -63,9 +63,27 @@
                             <small class="text-muted">MACT: @Model.ArisingFromMACT | EP No: <strong>@(string.IsNullOrEmpty(Model.EPNumber) ? "Pending" : Model.EPNumber)</strong></small>
                         </div>
                     </div>
-                    <span class="badge @(Model.ComplianceStatus == "Paid" ? "bg-success" : Model.ComplianceStatus == "Partially Paid" ? "bg-warning text-dark" : "bg-danger") px-3 py-2 rounded-pill fs-6">
-                        <i class="bi bi-shield-check me-1"></i>@(string.IsNullOrEmpty(Model.ComplianceStatus) ? "Pending" : Model.ComplianceStatus)
-                    </span>
+                    <div class="d-flex align-items-center gap-2">
+                        @if (!string.IsNullOrEmpty(Model.ArisingFromMVCNo))
+                        {
+                            <a href="/Report?mvcNo=@Model.ArisingFromMVCNo&year=@Model.ArisingFromMVCYear&mact=@Model.ArisingFromMACT&caseId=@Model.CaseID&epId=@Model.EPID" 
+                               class="btn btn-success btn-sm rounded-pill px-3 shadow-sm d-flex align-items-center gap-1"
+                               title="Proceed to Petty Bill with all audit calculations">
+                                <i class="bi bi-receipt-cutoff"></i>
+                                <span>Proceed to Petty Bill</span>
+                                <i class="bi bi-arrow-right"></i>
+                            </a>
+                        }
+                        @if (Model.PettyBillAmount.HasValue)
+                        {
+                            <span class="badge bg-info-subtle text-info-emphasis border border-info px-3 py-2 rounded-pill fs-6">
+                                <i class="bi bi-check2-circle me-1"></i>Petty Bill: ₹ @Model.PettyBillAmount.Value.ToString("N2")
+                            </span>
+                        }
+                        <span class="badge @(Model.ComplianceStatus == "Paid" ? "bg-success" : Model.ComplianceStatus == "Partially Paid" ? "bg-warning text-dark" : "bg-danger") px-3 py-2 rounded-pill fs-6">
+                            <i class="bi bi-shield-check me-1"></i>@(string.IsNullOrEmpty(Model.ComplianceStatus) ? "Pending" : Model.ComplianceStatus)
+                        </span>
+                    </div>
                 </div>
             </div>
 
@@ -281,6 +299,14 @@
             <!-- Form Actions -->
             <div class="d-flex justify-content-end gap-2 mt-4 mb-5">
                 <a href="@Url.Action("Index", "Audit")" class="btn btn-light rounded-pill px-4 border">Cancel</a>
+                @if (!string.IsNullOrEmpty(Model.ArisingFromMVCNo))
+                {
+                    <a href="/Report?mvcNo=@Model.ArisingFromMVCNo&year=@Model.ArisingFromMVCYear&mact=@Model.ArisingFromMACT&caseId=@Model.CaseID&epId=@Model.EPID" 
+                       class="btn btn-outline-success rounded-pill px-4 d-flex align-items-center gap-1">
+                        <i class="bi bi-receipt-cutoff me-1"></i>
+                        <span>Generate Petty Bill</span>
+                    </a>
+                }
                 <button type="submit" class="btn btn-primary rounded-pill px-5 shadow">
                     <i class="bi bi-shield-check me-1"></i> Finalize Audit Details
                 </button>
