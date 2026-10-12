@@ -1831,7 +1831,19 @@
                             line-height: 1.6;
                             color: #1e293b;
                         }
-                        .memo-body table {
+                        .legal-callout {
+                            background: #f0f9ff !important;
+                            border: 1px solid #bae6fd !important;
+                            border-left: 4.5px solid #0284c7 !important;
+                            border-radius: 4px;
+                            padding: 8px 12px;
+                            margin: 10px 0 14px 0;
+                            font-size: 11.5px;
+                            font-weight: 600;
+                            color: #0369a1;
+                            page-break-inside: avoid;
+                        }
+                        .legal-brief-table, .memo-body table {
                             width: 100%;
                             border-collapse: collapse;
                             margin: 10px 0;
@@ -2219,6 +2231,24 @@
                 subject = detectedCaseNo 
                     ? `Official Judicial & e-Courts Record Verification — ${detectedCaseNo}` 
                     : 'Live Judicial & e-Courts Status Verification';
+            } else if (p.includes('hearing') || p.includes('when is') || p.includes('next date') || p.includes('listing') || r.includes('judicial hearing & court schedule') || p.includes('ವಿಚಾರಣೆ') || p.includes('ದಿನಾಂಕ')) {
+                matterCategory = 'Judicial Hearing & Listing Calendar';
+                subject = responseTitle ? responseTitle : `Next Hearing Schedule & Listing — ${detectedCaseNo || caseRef}`;
+            } else if (p.includes('award') || p.includes('balance') || p.includes('deposit') || p.includes('deposited') || p.includes('compensation') || p.includes('claim amount') || r.includes('financial compensation & balance statement') || p.includes('ಪರಿಹಾರ') || p.includes('ಮೊತ್ತ') || p.includes('ಬಾಕಿ')) {
+                matterCategory = 'Financial Compensation & Award Reconciliation';
+                subject = responseTitle ? responseTitle : `Compensation Award, Deposit & Balance Audit — ${detectedCaseNo || caseRef}`;
+            } else if (p.includes('claimant') || p.includes('petitioner') || p.includes('respondent') || p.includes('driver') || p.includes('conductor') || p.includes('token') || r.includes('parties & crew verification') || p.includes('ಅರ್ಜಿದಾರ') || p.includes('ಚಾಲಕ')) {
+                matterCategory = 'Parties & Litigants Identification Record';
+                subject = responseTitle ? responseTitle : `Parties & Litigants Profile — ${detectedCaseNo || caseRef}`;
+            } else if (p.includes('vehicle') || p.includes('bus no') || p.includes('bus number') || p.includes('accident') || p.includes('fir') || p.includes('police station') || r.includes('vehicle & accident particulars') || p.includes('ವಾಹನ') || p.includes('ಅಪಘಾತ')) {
+                matterCategory = 'Corporation Vehicle & Accident Incident Particulars';
+                subject = responseTitle ? responseTitle : `Corporation Bus & Incident Brief — ${detectedCaseNo || caseRef}`;
+            } else if (p.includes('advocate') || p.includes('lawyer') || p.includes('counsel') || p.includes('entrustment') || p.includes('written statement') || r.includes('legal representation & entrustment brief') || p.includes('ವಕೀಲ')) {
+                matterCategory = 'Legal Counsel & Entrustment Record';
+                subject = responseTitle ? responseTitle : `Advocate Assignment & Legal Representation — ${detectedCaseNo || caseRef}`;
+            } else if (p.includes('status') || p.includes('pending') || p.includes('disposed') || p.includes('outcome') || r.includes('case procedural status certificate') || p.includes('ಸ್ಥಿತಿ') || p.includes('ವಿಲೇವಾರಿ')) {
+                matterCategory = 'Case Procedural Status Certificate';
+                subject = responseTitle ? responseTitle : `Procedural Status & Case Progress Certificate — ${detectedCaseNo || caseRef}`;
             } else if (p.includes('mfa') || p.includes('appeal') || p.includes('section 173') || r.includes('section 173') || r.includes('mfa')) {
                 matterCategory = 'High Court Appellate Proceedings (MFA / Appeal)';
                 subject = responseTitle ? responseTitle : `Appellate Review & Grounds of Challenge: ${rawPrompt.replace(/^(what are|how to|please|can you)\s+/i, '')}`;
@@ -2260,7 +2290,7 @@
             let directive = '';
 
             // Check if response has explicit directive / recommendation heading
-            const explicitDirectiveMatch = rawResponse.match(/(?:📌\s*Executive Legal Guidance & Action Directive|📌\s*Action Directive|###\s*Action Directive|###\s*Recommended Legal Action|###\s*Executive Recommendation|###\s*Strategic Next Steps)[\s:*#\n]+([^\n\r]+)/i);
+            const explicitDirectiveMatch = rawResponse.match(/(?:📌\s*Executive Legal Guidance & Action Directive|📌\s*Action Directive|###\s*Action Directive|###\s*Recommended Legal Action|###\s*Executive Recommendation|###\s*Strategic Next Steps|####\s*📌[^\n\r]+)[\s:*#\n]+([^\n\r]+)/i);
 
             if (explicitDirectiveMatch && explicitDirectiveMatch[1].trim().length > 15) {
                 directive = explicitDirectiveMatch[1].replace(/[*_#`]/g, '').trim();
@@ -2268,6 +2298,18 @@
                 const coramText = rawResponse.match(/(?:Presiding Coram|Judicial Officer)\s*[:|]\s*\*?([A-Za-z\s.-]+)\*?/i);
                 const coramName = coramText ? coramText[1].trim() : 'Presiding Bench';
                 directive = `Matter listed before ${coramName} for ADMISSION on ${nextHearingDate}. Instruct Divisional Panel Advocate to verify trial records, ensure Corporation appearance, and resist ex-parte stay.`;
+            } else if (matterCategory.includes('Judicial Hearing')) {
+                directive = `Matter scheduled on ${nextHearingDate || 'appointed date'}. Instruct Divisional Law Officer and Panel Advocate to ensure strict appearance and timely filing before ${jurisdiction}.`;
+            } else if (matterCategory.includes('Financial Compensation')) {
+                directive = 'Reconcile compensation awarded against deposit receipts, compute net outstanding liability, and ensure timely statutory deposit compliance to avert execution warrants.';
+            } else if (matterCategory.includes('Parties & Litigants')) {
+                directive = 'Verify service of process and pleadings on claimant and review operating crew credentials and driver trip sheet for Corporation defense.';
+            } else if (matterCategory.includes('Corporation Vehicle')) {
+                directive = 'Inspect vehicle mechanical inspection report (IMV), logsheet records, and driver history to evaluate liability exposure and contributory negligence.';
+            } else if (matterCategory.includes('Legal Counsel')) {
+                directive = 'Liaise with assigned panel advocate, ensure timely receipt of hearing progress updates, and transmit corporation vakalat / instructions.';
+            } else if (matterCategory.includes('Case Procedural Status')) {
+                directive = 'Track case movement against corporation litigation milestones and ensure prompt compliance with stage requirements.';
             } else if (nextHearingDate) {
                 directive = `Matter listed on ${nextHearingDate} for ${currentStage}. Instruct Divisional Law Officer and Panel Advocate to ensure strict adherence to hearing timeline and production of Corporation records.`;
             } else if (matterCategory.includes('Appellate Proceedings') || matterCategory.includes('High Court')) {
