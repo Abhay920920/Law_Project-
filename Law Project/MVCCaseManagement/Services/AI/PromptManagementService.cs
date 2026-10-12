@@ -87,7 +87,15 @@ You are NYAYA PATHA AI (ನ್ಯಾಯ ಪಥ), the official AI Legal Research 
                 dossier.CaseType == "HearingCalendar" ||
                 dossier.CaseType == "FinancialExposure" ||
                 dossier.CaseType == "ExecutionPetitions" ||
-                dossier.CaseType == "CompoundFilter")
+                dossier.CaseType == "CompoundFilter" ||
+                dossier.CaseType == "AgeFilter" ||
+                dossier.CaseType == "FinancialBalance" ||
+                dossier.CaseType == "DataIntegrityAudit" ||
+                dossier.CaseType == "CaseTimeline" ||
+                dossier.CaseType == "DelayAnalysis" ||
+                dossier.CaseType == "MissingEvidence" ||
+                dossier.CaseType == "CaseComparison" ||
+                dossier.StructuredFacts.ContainsKey("DirectMarkdown"))
             {
                 // 1. <internal_case_data>
                 sb.AppendLine("<internal_case_data>");

@@ -172,7 +172,22 @@ namespace MVCCaseManagement.Services.AI
             return null;
         }
 
-        public async Task<int> SaveMessageAsync(int conversationId, string role, string messageText, string? model = null, CancellationToken cancellationToken = default)
+        public Task<int> SaveMessageAsync(int conversationId, string role, string messageText, string? model = null, CancellationToken cancellationToken = default)
+        {
+            return SaveMessageAsync(conversationId, role, messageText, model, null, 0, 0, 0, null, cancellationToken);
+        }
+
+        public async Task<int> SaveMessageAsync(
+            int conversationId,
+            string role,
+            string messageText,
+            string? model,
+            string? citationsJson,
+            int executionTimeMs,
+            int promptTokens,
+            int completionTokens,
+            string? verificationResultJson,
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -180,9 +195,15 @@ namespace MVCCaseManagement.Services.AI
                 await conn.OpenAsync(cancellationToken);
 
                 string sql = @"
-                    INSERT INTO AI_MESSAGES (ConversationID, Role, MessageText, Model, CreatedAt)
+                    INSERT INTO AI_MESSAGES (
+                        ConversationID, Role, MessageText, Model, CitationsJson,
+                        ExecutionTimeMs, PromptTokens, CompletionTokens, VerificationResultJson, CreatedAt
+                    )
                     OUTPUT INSERTED.MessageID
-                    VALUES (@ConversationID, @Role, @MessageText, @Model, GETDATE());
+                    VALUES (
+                        @ConversationID, @Role, @MessageText, @Model, @CitationsJson,
+                        @ExecutionTimeMs, @PromptTokens, @CompletionTokens, @VerificationResultJson, GETDATE()
+                    );
 
                     UPDATE AI_CONVERSATIONS SET UpdatedAt = GETDATE() WHERE ConversationID = @ConversationID;";
 
@@ -190,7 +211,12 @@ namespace MVCCaseManagement.Services.AI
                 cmd.Parameters.AddWithValue("@ConversationID", conversationId);
                 cmd.Parameters.AddWithValue("@Role", role);
                 cmd.Parameters.AddWithValue("@MessageText", messageText);
-                cmd.Parameters.AddWithValue("@Model", model ?? (object)DBNull.Value);
+                cmd.Parameters.AddWithValue("@Model", (object?)model ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@CitationsJson", (object?)citationsJson ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ExecutionTimeMs", executionTimeMs);
+                cmd.Parameters.AddWithValue("@PromptTokens", promptTokens);
+                cmd.Parameters.AddWithValue("@CompletionTokens", completionTokens);
+                cmd.Parameters.AddWithValue("@VerificationResultJson", (object?)verificationResultJson ?? DBNull.Value);
 
                 var id = await cmd.ExecuteScalarAsync(cancellationToken);
                 return Convert.ToInt32(id);
@@ -199,6 +225,34 @@ namespace MVCCaseManagement.Services.AI
             {
                 _logger.LogError(ex, "Error saving AI message for conversation {ConversationID}", conversationId);
                 return 0;
+            }
+        }
+
+        public async Task<bool> SubmitFeedbackAsync(int messageId, int userId, int rating, string? comment, string? issueCategory, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    INSERT INTO AI_MESSAGE_FEEDBACK (MessageID, UserID, Rating, Comment, IssueCategory, CreatedAt)
+                    VALUES (@MessageID, @UserID, @Rating, @Comment, @IssueCategory, GETDATE());";
+
+                using var cmd = new SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@MessageID", messageId);
+                cmd.Parameters.AddWithValue("@UserID", userId);
+                cmd.Parameters.AddWithValue("@Rating", rating);
+                cmd.Parameters.AddWithValue("@Comment", (object?)comment ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@IssueCategory", (object?)issueCategory ?? DBNull.Value);
+
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to submit feedback for MessageID {MessageId}", messageId);
+                return false;
             }
         }
 

@@ -82,6 +82,7 @@ builder.Services.Configure<MVCCaseManagement.Models.AI.NyayaPathaOptions>(builde
 builder.Services.AddHttpClient<MVCCaseManagement.Services.AI.OllamaLLMProvider>();
 builder.Services.AddSingleton<MVCCaseManagement.Services.AI.ILLMProvider>(sp => sp.GetRequiredService<MVCCaseManagement.Services.AI.OllamaLLMProvider>());
 builder.Services.AddSingleton<MVCCaseManagement.Services.AI.ILLMService, MVCCaseManagement.Services.AI.LLMService>();
+builder.Services.AddHttpClient<MVCCaseManagement.Services.AI.IEmbeddingService, MVCCaseManagement.Services.AI.OllamaEmbeddingService>();
 
 builder.Services.AddHttpClient<MVCCaseManagement.Services.AI.ILegalWebSearchService, MVCCaseManagement.Services.AI.LegalWebSearchService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IQueryRouterService, MVCCaseManagement.Services.AI.QueryRouterService>();
@@ -92,6 +93,7 @@ builder.Services.AddScoped<MVCCaseManagement.Services.AI.ISimilarCaseService, MV
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IECourtsContextService, MVCCaseManagement.Services.AI.ECourtsContextService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.ILegalSearchService, MVCCaseManagement.Services.AI.LegalSearchService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IUnifiedLegalResearchService, MVCCaseManagement.Services.AI.UnifiedLegalResearchService>();
+builder.Services.AddScoped<MVCCaseManagement.Services.AI.IDynamicDatabaseRetrievalService, MVCCaseManagement.Services.AI.DynamicDatabaseRetrievalService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.ICaseContextBuilder, MVCCaseManagement.Services.AI.CaseContextBuilder>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IPromptManagementService, MVCCaseManagement.Services.AI.PromptManagementService>();
 builder.Services.AddScoped<MVCCaseManagement.Services.AI.IAIAuditService, MVCCaseManagement.Services.AI.AIAuditService>();

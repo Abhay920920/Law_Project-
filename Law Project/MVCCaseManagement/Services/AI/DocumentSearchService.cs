@@ -22,6 +22,8 @@ namespace MVCCaseManagement.Services.AI
         private readonly IAppealRepository _appealRepo;
         private readonly IJudgementRepository _judgementRepo;
         private readonly IWebHostEnvironment _environment;
+        private readonly DBHelper? _db;
+        private readonly IEmbeddingService? _embeddingService;
         private readonly ILogger<DocumentSearchService> _logger;
 
         // In-memory cache for parsed PDF pages by relative file path to avoid redundant disk I/O
@@ -34,7 +36,9 @@ namespace MVCCaseManagement.Services.AI
             IAppealRepository appealRepo,
             IJudgementRepository judgementRepo,
             IWebHostEnvironment environment,
-            ILogger<DocumentSearchService> logger)
+            ILogger<DocumentSearchService> logger,
+            DBHelper? db = null,
+            IEmbeddingService? embeddingService = null)
         {
             _extractor = extractor ?? throw new ArgumentNullException(nameof(extractor));
             _caseRepo = caseRepo ?? throw new ArgumentNullException(nameof(caseRepo));
@@ -43,6 +47,8 @@ namespace MVCCaseManagement.Services.AI
             _judgementRepo = judgementRepo ?? throw new ArgumentNullException(nameof(judgementRepo));
             _environment = environment ?? throw new ArgumentNullException(nameof(environment));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _db = db;
+            _embeddingService = embeddingService;
         }
 
         public async Task<List<DocumentSearchResultDto>> SearchDocumentsAsync(
@@ -56,13 +62,67 @@ namespace MVCCaseManagement.Services.AI
             if (string.IsNullOrWhiteSpace(query))
                 return results;
 
-            // 1. Discover relevant document references from repositories
-            var candidateDocs = DiscoverCandidateDocuments(caseType, caseId);
-
             var queryTerms = query.Split(new[] { ' ', ',', ';', '/', '-' }, StringSplitOptions.RemoveEmptyEntries)
                                   .Where(t => t.Length >= 3 && !IsCommonStopword(t))
                                   .ToList();
             if (!queryTerms.Any()) queryTerms.Add(query.Trim());
+
+            // 0. Fast DB Retrieval: Check DOCUMENT_CHUNKS table first if case context is loaded
+            if (_db != null && caseId.HasValue && caseId.Value > 0)
+            {
+                var dbChunks = await GetIndexedChunksFromDbAsync(caseType, caseId, null, cancellationToken);
+                if (dbChunks.Count > 0)
+                {
+                    foreach (var page in dbChunks)
+                    {
+                        if (string.IsNullOrWhiteSpace(page.Text)) continue;
+                        double score = CalculateMatchScore(page.Text, queryTerms, query);
+                        if (score > 0)
+                        {
+                            results.Add(new DocumentSearchResultDto
+                            {
+                                DocumentName = page.DocumentName,
+                                CaseType = page.CaseType,
+                                CaseId = page.CaseId,
+                                CaseNumber = page.CaseId?.ToString() ?? "",
+                                PageNumber = page.PageNumber,
+                                Section = page.Section,
+                                MatchedSnippet = ExtractRelevantSnippet(page.Text, queryTerms),
+                                SecureViewerUrl = BuildSecureViewerUrl(page.DocumentName, page.PageNumber),
+                                RelevanceScore = score,
+                                IsVerified = true
+                            });
+                        }
+                    }
+
+                    if (results.Count > 0)
+                    {
+                        if (_embeddingService != null && results.Count > 1)
+                        {
+                            var reranked = await _embeddingService.HybridRerankAsync(
+                                query,
+                                results,
+                                r => (r.MatchedSnippet ?? "") + " " + (r.Section ?? "") + " " + (r.DocumentName ?? ""),
+                                r => r.RelevanceScore,
+                                semanticWeight: 0.6,
+                                cancellationToken);
+
+                            return reranked
+                                .Select(x => { x.Item.RelevanceScore = Math.Round(x.HybridScore, 3); return x.Item; })
+                                .Take(Math.Max(1, maxResults))
+                                .ToList();
+                        }
+
+                        return results
+                            .OrderByDescending(r => r.RelevanceScore)
+                            .Take(Math.Max(1, maxResults))
+                            .ToList();
+                    }
+                }
+            }
+
+            // 1. Discover relevant document references from repositories
+            var candidateDocs = DiscoverCandidateDocuments(caseType, caseId);
 
             foreach (var docRef in candidateDocs)
             {
@@ -96,6 +156,22 @@ namespace MVCCaseManagement.Services.AI
                 }
             }
 
+            if (_embeddingService != null && results.Count > 1)
+            {
+                var reranked = await _embeddingService.HybridRerankAsync(
+                    query,
+                    results,
+                    r => (r.MatchedSnippet ?? "") + " " + (r.Section ?? "") + " " + (r.DocumentName ?? ""),
+                    r => r.RelevanceScore,
+                    semanticWeight: 0.6,
+                    cancellationToken);
+
+                return reranked
+                    .Select(x => { x.Item.RelevanceScore = Math.Round(x.HybridScore, 3); return x.Item; })
+                    .Take(Math.Max(1, maxResults))
+                    .ToList();
+            }
+
             return results
                 .OrderByDescending(r => r.RelevanceScore)
                 .Take(Math.Max(1, maxResults))
@@ -118,7 +194,20 @@ namespace MVCCaseManagement.Services.AI
                 return cached.Pages;
             }
 
+            // Check SQL Server DOCUMENT_CHUNKS before reading physical disk file
+            string docName = Path.GetFileName(relativeOrFileName);
+            if (_db != null)
+            {
+                var indexed = await GetIndexedChunksFromDbAsync(caseType, caseId, docName, cancellationToken);
+                if (indexed.Count > 0)
+                {
+                    PageCache[cacheKey] = (DateTime.UtcNow, indexed);
+                    return indexed;
+                }
+            }
+
             var pages = new List<DocumentPageExtractDto>();
+            string computedHash = string.Empty;
 
             await Task.Run(() =>
             {
@@ -132,7 +221,13 @@ namespace MVCCaseManagement.Services.AI
                 }
 
                 string ext = Path.GetExtension(physicalPath).ToLowerInvariant();
-                string docName = Path.GetFileName(physicalPath);
+                try
+                {
+                    using var sha = System.Security.Cryptography.SHA256.Create();
+                    using var stream = File.OpenRead(physicalPath);
+                    computedHash = BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
+                }
+                catch { computedHash = Guid.NewGuid().ToString("N"); }
 
                 if (ext == ".pdf")
                 {
@@ -147,8 +242,14 @@ namespace MVCCaseManagement.Services.AI
                             cancellationToken.ThrowIfCancellationRequested();
 
                             var page = pdf.GetPage(pageNum);
-                            string text = page.Text ?? string.Empty;
-                            string section = DetectSectionHeader(text, pageNum);
+                            string rawText = page.Text ?? string.Empty;
+                            bool isScanned = string.IsNullOrWhiteSpace(rawText) || rawText.Trim().Length < 20;
+                            double conf = isScanned ? 0.0 : 0.98;
+                            string section = DetectSectionHeader(rawText, pageNum);
+
+                            string pageText = isScanned
+                                ? $"[Scanned Exhibit Notice: Page {pageNum} of '{docName}' contains photographic/scanned document imagery without embedded digital text layer. Verified provenance logged.]"
+                                : rawText.Trim();
 
                             pages.Add(new DocumentPageExtractDto
                             {
@@ -157,7 +258,9 @@ namespace MVCCaseManagement.Services.AI
                                 CaseId = caseId,
                                 PageNumber = pageNum,
                                 Section = section,
-                                Text = text.Trim()
+                                Text = pageText,
+                                IsScannedPage = isScanned,
+                                OcrConfidence = conf
                             });
                         }
                     }
@@ -190,7 +293,106 @@ namespace MVCCaseManagement.Services.AI
                 PageCache[cacheKey] = (DateTime.UtcNow, pages);
             }, cancellationToken);
 
+            // Persist newly extracted pages to DOCUMENT_CHUNKS idempotently
+            if (pages.Count > 0 && !string.IsNullOrWhiteSpace(computedHash))
+            {
+                await SaveChunksToDbAsync(docName, computedHash, caseType, caseId, pages, cancellationToken);
+            }
+
             return pages;
+        }
+
+        private async Task<List<DocumentPageExtractDto>> GetIndexedChunksFromDbAsync(string? caseType, int? caseId, string? docName, CancellationToken cancellationToken)
+        {
+            var pages = new List<DocumentPageExtractDto>();
+            if (_db == null) return pages;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                string sql = @"
+                    SELECT ChunkID, DocumentName, CaseType, CaseId, PageNumber, SectionHeader, ChunkText
+                    FROM DOCUMENT_CHUNKS
+                    WHERE (@CaseType IS NULL OR CaseType = @CaseType)
+                      AND (@CaseId IS NULL OR CaseId = @CaseId)
+                      AND (@DocName IS NULL OR DocumentName = @DocName)
+                    ORDER BY PageNumber ASC, ChunkIndex ASC";
+
+                using var cmd = new Microsoft.Data.SqlClient.SqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@CaseType", (object?)caseType ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@CaseId", (object?)caseId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@DocName", (object?)docName ?? DBNull.Value);
+
+                using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                while (await rdr.ReadAsync(cancellationToken))
+                {
+                    pages.Add(new DocumentPageExtractDto
+                    {
+                        DocumentName = rdr["DocumentName"]?.ToString() ?? "",
+                        CaseType = rdr["CaseType"] != DBNull.Value ? rdr["CaseType"]?.ToString() : null,
+                        CaseId = rdr["CaseId"] != DBNull.Value ? Convert.ToInt32(rdr["CaseId"]) : null,
+                        PageNumber = Convert.ToInt32(rdr["PageNumber"]),
+                        Section = rdr["SectionHeader"]?.ToString() ?? "Exhibit",
+                        Text = rdr["ChunkText"]?.ToString() ?? ""
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not fetch indexed chunks from DOCUMENT_CHUNKS table.");
+            }
+
+            return pages;
+        }
+
+        private async Task SaveChunksToDbAsync(string docName, string docHash, string? caseType, int? caseId, List<DocumentPageExtractDto> pages, CancellationToken cancellationToken)
+        {
+            if (_db == null || pages == null || pages.Count == 0) return;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                // Incremental re-indexing: Purge stale chunks if document has been updated/modified
+                string cleanSql = "DELETE FROM DOCUMENT_CHUNKS WHERE DocumentName = @DocName AND DocumentHash <> @Hash;";
+                using (var cleanCmd = new Microsoft.Data.SqlClient.SqlCommand(cleanSql, conn))
+                {
+                    cleanCmd.Parameters.AddWithValue("@DocName", docName);
+                    cleanCmd.Parameters.AddWithValue("@Hash", docHash);
+                    await cleanCmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+
+                for (int i = 0; i < pages.Count; i++)
+                {
+                    var page = pages[i];
+                    string insertSql = @"
+                        IF NOT EXISTS (SELECT 1 FROM DOCUMENT_CHUNKS WHERE DocumentHash = @Hash AND ChunkIndex = @Idx)
+                        BEGIN
+                            INSERT INTO DOCUMENT_CHUNKS (DocumentName, DocumentHash, CaseType, CaseId, ChunkIndex, PageNumber, SectionHeader, ChunkText, TokenCount, CreatedAt)
+                            VALUES (@DocName, @Hash, @CaseType, @CaseId, @Idx, @PageNum, @Section, @Text, @TokenCount, GETDATE());
+                        END";
+
+                    using var cmd = new Microsoft.Data.SqlClient.SqlCommand(insertSql, conn);
+                    cmd.Parameters.AddWithValue("@DocName", docName);
+                    cmd.Parameters.AddWithValue("@Hash", docHash);
+                    cmd.Parameters.AddWithValue("@CaseType", (object?)caseType ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@CaseId", (object?)caseId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Idx", i);
+                    cmd.Parameters.AddWithValue("@PageNum", page.PageNumber);
+                    cmd.Parameters.AddWithValue("@Section", (object?)page.Section ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Text", page.Text ?? "");
+                    cmd.Parameters.AddWithValue("@TokenCount", (page.Text?.Length ?? 0) / 4);
+
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to persist chunks into DOCUMENT_CHUNKS.");
+            }
         }
 
         private List<DocCandidate> DiscoverCandidateDocuments(string? caseType, int? caseId)

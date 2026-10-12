@@ -340,6 +340,18 @@ namespace MVCCaseManagement.Controllers
 
         [HttpPost]
         [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> SubmitFeedback([FromBody] AIMessageFeedbackDto feedback, CancellationToken cancellationToken)
+        {
+            if (feedback == null || feedback.MessageId <= 0)
+                return Json(new { success = false, message = "Invalid feedback parameters." });
+
+            int userId = GetCurrentUserId();
+            bool saved = await _auditService.SubmitFeedbackAsync(feedback.MessageId, userId, feedback.Rating, feedback.Comment, feedback.IssueCategory, cancellationToken);
+            return Json(new { success = saved });
+        }
+
+        [HttpPost]
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> CheckECourts(string caseType, int caseId, CancellationToken cancellationToken)
         {
             if (caseId <= 0) return BadRequest(new { message = "Invalid case ID." });

@@ -48,6 +48,7 @@ namespace MVCCaseManagement.Models.AI
         public string? ClaudeApiKey { get; set; } = string.Empty;
         public int MaxConcurrentRequests { get; set; } = 5;
         public int MaxInputLength { get; set; } = 4000;
+        public int MaxContextTokens { get; set; } = 8192;
     }
 
     public class LLMRequest
@@ -344,7 +345,14 @@ namespace MVCCaseManagement.Models.AI
         DivisionComparison,
         CompoundFilter,
         DocumentRAG,
-        LegalPrecedent
+        LegalPrecedent,
+        AgeFilter,
+        FinancialBalance,
+        DataIntegrityAudit,
+        CaseTimeline,
+        DelayAnalysis,
+        MissingEvidence,
+        CaseComparison
     }
 
     public enum EvidenceSufficiencyLevel
@@ -396,6 +404,13 @@ namespace MVCCaseManagement.Models.AI
         public string? AmountComparator { get; set; } = "greater_than"; // "greater_than", "less_than"
         public string? StatusFilter { get; set; } = "Pending"; // "Pending", "Disposed", "All"
         public List<string> StatutoryProvisions { get; set; } = new();
+        public int? AgeThresholdDays { get; set; }
+        public string? ComparisonCaseType { get; set; }
+        public string? SpecificField { get; set; }
+        public int? ExtractedCaseId { get; set; }
+        public string? SecondaryCaseNumber { get; set; }
+        public string? SecondaryCaseType { get; set; }
+        public int? SecondaryCaseYear { get; set; }
 
         // Source Requirements
         public bool IsDeterministicDatabaseQuery { get; set; }
@@ -426,6 +441,9 @@ namespace MVCCaseManagement.Models.AI
         public int? ExtractedCaseId { get; set; }
         public string? ExtractedCaseNumber { get; set; }
         public int? ExtractedYear { get; set; }
+        public string? SecondaryCaseNumber { get; set; }
+        public string? SecondaryCaseType { get; set; }
+        public int? SecondaryCaseYear { get; set; }
         public string? ExtractedCNR { get; set; }
         public string? ExtractedVehicleNo { get; set; }
         public string? ExtractedAdvocateName { get; set; }
@@ -592,6 +610,7 @@ namespace MVCCaseManagement.Models.AI
         public string ClaimText { get; set; } = string.Empty;
         public string EvidenceSnippet { get; set; } = string.Empty;
         public string Source { get; set; } = string.Empty;
+        public string SourceCategory { get; set; } = "InternalDatabase"; // InternalDatabase, UploadedExhibit, OfficialCourtRecord, SecondaryWeb, None
         public string Citation { get; set; } = string.Empty;
         public EvidenceTaxonomy Taxonomy { get; set; } = EvidenceTaxonomy.Fact;
         public bool IsSupported { get; set; } = true;
@@ -607,6 +626,9 @@ namespace MVCCaseManagement.Models.AI
         public int UnsupportedClaims { get; set; }
         public List<ExtractedClaim> Claims { get; set; } = new();
         public List<string> FlaggedContradictions { get; set; } = new();
+        public List<string> SpuriousCitations { get; set; } = new();
+        public List<string> GroundedCitations { get; set; } = new();
+        public Dictionary<string, int> SourceTaxonomyCounts { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string VerifiedAnswer { get; set; } = string.Empty;
     }
 
@@ -654,5 +676,50 @@ namespace MVCCaseManagement.Models.AI
         public VerificationResult? Verification { get; set; }
         public EvidenceSufficiencyEvaluation? Sufficiency { get; set; }
     }
+
+    public class DocumentChunkDto
+    {
+        public long ChunkId { get; set; }
+        public string CaseType { get; set; } = string.Empty;
+        public int CaseId { get; set; }
+        public string DocumentName { get; set; } = string.Empty;
+        public string DocumentHash { get; set; } = string.Empty;
+        public int PageNumber { get; set; } = 1;
+        public int ChunkIndex { get; set; } = 1;
+        public string? Section { get; set; }
+        public string? SectionHeader { get => Section; set => Section = value; }
+        public string ChunkText { get; set; } = string.Empty;
+        public int TokenCount { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+    }
+
+    public class AIMessageFeedbackDto
+    {
+        public int FeedbackId { get; set; }
+        public int MessageId { get; set; }
+        public int UserId { get; set; }
+        public int Rating { get; set; } // +1 or -1
+        public string? Category { get; set; } // Hallucination, IncorrectCitation, CalculationError, MissingFact
+        public string? UserComment { get; set; }
+        public string? Comment { get => UserComment; set => UserComment = value; }
+        public string? IssueCategory { get => Category; set => Category = value; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
+    }
+
+    public class DynamicQueryResult
+    {
+        public string IntentName { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Summary { get; set; } = string.Empty;
+        public string FormattedMarkdown { get; set; } = string.Empty;
+        public int RecordCount { get; set; }
+        public int RowCount { get => RecordCount; set => RecordCount = value; }
+        public bool IsDeterministicSuccess { get; set; }
+        public bool Success { get => IsDeterministicSuccess; set => IsDeterministicSuccess = value; }
+        public Dictionary<string, string> KeyMetrics { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<Dictionary<string, object>> Records { get; set; } = new();
+        public List<CitationDto> Citations { get; set; } = new();
+    }
 }
+
 

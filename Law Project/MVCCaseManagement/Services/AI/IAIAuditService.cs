@@ -17,6 +17,10 @@ namespace MVCCaseManagement.Services.AI
 
         Task<int> SaveMessageAsync(int conversationId, string role, string messageText, string? model = null, CancellationToken cancellationToken = default);
 
+        Task<int> SaveMessageAsync(int conversationId, string role, string messageText, string? model, string? citationsJson, int executionTimeMs, int promptTokens, int completionTokens, string? verificationResultJson, CancellationToken cancellationToken = default);
+
+        Task<bool> SubmitFeedbackAsync(int messageId, int userId, int rating, string? comment, string? issueCategory, CancellationToken cancellationToken = default);
+
         Task<List<AIMessage>> GetMessagesByConversationIdAsync(int conversationId, CancellationToken cancellationToken = default);
 
         Task<bool> DeleteConversationAsync(int conversationId, int userId, CancellationToken cancellationToken = default);

@@ -28,6 +28,7 @@ namespace MVCCaseManagement.Services.AI
         private readonly ILegalWebSearchService _webSearch;
         private readonly ISimilarCaseService _similarCaseService;
         private readonly DBHelper _db;
+        private readonly IDynamicDatabaseRetrievalService? _dynamicRetrieval;
         private readonly ILogger<CaseContextBuilder> _logger;
 
         public CaseContextBuilder(
@@ -44,7 +45,8 @@ namespace MVCCaseManagement.Services.AI
             ILegalWebSearchService webSearch,
             ISimilarCaseService similarCaseService,
             DBHelper db,
-            ILogger<CaseContextBuilder> logger)
+            ILogger<CaseContextBuilder> logger,
+            IDynamicDatabaseRetrievalService? dynamicRetrieval = null)
         {
             _caseRepo = caseRepo ?? throw new ArgumentNullException(nameof(caseRepo));
             _labourRepo = labourRepo ?? throw new ArgumentNullException(nameof(labourRepo));
@@ -60,6 +62,7 @@ namespace MVCCaseManagement.Services.AI
             _similarCaseService = similarCaseService ?? throw new ArgumentNullException(nameof(similarCaseService));
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _dynamicRetrieval = dynamicRetrieval;
         }
 
         public Task<CaseDossier?> BuildDossierAsync(string caseType, int caseId, CancellationToken cancellationToken = default)
@@ -186,6 +189,15 @@ namespace MVCCaseManagement.Services.AI
             facts["Accident Date"] = mvc.AccidentDate.HasValue ? mvc.AccidentDate.Value.ToString("dd-MM-yyyy") : "Not specified";
             facts["Claim Amount"] = mvc.ClaimAmount.HasValue ? $"Rs. {mvc.ClaimAmount.Value:N2}" : "Not specified";
             facts["Award Amount"] = mvc.AdverseAward?.AwardAmount.HasValue == true ? $"Rs. {mvc.AdverseAward.AwardAmount.Value:N2}" : "N/A";
+            if (mvc.AdverseAward?.EPDepositedAmount.HasValue == true)
+                facts["EP Deposited Amount"] = $"Rs. {mvc.AdverseAward.EPDepositedAmount.Value:N2}";
+            if (mvc.AdverseAward?.AwardAmount.HasValue == true && mvc.AdverseAward?.EPDepositedAmount.HasValue == true)
+            {
+                decimal bal = mvc.AdverseAward.AwardAmount.Value - mvc.AdverseAward.EPDepositedAmount.Value;
+                facts["Remaining Balance"] = $"Rs. {bal:N2}";
+            }
+            if (mvc.AdverseAward?.InterestRate.HasValue == true)
+                facts["Interest Rate"] = $"{mvc.AdverseAward.InterestRate.Value:0.##}% p.a.";
             facts["Stage"] = mvc.CurrentStage ?? "Not recorded";
             facts["Judge Name"] = mvc.ECourtsJudge ?? "Not specified";
             facts["Court Hall"] = mvc.CourtHall ?? mvc.ECourtsCourtNo ?? "Not specified";
@@ -607,6 +619,38 @@ namespace MVCCaseManagement.Services.AI
                     case LegalQueryIntent.DivisionalStatistics:
                         var divDossier = await BuildDivisionalDossierAsync(clean, userDivisionId, cancellationToken);
                         if (divDossier != null) return divDossier;
+                        break;
+
+                    case LegalQueryIntent.AgeFilter:
+                    case LegalQueryIntent.FinancialBalance:
+                    case LegalQueryIntent.DataIntegrityAudit:
+                    case LegalQueryIntent.CaseTimeline:
+                    case LegalQueryIntent.DelayAnalysis:
+                    case LegalQueryIntent.MissingEvidence:
+                    case LegalQueryIntent.CaseComparison:
+                        if (_dynamicRetrieval != null)
+                        {
+                            var dynResult = await _dynamicRetrieval.ExecuteDynamicQueryAsync(plan, userDivisionId, cancellationToken);
+                            if (dynResult.Success)
+                            {
+                                var dynDossier = new CaseDossier
+                                {
+                                    CaseType = plan.Intent.ToString(),
+                                    CaseNumber = dynResult.Title,
+                                    CourtName = "NWKRTC Central Database",
+                                    CurrentStage = $"{dynResult.RowCount} Records Retrieved",
+                                    Petitioner = "NWKRTC Legal System",
+                                    Respondent = "NWKRTC"
+                                };
+                                dynDossier.StructuredFacts["DirectMarkdown"] = dynResult.FormattedMarkdown;
+                                dynDossier.StructuredFacts["TotalRecords"] = dynResult.RowCount.ToString();
+                                foreach (var kvp in dynResult.KeyMetrics)
+                                {
+                                    dynDossier.StructuredFacts[kvp.Key] = kvp.Value;
+                                }
+                                return dynDossier;
+                            }
+                        }
                         break;
                 }
             }

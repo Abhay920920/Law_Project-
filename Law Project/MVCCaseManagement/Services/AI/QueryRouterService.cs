@@ -49,6 +49,9 @@ namespace MVCCaseManagement.Services.AI
             plan.CaseNumber = result.ExtractedCaseNumber;
             plan.CaseYear = result.ExtractedYear;
             plan.CNRNumber = result.ExtractedCNR;
+            plan.SecondaryCaseNumber = result.SecondaryCaseNumber;
+            plan.SecondaryCaseType = result.SecondaryCaseType;
+            plan.SecondaryCaseYear = result.SecondaryCaseYear;
 
             ExtractVehicleNumber(clean, result, plan);
             ExtractDriver(clean, result, plan);
@@ -121,7 +124,108 @@ namespace MVCCaseManagement.Services.AI
                                            plan.DivisionId.HasValue;
 
             // Route Evaluation Matrix
-            if (!string.IsNullOrWhiteSpace(plan.DriverName) || !string.IsNullOrWhiteSpace(plan.DriverTokenNo))
+            // 0. Specialized Intelligent Retrieval Intents
+            var ageMatch = Regex.Match(lower, @"(?:older than|more than|exceeding|pending for|pending over|age greater than)\s+(\d+)\s*(days?|months?|years?)?");
+            if (!ageMatch.Success)
+            {
+                ageMatch = Regex.Match(lower, @"(\d+)\s*(days?|months?|years?)\s*(?:old|older|pending)");
+            }
+
+            bool mentionsAge = ageMatch.Success || (lower.Contains("pending") && (lower.Contains("days") || lower.Contains("months") || lower.Contains("older than")));
+            bool mentionsFinancialBalance = (lower.Contains("awarded") && lower.Contains("paid") && lower.Contains("remain")) ||
+                                            lower.Contains("compensation balance") || lower.Contains("unpaid compensation") ||
+                                            lower.Contains("unpaid amount") || lower.Contains("how much has been paid") ||
+                                            lower.Contains("how much compensation was awarded") ||
+                                            lower.Contains("financial balance") || lower.Contains("award amount") ||
+                                            lower.Contains("deposited amount") || lower.Contains("remaining balance") ||
+                                            (lower.Contains("award") && (lower.Contains("deposit") || lower.Contains("balance"))) ||
+                                            lower.Contains("ಪರಿಹಾರ ಮೊತ್ತ") || lower.Contains("ಠೇವಣಿ") || lower.Contains("ಬಾಕಿ ಮೊತ್ತ");
+            bool mentionsDataIntegrity = (lower.Contains("missing document") || lower.Contains("missing documents")) &&
+                                         (lower.Contains("inconsistent date") || lower.Contains("inconsistent dates") || lower.Contains("audit") || lower.Contains("data"));
+            if (!mentionsDataIntegrity && (lower.Contains("missing documents or inconsistent dates") || lower.Contains("missing document or inconsistent date")))
+            {
+                mentionsDataIntegrity = true;
+            }
+            bool mentionsTimeline = lower.Contains("timeline") || lower.Contains("chronological") || lower.Contains("chronological timeline");
+            bool mentionsDelay = (lower.Contains("delay") || lower.Contains("delayed")) && 
+                                 (lower.Contains("reason") || lower.Contains("reasons") || lower.Contains("why") || lower.Contains("history") || lower.Contains("recorded"));
+            bool mentionsMissingEvidence = (lower.Contains("missing") || lower.Contains("what information is missing") || lower.Contains("evidentiary gap")) &&
+                                           (lower.Contains("prepare") || lower.Contains("report") || lower.Contains("evidence") || lower.Contains("information is missing"));
+            bool mentionsCaseComparison = (!string.IsNullOrWhiteSpace(result.SecondaryCaseNumber) && lower.Contains("compare")) ||
+                                          lower.Contains("compare cases across") || lower.Contains("compare two case types") || 
+                                          (lower.Contains("compare") && (lower.Contains("mvc") || lower.Contains("case")) && (lower.Contains("and") || lower.Contains("with"))) ||
+                                          (lower.Contains("compare") && lower.Contains("mvc") && lower.Contains("labour"));
+
+            if (mentionsAge)
+            {
+                int days = 180;
+                if (ageMatch.Success && int.TryParse(ageMatch.Groups[1].Value, out int parsedNum))
+                {
+                    string unit = ageMatch.Groups[2].Value.ToLowerInvariant();
+                    if (unit.StartsWith("month")) days = parsedNum * 30;
+                    else if (unit.StartsWith("year")) days = parsedNum * 365;
+                    else days = parsedNum;
+                }
+                plan.AgeThresholdDays = days;
+                plan.Intent = LegalQueryIntent.AgeFilter;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = $"Pending case age filter (Threshold: >{days} days) routed strictly to internal database.";
+            }
+            else if (mentionsFinancialBalance)
+            {
+                plan.Intent = LegalQueryIntent.FinancialBalance;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Financial compensation awarded, paid, and balance computation routed to internal database.";
+            }
+            else if (mentionsDataIntegrity)
+            {
+                plan.Intent = LegalQueryIntent.DataIntegrityAudit;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Data integrity audit for missing documents and inconsistent dates routed to internal database.";
+            }
+            else if (mentionsTimeline)
+            {
+                plan.Intent = LegalQueryIntent.CaseTimeline;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Chronological case timeline of procedural events, notings, orders, and hearings routed to internal database.";
+            }
+            else if (mentionsDelay)
+            {
+                plan.Intent = LegalQueryIntent.DelayAnalysis;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Case delay diagnostics and procedural postponement analysis routed to internal database.";
+            }
+            else if (mentionsMissingEvidence)
+            {
+                plan.Intent = LegalQueryIntent.MissingEvidence;
+                plan.IsDeterministicDatabaseQuery = true;
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Pre-briefing missing evidentiary documentation audit routed to internal database.";
+            }
+            else if (mentionsCaseComparison)
+            {
+                plan.Intent = LegalQueryIntent.CaseComparison;
+                plan.IsDeterministicDatabaseQuery = true;
+                plan.ComparisonCaseType = lower.Contains("labour") ? "LABOUR" : "MVC";
+                plan.SpecificField = "CaseComparison";
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = !string.IsNullOrWhiteSpace(result.SecondaryCaseNumber)
+                    ? $"Direct case comparison between {result.ExtractedCaseType ?? "MVC"} {result.ExtractedCaseNumber}/{result.ExtractedYear} and {result.SecondaryCaseType ?? "MVC"} {result.SecondaryCaseNumber}/{result.SecondaryCaseYear}."
+                    : "Cross-category litigation comparison between MVC and Labour case portfolios routed to internal database.";
+            }
+            else if (!string.IsNullOrWhiteSpace(plan.DriverName) || !string.IsNullOrWhiteSpace(plan.DriverTokenNo))
             {
                 // A1. Driver Accident History & Caseload Intent
                 plan.Intent = LegalQueryIntent.DriverHistory;
@@ -325,6 +429,61 @@ namespace MVCCaseManagement.Services.AI
             result.RequiredSources = result.RequiredSources.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             plan.PlanSummary = result.Reasoning;
             plan.PerSourceTimeoutSeconds = 15;
+
+            // Question-Driven Aspect Detection: Target only the specific data fields requested
+            if (plan.Intent == LegalQueryIntent.CaseComparison || mentionsCaseComparison)
+            {
+                plan.SpecificField = "CaseComparison";
+            }
+            else if (lower.Contains("what happened in case") && !Regex.IsMatch(lower, @"\b20\d\d\b"))
+            {
+                plan.SpecificField = "AmbiguousCase";
+            }
+            else if (lower.Contains("hearing") || lower.Contains("next date") || lower.Contains("when is") ||
+                lower.Contains("court hall") || lower.Contains("judge") || lower.Contains("coram") ||
+                lower.Contains("current stage") || lower.Contains("stage") || lower.Contains("listing") ||
+                lower.Contains("ವಿಚಾರಣೆ") || lower.Contains("ದಿನಾಂಕ"))
+            {
+                plan.SpecificField = "HearingStage";
+            }
+            else if (lower.Contains("claimant") || lower.Contains("petitioner") || lower.Contains("respondent") ||
+                     lower.Contains("driver") || lower.Contains("conductor") || lower.Contains("token") ||
+                     lower.Contains("badge") || lower.Contains("who filed") || lower.Contains("who is the claimant") ||
+                     lower.Contains("who is the petitioner") || lower.Contains("ಅರ್ಜಿದಾರ") || lower.Contains("ಚಾಲಕ"))
+            {
+                plan.SpecificField = "PartiesLitigants";
+            }
+            else if (mentionsFinancialBalance || lower.Contains("award") || lower.Contains("compensation") ||
+                     lower.Contains("balance") || lower.Contains("deposited") || lower.Contains("deposit") ||
+                     lower.Contains("claim amount") || lower.Contains("how much") || lower.Contains("paid") ||
+                     lower.Contains("unpaid") || lower.Contains("ಪರಿಹಾರ") || lower.Contains("ಮೊತ್ತ") || lower.Contains("ಬಾಕಿ"))
+            {
+                plan.SpecificField = "FinancialBalance";
+            }
+            else if (lower.Contains("vehicle") || lower.Contains("bus no") || lower.Contains("bus number") ||
+                     lower.Contains("accident date") || lower.Contains("fir") || lower.Contains("police station") ||
+                     lower.Contains("crime no") || lower.Contains("ವಾಹನ") || lower.Contains("ಅಪಘಾತ"))
+            {
+                plan.SpecificField = "VehicleAccident";
+            }
+            else if (lower.Contains("advocate") || lower.Contains("lawyer") || lower.Contains("counsel") ||
+                     lower.Contains("entrustment") || lower.Contains("objection") || lower.Contains("written statement") ||
+                     lower.Contains("ವಕೀಲ"))
+            {
+                plan.SpecificField = "AdvocateEntrustment";
+            }
+            else if (lower.Contains("status") || lower.Contains("pending") || lower.Contains("disposed") ||
+                     lower.Contains("outcome") || lower.Contains("result") || lower.Contains("decree") ||
+                     lower.Contains("ಸ್ಥಿತಿ") || lower.Contains("ವಿಲೇವಾರಿ"))
+            {
+                plan.SpecificField = "CaseStatus";
+            }
+            else if (lower.Contains("all details") || lower.Contains("full details") || lower.Contains("complete details") ||
+                     lower.Contains("entire case") || lower.Contains("dossier") || lower.Contains("summarize") ||
+                     lower.Contains("overview") || lower.Contains("ಸಾರಾಂಶ") || lower.Contains("ವಿವರ"))
+            {
+                plan.SpecificField = "FullDossier";
+            }
 
             // Multi-Stage Query Decomposition & Planning
             DecomposeQuery(clean, plan, result);
@@ -570,24 +729,40 @@ namespace MVCCaseManagement.Services.AI
             }
 
             // 1. Standard MVC match (e.g. MVC 123/2024, MVC No. 123/2024, MVC-123-2024)
-            var mvcMatch = Regex.Match(input, @"\b(?:MVC(?:\s*No\.?)?[/\s-]*)(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
-            if (mvcMatch.Success)
+            var mvcMatches = Regex.Matches(input, @"\b(?:MVC(?:\s*No\.?)?[/\s-]*)(\d+)[/\s-]*(20\d\d|\d\d)\b", RegexOptions.IgnoreCase);
+            if (mvcMatches.Count > 0)
             {
                 result.ExtractedCaseType = "MVC";
-                result.ExtractedCaseNumber = mvcMatch.Groups[1].Value;
-                string yr = mvcMatch.Groups[2].Value;
+                result.ExtractedCaseNumber = mvcMatches[0].Groups[1].Value;
+                string yr = mvcMatches[0].Groups[2].Value;
                 result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
+
+                if (mvcMatches.Count > 1)
+                {
+                    result.SecondaryCaseType = "MVC";
+                    result.SecondaryCaseNumber = mvcMatches[1].Groups[1].Value;
+                    string yr2 = mvcMatches[1].Groups[2].Value;
+                    result.SecondaryCaseYear = yr2.Length == 2 ? 2000 + int.Parse(yr2) : int.Parse(yr2);
+                }
                 return;
             }
 
             // 1b. Reverse MVC match: "465 of 2017 MVC", "465/2017 MVC"
-            var mvcRevMatch = Regex.Match(input, @"\b(\d+)\s*(?:of|[/\s-])\s*(20\d\d|\d\d)\s*(?:MVC|MACT)\b", RegexOptions.IgnoreCase);
-            if (mvcRevMatch.Success)
+            var mvcRevMatches = Regex.Matches(input, @"\b(\d+)\s*(?:of|[/\s-])\s*(20\d\d|\d\d)\s*(?:MVC|MACT)\b", RegexOptions.IgnoreCase);
+            if (mvcRevMatches.Count > 0)
             {
                 result.ExtractedCaseType = "MVC";
-                result.ExtractedCaseNumber = mvcRevMatch.Groups[1].Value;
-                string yr = mvcRevMatch.Groups[2].Value;
+                result.ExtractedCaseNumber = mvcRevMatches[0].Groups[1].Value;
+                string yr = mvcRevMatches[0].Groups[2].Value;
                 result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
+
+                if (mvcRevMatches.Count > 1)
+                {
+                    result.SecondaryCaseType = "MVC";
+                    result.SecondaryCaseNumber = mvcRevMatches[1].Groups[1].Value;
+                    string yr2 = mvcRevMatches[1].Groups[2].Value;
+                    result.SecondaryCaseYear = yr2.Length == 2 ? 2000 + int.Parse(yr2) : int.Parse(yr2);
+                }
                 return;
             }
 
@@ -635,6 +810,14 @@ namespace MVCCaseManagement.Services.AI
                 result.ExtractedCaseNumber = otherMatch.Groups[2].Value;
                 string yr = otherMatch.Groups[3].Value;
                 result.ExtractedYear = yr.Length == 2 ? 2000 + int.Parse(yr) : int.Parse(yr);
+                return;
+            }
+
+            // 6. Ambiguous / Generic Case Number without year or type (e.g. "case 465", "case no. 465", "#465")
+            var genericCaseMatch = Regex.Match(input, @"\b(?:case\s*(?:no\.?|number)?\s*|#\s*)(\d+)\b", RegexOptions.IgnoreCase);
+            if (genericCaseMatch.Success)
+            {
+                result.ExtractedCaseNumber = genericCaseMatch.Groups[1].Value;
                 return;
             }
         }

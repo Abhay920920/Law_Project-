@@ -86,6 +86,7 @@ namespace MVCCaseManagement.Services.AI
                         selectedModel, estimatedChars, estimatedChars / 4);
                 }
 
+                int effectiveCtx = Math.Clamp(_options.MaxContextTokens > 0 ? _options.MaxContextTokens : 8192, 2048, 32768);
                 var payload = new
                 {
                     model = selectedModel,
@@ -95,7 +96,7 @@ namespace MVCCaseManagement.Services.AI
                     {
                         temperature = request.Temperature > 0 ? request.Temperature : 0.2,
                         num_predict = request.MaxTokens > 0 ? request.MaxTokens : 1024,
-                        num_ctx = 4096,  // Optimized from 8192 to accelerate prompt prefill and reduce RAM/VRAM load
+                        num_ctx = effectiveCtx,
                         top_p = 0.9,
                         repeat_penalty = 1.1
                     }

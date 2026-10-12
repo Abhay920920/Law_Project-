@@ -1371,6 +1371,115 @@ namespace MVCCaseManagement.DAL
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_0_CaseActivityLogsMigrationId, migTimer11.ElapsedMilliseconds);
                     }
+
+                    // 16. Migration: DOCUMENT_CHUNKS, AI_MESSAGE_FEEDBACK & Telemetry
+                    const string v1_2_1_IndexedRAGMigrationId = "20261012_v1_2_1_NyayaPatha_Indexed_RAG_And_Telemetry";
+                    bool isV121Applied = false;
+                    using (var checkCmd = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_1_IndexedRAGMigrationId });
+                        isV121Applied = (int)(checkCmd.ExecuteScalar() ?? 0) > 0;
+                    }
+
+                    if (!isV121Applied)
+                    {
+                        var migTimer12 = Stopwatch.StartNew();
+                        logger.LogInformation("Applying migration: {MigrationId} (Nyaya Patha Indexed RAG & Feedback)...", v1_2_1_IndexedRAGMigrationId);
+
+                        string indexedRagSql = @"
+                            IF NOT EXISTS (SELECT 1 FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.name = 'DOCUMENT_CHUNKS' AND s.name = 'dbo')
+                            BEGIN
+                                CREATE TABLE [dbo].[DOCUMENT_CHUNKS] (
+                                    [ChunkID] BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                    [CaseType] NVARCHAR(50) NOT NULL,
+                                    [CaseID] INT NOT NULL,
+                                    [DocumentName] NVARCHAR(255) NOT NULL,
+                                    [DocumentHash] NVARCHAR(64) NOT NULL,
+                                    [PageNumber] INT NOT NULL CONSTRAINT [DF_DOCUMENT_CHUNKS_PageNumber] DEFAULT ((1)),
+                                    [ChunkIndex] INT NOT NULL CONSTRAINT [DF_DOCUMENT_CHUNKS_ChunkIndex] DEFAULT ((1)),
+                                    [Section] NVARCHAR(100) NULL,
+                                    [ChunkText] NVARCHAR(MAX) NOT NULL,
+                                    [TokenCount] INT NOT NULL CONSTRAINT [DF_DOCUMENT_CHUNKS_TokenCount] DEFAULT ((0)),
+                                    [CreatedAt] DATETIME NOT NULL CONSTRAINT [DF_DOCUMENT_CHUNKS_CreatedAt] DEFAULT (GETDATE())
+                                );
+                                CREATE INDEX [IX_DOCUMENT_CHUNKS_Case] ON [dbo].[DOCUMENT_CHUNKS] ([CaseType], [CaseID]);
+                                CREATE INDEX [IX_DOCUMENT_CHUNKS_Hash] ON [dbo].[DOCUMENT_CHUNKS] ([DocumentHash]);
+                                CREATE INDEX [IX_DOCUMENT_CHUNKS_Created] ON [dbo].[DOCUMENT_CHUNKS] ([CreatedAt] DESC);
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.name = 'AI_MESSAGE_FEEDBACK' AND s.name = 'dbo')
+                            BEGIN
+                                CREATE TABLE [dbo].[AI_MESSAGE_FEEDBACK] (
+                                    [FeedbackID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                    [MessageID] INT NOT NULL,
+                                    [UserID] INT NOT NULL,
+                                    [Rating] INT NOT NULL,
+                                    [Category] NVARCHAR(50) NULL,
+                                    [UserComment] NVARCHAR(MAX) NULL,
+                                    [CreatedAt] DATETIME NOT NULL CONSTRAINT [DF_AI_FEEDBACK_CreatedAt] DEFAULT (GETDATE())
+                                );
+                                CREATE INDEX [IX_AI_FEEDBACK_Message] ON [dbo].[AI_MESSAGE_FEEDBACK] ([MessageID]);
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.name = 'AI_MESSAGES' AND s.name = 'dbo')
+                            BEGIN
+                                CREATE TABLE [dbo].[AI_MESSAGES] (
+                                    [MessageID] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                    [ConversationID] INT NOT NULL,
+                                    [Role] NVARCHAR(20) NOT NULL,
+                                    [MessageText] NVARCHAR(MAX) NOT NULL,
+                                    [Model] NVARCHAR(100) NULL,
+                                    [CreatedAt] DATETIME NOT NULL CONSTRAINT [DF_AI_MESSAGES_CreatedAt] DEFAULT (GETDATE())
+                                );
+                                CREATE INDEX [IX_AI_MESSAGES_ConversationID] ON [dbo].[AI_MESSAGES] ([ConversationID], [MessageID] ASC);
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AI_MESSAGES]') AND name = 'CitationsJson')
+                            BEGIN
+                                ALTER TABLE [dbo].[AI_MESSAGES] ADD [CitationsJson] NVARCHAR(MAX) NULL;
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AI_MESSAGES]') AND name = 'ExecutionTimeMs')
+                            BEGIN
+                                ALTER TABLE [dbo].[AI_MESSAGES] ADD [ExecutionTimeMs] INT NULL;
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AI_MESSAGES]') AND name = 'PromptTokens')
+                            BEGIN
+                                ALTER TABLE [dbo].[AI_MESSAGES] ADD [PromptTokens] INT NULL;
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AI_MESSAGES]') AND name = 'CompletionTokens')
+                            BEGIN
+                                ALTER TABLE [dbo].[AI_MESSAGES] ADD [CompletionTokens] INT NULL;
+                            END;
+
+                            IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('[dbo].[AI_MESSAGES]') AND name = 'VerificationResultJson')
+                            BEGIN
+                                ALTER TABLE [dbo].[AI_MESSAGES] ADD [VerificationResultJson] NVARCHAR(MAX) NULL;
+                            END;
+                        ";
+
+                        using (var schemaCmd = new SqlCommand(indexedRagSql, conn))
+                        {
+                            schemaCmd.CommandTimeout = 120;
+                            schemaCmd.ExecuteNonQuery();
+                        }
+
+                        migTimer12.Stop();
+
+                        string recordSql13 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd13 = new SqlCommand(recordSql13, conn))
+                        {
+                            recordCmd13.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_1_IndexedRAGMigrationId });
+                            recordCmd13.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Nyaya Patha Indexed RAG Schema: DOCUMENT_CHUNKS, AI_MESSAGE_FEEDBACK & Telemetry" });
+                            recordCmd13.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer12.ElapsedMilliseconds });
+                            recordCmd13.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_1_IndexedRAGMigrationId, migTimer12.ElapsedMilliseconds);
+                    }
                 }
                 finally
                 {
