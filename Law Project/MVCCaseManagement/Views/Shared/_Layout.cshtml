@@ -32,6 +32,52 @@
             cursor: pointer;
             padding-left: 2px;
         }
+
+        /* Sidebar Module Switcher */
+        .sidebar-module-header {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .module-switcher-nav {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            padding-bottom: 2px;
+            scrollbar-width: none;
+        }
+        .module-switcher-nav::-webkit-scrollbar {
+            display: none;
+        }
+        .module-chip {
+            padding: 4px 8px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            border-radius: 6px;
+            color: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .module-chip:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+        .module-chip.active {
+            color: #fff;
+            background: var(--primary, #2563eb);
+            border-color: var(--primary, #2563eb);
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+        }
+        .bg-purple { background-color: #8b5cf6 !important; }
     </style>
 </head>
 <body>
@@ -91,18 +137,32 @@
                     var currentModuleQuery = Context.Request.Query["module"].ToString();
                     var divId_Layout = User.FindFirst("DivisionID")?.Value;
                     bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
-                    var isEP = currentController == "EP";
                     var isGratuity = currentController == "Gratuity";
                     var isLabour = currentController == "Labour" || currentController == "LabourEP";
                     var isReport = currentController == "Report";
+                    var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
+                    var isMaster = currentController == "Master" || currentController == "ApiDashboard";
+                    var isAudit = currentController == "Audit";
+                    var isEP = currentController == "EP";
+                    var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
+
+                    // Active Module Context Labels
+                    string activeModuleName = "MVC Claims";
+                    string activeModuleBadgeClass = "bg-primary";
+                    if (isLabour) { activeModuleName = "Labour Disputes"; activeModuleBadgeClass = "bg-purple text-white"; }
+                    else if (isGratuity) { activeModuleName = "Gratuity Claims"; activeModuleBadgeClass = "bg-success"; }
+                    else if (isReport) { activeModuleName = "Reports & MIS"; activeModuleBadgeClass = "bg-info text-dark"; }
+                    else if (isOtherCourts) { activeModuleName = "Other Courts"; activeModuleBadgeClass = "bg-warning text-dark"; }
+                    else if (isMaster) { activeModuleName = "Systems Setup"; activeModuleBadgeClass = "bg-secondary"; }
+
                     // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
                     bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD");
                 }
 
-                <a class="nav-link @(currentController == "Home" ? "active" : "")" href="/Home/Index">
+                <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")" href="/Home/Index">
                     <i class="bi bi-house-door"></i>
                     <div class="link-text">
-                        <span>Home</span>
+                        <span>Central Portal Home</span>
                     </div>
                 </a>
 
@@ -123,8 +183,34 @@
                     </a>
                 }
 
+                <!-- Quick Module Switcher -->
+                <div class="sidebar-module-header">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.63rem; letter-spacing: 0.05em;">ACTIVE MODULE</small>
+                        <span class="badge @activeModuleBadgeClass px-2 py-0" style="font-size: 0.62rem;">@activeModuleName</span>
+                    </div>
+                    <div class="module-switcher-nav">
+                        <a href="/Dashboard" class="module-chip @(isMVC ? "active" : "")" title="MVC Claims Module">
+                            <i class="bi bi-truck-front"></i> MVC
+                        </a>
+                        <a href="/Labour/Index" class="module-chip @(isLabour ? "active" : "")" title="Labour Module">
+                            <i class="bi bi-briefcase"></i> Labour
+                        </a>
+                        <a href="/Gratuity" class="module-chip @(isGratuity ? "active" : "")" title="Gratuity Module">
+                            <i class="bi bi-cash-coin"></i> Gratuity
+                        </a>
+                        <a href="/Home/OtherCourts" class="module-chip @(isOtherCourts ? "active" : "")" title="Other Courts">
+                            <i class="bi bi-bank"></i> Other
+                        </a>
+                        <a href="@(isCO_Layout ? "/Report/CentralOffice" : "/Report/Index")" class="module-chip @(isReport ? "active" : "")" title="Reports & MIS">
+                            <i class="bi bi-bar-chart"></i> Reports
+                        </a>
+                    </div>
+                </div>
+
                 @if (isReport)
                 {
+                    <div class="nav-section-title">REPORTS & MIS</div>
                     <a class="nav-link @(string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
                         <i class="bi bi-file-earmark-spreadsheet-fill text-primary me-2"></i>
                         <span>MVC</span>
@@ -148,6 +234,7 @@
                 }
                 else if (isLabour)
                 {
+                    <div class="nav-section-title">LABOUR DISPUTES</div>
                     <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Labour/Index">
                         <i class="bi bi-columns-gap"></i>
                         <span>Labour Dashboard</span>
@@ -228,89 +315,9 @@
                         </a>
                     }
                 }
-                else if (!isGratuity)
+                else if (isGratuity)
                 {
-                    <a class="nav-link @(currentController == "Dashboard" ? "active" : "")" href="/Dashboard">
-                        <i class="bi bi-columns-gap"></i>
-                        <div class="link-text">
-                            <span>Dashboard</span>
-                        </div>
-                    </a>
-
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Case/Create">
-                            <i class="bi bi-plus-circle-fill"></i>
-                            <span>New Registration</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Case" && (ViewContext.RouteData.Values["action"]?.ToString() == "ThirdPartyList" || ViewContext.RouteData.Values["action"]?.ToString() == "RegisterThirdParty") ? "active" : "")" href="/Case/ThirdPartyList">
-                            <i class="bi bi-person-plus-fill"></i>
-                            <span>Third Party Cases</span>
-                        </a>
-                    }
-
-                    <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Case/Index">
-                        <i class="bi bi-stack"></i>
-                        <span>MVC Case List</span>
-                    </a>
-
-
-
-                    @if (!isReadOnlyRole && isCO_Layout)
-                    {
-                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
-                            <i class="bi bi-calendar-event-fill text-warning"></i>
-                            <span>HC Cause List</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Appeal" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantList" || ViewContext.RouteData.Values["action"]?.ToString() == "Register" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimant") ? "active" : "")" href="/Appeal/Register">
-                            <i class="bi bi-person-badge"></i>
-                            <span>Claimant Appeals</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Appeal" && ViewContext.RouteData.Values["action"]?.ToString() == "SLPRegistration" ? "active" : "")" href="/Appeal/SLPRegistration">
-                            <i class="bi bi-journal-plus"></i>
-                            <span>SLP Registration</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Audit" ? "active" : "")" href="/Audit">
-                            <i class="bi bi-shield-fill-check"></i>
-                            <span>Audit Registry</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(currentController == "Report" ? "active" : "")" href="/Report">
-                            <i class="bi bi-receipt-cutoff"></i>
-                            <span>Petty Bill</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "RemindBack" ? "active" : "")" href="/Case/RemindBack">
-                            <i class="bi bi-arrow-counterclockwise"></i>
-                            <span>MVC Remand Back Case</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "EP" ? "active" : "")" href="/EP">
-                            <i class="bi bi-hammer"></i>
-                            <span>EP (Execution Petitions)</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Judgement" ? "active" : "")" href="/Judgement">
-                            <i class="bi bi-bank2"></i>
-                            <span>Judgements & Circulars</span>
-                        </a>
-                    }
-                }
-                
-                @if (isGratuity)
-                {
+                    <div class="nav-section-title">GRATUITY CLAIMS</div>
                      <a class="nav-link @(currentController == "Gratuity" && (ViewContext.RouteData.Values["action"]?.ToString() == "Index" || ViewContext.RouteData.Values["action"]?.ToString() == "") ? "active" : "")" href="/Gratuity">
                          <i class="bi bi-columns-gap"></i>
                          <span>Gratuity Dashboard</span>
@@ -338,11 +345,109 @@
                          </a>
                      }
                 }
+                else if (isOtherCourts)
+                {
+                    <div class="nav-section-title">OTHER COURTS</div>
+                    <a class="nav-link @(currentAction == "OtherCourts" ? "active" : "")" href="/Home/OtherCourts">
+                        <i class="bi bi-bank2"></i>
+                        <span>Other Courts Gateway</span>
+                    </a>
+                    <a class="nav-link @(currentAction == "OSCorporation" ? "active" : "")" href="/Home/OSCorporation">
+                        <i class="bi bi-building"></i>
+                        <span>O.S (Corporation)</span>
+                    </a>
+                    <a class="nav-link @(currentAction == "OSClaimant" ? "active" : "")" href="/Home/OSClaimant">
+                        <i class="bi bi-person-fill"></i>
+                        <span>O.S (Claimant)</span>
+                    </a>
+                    <a class="nav-link @(currentAction == "OtherCourtsCaseList" ? "active" : "")" href="/Home/OtherCourtsCaseList">
+                        <i class="bi bi-list-columns"></i>
+                        <span>Case List</span>
+                    </a>
+                }
+                else
+                {
+                    <div class="nav-section-title">MVC / MACT CLAIMS</div>
+                    <a class="nav-link @(currentController == "Dashboard" ? "active" : "")" href="/Dashboard">
+                        <i class="bi bi-columns-gap"></i>
+                        <div class="link-text">
+                            <span>Dashboard</span>
+                        </div>
+                    </a>
 
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Case/Create">
+                            <i class="bi bi-plus-circle-fill"></i>
+                            <span>New Registration</span>
+                        </a>
+                        <a class="nav-link @(currentController == "Case" && (ViewContext.RouteData.Values["action"]?.ToString() == "ThirdPartyList" || ViewContext.RouteData.Values["action"]?.ToString() == "RegisterThirdParty") ? "active" : "")" href="/Case/ThirdPartyList">
+                            <i class="bi bi-person-plus-fill"></i>
+                            <span>Third Party Cases</span>
+                        </a>
+                    }
 
+                    <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Case/Index">
+                        <i class="bi bi-stack"></i>
+                        <span>MVC Case List</span>
+                    </a>
+
+                    @if (!isReadOnlyRole && isCO_Layout)
+                    {
+                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
+                            <i class="bi bi-calendar-event-fill text-warning"></i>
+                            <span>HC Cause List</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Appeal" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantList" || ViewContext.RouteData.Values["action"]?.ToString() == "Register" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimant") ? "active" : "")" href="/Appeal/Register">
+                            <i class="bi bi-person-badge"></i>
+                            <span>Claimant Appeals</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Appeal" && ViewContext.RouteData.Values["action"]?.ToString() == "SLPRegistration" ? "active" : "")" href="/Appeal/SLPRegistration">
+                            <i class="bi bi-journal-plus"></i>
+                            <span>SLP Registration</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Audit" ? "active" : "")" href="/Audit">
+                            <i class="bi bi-shield-fill-check"></i>
+                            <span>Audit Registry</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "EP" ? "active" : "")" href="/EP">
+                            <i class="bi bi-hammer"></i>
+                            <span>EP (Execution Petitions)</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+                    {
+                        <a class="nav-link @(currentController == "Report" ? "active" : "")" href="/Report">
+                            <i class="bi bi-receipt-cutoff"></i>
+                            <span>Petty Bill</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "RemindBack" ? "active" : "")" href="/Case/RemindBack">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            <span>MVC Remand Back Case</span>
+                        </a>
+                    }
+
+                    @if (!isReadOnlyRole)
+                    {
+                        <a class="nav-link @(currentController == "Judgement" ? "active" : "")" href="/Judgement">
+                            <i class="bi bi-bank2"></i>
+                            <span>Judgements & Circulars</span>
+                        </a>
+                    }
+                }
 
                 @if (User.IsInRole("Admin"))
                 {
+                    <div class="nav-section-title">ADMINISTRATION</div>
                     <a class="nav-link @(currentController == "Master" ? "active" : "")" href="/Master">
                         <i class="bi bi-gear-wide-connected"></i>
                         <span>Systems Setup</span>

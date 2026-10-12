@@ -154,10 +154,8 @@ namespace MVCCaseManagement.DAL
                         {
                             var validPayments = model.Payments.Where(p => p.Amount > 0).ToList();
                             decimal totalPaid = validPayments.Sum(p => p.Amount);
-                            if (totalPaid > 0)
-                            {
-                                model.AmountPaid = totalPaid;
-                            }
+                            model.AmountPaid = totalPaid;
+
                             var latest = validPayments.OrderByDescending(p => p.ChequeDate ?? p.PaymentDate).FirstOrDefault();
                             if (latest != null)
                             {
@@ -166,15 +164,24 @@ namespace MVCCaseManagement.DAL
                                 if (!model.ChequeDate.HasValue)
                                     model.ChequeDate = latest.ChequeDate;
                             }
-                            decimal targetAmount = (model.AwardAmount ?? 0) * ((model.LiabilityPercentage ?? 100) / 100m);
-                            if (targetAmount > 0 && (model.AmountPaid ?? 0) >= targetAmount)
+
+                            // If compliance status was not explicitly supplied, compute based on total liability
+                            if (string.IsNullOrEmpty(model.ComplianceStatus))
                             {
-                                model.ComplianceStatus = "Paid";
-                                model.DateOfCompliance ??= model.ChequeDate ?? DateTime.Today;
-                            }
-                            else if ((model.AmountPaid ?? 0) > 0)
-                            {
-                                model.ComplianceStatus = "Partially Paid";
+                                decimal targetAmount = (model.AwardAmount ?? 0) * ((model.LiabilityPercentage ?? 100) / 100m);
+                                if (targetAmount > 0 && totalPaid >= targetAmount)
+                                {
+                                    model.ComplianceStatus = "Paid";
+                                    model.DateOfCompliance ??= model.ChequeDate ?? DateTime.Today;
+                                }
+                                else if (totalPaid > 0)
+                                {
+                                    model.ComplianceStatus = "Partially Paid";
+                                }
+                                else
+                                {
+                                    model.ComplianceStatus = "Pending";
+                                }
                             }
                         }
 
@@ -324,32 +331,41 @@ namespace MVCCaseManagement.DAL
                     try
                     {
                         // Ensure summary fields from payments if present
-                        if (model.Payments != null && model.Payments.Count > 0)
+                        if (model.Payments != null)
                         {
                             var validPayments = model.Payments.Where(p => p.Amount > 0).ToList();
                             decimal totalPaid = validPayments.Sum(p => p.Amount);
                             model.AmountPaid = totalPaid;
-                            
-                            var latest = validPayments.OrderByDescending(p => p.ChequeDate ?? p.PaymentDate).FirstOrDefault();
-                            if (latest != null)
+
+                            if (validPayments.Count > 0)
                             {
-                                if (!string.IsNullOrEmpty(latest.ChequeNumber))
-                                    model.ChequeNumber = latest.ChequeNumber;
-                                if (latest.ChequeDate.HasValue)
-                                    model.ChequeDate = latest.ChequeDate;
-                            }
-                            decimal targetAmount = (model.AwardAmount ?? 0) * ((model.LiabilityPercentage ?? 100) / 100m);
-                            if (targetAmount > 0 && totalPaid >= targetAmount)
-                            {
-                                model.ComplianceStatus = "Paid";
-                                model.DateOfCompliance ??= model.ChequeDate ?? DateTime.Today;
-                            }
-                            else if (totalPaid > 0)
-                            {
-                                model.ComplianceStatus = "Partially Paid";
+                                var latest = validPayments.OrderByDescending(p => p.ChequeDate ?? p.PaymentDate).FirstOrDefault();
+                                if (latest != null)
+                                {
+                                    if (!string.IsNullOrEmpty(latest.ChequeNumber))
+                                        model.ChequeNumber = latest.ChequeNumber;
+                                    if (latest.ChequeDate.HasValue)
+                                        model.ChequeDate = latest.ChequeDate;
+                                }
+
+                                if (string.IsNullOrEmpty(model.ComplianceStatus))
+                                {
+                                    decimal targetAmount = (model.AwardAmount ?? 0) * ((model.LiabilityPercentage ?? 100) / 100m);
+                                    if (targetAmount > 0 && totalPaid >= targetAmount)
+                                    {
+                                        model.ComplianceStatus = "Paid";
+                                        model.DateOfCompliance ??= model.ChequeDate ?? DateTime.Today;
+                                    }
+                                    else
+                                    {
+                                        model.ComplianceStatus = "Partially Paid";
+                                    }
+                                }
                             }
                             else
                             {
+                                model.ChequeNumber = null;
+                                model.ChequeDate = null;
                                 model.ComplianceStatus = "Pending";
                             }
                         }

@@ -379,7 +379,7 @@
                 calculateAudit();
             });
 
-            $(document).on('change', 'input.payment-date-input', function () {
+            $(document).on('change input', 'input.payment-date-input', function () {
                 const val = $(this).val();
                 if (val) {
                     $(this).closest('tr').find('input.payment-date-hidden').val(val);
@@ -424,6 +424,11 @@
                     const amt = parseFloat($(this).find('input[name*="Amount"]').val()) || 0;
                     if (amt <= 0) {
                         $(this).remove();
+                    } else {
+                        const chqDate = $(this).find('input.payment-date-input').val();
+                        if (chqDate) {
+                            $(this).find('input.payment-date-hidden').val(chqDate);
+                        }
                     }
                 });
                 reindexRows();
@@ -481,6 +486,7 @@
                 // Reducing Balance Variables
                 let currentPrincipal = adjustedAward;
                 let balanceInterest = 0; // Accumulated unpaid interest
+                let totalInterestAccrued = 0;
                 let totalPaid = 0;
                 let paymentBreakdownHtml = '';
                 
@@ -550,6 +556,7 @@
                         if (days > 0) {
                             const interest = (currentPrincipal * interestRate * days) / (365 * 100);
                             balanceInterest += interest;
+                            totalInterestAccrued += interest;
                             
                             let displayFrom = new Date(lastDate);
                             if (!isFirstPeriod) {
@@ -616,6 +623,7 @@
                      if (days > 0) {
                         const interest = (currentPrincipal * interestRate * days) / (365 * 100);
                         balanceInterest += interest;
+                        totalInterestAccrued += interest;
                         
                         let displayFrom = new Date(lastDate);
                         if (!isFirstPeriod) {
@@ -641,18 +649,12 @@
                 }
 
                 const finalTotalDue = Math.max(0, currentPrincipal + balanceInterest);
-                // Back-calculate effective interest accrued for display
-                // Total Due = PrincipalRem + InterestRem
-                // Initial = AdjustedAward
-                // TotalPaid = TotalPaid
-                // EffectiveInterest = (Total Due + Total Paid) - AdjustedAward
-                const finalInterestAccrued = (finalTotalDue + totalPaid) - adjustedAward;
 
                 // Update Summary Fields
                 $('#calcAwardAmount').val(adjustedAward.toFixed(2));
-                $('#calcInterestAmount').val(finalInterestAccrued.toFixed(2));
+                $('#calcInterestAmount').val(totalInterestAccrued.toFixed(2));
                 $('#calcLiabilityAmount').val(adjustedAward.toFixed(2));
-                $('#calcTotalDue').val((adjustedAward + finalInterestAccrued).toFixed(2));
+                $('#calcTotalDue').val((adjustedAward + totalInterestAccrued).toFixed(2));
                 $('#calcTotalPaid').val(totalPaid.toFixed(2));
                 $('#calcBalanceDue').val(finalTotalDue.toFixed(2));
                 

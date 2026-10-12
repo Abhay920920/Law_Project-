@@ -61,6 +61,10 @@ namespace MVCCaseManagement.Controllers
                 {
                     if (p.PaymentDate == default)
                         p.PaymentDate = p.ChequeDate ?? DateTime.Today;
+                    if (string.IsNullOrWhiteSpace(p.ChequeNumber))
+                        p.ChequeNumber = null;
+                    if (string.IsNullOrWhiteSpace(p.Remarks))
+                        p.Remarks = null;
                 }
             }
 
@@ -71,6 +75,10 @@ namespace MVCCaseManagement.Controllers
 
             ModelState.Remove("EPNumber");
             ModelState.Remove("DivisionName");
+            if (model.CaseID <= 0)
+            {
+                ModelState.Remove("CaseID");
+            }
 
             if (ModelState.IsValid)
             {
@@ -84,9 +92,9 @@ namespace MVCCaseManagement.Controllers
                         model.VehicleNo,
                         model.EPCourt,
                         model,
-                        $"Created Audit Calculation Entry #{model.EPNumber} (Arising from MVC: {model.ArisingFromMVCNo}/{model.ArisingFromMVCYear}, Court: {model.EPCourt})");
+                        $"Created Audit Calculation Entry #{model.EPNumber} (Arising from MVC: {model.ArisingFromMVCNo}/{model.ArisingFromMVCYear}, Court: {model.EPCourt}, Payments count: {model.Payments?.Count ?? 0})");
 
-                    TempData["SuccessMessage"] = "Audit entry created successfully.";
+                    TempData["SuccessMessage"] = "Audit entry and payment records created successfully.";
                     return RedirectToAction(nameof(Index));
                 }
                 ModelState.AddModelError("", "Error creating audit entry.");
@@ -128,6 +136,10 @@ namespace MVCCaseManagement.Controllers
                 {
                     if (p.PaymentDate == default)
                         p.PaymentDate = p.ChequeDate ?? DateTime.Today;
+                    if (string.IsNullOrWhiteSpace(p.ChequeNumber))
+                        p.ChequeNumber = null;
+                    if (string.IsNullOrWhiteSpace(p.Remarks))
+                        p.Remarks = null;
                 }
             }
 
@@ -139,6 +151,10 @@ namespace MVCCaseManagement.Controllers
 
             ModelState.Remove("EPNumber");
             ModelState.Remove("DivisionName");
+            if (model.CaseID <= 0)
+            {
+                ModelState.Remove("CaseID");
+            }
 
             if (ModelState.IsValid)
             {
