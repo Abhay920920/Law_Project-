@@ -33,50 +33,6 @@
             padding-left: 2px;
         }
 
-        /* Sidebar Module Switcher */
-        .sidebar-module-header {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 0.75rem;
-            padding: 0.6rem 0.75rem;
-            margin-bottom: 0.75rem;
-        }
-        .module-switcher-nav {
-            display: flex;
-            gap: 4px;
-            overflow-x: auto;
-            padding-bottom: 2px;
-            scrollbar-width: none;
-        }
-        .module-switcher-nav::-webkit-scrollbar {
-            display: none;
-        }
-        .module-chip {
-            padding: 4px 8px;
-            font-size: 0.72rem;
-            font-weight: 600;
-            border-radius: 6px;
-            color: rgba(255, 255, 255, 0.7);
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            white-space: nowrap;
-            text-decoration: none;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .module-chip:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.25);
-        }
-        .module-chip.active {
-            color: #fff;
-            background: var(--primary, #2563eb);
-            border-color: var(--primary, #2563eb);
-            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
-        }
         .bg-purple { background-color: #8b5cf6 !important; }
     </style>
 </head>
@@ -146,15 +102,6 @@
                     var isEP = currentController == "EP";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
-                    // Active Module Context Labels
-                    string activeModuleName = "MVC Claims";
-                    string activeModuleBadgeClass = "bg-primary";
-                    if (isLabour) { activeModuleName = "Labour Disputes"; activeModuleBadgeClass = "bg-purple text-white"; }
-                    else if (isGratuity) { activeModuleName = "Gratuity Claims"; activeModuleBadgeClass = "bg-success"; }
-                    else if (isReport) { activeModuleName = "Reports & MIS"; activeModuleBadgeClass = "bg-info text-dark"; }
-                    else if (isOtherCourts) { activeModuleName = "Other Courts"; activeModuleBadgeClass = "bg-warning text-dark"; }
-                    else if (isMaster) { activeModuleName = "Systems Setup"; activeModuleBadgeClass = "bg-secondary"; }
-
                     // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
                     bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD");
                 }
@@ -182,31 +129,6 @@
                         </div>
                     </a>
                 }
-
-                <!-- Quick Module Switcher -->
-                <div class="sidebar-module-header">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.63rem; letter-spacing: 0.05em;">ACTIVE MODULE</small>
-                        <span class="badge @activeModuleBadgeClass px-2 py-0" style="font-size: 0.62rem;">@activeModuleName</span>
-                    </div>
-                    <div class="module-switcher-nav">
-                        <a href="/Dashboard" class="module-chip @(isMVC ? "active" : "")" title="MVC Claims Module">
-                            <i class="bi bi-truck-front"></i> MVC
-                        </a>
-                        <a href="/Labour/Index" class="module-chip @(isLabour ? "active" : "")" title="Labour Module">
-                            <i class="bi bi-briefcase"></i> Labour
-                        </a>
-                        <a href="/Gratuity" class="module-chip @(isGratuity ? "active" : "")" title="Gratuity Module">
-                            <i class="bi bi-cash-coin"></i> Gratuity
-                        </a>
-                        <a href="/Home/OtherCourts" class="module-chip @(isOtherCourts ? "active" : "")" title="Other Courts">
-                            <i class="bi bi-bank"></i> Other
-                        </a>
-                        <a href="@(isCO_Layout ? "/Report/CentralOffice" : "/Report/Index")" class="module-chip @(isReport ? "active" : "")" title="Reports & MIS">
-                            <i class="bi bi-bar-chart"></i> Reports
-                        </a>
-                    </div>
-                </div>
 
                 @if (isReport)
                 {
