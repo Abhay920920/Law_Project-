@@ -23,7 +23,7 @@ namespace MVCCaseManagement.DAL
             string query = @"
                 SELECT ep.*, mc.MVCNo, mc.MVCYear 
                 FROM MVC_EP_DETAILS ep
-                JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
+                LEFT JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
                 LEFT JOIN MVC_CASE_ADVERSE_DETAILS adv ON mc.CaseID = adv.CaseID
                 WHERE 1=1";
             
@@ -31,7 +31,7 @@ namespace MVCCaseManagement.DAL
             
             if (divisionId > 0 && divisionId != 5)
             {
-                query += " AND mc.DivisionID = @DivisionID";
+                query += " AND COALESCE(ep.DivisionID, mc.DivisionID) = @DivisionID";
                 parameters.Add(new SqlParameter("@DivisionID", divisionId));
             }
 
@@ -83,14 +83,14 @@ namespace MVCCaseManagement.DAL
             string query = @"
                 SELECT COUNT(*) 
                 FROM MVC_EP_DETAILS ep
-                JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
+                LEFT JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
                 LEFT JOIN MVC_CASE_ADVERSE_DETAILS adv ON mc.CaseID = adv.CaseID
                 WHERE 1=1";
             
             var parameters = new List<SqlParameter>();
             if (divisionId > 0 && divisionId != 5)
             {
-                query += " AND mc.DivisionID = @DivisionID";
+                query += " AND COALESCE(ep.DivisionID, mc.DivisionID) = @DivisionID";
                 parameters.Add(new SqlParameter("@DivisionID", divisionId));
             }
 
@@ -132,7 +132,7 @@ namespace MVCCaseManagement.DAL
             string query = @"
                 SELECT ep.*, mc.MVCNo, mc.MVCYear 
                 FROM MVC_EP_DETAILS ep
-                JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
+                LEFT JOIN MVC_CASES mc ON ep.CaseID = mc.CaseID
                 WHERE ep.EPID = @EPID";
             
             DataTable dt = _db.ExecuteQuery(query, new[] { new SqlParameter("@EPID", epId) });
@@ -159,10 +159,8 @@ namespace MVCCaseManagement.DAL
                             var latest = validPayments.OrderByDescending(p => p.ChequeDate ?? p.PaymentDate).FirstOrDefault();
                             if (latest != null)
                             {
-                                if (string.IsNullOrEmpty(model.ChequeNumber))
-                                    model.ChequeNumber = latest.ChequeNumber;
-                                if (!model.ChequeDate.HasValue)
-                                    model.ChequeDate = latest.ChequeDate;
+                                model.ChequeNumber = latest.ChequeNumber;
+                                model.ChequeDate = latest.ChequeDate ?? latest.PaymentDate;
                             }
 
                             // If compliance status was not explicitly supplied, compute based on total liability
@@ -275,7 +273,7 @@ namespace MVCCaseManagement.DAL
                                     DateTime pDate = p.ChequeDate ?? (p.PaymentDate != default ? p.PaymentDate : DateTime.Today);
                                     pCmd.Parameters.AddWithValue("@Date", pDate);
                                     pCmd.Parameters.AddWithValue("@Cheque", (object?)p.ChequeNumber ?? DBNull.Value);
-                                    pCmd.Parameters.AddWithValue("@CDate", (object?)p.ChequeDate ?? DBNull.Value);
+                                    pCmd.Parameters.AddWithValue("@CDate", (object?)(p.ChequeDate ?? pDate));
                                     pCmd.Parameters.AddWithValue("@Rem", (object?)p.Remarks ?? DBNull.Value);
                                     pCmd.ExecuteNonQuery();
                                 }
@@ -342,13 +340,11 @@ namespace MVCCaseManagement.DAL
                                 var latest = validPayments.OrderByDescending(p => p.ChequeDate ?? p.PaymentDate).FirstOrDefault();
                                 if (latest != null)
                                 {
-                                    if (!string.IsNullOrEmpty(latest.ChequeNumber))
-                                        model.ChequeNumber = latest.ChequeNumber;
-                                    if (latest.ChequeDate.HasValue)
-                                        model.ChequeDate = latest.ChequeDate;
+                                    model.ChequeNumber = latest.ChequeNumber;
+                                    model.ChequeDate = latest.ChequeDate ?? latest.PaymentDate;
                                 }
 
-                                if (string.IsNullOrEmpty(model.ComplianceStatus))
+                                if (string.IsNullOrEmpty(model.ComplianceStatus) || model.ComplianceStatus == "Pending")
                                 {
                                     decimal targetAmount = (model.AwardAmount ?? 0) * ((model.LiabilityPercentage ?? 100) / 100m);
                                     if (targetAmount > 0 && totalPaid >= targetAmount)
@@ -487,7 +483,7 @@ namespace MVCCaseManagement.DAL
                                         DateTime pDate = p.ChequeDate ?? (p.PaymentDate != default ? p.PaymentDate : DateTime.Today);
                                         pCmd.Parameters.AddWithValue("@Date", pDate);
                                         pCmd.Parameters.AddWithValue("@Cheque", (object?)p.ChequeNumber ?? DBNull.Value);
-                                        pCmd.Parameters.AddWithValue("@CDate", (object?)p.ChequeDate ?? DBNull.Value);
+                                        pCmd.Parameters.AddWithValue("@CDate", (object?)(p.ChequeDate ?? pDate));
                                         pCmd.Parameters.AddWithValue("@Rem", (object?)p.Remarks ?? DBNull.Value);
                                         pCmd.ExecuteNonQuery();
                                     }
@@ -531,12 +527,12 @@ namespace MVCCaseManagement.DAL
             return new EPViewModel
             {
                 EPID = Convert.ToInt32(row["EPID"]),
-                CaseID = Convert.ToInt32(row["CaseID"]),
+                CaseID = row["CaseID"] != DBNull.Value ? Convert.ToInt32(row["CaseID"]) : 0,
                 EPNumber = row["EPNumber"]?.ToString(),
                 EPYear = row["EPYear"] != DBNull.Value ? (int?)Convert.ToInt32(row["EPYear"]) : null,
                 EPCourt = row["EPCourt"]?.ToString(),
-                ArisingFromMVCNo = row["ArisingFromMVCNo"]?.ToString() ?? row["MVCNo"]?.ToString(),
-                ArisingFromMVCYear = row["ArisingFromMVCYear"] != DBNull.Value ? (int?)Convert.ToInt32(row["ArisingFromMVCYear"]) : (row["MVCYear"] != DBNull.Value ? (int?)Convert.ToInt32(row["MVCYear"]) : null),
+                ArisingFromMVCNo = row["ArisingFromMVCNo"]?.ToString() ?? (row.Table.Columns.Contains("MVCNo") ? row["MVCNo"]?.ToString() : null),
+                ArisingFromMVCYear = row["ArisingFromMVCYear"] != DBNull.Value ? (int?)Convert.ToInt32(row["ArisingFromMVCYear"]) : (row.Table.Columns.Contains("MVCYear") && row["MVCYear"] != DBNull.Value ? (int?)Convert.ToInt32(row["MVCYear"]) : null),
                 ArisingFromMACT = row["ArisingFromMACT"]?.ToString(),
                 OriginalMVCStatus = row["OriginalMVCStatus"]?.ToString(),
                 EPStatus = row["EPStatus"]?.ToString(),
@@ -583,14 +579,17 @@ namespace MVCCaseManagement.DAL
             DataTable dt = _db.ExecuteQuery(query, new[] { new SqlParameter("@EPID", epId) });
             foreach (DataRow row in dt.Rows)
             {
+                DateTime pDate = row["PaymentDate"] != DBNull.Value ? (DateTime)row["PaymentDate"] : DateTime.Today;
+                DateTime? cDate = row["ChequeDate"] != DBNull.Value ? (DateTime?)row["ChequeDate"] : pDate;
+
                 payments.Add(new EPPaymentViewModel
                 {
                     PaymentID = (int)row["PaymentID"],
                     EPID = (int)row["EPID"],
                     Amount = (decimal)row["Amount"],
-                    PaymentDate = row["PaymentDate"] != DBNull.Value ? (DateTime)row["PaymentDate"] : DateTime.Today,
+                    PaymentDate = pDate,
                     ChequeNumber = row["ChequeNumber"]?.ToString(),
-                    ChequeDate = row["ChequeDate"] != DBNull.Value ? (DateTime?)row["ChequeDate"] : null,
+                    ChequeDate = cDate,
                     Remarks = row["Remarks"]?.ToString()
                 });
             }

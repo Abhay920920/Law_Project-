@@ -181,7 +181,7 @@
                                                 <input type="text" name="Payments[@i].ChequeNumber" class="form-control form-control-sm payment-cheque-input" value="@Model.Payments[i].ChequeNumber" placeholder="Cheque / DD / Ref No" />
                                             </td>
                                             <td>
-                                                <input type="date" name="Payments[@i].ChequeDate" class="form-control form-control-sm payment-date-input" value="@(Model.Payments[i].ChequeDate?.ToString("yyyy-MM-dd"))" />
+                                                <input type="date" name="Payments[@i].ChequeDate" class="form-control form-control-sm payment-date-input" value="@((Model.Payments[i].ChequeDate ?? Model.Payments[i].PaymentDate).ToString("yyyy-MM-dd"))" />
                                             </td>
                                             <td>
                                                 <input type="text" name="Payments[@i].Remarks" class="form-control form-control-sm payment-remarks-input" value="@Model.Payments[i].Remarks" placeholder="Remarks / Purpose" />

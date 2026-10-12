@@ -172,7 +172,7 @@ namespace MVCCaseManagement.Controllers
                         $"Updated Audit Calculation & Payments #{model.EPNumber} (Court: {model.EPCourt}, Stage: {model.EPStatus ?? "N/A"}, Payments count: {model.Payments?.Count ?? 0})");
 
                     TempData["SuccessMessage"] = "Audit entry and payment records updated successfully.";
-                    return RedirectToAction(nameof(Index));
+                    return RedirectToAction(nameof(Manage), new { id = model.EPID });
                 }
                 ModelState.AddModelError("", "Error updating audit entry.");
             }
