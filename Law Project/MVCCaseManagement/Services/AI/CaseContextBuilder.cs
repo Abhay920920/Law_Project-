@@ -254,7 +254,7 @@ namespace MVCCaseManagement.Services.AI
                 });
             }
 
-            // 3. e-Courts history if CNR exists
+            // 3. e-Courts history & orders if CNR exists
             if (!string.IsNullOrWhiteSpace(mvc.CNRNumber))
             {
                 var tracked = await _eCourtsRepo.GetTrackedCaseByCnrAsync(mvc.CNRNumber);
@@ -268,6 +268,80 @@ namespace MVCCaseManagement.Services.AI
                         Judge = tracked.JudgeName,
                         OrderDetails = $"e-Courts Registered: {tracked.CaseTypeCode}/{tracked.RegNo}/{tracked.RegYear}"
                     });
+                }
+
+                try
+                {
+                    using var hConn = _db.GetConnection();
+                    await hConn.OpenAsync(cancellationToken);
+
+                    string hSql = "SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage FROM CASE_HEARINGS_HISTORY WHERE CNRNumber = @CNR ORDER BY HearingDate DESC";
+                    using (var hCmd = new SqlCommand(hSql, hConn))
+                    {
+                        hCmd.Parameters.AddWithValue("@CNR", mvc.CNRNumber.Trim());
+                        using var hRdr = await hCmd.ExecuteReaderAsync(cancellationToken);
+                        while (await hRdr.ReadAsync(cancellationToken))
+                        {
+                            var hDate = hRdr.IsDBNull(0) ? DateTime.MinValue : hRdr.GetDateTime(0);
+                            var bus = hRdr.IsDBNull(1) ? "" : hRdr.GetString(1);
+                            var nextDate = hRdr.IsDBNull(2) ? (DateTime?)null : hRdr.GetDateTime(2);
+                            var nextStage = hRdr.IsDBNull(3) ? "" : hRdr.GetString(3);
+
+                            if (!dossier.ECourtsHistory.Any(h => h.EventDate == hDate))
+                            {
+                                dossier.ECourtsHistory.Add(new ECourtsHistoryItemDto
+                                {
+                                    EventDate = hDate,
+                                    Stage = !string.IsNullOrWhiteSpace(nextStage) ? nextStage : "Judicial Hearing",
+                                    OrderDetails = bus,
+                                    CourtHall = mvc.CourtHall,
+                                    Judge = mvc.ECourtsJudge
+                                });
+                            }
+                        }
+                    }
+
+                    string oSql = "SELECT OrderDate, OrderType, LocalPdfPath, ExternalUrl FROM CASE_ORDERS WHERE CNRNumber = @CNR ORDER BY OrderDate DESC";
+                    using (var oCmd = new SqlCommand(oSql, hConn))
+                    {
+                        oCmd.Parameters.AddWithValue("@CNR", mvc.CNRNumber.Trim());
+                        using var oRdr = await oCmd.ExecuteReaderAsync(cancellationToken);
+                        while (await oRdr.ReadAsync(cancellationToken))
+                        {
+                            var oDate = oRdr.IsDBNull(0) ? (DateTime?)null : oRdr.GetDateTime(0);
+                            var oType = oRdr.IsDBNull(1) ? "Court Order" : oRdr.GetString(1);
+                            var localPdf = oRdr.IsDBNull(2) ? null : oRdr.GetString(2);
+                            var extUrl = oRdr.IsDBNull(3) ? null : oRdr.GetString(3);
+
+                            if (dossier.ECourtsSummary == null)
+                            {
+                                dossier.ECourtsSummary = new ECourtsCaseSummaryDto
+                                {
+                                    CNRNumber = mvc.CNRNumber,
+                                    CaseNumber = dossier.CaseNumber,
+                                    CourtName = dossier.CourtName,
+                                    CurrentStage = dossier.CurrentStage,
+                                    NextHearingDate = dossier.NextHearingDate,
+                                    IsVerified = true
+                                };
+                            }
+
+                            if (!dossier.ECourtsSummary.Orders.Any(o => o.OrderDate == oDate && o.OrderType == oType))
+                            {
+                                dossier.ECourtsSummary.Orders.Add(new ECourtsOrderDto
+                                {
+                                    OrderDate = oDate,
+                                    OrderType = oType,
+                                    Details = $"Order copy: {localPdf ?? extUrl ?? "Certified copy in repository"}",
+                                    IsJudgment = oType.Contains("Award", StringComparison.OrdinalIgnoreCase) || oType.Contains("Judgment", StringComparison.OrdinalIgnoreCase)
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not fetch additional hearings/orders for CNR {CNR}", mvc.CNRNumber);
                 }
             }
 
@@ -554,8 +628,8 @@ namespace MVCCaseManagement.Services.AI
 
             string clean = caseSearchTerm.Trim();
 
-            // Priority 0: Structured Plan Dispatch if deterministic database query
-            if (plan != null && plan.IsDeterministicDatabaseQuery)
+            // Priority 0: Structured Plan Dispatch if deterministic database query without a specific case target
+            if (plan != null && plan.IsDeterministicDatabaseQuery && string.IsNullOrWhiteSpace(plan.CaseNumber) && plan.Intent != LegalQueryIntent.CaseComparison)
             {
                 switch (plan.Intent)
                 {
