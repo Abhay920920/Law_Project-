@@ -79,6 +79,41 @@
     }
 </style>
 
+<!-- Module Selection Switcher Bar -->
+<div class="card border-0 shadow-sm mb-3 no-print" style="border-radius: 10px; background: #ffffff;">
+    <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-uppercase fw-bold text-muted small me-2"><i class="bi bi-grid-fill me-1 text-primary"></i>Select Module:</span>
+            <a href="@Url.Action("CentralOffice", "Report", new { module = "MVC", month = Model.SelectedMonth, year = Model.SelectedYear })" 
+               class="btn btn-sm rounded-pill px-3 fw-semibold @(Model.SelectedModule == "MVC" ? "btn-primary shadow-sm" : "btn-light text-secondary")">
+                <i class="bi bi-truck-front me-1"></i>MVC Cases
+            </a>
+            <a href="@Url.Action("CentralOffice", "Report", new { module = "Labour", month = Model.SelectedMonth, year = Model.SelectedYear })" 
+               class="btn btn-sm rounded-pill px-3 fw-semibold @(isLabour ? "btn-primary shadow-sm" : "btn-light text-secondary")"
+               style="@(isLabour ? "background-color: #8b5cf6; border-color: #8b5cf6;" : "")">
+                <i class="bi bi-briefcase me-1"></i>Labour Cases
+            </a>
+            <a href="@Url.Action("CentralOffice", "Report", new { module = "Gratuity", month = Model.SelectedMonth, year = Model.SelectedYear })" 
+               class="btn btn-sm rounded-pill px-3 fw-semibold @(isGratuity ? "btn-primary shadow-sm" : "btn-light text-secondary")"
+               style="@(isGratuity ? "background-color: #f59e0b; border-color: #f59e0b;" : "")">
+                <i class="bi bi-cash-coin me-1"></i>Gratuity Cases
+            </a>
+            <a href="@Url.Action("CentralOffice", "Report", new { module = "Others", month = Model.SelectedMonth, year = Model.SelectedYear })" 
+               class="btn btn-sm rounded-pill px-3 fw-semibold @(isOthers ? "btn-primary shadow-sm" : "btn-light text-secondary")"
+               style="@(isOthers ? "background-color: #06b6d4; border-color: #06b6d4;" : "")">
+                <i class="bi bi-bank me-1"></i>Other Courts
+            </a>
+            <a href="@Url.Action("CentralOffice", "Report", new { module = "MMR-ST2", month = Model.SelectedMonth, year = Model.SelectedYear })" 
+               class="btn btn-sm rounded-pill px-3 fw-semibold @(isMmrSt2 ? "btn-dark shadow-sm" : "btn-light text-secondary")">
+                <i class="bi bi-file-earmark-text me-1"></i>MMR-ST2 Particulars
+            </a>
+        </div>
+        <div class="text-muted small">
+            <span class="badge bg-secondary">Central Office MIS</span>
+        </div>
+    </div>
+</div>
+
 @if (!isGratuity && !isOthers && !isMmrSt2)
 {
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2 no-print">

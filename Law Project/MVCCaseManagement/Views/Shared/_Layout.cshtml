@@ -93,13 +93,12 @@
                     var currentModuleQuery = Context.Request.Query["module"].ToString();
                     var divId_Layout = User.FindFirst("DivisionID")?.Value;
                     bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
+                    
+                    var isReport = currentController == "Report";
                     var isGratuity = currentController == "Gratuity";
                     var isLabour = currentController == "Labour" || currentController == "LabourEP";
-                    var isReport = currentController == "Report";
                     var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
                     var isMaster = currentController == "Master" || currentController == "ApiDashboard";
-                    var isAudit = currentController == "Audit";
-                    var isEP = currentController == "EP";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
                     // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
@@ -133,26 +132,51 @@
                 @if (isReport)
                 {
                     <div class="nav-section-title">REPORTS & MIS</div>
-                    <a class="nav-link @(string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
-                        <i class="bi bi-file-earmark-spreadsheet-fill text-primary me-2"></i>
-                        <span>MVC</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
-                        <i class="bi bi-briefcase-fill text-purple me-2" style="color: #8e2de2;"></i>
-                        <span>Labour</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
-                        <i class="bi bi-cash-stack text-warning me-2"></i>
-                        <span>Gratuity</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
-                        <i class="bi bi-folder-symlink-fill text-info me-2"></i>
-                        <span>Others</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
-                        <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
-                        <span>MMR-ST2</span>
-                    </a>
+
+                    @if (isCO_Layout)
+                    {
+                        <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && (string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
+                            <i class="bi bi-truck-front-fill me-2 text-primary"></i>
+                            <span>MVC Monthly Statement</span>
+                        </a>
+                        <a class="nav-link @(currentAction == "Index" ? "active" : "")" href="/Report">
+                            <i class="bi bi-receipt-cutoff me-2 text-success"></i>
+                            <span>Petty Bill Generation</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">LABOUR MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
+                            <i class="bi bi-briefcase-fill me-2" style="color: #8b5cf6;"></i>
+                            <span>Labour Monthly Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">GRATUITY MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
+                            <i class="bi bi-cash-stack me-2" style="color: #f59e0b;"></i>
+                            <span>Gratuity Monthly Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">OTHER COURTS MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
+                            <i class="bi bi-building me-2" style="color: #06b6d4;"></i>
+                            <span>Other Courts Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">CONSOLIDATED MIS</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && (currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
+                            <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
+                            <span>MMR-ST2 Particulars</span>
+                        </a>
+                    }
+                    else
+                    {
+                        <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
+                        <a class="nav-link @(currentAction == "Index" ? "active" : "")" href="/Report">
+                            <i class="bi bi-receipt-cutoff me-2 text-success"></i>
+                            <span>Petty Bill Generation</span>
+                        </a>
+                    }
                 }
                 else if (isLabour)
                 {
