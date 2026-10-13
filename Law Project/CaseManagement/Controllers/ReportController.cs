@@ -1263,9 +1263,15 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public JsonResult SaveBill([FromBody] PettyBillViewModel model)
+        [IgnoreAntiforgeryToken]
+        public JsonResult SaveBill([FromBody] PettyBillViewModel? model)
         {
+            if (model == null)
+            {
+                _logger.LogWarning("SaveBill invoked with null model payload.");
+                return Json(new { success = false, message = "Invalid bill data received. Please refresh and try again." });
+            }
+
             try
             {
                 int billId;
@@ -1299,8 +1305,8 @@ namespace MVCCaseManagement.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving petty bill for CaseID {CaseID}", model.CaseID);
-                return Json(new { success = false, message = "Error saving bill. Please try again." });
+                _logger.LogError(ex, "Error saving petty bill for CaseID {CaseID}", model?.CaseID);
+                return Json(new { success = false, message = $"Error saving bill: {ex.Message}" });
             }
         }
 
@@ -1342,7 +1348,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public JsonResult DeleteBill(int billId)
         {
             try
@@ -1361,12 +1367,12 @@ namespace MVCCaseManagement.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting bill {BillID}", billId);
-                return Json(new { success = false, message = "Error deleting bill. Please try again." });
+                return Json(new { success = false, message = $"Error deleting bill: {ex.Message}" });
             }
         }
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
+        [IgnoreAntiforgeryToken]
         public JsonResult DeletePaymentRow(int paymentId)
         {
             try
@@ -1383,7 +1389,7 @@ namespace MVCCaseManagement.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error deleting payment row {PaymentID}", paymentId);
-                return Json(new { success = false, message = "Error deleting payment. Please try again." });
+                return Json(new { success = false, message = $"Error deleting payment: {ex.Message}" });
             }
         }
     }

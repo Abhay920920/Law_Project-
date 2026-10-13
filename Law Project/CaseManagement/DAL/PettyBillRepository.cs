@@ -49,11 +49,11 @@ namespace MVCCaseManagement.DAL
                         using (var cmd = new SqlCommand(insertBillQuery, connection, transaction))
                         {
                             cmd.Parameters.AddWithValue("@CaseID", (object?)model.CaseID ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@MVCNo", model.MVCNo);
+                            cmd.Parameters.AddWithValue("@MVCNo", (object?)model.MVCNo ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@MVCYear", (object?)model.MVCYear ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@MACTName", (object?)model.MACTName ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@VehicleNo", (object?)model.VehicleNo ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@AccidentDate", (object?)model.AccidentDate ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AccidentDate", (model.AccidentDate.HasValue && model.AccidentDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.AccidentDate.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@PetitionerName", (object?)model.PetitionerName ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@AppealNumber", (object?)model.AppealNumber ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@DivisionName", (object?)model.DivisionName ?? DBNull.Value);
@@ -63,18 +63,18 @@ namespace MVCCaseManagement.DAL
                             cmd.Parameters.AddWithValue("@TDSAmount", model.TDSAmount);
                             cmd.Parameters.AddWithValue("@FileRefNo", (object?)model.FileRefNo ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@ApprovalLetterNo", (object?)model.ApprovalLetterNo ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@ApprovalDate", (object?)model.ApprovalDate ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@BillDate", (object?)model.BillDate ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ApprovalDate", (model.ApprovalDate.HasValue && model.ApprovalDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.ApprovalDate.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@BillDate", (model.BillDate.HasValue && model.BillDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.BillDate.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@NetPayable", model.NetPayable);
                             cmd.Parameters.AddWithValue("@GrossPayable", model.GrossPayable);
                             cmd.Parameters.AddWithValue("@TotalDeductions", model.TotalDeductions);
-                            cmd.Parameters.AddWithValue("@AwardType", model.AwardType ?? "Lower Court");
+                            cmd.Parameters.AddWithValue("@AwardType", (object?)model.AwardType ?? "Lower Court");
                             cmd.Parameters.AddWithValue("@BaseAwardAmount", model.BaseAwardAmount);
-                            cmd.Parameters.AddWithValue("@InterestFrom", (object?)model.InterestFrom ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@InterestTo", (object?)model.InterestTo ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@InterestFrom", (model.InterestFrom.HasValue && model.InterestFrom.Value >= new DateTime(1753, 1, 1)) ? (object)model.InterestFrom.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@InterestTo", (model.InterestTo.HasValue && model.InterestTo.Value >= new DateTime(1753, 1, 1)) ? (object)model.InterestTo.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@IsRelaxationApplied", model.IsRelaxationApplied);
-                            cmd.Parameters.AddWithValue("@RelaxationFrom", (object?)model.RelaxationFrom ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@RelaxationTo", (object?)model.RelaxationTo ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@RelaxationFrom", (model.RelaxationFrom.HasValue && model.RelaxationFrom.Value >= new DateTime(1753, 1, 1)) ? (object)model.RelaxationFrom.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@RelaxationTo", (model.RelaxationTo.HasValue && model.RelaxationTo.Value >= new DateTime(1753, 1, 1)) ? (object)model.RelaxationTo.Value : DBNull.Value);
 
                             billId = (int)cmd.ExecuteScalar();
                         }
@@ -88,6 +88,9 @@ namespace MVCCaseManagement.DAL
 
                             foreach (var interest in model.InterestEntries)
                             {
+                                if (interest == null) continue;
+                                if (interest.FromDate < new DateTime(1753, 1, 1) || interest.ToDate < new DateTime(1753, 1, 1)) continue;
+
                                 using (var cmd = new SqlCommand(insertInterestQuery, connection, transaction))
                                 {
                                     cmd.Parameters.AddWithValue("@BillID", billId);
@@ -108,11 +111,13 @@ namespace MVCCaseManagement.DAL
 
                             foreach (var payment in model.PreviousPayments)
                             {
+                                if (payment == null) continue;
+
                                 using (var cmd = new SqlCommand(insertPaymentQuery, connection, transaction))
                                 {
                                     cmd.Parameters.AddWithValue("@BillID", billId);
-                                    cmd.Parameters.AddWithValue("@ChequeNumber", (object)payment.ChequeNumber ?? DBNull.Value);
-                                    cmd.Parameters.AddWithValue("@ChequeDate", (object?)payment.ChequeDate ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@ChequeNumber", (object?)payment.ChequeNumber ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@ChequeDate", (payment.ChequeDate.HasValue && payment.ChequeDate.Value >= new DateTime(1753, 1, 1)) ? (object)payment.ChequeDate.Value : DBNull.Value);
                                     cmd.Parameters.AddWithValue("@Amount", payment.Amount);
                                     cmd.Parameters.AddWithValue("@IsSelected", payment.IsSelected);
                                     cmd.Parameters.AddWithValue("@Remarks", (object?)payment.Remarks ?? DBNull.Value);
@@ -450,7 +455,7 @@ namespace MVCCaseManagement.DAL
                             cmd.Parameters.AddWithValue("@MVCYear", (object?)model.MVCYear ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@MACTName", (object?)model.MACTName ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@VehicleNo", (object?)model.VehicleNo ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@AccidentDate", (object?)model.AccidentDate ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AccidentDate", (model.AccidentDate.HasValue && model.AccidentDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.AccidentDate.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@PetitionerName", (object?)model.PetitionerName ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@AppealNumber", (object?)model.AppealNumber ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@DivisionName", (object?)model.DivisionName ?? DBNull.Value);
@@ -460,18 +465,18 @@ namespace MVCCaseManagement.DAL
                             cmd.Parameters.AddWithValue("@TDSAmount", model.TDSAmount);
                             cmd.Parameters.AddWithValue("@FileRefNo", (object?)model.FileRefNo ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@ApprovalLetterNo", (object?)model.ApprovalLetterNo ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@ApprovalDate", (object?)model.ApprovalDate ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@BillDate", (object?)model.BillDate ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ApprovalDate", (model.ApprovalDate.HasValue && model.ApprovalDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.ApprovalDate.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@BillDate", (model.BillDate.HasValue && model.BillDate.Value >= new DateTime(1753, 1, 1)) ? (object)model.BillDate.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@NetPayable", model.NetPayable);
                             cmd.Parameters.AddWithValue("@GrossPayable", model.GrossPayable);
                             cmd.Parameters.AddWithValue("@TotalDeductions", model.TotalDeductions);
-                            cmd.Parameters.AddWithValue("@AwardType", model.AwardType ?? "Lower Court");
+                            cmd.Parameters.AddWithValue("@AwardType", (object?)model.AwardType ?? "Lower Court");
                             cmd.Parameters.AddWithValue("@BaseAwardAmount", model.BaseAwardAmount);
-                            cmd.Parameters.AddWithValue("@InterestFrom", (object?)model.InterestFrom ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@InterestTo", (object?)model.InterestTo ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@InterestFrom", (model.InterestFrom.HasValue && model.InterestFrom.Value >= new DateTime(1753, 1, 1)) ? (object)model.InterestFrom.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@InterestTo", (model.InterestTo.HasValue && model.InterestTo.Value >= new DateTime(1753, 1, 1)) ? (object)model.InterestTo.Value : DBNull.Value);
                             cmd.Parameters.AddWithValue("@IsRelaxationApplied", model.IsRelaxationApplied);
-                            cmd.Parameters.AddWithValue("@RelaxationFrom", (object?)model.RelaxationFrom ?? DBNull.Value);
-                            cmd.Parameters.AddWithValue("@RelaxationTo", (object?)model.RelaxationTo ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@RelaxationFrom", (model.RelaxationFrom.HasValue && model.RelaxationFrom.Value >= new DateTime(1753, 1, 1)) ? (object)model.RelaxationFrom.Value : DBNull.Value);
+                            cmd.Parameters.AddWithValue("@RelaxationTo", (model.RelaxationTo.HasValue && model.RelaxationTo.Value >= new DateTime(1753, 1, 1)) ? (object)model.RelaxationTo.Value : DBNull.Value);
 
                             cmd.ExecuteNonQuery();
                         }
@@ -501,6 +506,9 @@ namespace MVCCaseManagement.DAL
 
                             foreach (var interest in model.InterestEntries)
                             {
+                                if (interest == null) continue;
+                                if (interest.FromDate < new DateTime(1753, 1, 1) || interest.ToDate < new DateTime(1753, 1, 1)) continue;
+
                                 using (var cmd = new SqlCommand(insertInterestQuery, connection, transaction))
                                 {
                                     cmd.Parameters.AddWithValue("@BillID", model.BillID);
@@ -521,11 +529,13 @@ namespace MVCCaseManagement.DAL
 
                             foreach (var payment in model.PreviousPayments)
                             {
+                                if (payment == null) continue;
+
                                 using (var cmd = new SqlCommand(insertPaymentQuery, connection, transaction))
                                 {
                                     cmd.Parameters.AddWithValue("@BillID", model.BillID);
                                     cmd.Parameters.AddWithValue("@ChequeNumber", (object?)payment.ChequeNumber ?? DBNull.Value);
-                                    cmd.Parameters.AddWithValue("@ChequeDate", (object?)payment.ChequeDate ?? DBNull.Value);
+                                    cmd.Parameters.AddWithValue("@ChequeDate", (payment.ChequeDate.HasValue && payment.ChequeDate.Value >= new DateTime(1753, 1, 1)) ? (object)payment.ChequeDate.Value : DBNull.Value);
                                     cmd.Parameters.AddWithValue("@Amount", payment.Amount);
                                     cmd.Parameters.AddWithValue("@IsSelected", payment.IsSelected);
                                     cmd.Parameters.AddWithValue("@Remarks", (object?)payment.Remarks ?? DBNull.Value);

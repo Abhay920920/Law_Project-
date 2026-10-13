@@ -747,78 +747,95 @@ $(document).ready(function() {
     $('#btnRecalculate').click(calculate);
 
     // Save Bill Logic
+    function cleanDate(val) {
+        if (!val || typeof val !== 'string' || val.trim() === '' || val === 'null' || val === 'undefined') return null;
+        return val.trim();
+    }
+
     $('#btnSaveBill').click(function() {
         // Collect form data into model
-        const formData = {
-            BillID: parseInt($('#hidBillID').val()) || 0,
-            CaseID: parseInt($('#hidCaseID').val()) || null,
-            MVCNo: $('#hidMVCNo').val(),
-            MVCYear: parseInt($('#hidMVCYear').val()) || null,
-            MACTName: $('#hidMACT').val(),
-            DivisionName: $('#hidDivision').val(),
-            VehicleNo: $('#hidVehicle').val(),
-            AccidentDate: $('#hidAccidentDate').val(),
-            PetitionerName: $('#hidPetitioner').val(),
-            AppealNumber: $('#hidAppeal').val(),
-            ApprovalLetterNo: $('input[name="ApprovalLetterNo"]').val(),
-            ApprovalDate: $('input[name="ApprovalDate"]').val() || null,
-            FileRefNo: $('input[name="FileRefNo"]').val(),
-            BillDate: $('#billDate').val(),
-            EnhancedAmount: parseFloat($('#enhancedAmount').val()) || 0,
-            BaseAwardAmount: parseFloat($('#baseAwardAmount').val()) || 0,
-            AwardType: $('#awardType').val(),
-            CourtCost: parseFloat($('#courtCost').val()) || 0,
-            TDSPercentage: ($('#tdsPercent').val() === "" || isNaN(parseFloat($('#tdsPercent').val()))) ? 10 : parseFloat($('#tdsPercent').val()),
-            IsRelaxationApplied: $('#chkRelaxation').is(':checked'),
-            RelaxationFrom: $('#relaxFromDate').val() || null,
-            RelaxationTo: $('#relaxToDate').val() || null,
-            
-            // Interest Entries (re-calculate to get latest)
-            InterestEntries: [],
-            PreviousPayments: []
-        };
-
-        // Collect Interest
+        const rawInterestEntries = [];
         $('#interestContainer input').each(function() {
             const name = $(this).attr('name');
             const val = $(this).val();
             const indexMatch = name.match(/\[(\d+)\]/);
             if (indexMatch) {
                 const index = parseInt(indexMatch[1]);
-                if (!formData.InterestEntries[index]) formData.InterestEntries[index] = {};
+                if (!rawInterestEntries[index]) rawInterestEntries[index] = {};
                 
-                if (name.includes('FromDate')) formData.InterestEntries[index].FromDate = val;
-                else if (name.includes('ToDate')) formData.InterestEntries[index].ToDate = val;
-                else if (name.includes('Amount')) formData.InterestEntries[index].Amount = parseFloat(val);
+                if (name.includes('FromDate')) rawInterestEntries[index].FromDate = cleanDate(val);
+                else if (name.includes('ToDate')) rawInterestEntries[index].ToDate = cleanDate(val);
+                else if (name.includes('Amount')) rawInterestEntries[index].Amount = parseFloat(val) || 0;
             }
         });
 
-        // Collect Payments
+        // Only keep well-formed interest entries with valid from & to dates
+        const cleanInterestEntries = rawInterestEntries
+            .filter(e => e && e.FromDate && e.ToDate)
+            .map(e => ({
+                FromDate: e.FromDate,
+                ToDate: e.ToDate,
+                Amount: parseFloat(e.Amount) || 0
+            }));
+
+        const cleanPreviousPayments = [];
         $('#paymentsBody tr').each(function(index) {
-            formData.PreviousPayments.push({
+            const chqDateRaw = $(this).find('.payment-date').val() || $(this).find('input[name*="ChequeDate"]').val();
+            cleanPreviousPayments.push({
                 PaymentID: parseInt($(this).find('.payment-id').val()) || 0,
                 IsSelected: $(this).find('input[type="checkbox"]:not(.payment-cancelled)').is(':checked'),
                 IsCancelled: $(this).find('.payment-cancelled').is(':checked'),
-                ChequeNumber: $(this).find('input[name*="ChequeNumber"]').val(),
-                ChequeDate: $(this).find('input[name*="ChequeDate"]').val(),
+                ChequeNumber: $(this).find('input[name*="ChequeNumber"]').val() || null,
+                ChequeDate: cleanDate(chqDateRaw),
                 Amount: parseFloat($(this).find('.payment-amount').val()) || 0,
-                Remarks: $(this).find('input[name*="Remarks"]').val()
+                Remarks: $(this).find('input[name*="Remarks"]').val() || null
             });
         });
 
+        const formData = {
+            BillID: parseInt($('#hidBillID').val()) || 0,
+            CaseID: parseInt($('#hidCaseID').val()) || null,
+            MVCNo: ($('#hidMVCNo').val() || '').trim(),
+            MVCYear: parseInt($('#hidMVCYear').val()) || null,
+            MACTName: ($('#hidMACT').val() || '').trim() || null,
+            DivisionName: ($('#hidDivision').val() || '').trim() || null,
+            VehicleNo: ($('#hidVehicle').val() || '').trim() || null,
+            AccidentDate: cleanDate($('#hidAccidentDate').val()),
+            PetitionerName: ($('#hidPetitioner').val() || '').trim() || null,
+            AppealNumber: ($('#hidAppeal').val() || '').trim() || null,
+            ApprovalLetterNo: ($('input[name="ApprovalLetterNo"]').val() || '').trim() || null,
+            ApprovalDate: cleanDate($('input[name="ApprovalDate"]').val()),
+            FileRefNo: ($('input[name="FileRefNo"]').val() || '').trim() || null,
+            BillDate: cleanDate($('#billDate').val()) || new Date().toISOString().split('T')[0],
+            EnhancedAmount: parseFloat($('#enhancedAmount').val()) || 0,
+            BaseAwardAmount: parseFloat($('#baseAwardAmount').val()) || 0,
+            AwardType: $('#awardType').length && $('#awardType').val() ? $('#awardType').val() : 'Lower Court',
+            CourtCost: parseFloat($('#courtCost').val()) || 0,
+            TDSPercentage: ($('#tdsPercent').val() === "" || isNaN(parseFloat($('#tdsPercent').val()))) ? 10 : parseFloat($('#tdsPercent').val()),
+            IsRelaxationApplied: $('#chkRelaxation').is(':checked'),
+            RelaxationFrom: cleanDate($('#relaxFromDate').val()),
+            RelaxationTo: cleanDate($('#relaxToDate').val()),
+            
+            InterestEntries: cleanInterestEntries,
+            PreviousPayments: cleanPreviousPayments
+        };
+
         // Add calculated fields for database
-        formData.TotalInterest = formData.InterestEntries.reduce((s, e) => s + (e.amount || e.Amount || 0), 0);
+        formData.TotalInterest = formData.InterestEntries.reduce((s, e) => s + (e.Amount || 0), 0);
         formData.GrossPayable = formData.EnhancedAmount + formData.TotalInterest + formData.CourtCost;
         formData.TDSAmount = formData.TotalInterest * (formData.TDSPercentage / 100);
-        formData.TotalPreviousPayments = formData.PreviousPayments.filter(p => p.IsSelected).reduce((s, p) => s + p.Amount, 0);
+        formData.TotalPreviousPayments = formData.PreviousPayments.filter(p => p.IsSelected && !p.IsCancelled).reduce((s, p) => s + p.Amount, 0);
         formData.TotalDeductions = formData.TotalPreviousPayments + formData.TDSAmount;
         formData.NetPayable = formData.GrossPayable - formData.TotalDeductions;
+
+        const token = $('input[name="__RequestVerificationToken"]').val();
+        const headers = token ? { "RequestVerificationToken": token } : {};
 
         $.ajax({
             url: '/Report/SaveBill',
             type: 'POST',
             contentType: 'application/json',
-            headers: { "RequestVerificationToken": $('input[name="__RequestVerificationToken"]').val() },
+            headers: headers,
             data: JSON.stringify(formData),
             success: function(res) {
                 if (res.success) {
@@ -826,10 +843,18 @@ $(document).ready(function() {
                     alert(res.message);
                     fetchSavedBills(formData.MVCNo, formData.MVCYear);
                 } else {
-                    alert(res.message);
+                    alert(res.message || 'Failed to save bill.');
                 }
             },
-            error: function() { alert('Error saving bill'); }
+            error: function(xhr) {
+                let errMsg = 'Error saving bill.';
+                if (xhr && xhr.responseJSON && xhr.responseJSON.message) {
+                    errMsg += ' ' + xhr.responseJSON.message;
+                } else if (xhr && xhr.statusText) {
+                    errMsg += ' (' + xhr.status + ': ' + xhr.statusText + ')';
+                }
+                alert(errMsg);
+            }
         });
     });
 
