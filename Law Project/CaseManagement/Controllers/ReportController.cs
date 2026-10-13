@@ -31,6 +31,13 @@ namespace MVCCaseManagement.Controllers
 
         public IActionResult Index()
         {
+            if (Request.Path.Value != null && 
+                (Request.Path.Value.Equals("/Report", StringComparison.OrdinalIgnoreCase) || 
+                 Request.Path.Value.Equals("/Report/Index", StringComparison.OrdinalIgnoreCase)))
+            {
+                return Redirect("/pettybill" + Request.QueryString);
+            }
+
             int divisionId = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
             ViewBag.MACTList = _masterRepo.GetAllMACTs();
             try

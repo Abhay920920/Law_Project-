@@ -266,6 +266,11 @@ app.MapHealthChecks("/health/ready");
 app.MapHealthChecks("/health/live");
 
 app.MapControllerRoute(
+    name: "pettybill",
+    pattern: "pettybill/{action=Index}/{id?}",
+    defaults: new { controller = "Report", action = "Index" });
+
+app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Dashboard}/{action=Index}/{id?}");
 

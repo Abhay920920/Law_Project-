@@ -43,7 +43,7 @@ dotnet build LawProject.sln -c Release
 dotnet test LawProject.sln -c Release --no-build
 
 # 3. Publish Web Application
-dotnet publish "Law Project\MVCCaseManagement\MVCCaseManagement.csproj" -c Release -o "Publish_Output\MVCCaseManagement"
+dotnet publish "Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release -o "Publish_Output\MVCCaseManagement"
 
 # 4. Publish eCourts Microservice
 dotnet publish "NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release -o "Publish_Output\NapixEcourtsApi"

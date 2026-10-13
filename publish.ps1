@@ -59,7 +59,7 @@ Write-Host ""
 Write-Host "[3/4] Publishing MVCCaseManagement (Web MVC Portal)..." -ForegroundColor Yellow
 $webArgs = @(
     "publish",
-    "$scriptDir\Law Project\MVCCaseManagement\MVCCaseManagement.csproj",
+    "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj",
     "-c", "Release",
     "-o", $webOut,
     "--nologo"

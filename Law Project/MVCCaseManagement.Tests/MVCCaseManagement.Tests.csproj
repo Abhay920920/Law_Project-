@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MVCCaseManagement\MVCCaseManagement.csproj" />
+    <ProjectReference Include="..\CaseManagement\MVCCaseManagement.csproj" />
     <ProjectReference Include="..\..\NapixEcourtsApi\NapixEcourtsApi.csproj" />
   </ItemGroup>
 

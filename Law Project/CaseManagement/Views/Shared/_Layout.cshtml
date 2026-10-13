@@ -94,7 +94,11 @@
                     var divId_Layout = User.FindFirst("DivisionID")?.Value;
                     bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
                     
-                    var isReport = currentController == "Report";
+                    var currentPath = Context.Request.Path.Value ?? "";
+                    var isPettyBill = currentPath.StartsWith("/pettybill", StringComparison.OrdinalIgnoreCase) || 
+                                      ((currentController == "Report" || currentController == "PettyBill") && (currentAction == "Index" || string.IsNullOrEmpty(currentAction)));
+
+                    var isReport = (currentController == "Report" && currentAction == "CentralOffice") || (isCO_Layout && currentController == "Report" && !isPettyBill);
                     var isGratuity = currentController == "Gratuity";
                     var isLabour = currentController == "Labour" || currentController == "LabourEP";
                     var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
@@ -140,9 +144,9 @@
                             <i class="bi bi-truck-front-fill me-2 text-primary"></i>
                             <span>MVC Monthly Statement</span>
                         </a>
-                        <a class="nav-link @(currentAction == "Index" ? "active" : "")" href="/Report">
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
                             <i class="bi bi-receipt-cutoff me-2 text-success"></i>
-                            <span>Petty Bill Generation</span>
+                            <span>Petty Bill</span>
                         </a>
 
                         <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">LABOUR MODULE</div>
@@ -172,9 +176,9 @@
                     else
                     {
                         <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
-                        <a class="nav-link @(currentAction == "Index" ? "active" : "")" href="/Report">
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
                             <i class="bi bi-receipt-cutoff me-2 text-success"></i>
-                            <span>Petty Bill Generation</span>
+                            <span>Petty Bill</span>
                         </a>
                     }
                 }
@@ -371,7 +375,7 @@
 
                     @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
                     {
-                        <a class="nav-link @(currentController == "Report" ? "active" : "")" href="/Report">
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
                             <i class="bi bi-receipt-cutoff"></i>
                             <span>Petty Bill</span>
                         </a>

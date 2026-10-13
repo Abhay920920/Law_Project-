@@ -12,7 +12,7 @@ namespace LawProject.Tools
         static void Main(string[] args)
         {
             string connStr = "Data Source=198.38.89.31;Initial Catalog=Admin_Law;User ID=admin_Law;Password=4c4H_0l8q;Connection Timeout=60;Encrypt=True;TrustServerCertificate=True;";
-            string outputPath = args.Length > 0 ? args[0] : @"c:\Users\adts-\Desktop\Law Project\Law Project\MVCCaseManagement\SQL\00_Master_Full_Database_Schema_And_Seed.sql";
+            string outputPath = args.Length > 0 ? args[0] : @"c:\Users\adts-\Desktop\Law Project\Law Project\CaseManagement\SQL\00_Master_Full_Database_Schema_And_Seed.sql";
 
             Console.WriteLine("Starting full database export from Admin_Law...");
             var sb = new StringBuilder();

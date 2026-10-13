@@ -35,7 +35,7 @@ if exist "%WEB_OUT%" (
     echo Cleaning existing output in %WEB_OUT%...
     rmdir /s /q "%WEB_OUT%"
 )
-dotnet publish "Law Project\MVCCaseManagement\MVCCaseManagement.csproj" -c Release -o "%WEB_OUT%" --no-build --nologo
+dotnet publish "Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release -o "%WEB_OUT%" --no-build --nologo
 if %errorlevel% neq 0 (
     echo.
     echo [ERROR] Publishing MVCCaseManagement failed!
