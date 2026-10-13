@@ -22,6 +22,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IECourtsNapixService _napixService;
         private readonly IECourtsRepository _ecourtsRepo;
         private readonly ICaseNotingRepository _notingRepo;
+        private readonly IPettyBillRepository _pettyBillRepo;
         private readonly MVCCaseManagement.Services.Audit.ICaseActivityLogger _activityLogger;
         private readonly ILogger<CaseController> _logger;
 
@@ -35,6 +36,7 @@ namespace MVCCaseManagement.Controllers
             IECourtsNapixService napixService,
             IECourtsRepository ecourtsRepo,
             ICaseNotingRepository notingRepo,
+            IPettyBillRepository pettyBillRepo,
             MVCCaseManagement.Services.Audit.ICaseActivityLogger activityLogger,
             ILogger<CaseController> logger)
         {
@@ -47,6 +49,7 @@ namespace MVCCaseManagement.Controllers
             _napixService = napixService;
             _ecourtsRepo = ecourtsRepo;
             _notingRepo = notingRepo;
+            _pettyBillRepo = pettyBillRepo;
             _activityLogger = activityLogger;
             _logger = logger;
         }
@@ -597,6 +600,15 @@ namespace MVCCaseManagement.Controllers
             ViewBag.MACTs = _masterRepo.GetAllMACTs();
             ViewBag.Advocates = _masterRepo.GetAllAdvocates();
             ViewBag.CaseNotings = isCentralOffice ? _notingRepo.GetNotings("MVC", id) : new List<MVCCaseManagement.Models.CaseNoting>();
+            try
+            {
+                ViewBag.PettyBills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(model.CaseID, model.MVCNo, model.MVCYear);
+            }
+            catch (Exception exPetty)
+            {
+                _logger.LogWarning(exPetty, "Error loading Petty Bills for Case {CaseID} / {MVCNo}/{Year}", model.CaseID, model.MVCNo, model.MVCYear);
+                ViewBag.PettyBills = new List<MVCCaseManagement.Models.PettyBillViewModel>();
+            }
             return View("Details", model);
         }
 
@@ -730,6 +742,15 @@ namespace MVCCaseManagement.Controllers
             }
 
             ViewData["HideActionBtn"] = true;
+            try
+            {
+                ViewBag.PettyBills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(model.CaseID, model.MVCNo, model.MVCYear);
+            }
+            catch (Exception exPetty)
+            {
+                _logger.LogWarning(exPetty, "Error loading Petty Bills in DetailsPartial for Case {CaseID}", model.CaseID);
+                ViewBag.PettyBills = new List<MVCCaseManagement.Models.PettyBillViewModel>();
+            }
             return PartialView("_DetailsContent", model);
         }
 

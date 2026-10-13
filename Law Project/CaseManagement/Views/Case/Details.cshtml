@@ -705,6 +705,20 @@
     <script>
         // Advance Payment Logic
         const caseId = @Model.CaseID;
+
+        window.openPettyBillTab = function() {
+            const modalEl = document.getElementById('fullDetailsModal');
+            if (modalEl) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+                setTimeout(function() {
+                    const tabBtn = document.getElementById('tab-pettybill-nav');
+                    if (tabBtn) {
+                        bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+                    }
+                }, 150);
+            }
+        };
         
         // Load payments on page load
         $(document).ready(function() {

@@ -1232,6 +1232,29 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
+        [HttpGet]
+        public IActionResult PrintBill(int id)
+        {
+            var model = _pettyBillRepo.GetPettyBillById(id);
+            if (model == null) return NotFound();
+            return View("PrintBill", model);
+        }
+
+        [HttpGet]
+        public JsonResult GetFullBillsByCase(int caseId, string mvcNo, int mvcYear)
+        {
+            try
+            {
+                var bills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(caseId, mvcNo, mvcYear);
+                return Json(new { success = true, bills = bills });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving full petty bills for CaseID {CaseID} / {MVCNo}/{Year}", caseId, mvcNo, mvcYear);
+                return Json(new { success = false, message = "Error loading petty bills." });
+            }
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public IActionResult GenerateBill(PettyBillViewModel model)

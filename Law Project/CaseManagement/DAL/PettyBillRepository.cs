@@ -242,6 +242,12 @@ namespace MVCCaseManagement.DAL
                             }
                         }
                     }
+
+                    if (model != null)
+                    {
+                        model.TotalInterest = model.InterestEntries?.Sum(i => i.Amount) ?? 0;
+                        model.TotalPreviousPayments = model.PreviousPayments?.Where(p => p.IsSelected && !p.IsCancelled).Sum(p => p.Amount) ?? 0;
+                    }
                 }
             }
 
@@ -319,6 +325,54 @@ namespace MVCCaseManagement.DAL
                             });
                         }
                     }
+                }
+            }
+
+            return bills;
+        }
+
+        public List<PettyBillViewModel> GetFullPettyBillsByCaseIdOrMVC(int caseId, string mvcNo, int mvcYear)
+        {
+            var bills = new List<PettyBillViewModel>();
+            var billIds = new List<int>();
+
+            using (var connection = new SqlConnection(_connectionString))
+            {
+                connection.Open();
+
+                string query = @"
+                    SELECT BillID 
+                    FROM PETTY_BILLS 
+                    WHERE (CaseID = @CaseID AND @CaseID > 0)
+                       OR (LTRIM(RTRIM(ISNULL(MVCNo,''))) = LTRIM(RTRIM(@MVCNo)) AND MVCYear = @MVCYear)
+                    ORDER BY BillDate DESC, BillID DESC";
+
+                using (var cmd = new SqlCommand(query, connection))
+                {
+                    cmd.Parameters.AddWithValue("@CaseID", caseId);
+                    cmd.Parameters.AddWithValue("@MVCNo", (object?)mvcNo?.Trim() ?? string.Empty);
+                    cmd.Parameters.AddWithValue("@MVCYear", mvcYear);
+
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            int bId = reader.GetInt32(0);
+                            if (!billIds.Contains(bId))
+                            {
+                                billIds.Add(bId);
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (var id in billIds)
+            {
+                var fullBill = GetPettyBillById(id);
+                if (fullBill != null)
+                {
+                    bills.Add(fullBill);
                 }
             }
 

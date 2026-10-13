@@ -35,6 +35,11 @@ namespace MVCCaseManagement.DAL
         List<PettyBillViewModel> GetPettyBillsByMVC(string mvcNo, int mvcYear);
 
         /// <summary>
+        /// Retrieves all petty bills with complete breakdown details (interest, previous payments, TDS) for a Case ID or MVC number/year
+        /// </summary>
+        List<PettyBillViewModel> GetFullPettyBillsByCaseIdOrMVC(int caseId, string mvcNo, int mvcYear);
+
+        /// <summary>
         /// Retrieves all unique payments used in petty bills for a specific Case ID
         /// </summary>
         /// <param name="caseId">Case ID</param>
