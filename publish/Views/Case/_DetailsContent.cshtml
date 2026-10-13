@@ -178,7 +178,28 @@
         border-color: #6d28d9 !important;
         box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35) !important;
     }
-    #tab-opinions-nav.active i {
+    /* 6. Petty Bill Settlement: Emerald Teal / Mint */
+    #tab-pettybill-nav {
+        border-color: #a7f3d0 !important;
+        color: #065f46 !important;
+        background: #f0fdf4 !important;
+    }
+    #tab-pettybill-nav i {
+        color: #059669 !important;
+        font-size: 1rem;
+    }
+    #tab-pettybill-nav:hover {
+        background: #dcfce7 !important;
+        border-color: #6ee7b7 !important;
+        color: #065f46 !important;
+    }
+    #tab-pettybill-nav.active {
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+        color: #ffffff !important;
+        border-color: #059669 !important;
+        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35) !important;
+    }
+    #tab-pettybill-nav.active i {
         color: #ffffff !important;
     }
 </style>
@@ -2988,6 +3009,18 @@
                             <i class="bi bi-folder-check me-1 text-dark"></i> Documents &amp; Files
                         </button>
                     </li>
+                    @{
+                        var navPettyBills = (ViewBag.PettyBills as List<MVCCaseManagement.Models.PettyBillViewModel>) ?? new List<MVCCaseManagement.Models.PettyBillViewModel>();
+                    }
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-pettybill-nav" data-bs-toggle="pill" data-bs-target="#tab-pettybill-content" type="button" role="tab" aria-controls="tab-pettybill-content" aria-selected="false">
+                            <i class="bi bi-receipt-cutoff me-1 text-success"></i> Petty Bill
+                            @if (navPettyBills.Any())
+                            {
+                                <span class="badge rounded-pill bg-success text-white ms-1">@navPettyBills.Count</span>
+                            }
+                        </button>
+                    </li>
                 </ul>
 
                 <!-- Tabs Content Wrapper -->
@@ -5657,6 +5690,345 @@
                         </div>
                     </div>
 
+                    <!-- ======================================================== -->
+                    <!-- TAB 10: PETTY BILL SETTLEMENT & FULL DETAILS             -->
+                    <!-- ======================================================== -->
+                    <div class="tab-pane fade" id="tab-pettybill-content" role="tabpanel" aria-labelledby="tab-pettybill-nav" tabindex="0">
+                        @{
+                            var detailedPettyBills = (ViewBag.PettyBills as List<MVCCaseManagement.Models.PettyBillViewModel>) ?? new List<MVCCaseManagement.Models.PettyBillViewModel>();
+                        }
+                        <!-- Banner -->
+                        <div class="p-3 bg-white rounded-3 border border-success-subtle shadow-sm mb-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+                            <div class="d-flex align-items-center">
+                                <div class="rounded-circle p-2 bg-success-subtle text-success me-3 d-flex align-items-center justify-content-center" style="width: 42px; height: 42px;">
+                                    <i class="bi bi-receipt-cutoff fs-5"></i>
+                                </div>
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-success text-uppercase fs-6">Petty Bill Settlement &amp; Verified Calculations</h6>
+                                    <span class="text-muted extra-small">Formal interest accruals, court costs, advance payment deductions, TDS withholding, and sanctioned net payable amounts</span>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-center">
+                                @if (detailedPettyBills.Any())
+                                {
+                                    <span class="badge bg-success px-3 py-2 rounded-pill fw-bold fs-7">
+                                        <i class="bi bi-check2-circle me-1"></i> @detailedPettyBills.Count Bill(s) Available
+                                    </span>
+                                }
+                                <a href="/pettybill?mvcNo=@Model.MVCNo&year=@Model.MVCYear&caseId=@Model.CaseID&mact=@(Model.MACTName)" class="btn btn-sm btn-outline-success rounded-pill fw-semibold shadow-xs">
+                                    <i class="bi bi-plus-circle me-1"></i> Open Petty Bill Generator
+                                </a>
+                            </div>
+                        </div>
+
+                        @if (detailedPettyBills.Any())
+                        {
+                            var billIdx = 0;
+                            foreach (var bill in detailedPettyBills)
+                            {
+                                billIdx++;
+                                <div class="card border border-success-subtle shadow-sm rounded-3 mb-4 overflow-hidden">
+                                    <div class="card-header bg-light py-3 px-3 px-md-4 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-success fs-6 px-3 py-2 rounded-pill font-monospace">Bill #PB-@bill.BillID</span>
+                                            <span class="text-secondary small fw-bold"><i class="bi bi-calendar3 me-1"></i>Bill Date: @(bill.BillDate?.ToString("dd-MMM-yyyy") ?? "N/A")</span>
+                                            @if (!string.IsNullOrEmpty(bill.AwardType))
+                                            {
+                                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">@bill.AwardType</span>
+                                            }
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="badge bg-success-subtle text-success border border-success px-3 py-2 rounded-pill fw-bold font-monospace fs-6">
+                                                Net Payable: ₹ @bill.NetPayable.ToString("N2")
+                                            </span>
+                                            <a href="/pettybill/printbill/@bill.BillID" target="_blank" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm fw-semibold" title="View & Print Official Bill Form">
+                                                <i class="bi bi-printer me-1"></i> Print Bill
+                                            </a>
+                                            <a href="/pettybill?mvcNo=@bill.MVCNo&year=@bill.MVCYear&billId=@bill.BillID" class="btn btn-sm btn-outline-secondary rounded-pill px-3 fw-semibold" title="Edit in Generator">
+                                                <i class="bi bi-pencil-square me-1"></i> Edit
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <div class="card-body p-3 p-md-4">
+                                        <!-- Financial KPI Metric Strip -->
+                                        <div class="row g-2 mb-4 text-center">
+                                            <div class="col-6 col-md-3">
+                                                <div class="p-3 bg-white rounded-3 border shadow-xs h-100">
+                                                    <span class="text-muted extra-small d-block text-uppercase fw-bold">Award / Enhanced Amt</span>
+                                                    <span class="fs-6 fw-bold text-dark font-monospace">₹ @bill.EnhancedAmount.ToString("N2")</span>
+                                                    @if (bill.CourtCost > 0)
+                                                    {
+                                                        <span class="text-muted extra-small d-block">+ ₹ @bill.CourtCost.ToString("N2") Costs</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <div class="p-3 bg-white rounded-3 border shadow-xs h-100">
+                                                    <span class="text-muted extra-small d-block text-uppercase fw-bold">Total Interest</span>
+                                                    <span class="fs-6 fw-bold text-warning-emphasis font-monospace">₹ @bill.TotalInterest.ToString("N2")</span>
+                                                    <span class="text-muted extra-small d-block">@(bill.InterestEntries?.Count ?? 0) segment(s)</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <div class="p-3 bg-white rounded-3 border shadow-xs h-100">
+                                                    <span class="text-muted extra-small d-block text-uppercase fw-bold">Total Deductions</span>
+                                                    <span class="fs-6 fw-bold text-danger font-monospace">₹ @bill.TotalDeductions.ToString("N2")</span>
+                                                    <span class="text-muted extra-small d-block">TDS: ₹ @bill.TDSAmount.ToString("N2")</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-6 col-md-3">
+                                                <div class="p-3 rounded-3 border shadow-xs h-100" style="background: linear-gradient(135deg, #ecfdf5, #d1fae5); border-color: #6ee7b7 !important;">
+                                                    <span class="text-success extra-small d-block text-uppercase fw-bold">Final Net Payable</span>
+                                                    <span class="fs-5 fw-bold text-success font-monospace">₹ @bill.NetPayable.ToString("N2")</span>
+                                                    <span class="badge bg-success text-white extra-small">Sanctioned</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Amount in words highlight -->
+                                        <div class="alert alert-success border-0 py-2 px-3 rounded-3 mb-4 d-flex align-items-center gap-2" style="background: #e8f5e9;">
+                                            <i class="bi bi-cash-coin fs-5 text-success"></i>
+                                            <div>
+                                                <span class="fw-bold text-success small">Amount in Words:</span>
+                                                <span class="text-dark fw-semibold small font-monospace">@MVCCaseManagement.Utils.NumberText.Convert(bill.NetPayable)</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="row g-3">
+                                            <!-- Column 1: Approval & Case Metadata -->
+                                            <div class="col-lg-6">
+                                                <div class="card border rounded-3 h-100 shadow-xs">
+                                                    <div class="card-header bg-white py-2 px-3 border-bottom fw-bold text-primary small">
+                                                        <i class="bi bi-file-earmark-check me-1"></i> Sanction &amp; Case Identification
+                                                    </div>
+                                                    <div class="card-body p-3">
+                                                        <table class="table table-sm table-borderless mb-0 extra-small">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="text-muted" style="width: 45%;">Approval Letter No:</td>
+                                                                    <td class="fw-bold font-monospace text-dark">@(string.IsNullOrEmpty(bill.ApprovalLetterNo) ? "N/A" : bill.ApprovalLetterNo)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Approval Date:</td>
+                                                                    <td class="fw-bold">@(bill.ApprovalDate?.ToString("dd-MMM-yyyy") ?? "N/A")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Office File Ref No:</td>
+                                                                    <td class="fw-bold">@(string.IsNullOrEmpty(bill.FileRefNo) ? "N/A" : bill.FileRefNo)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">MACT Court / Registry:</td>
+                                                                    <td>@(string.IsNullOrEmpty(bill.MACTName) ? Model.MACTName : bill.MACTName)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">High Court Appeal No:</td>
+                                                                    <td class="fw-bold text-indigo">@(string.IsNullOrEmpty(bill.AppealNumber) ? "None" : bill.AppealNumber)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Petitioner / Claimant:</td>
+                                                                    <td>@(string.IsNullOrEmpty(bill.PetitionerName) ? (Model.Petitioners?.FirstOrDefault()?.PetitionerName ?? "Claimant") : bill.PetitionerName)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Vehicle Involved:</td>
+                                                                    <td class="fw-bold">@(string.IsNullOrEmpty(bill.VehicleNo) ? Model.VehicleNo : bill.VehicleNo)</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Accident Date:</td>
+                                                                    <td>@(bill.AccidentDate?.ToString("dd-MMM-yyyy") ?? Model.AccidentDate?.ToString("dd-MMM-yyyy") ?? "N/A")</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Column 2: Financial Calculation Breakdown -->
+                                            <div class="col-lg-6">
+                                                <div class="card border rounded-3 h-100 shadow-xs">
+                                                    <div class="card-header bg-white py-2 px-3 border-bottom fw-bold text-success small">
+                                                        <i class="bi bi-calculator me-1"></i> Financial Settlement Summary
+                                                    </div>
+                                                    <div class="card-body p-3">
+                                                        <table class="table table-sm table-bordered mb-0 extra-small">
+                                                            <tbody>
+                                                                <tr>
+                                                                    <td class="text-muted">Base / Initial Award:</td>
+                                                                    <td class="text-end font-monospace">₹ @bill.BaseAwardAmount.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Current Award Principal:</td>
+                                                                    <td class="text-end fw-bold font-monospace">₹ @bill.EnhancedAmount.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Court Costs Awarded:</td>
+                                                                    <td class="text-end font-monospace">₹ @bill.CourtCost.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Total Interest Accrued:</td>
+                                                                    <td class="text-end fw-bold text-warning-emphasis font-monospace">₹ @bill.TotalInterest.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr class="table-light fw-bold">
+                                                                    <td>Gross Payable (A):</td>
+                                                                    <td class="text-end font-monospace text-primary">₹ @bill.GrossPayable.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Less: Advance Cheques / Interim Paid:</td>
+                                                                    <td class="text-end text-danger font-monospace">- ₹ @bill.TotalPreviousPayments.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="text-muted">Less: TDS Withholding (@bill.TDSPercentage%):</td>
+                                                                    <td class="text-end text-danger font-monospace">- ₹ @bill.TDSAmount.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr class="table-light fw-bold">
+                                                                    <td>Total Deductions (B):</td>
+                                                                    <td class="text-end font-monospace text-danger">- ₹ @bill.TotalDeductions.ToString("N2")</td>
+                                                                </tr>
+                                                                <tr class="table-success fw-bold fs-7">
+                                                                    <td class="text-success">Net Payable (A - B):</td>
+                                                                    <td class="text-end font-monospace text-success">₹ @bill.NetPayable.ToString("N2")</td>
+                                                                </tr>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Section 3: Interest Breakdown Table -->
+                                        @if (bill.InterestEntries != null && bill.InterestEntries.Any())
+                                        {
+                                            <div class="mt-4">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <h6 class="fw-bold mb-0 text-dark small">
+                                                        <i class="bi bi-clock-history me-1 text-warning"></i> Interest Calculation Periods
+                                                    </h6>
+                                                    @if (bill.IsRelaxationApplied)
+                                                    {
+                                                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill extra-small">
+                                                            <i class="bi bi-shield-exclamation me-1"></i>Relaxation: @bill.RelaxationFrom?.ToString("dd-MMM-yyyy") to @bill.RelaxationTo?.ToString("dd-MMM-yyyy")
+                                                        </span>
+                                                    }
+                                                </div>
+                                                <div class="table-responsive rounded-2 border">
+                                                    <table class="table table-sm table-striped table-hover mb-0 extra-small">
+                                                        <thead class="table-light">
+                                                            <tr>
+                                                                <th style="width: 8%;">#</th>
+                                                                <th style="width: 30%;">From Date</th>
+                                                                <th style="width: 30%;">To Date</th>
+                                                                <th class="text-end" style="width: 32%;">Interest Amount (₹)</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @{ var iEntryIdx = 0; }
+                                                            @foreach (var entry in bill.InterestEntries)
+                                                            {
+                                                                iEntryIdx++;
+                                                                <tr>
+                                                                    <td class="fw-bold">@iEntryIdx</td>
+                                                                    <td>@entry.FromDate.ToString("dd-MMM-yyyy")</td>
+                                                                    <td>@entry.ToDate.ToString("dd-MMM-yyyy")</td>
+                                                                    <td class="text-end fw-bold font-monospace">₹ @entry.Amount.ToString("N2")</td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                        <tfoot class="table-light fw-bold">
+                                                            <tr>
+                                                                <td colspan="3" class="text-end">Total Interest:</td>
+                                                                <td class="text-end font-monospace text-warning-emphasis">₹ @bill.TotalInterest.ToString("N2")</td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <!-- Section 4: Previous Cheque Payments Table -->
+                                        @if (bill.PreviousPayments != null && bill.PreviousPayments.Any())
+                                        {
+                                            <div class="mt-4">
+                                                <h6 class="fw-bold mb-2 text-dark small">
+                                                    <i class="bi bi-wallet2 me-1 text-danger"></i> Advance Cheques &amp; Interim Payments Deducted
+                                                </h6>
+                                                <div class="table-responsive rounded-2 border">
+                                                    <table class="table table-sm table-striped table-hover mb-0 extra-small">
+                                                        <thead class="table-light">
+                                                            <tr>
+                                                                <th style="width: 8%;">#</th>
+                                                                <th style="width: 25%;">Cheque / DD No</th>
+                                                                <th style="width: 20%;">Cheque Date</th>
+                                                                <th style="width: 15%;">Status</th>
+                                                                <th style="width: 20%;">Remarks</th>
+                                                                <th class="text-end" style="width: 12%;">Amount (₹)</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @{ var pEntryIdx = 0; }
+                                                            @foreach (var pmt in bill.PreviousPayments)
+                                                            {
+                                                                pEntryIdx++;
+                                                                <tr>
+                                                                    <td class="fw-bold">@pEntryIdx</td>
+                                                                    <td class="font-monospace fw-bold">@pmt.ChequeNumber</td>
+                                                                    <td>@(pmt.ChequeDate?.ToString("dd-MMM-yyyy") ?? "N/A")</td>
+                                                                    <td>
+                                                                        @if (pmt.IsCancelled)
+                                                                        {
+                                                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">Cancelled</span>
+                                                                        }
+                                                                        else if (pmt.IsSelected)
+                                                                        {
+                                                                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Deducted</span>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <span class="badge bg-secondary-subtle text-muted rounded-pill">Excluded</span>
+                                                                        }
+                                                                    </td>
+                                                                    <td>@(string.IsNullOrEmpty(pmt.Remarks) ? "-" : pmt.Remarks)</td>
+                                                                    <td class="text-end fw-bold font-monospace @(pmt.IsCancelled ? "text-decoration-line-through text-muted" : "text-danger")">
+                                                                        ₹ @pmt.Amount.ToString("N2")
+                                                                    </td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                        <tfoot class="table-light fw-bold">
+                                                            <tr>
+                                                                <td colspan="5" class="text-end">Total Cheques Deducted:</td>
+                                                                <td class="text-end font-monospace text-danger">₹ @bill.TotalPreviousPayments.ToString("N2")</td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <!-- Empty State Card -->
+                            <div class="card border border-dashed rounded-4 p-5 text-center bg-white shadow-xs">
+                                <div class="mb-3">
+                                    <div class="rounded-circle bg-success-subtle d-inline-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
+                                        <i class="bi bi-receipt-cutoff fs-1 text-success"></i>
+                                    </div>
+                                </div>
+                                <h5 class="fw-bold text-dark mb-1">No Petty Bill Generated Yet</h5>
+                                <p class="text-muted small mx-auto mb-4" style="max-width: 520px;">
+                                    No petty bill has been generated for <strong>MVC No. @Model.MVCNo / @Model.MVCYear</strong>.
+                                    When a petty bill is generated in the Petty Bill module, full financial calculations, interest breakdown, cheque deduction schedules, and print forms will automatically sync here.
+                                </p>
+                                <div>
+                                    <a href="/pettybill?mvcNo=@Model.MVCNo&year=@Model.MVCYear&caseId=@Model.CaseID&mact=@(Model.MACTName)" class="btn btn-success rounded-pill px-4 py-2 shadow-sm fw-semibold">
+                                        <i class="bi bi-plus-circle me-1"></i> Generate Petty Bill for MVC @Model.MVCNo/@Model.MVCYear
+                                    </a>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
 
