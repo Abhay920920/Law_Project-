@@ -216,9 +216,18 @@ namespace MVCCaseManagement.Controllers
                 new Claim(ClaimTypes.Name, user.Username),
                 new Claim("FullName", user.FullName),
                 new Claim(ClaimTypes.Role, user.RoleName),
+                new Claim("Role", user.RoleName),
                 new Claim("DivisionID", user.DivisionID?.ToString() ?? "0"),
                 new Claim("DivisionName", user.DivisionName ?? "Central Office")
             };
+
+            if (user.RoleName.Equals("Division Controller", StringComparison.OrdinalIgnoreCase) || 
+                user.Username.StartsWith("DC_", StringComparison.OrdinalIgnoreCase))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, "DC"));
+                claims.Add(new Claim("Role", "DC"));
+                claims.Add(new Claim("IsReadOnly", "true"));
+            }
 
             var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
             var authProperties = new AuthenticationProperties

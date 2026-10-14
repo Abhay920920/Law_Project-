@@ -105,8 +105,20 @@
                     var isMaster = currentController == "Master" || currentController == "ApiDashboard";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
+                    var layoutRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? User.FindFirst("Role")?.Value ?? "";
+                    var layoutFullName = User.FindFirst("FullName")?.Value ?? "";
+                    var layoutUsername = User.Identity?.Name ?? "";
+
+                    bool isDivisionController = User.IsInRole("Division Controller") || 
+                                               User.IsInRole("DC") ||
+                                               string.Equals(layoutRole, "Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(layoutRole, "DC", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutRole.Contains("Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutUsername.StartsWith("DC_", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutFullName.Contains("Division Controller", StringComparison.OrdinalIgnoreCase);
+
                     // Read-only roles: LO, Dy CLO, CLO, MD, Division Controller see only Dashboard + Case List
-                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || User.IsInRole("Division Controller") || User.IsInRole("DC");
+                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || isDivisionController;
                 }
 
                 <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")" href="/Home/Index">

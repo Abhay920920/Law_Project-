@@ -39,9 +39,21 @@ namespace MVCCaseManagement.Common
         public void OnActionExecuting(ActionExecutingContext context)
         {
             var user = context.HttpContext.User;
-            if (user?.Identity?.IsAuthenticated == true &&
-                (user.IsInRole("Division Controller") || user.IsInRole("DC")))
+            if (user?.Identity?.IsAuthenticated == true)
             {
+                var filterRole = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? user.FindFirst("Role")?.Value ?? "";
+                var filterFullName = user.FindFirst("FullName")?.Value ?? "";
+                var filterUsername = user.Identity?.Name ?? "";
+
+                bool isDC = user.IsInRole("Division Controller") || 
+                            user.IsInRole("DC") ||
+                            string.Equals(filterRole, "Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(filterRole, "DC", StringComparison.OrdinalIgnoreCase) ||
+                            filterRole.Contains("Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                            filterUsername.StartsWith("DC_", StringComparison.OrdinalIgnoreCase) ||
+                            filterFullName.Contains("Division Controller", StringComparison.OrdinalIgnoreCase);
+
+                if (!isDC) return;
                 var httpMethod = context.HttpContext.Request.Method;
                 var actionName = context.RouteData.Values["action"]?.ToString() ?? "";
                 var controllerName = context.RouteData.Values["controller"]?.ToString() ?? "";
