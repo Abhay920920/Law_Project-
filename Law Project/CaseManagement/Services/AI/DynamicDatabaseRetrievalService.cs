@@ -22,7 +22,8 @@ namespace MVCCaseManagement.Services.AI
         {
             "MVC_CASES", "MVC_CASE_PETITIONERS", "MVC_CASE_ADVERSE_DETAILS", "LABOUR_CASES", "APPEAL_DETAILS", "GRA_CASES", "OTHER_COURT_CASES",
             "CASE_NOTINGS", "JUDGEMENT_REPO", "ECOURTS_TRACKED_CASES", "CASE_HEARINGS_HISTORY",
-            "CASE_ORDERS", "DIVISION_MASTER", "MACT_MASTER", "DOCUMENT_CHUNKS"
+            "CASE_ORDERS", "DIVISION_MASTER", "MACT_MASTER", "DOCUMENT_CHUNKS",
+            "PETTY_BILLS", "PETTY_BILL_INTEREST", "PETTY_BILL_PAYMENTS"
         };
 
         private static readonly HashSet<string> DisallowedSqlKeywords = new(StringComparer.OrdinalIgnoreCase)

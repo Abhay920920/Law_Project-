@@ -29,6 +29,7 @@ namespace MVCCaseManagement.Services.AI
         private readonly ISimilarCaseService _similarCaseService;
         private readonly DBHelper _db;
         private readonly IDynamicDatabaseRetrievalService? _dynamicRetrieval;
+        private readonly IPettyBillRepository? _pettyBillRepo;
         private readonly ILogger<CaseContextBuilder> _logger;
 
         public CaseContextBuilder(
@@ -46,7 +47,8 @@ namespace MVCCaseManagement.Services.AI
             ISimilarCaseService similarCaseService,
             DBHelper db,
             ILogger<CaseContextBuilder> logger,
-            IDynamicDatabaseRetrievalService? dynamicRetrieval = null)
+            IDynamicDatabaseRetrievalService? dynamicRetrieval = null,
+            IPettyBillRepository? pettyBillRepo = null)
         {
             _caseRepo = caseRepo ?? throw new ArgumentNullException(nameof(caseRepo));
             _labourRepo = labourRepo ?? throw new ArgumentNullException(nameof(labourRepo));
@@ -63,6 +65,7 @@ namespace MVCCaseManagement.Services.AI
             _db = db ?? throw new ArgumentNullException(nameof(db));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _dynamicRetrieval = dynamicRetrieval;
+            _pettyBillRepo = pettyBillRepo;
         }
 
         public Task<CaseDossier?> BuildDossierAsync(string caseType, int caseId, CancellationToken cancellationToken = default)
@@ -416,6 +419,35 @@ namespace MVCCaseManagement.Services.AI
             // 7. Applicable Legal Provisions
             dossier.ApplicableProvisions.AddRange(_legalSearch.GetApplicableProvisions("MVC"));
 
+            // 8. Petty Bills & Financial Settlement Vouchers
+            if (_pettyBillRepo != null)
+            {
+                try
+                {
+                    var bills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(caseId, mvc.MVCNo, mvc.MVCYear);
+                    if (bills != null && bills.Count > 0)
+                    {
+                        dossier.PettyBills = bills;
+                        facts["Petty Bills Generated"] = bills.Count.ToString();
+                        var latestBill = bills[0];
+                        facts["Latest Petty Bill ID"] = $"#PB-{latestBill.BillID}";
+                        if (latestBill.BillDate.HasValue)
+                            facts["Latest Petty Bill Date"] = latestBill.BillDate.Value.ToString("dd-MM-yyyy");
+                        if (!string.IsNullOrWhiteSpace(latestBill.ApprovalLetterNo))
+                            facts["Approval Letter No"] = latestBill.ApprovalLetterNo;
+                        if (!string.IsNullOrWhiteSpace(latestBill.FileRefNo))
+                            facts["File Reference No"] = latestBill.FileRefNo;
+                        facts["Petty Bill Gross Payable"] = $"₹{latestBill.GrossPayable:N2}";
+                        facts["Petty Bill Net Payable"] = $"₹{latestBill.NetPayable:N2}";
+                        facts["Petty Bill TDS Amount"] = $"₹{latestBill.TDSAmount:N2} ({latestBill.TDSPercentage}%)";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to load petty bills for MVC case #{CaseId}", caseId);
+                }
+            }
+
             return dossier;
         }
 
@@ -633,6 +665,34 @@ namespace MVCCaseManagement.Services.AI
             {
                 switch (plan.Intent)
                 {
+                    case LegalQueryIntent.PettyBillSettlement:
+                        if (plan.PettyBillId.HasValue && plan.PettyBillId.Value > 0 && _pettyBillRepo != null)
+                        {
+                            var bill = _pettyBillRepo.GetPettyBillById(plan.PettyBillId.Value);
+                            if (bill != null)
+                            {
+                                if (bill.CaseID.HasValue && bill.CaseID.Value > 0)
+                                {
+                                    var fullDossier = await BuildMvcDossierAsync(bill.CaseID.Value, cancellationToken);
+                                    if (fullDossier != null) return fullDossier;
+                                }
+
+                                var pbDossier = new CaseDossier
+                                {
+                                    CaseType = "MVC",
+                                    CaseNumber = !string.IsNullOrWhiteSpace(bill.MVCNo) ? $"MVC/{bill.MVCNo}/{bill.MVCYear}" : $"PB-{bill.BillID}",
+                                    CourtName = bill.MACTName ?? "MACT Tribunal",
+                                    CurrentStage = "Petty Bill Settlement Generated",
+                                    Petitioner = bill.PetitionerName ?? "Claimant",
+                                    Respondent = "NWKRTC",
+                                    VehicleNo = bill.VehicleNo
+                                };
+                                pbDossier.PettyBills.Add(bill);
+                                return pbDossier;
+                            }
+                        }
+                        break;
+
                     case LegalQueryIntent.VehicleHistory:
                         if (!string.IsNullOrWhiteSpace(plan.VehicleNumber))
                         {
@@ -691,7 +751,7 @@ namespace MVCCaseManagement.Services.AI
                         break;
 
                     case LegalQueryIntent.DivisionalStatistics:
-                        var divDossier = await BuildDivisionalDossierAsync(clean, userDivisionId, cancellationToken);
+                        var divDossier = await BuildDivisionalDossierAsync(clean, userDivisionId, plan.DivisionId, cancellationToken);
                         if (divDossier != null) return divDossier;
                         break;
 
@@ -784,6 +844,26 @@ namespace MVCCaseManagement.Services.AI
                 {
                     int foundCaseId = Convert.ToInt32(obj);
                     return await BuildDossierAsync("MVC", foundCaseId, cancellationToken);
+                }
+                else if (_pettyBillRepo != null)
+                {
+                    // Fallback: check if petty bill exists directly for this MVC number even if main case not yet indexed
+                    var fullBills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(0, mvcNo, year);
+                    if (fullBills != null && fullBills.Count > 0)
+                    {
+                        var pbDossier = new CaseDossier
+                        {
+                            CaseType = "MVC",
+                            CaseNumber = $"MVC/{mvcNo}/{year}",
+                            CourtName = fullBills[0].MACTName ?? "MACT Tribunal",
+                            CurrentStage = "Petty Bill Settlement Generated",
+                            Petitioner = fullBills[0].PetitionerName ?? "Claimant",
+                            Respondent = "NWKRTC",
+                            VehicleNo = fullBills[0].VehicleNo
+                        };
+                        pbDossier.PettyBills = fullBills;
+                        return pbDossier;
+                    }
                 }
             }
 
@@ -2154,10 +2234,13 @@ namespace MVCCaseManagement.Services.AI
             if (plan.AmountThreshold.HasValue)
                 return await ResolveFinancialExposureAsync(plan.AmountThreshold.Value, plan.DivisionId, userDivisionId, cancellationToken);
 
-            return await BuildDivisionalDossierAsync(plan.RawQuery, userDivisionId, cancellationToken);
+            return await BuildDivisionalDossierAsync(plan.RawQuery, userDivisionId, plan.DivisionId, cancellationToken);
         }
 
-        private async Task<CaseDossier?> BuildDivisionalDossierAsync(string query, int userDivisionId, CancellationToken cancellationToken)
+        private Task<CaseDossier?> BuildDivisionalDossierAsync(string query, int userDivisionId, CancellationToken cancellationToken)
+            => BuildDivisionalDossierAsync(query, userDivisionId, null, cancellationToken);
+
+        private async Task<CaseDossier?> BuildDivisionalDossierAsync(string query, int userDivisionId, int? targetDivisionId = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(query)) return null;
             string lower = query.ToLowerInvariant();
@@ -2168,9 +2251,14 @@ namespace MVCCaseManagement.Services.AI
                                           lower.Contains("case count") || lower.Contains("cases in") ||
                                           lower.Contains("cases of") || lower.Contains("cases under") ||
                                           lower.Contains("statistics") || lower.Contains("dharwad") ||
-                                          lower.Contains("hubballi") || lower.Contains("belagavi") ||
+                                          lower.Contains("hubballi") || lower.Contains("hubli") || lower.Contains("belagavi") ||
                                           lower.Contains("bagalkot") || lower.Contains("gadag") ||
-                                          lower.Contains("haveri") || lower.Contains("uttara kannada");
+                                          lower.Contains("haveri") || lower.Contains("uttara kannada") ||
+                                          lower.Contains("list all") || lower.Contains("full list") ||
+                                          lower.Contains("all cases") || lower.Contains("show all") ||
+                                          lower.Contains("list pending") ||
+                                          targetDivisionId.HasValue ||
+                                          Regex.IsMatch(lower, @"\b(list\s+all|all\s+\d+|show\s+\d+)\b");
 
             if (!isCountOrDivisionQuery) return null;
 
@@ -2196,25 +2284,46 @@ namespace MVCCaseManagement.Services.AI
 
                 // Match requested division(s)
                 var matchedDivs = new List<(int Id, string Code, string Name)>();
-                if (lower.Contains("dharwad") || Regex.IsMatch(query, @"\b(dwr|hdc)\b", RegexOptions.IgnoreCase))
+                if (targetDivisionId.HasValue && targetDivisionId.Value > 0)
                 {
-                    if (lower.Contains("rural") || Regex.IsMatch(query, @"\bdwr\b", RegexOptions.IgnoreCase))
-                        matchedDivs.AddRange(divisions.Where(d => d.Id == 6));
-                    else if (lower.Contains("city") || Regex.IsMatch(query, @"\bhdc\b", RegexOptions.IgnoreCase))
-                        matchedDivs.AddRange(divisions.Where(d => d.Id == 9));
-                    else
-                        matchedDivs.AddRange(divisions.Where(d => d.Id == 6 || d.Id == 9));
+                    matchedDivs.AddRange(divisions.Where(d => d.Id == targetDivisionId.Value));
                 }
-                else if (lower.Contains("hubballi") || lower.Contains("hubli") || Regex.IsMatch(query, @"\b(hbl)\b", RegexOptions.IgnoreCase))
+
+                if (matchedDivs.Count == 0)
                 {
-                    if (lower.Contains("rural") || Regex.IsMatch(query, @"\bhbl\b", RegexOptions.IgnoreCase))
+                    if (lower.Contains("hubballi rural") || lower.Contains("hubli rural") || Regex.IsMatch(query, @"\bhbl\b", RegexOptions.IgnoreCase))
+                    {
                         matchedDivs.AddRange(divisions.Where(d => d.Id == 8));
-                    else if (lower.Contains("city") || Regex.IsMatch(query, @"\bhdc\b", RegexOptions.IgnoreCase))
+                    }
+                    else if (lower.Contains("hubballi city") || lower.Contains("hubli city") || lower.Contains("dharwad city") || lower.Contains("hubballi-dharwad city") || lower.Contains("hubli dharwad city") || Regex.IsMatch(query, @"\bhdc\b", RegexOptions.IgnoreCase))
+                    {
                         matchedDivs.AddRange(divisions.Where(d => d.Id == 9));
-                    else
-                        matchedDivs.AddRange(divisions.Where(d => d.Id == 8 || d.Id == 9));
-                }
-                else if (lower.Contains("belagavi") || lower.Contains("belgaum") || Regex.IsMatch(query, @"\bbgm\b", RegexOptions.IgnoreCase))
+                    }
+                    else if (lower.Contains("dharwad rural") || Regex.IsMatch(query, @"\bdwr\b", RegexOptions.IgnoreCase))
+                    {
+                        matchedDivs.AddRange(divisions.Where(d => d.Id == 6));
+                    }
+                    else if (lower.Contains("hubballi") || lower.Contains("hubli"))
+                    {
+                        if (lower.Contains("rural"))
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == 8));
+                        else if (lower.Contains("city"))
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == 9));
+                        else if (userDivisionId == 8 || userDivisionId == 9)
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == userDivisionId));
+                        else
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == 8 || d.Id == 9));
+                    }
+                    else if (lower.Contains("dharwad"))
+                    {
+                        if (lower.Contains("city"))
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == 9));
+                        else if (userDivisionId == 6 || userDivisionId == 9)
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == userDivisionId));
+                        else
+                            matchedDivs.AddRange(divisions.Where(d => d.Id == 6));
+                    }
+                    else if (lower.Contains("belagavi") || lower.Contains("belgaum") || Regex.IsMatch(query, @"\bbgm\b", RegexOptions.IgnoreCase))
                 {
                     matchedDivs.AddRange(divisions.Where(d => d.Id == 2));
                 }
@@ -2256,11 +2365,24 @@ namespace MVCCaseManagement.Services.AI
                             matchedDivs.Add(d);
                     }
                 }
+            }
+
+                // Match by targetDivisionId if passed
+                if (matchedDivs.Count == 0 && targetDivisionId.HasValue && targetDivisionId.Value > 0)
+                {
+                    matchedDivs.AddRange(divisions.Where(d => d.Id == targetDivisionId.Value));
+                }
 
                 // If query is for all divisions across NWKRTC
                 if (matchedDivs.Count == 0 && (lower.Contains("all division") || lower.Contains("all divisions") || lower.Contains("overall") || lower.Contains("corporation")))
                 {
                     matchedDivs.AddRange(divisions.Where(d => d.Id != 5)); // All operating divisions
+                }
+
+                // Default to user's assigned division if list requested and no specific division matched
+                if (matchedDivs.Count == 0 && userDivisionId > 0 && userDivisionId != 5)
+                {
+                    matchedDivs.AddRange(divisions.Where(d => d.Id == userDivisionId));
                 }
 
                 // SECURITY & AUTHORIZATION ENFORCEMENT:
@@ -2307,28 +2429,16 @@ namespace MVCCaseManagement.Services.AI
                 int grandTotalPending = 0;
                 int grandTotalDisposed = 0;
 
-                string statsSql = @"
-                    SELECT
-                        (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID) as MvcTotal,
-                        (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'P' OR PendDispStatus IS NULL) AND (DisposalStatus IS NULL OR DisposalStatus <> 'DISPOSED')) as MvcPending,
-                        (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'D' OR DisposalStatus = 'DISPOSED')) as MvcDisposed,
-
-                        (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID) as LabourTotal,
-                        (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as LabourPending,
-                        (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND CaseStatus = 'Disposed') as LabourDisposed,
-
-                        (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID) as GraTotal,
-                        (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as GraPending,
-                        (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND CaseStatus = 'Disposed') as GraDisposed,
-
-                        (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID) as MvcEpTotal,
-                        (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as MvcEpPending,
-
-                        (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID) as LabourEpTotal,
-                        (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as LabourEpPending,
-
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID) as AppealTotal,
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID AND (a.CorpMFAStatus IS NULL OR a.CorpMFAStatus <> 'Disposed')) as AppealPending";
+                // Detect user interest in specific litigation module
+                bool isMvcWanted = lower.Contains("mvc") || lower.Contains("mact") || lower.Contains("accident");
+                bool isLabourWanted = lower.Contains("labour") || lower.Contains("kid") || lower.Contains("industrial");
+                bool isGraWanted = lower.Contains("gratuity") || lower.Contains("gra") || lower.Contains("pg");
+                bool isMfaWanted = lower.Contains("mfa") || lower.Contains("appeal") || lower.Contains("high court") || lower.Contains("hc ");
+                bool isEpWanted = lower.Contains("execution") || System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(ep|eps)\b");
+                bool isPendingOrListRequested = lower.Contains("pending") || lower.Contains("case") || lower.Contains("list") || lower.Contains("show") || lower.Contains("want") || lower.Contains("give") || lower.Contains("all");
+                bool isSpecificModuleRequested = isMvcWanted || isLabourWanted || isGraWanted || isMfaWanted || isEpWanted;
+                bool isAllRequested = lower.Contains("all") || lower.Contains("full") || lower.Contains("every") || lower.Contains("entire") || lower.Contains("complete") || Regex.IsMatch(lower, @"\ball\s+\d+\b");
+                bool isDisposedWanted = (lower.Contains("disposed") || lower.Contains("concluded") || lower.Contains("settled") || lower.Contains("closed")) && !lower.Contains("pending");
 
                 foreach (var div in matchedDivs)
                 {
@@ -2339,8 +2449,118 @@ namespace MVCCaseManagement.Services.AI
                     int labEpTot = 0, labEpPend = 0;
                     int appTot = 0, appPend = 0;
 
-                    using (var cmd = new SqlCommand(statsSql, conn))
+                    // Dynamically build and execute count query ONLY for the modules requested by the user
+                    if (isMvcWanted && !isLabourWanted && !isGraWanted && !isMfaWanted && !isEpWanted)
                     {
+                        string mvcStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID) as MvcTotal,
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'P' OR PendDispStatus IS NULL) AND (DisposalStatus IS NULL OR DisposalStatus <> 'DISPOSED')) as MvcPending,
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'D' OR DisposalStatus = 'DISPOSED')) as MvcDisposed";
+                        using var cmd = new SqlCommand(mvcStatsSql, conn);
+                        cmd.Parameters.AddWithValue("@DivID", div.Id);
+                        using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                        if (await rdr.ReadAsync(cancellationToken))
+                        {
+                            mvcTot = rdr.IsDBNull(0) ? 0 : rdr.GetInt32(0);
+                            mvcPend = rdr.IsDBNull(1) ? 0 : rdr.GetInt32(1);
+                            mvcDisp = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2);
+                        }
+                    }
+                    else if (isLabourWanted && !isMvcWanted && !isGraWanted && !isMfaWanted && !isEpWanted)
+                    {
+                        string labStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID) as LabourTotal,
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as LabourPending,
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND CaseStatus = 'Disposed') as LabourDisposed";
+                        using var cmd = new SqlCommand(labStatsSql, conn);
+                        cmd.Parameters.AddWithValue("@DivID", div.Id);
+                        using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                        if (await rdr.ReadAsync(cancellationToken))
+                        {
+                            labTot = rdr.IsDBNull(0) ? 0 : rdr.GetInt32(0);
+                            labPend = rdr.IsDBNull(1) ? 0 : rdr.GetInt32(1);
+                            labDisp = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2);
+                        }
+                    }
+                    else if (isGraWanted && !isMvcWanted && !isLabourWanted && !isMfaWanted && !isEpWanted)
+                    {
+                        string graStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID) as GraTotal,
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as GraPending,
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND CaseStatus = 'Disposed') as GraDisposed";
+                        using var cmd = new SqlCommand(graStatsSql, conn);
+                        cmd.Parameters.AddWithValue("@DivID", div.Id);
+                        using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                        if (await rdr.ReadAsync(cancellationToken))
+                        {
+                            graTot = rdr.IsDBNull(0) ? 0 : rdr.GetInt32(0);
+                            graPend = rdr.IsDBNull(1) ? 0 : rdr.GetInt32(1);
+                            graDisp = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2);
+                        }
+                    }
+                    else if (isMfaWanted && !isMvcWanted && !isLabourWanted && !isGraWanted && !isEpWanted)
+                    {
+                        string appStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID) as AppealTotal,
+                                (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID AND (a.CorpMFAStatus IS NULL OR a.CorpMFAStatus <> 'Disposed')) as AppealPending";
+                        using var cmd = new SqlCommand(appStatsSql, conn);
+                        cmd.Parameters.AddWithValue("@DivID", div.Id);
+                        using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                        if (await rdr.ReadAsync(cancellationToken))
+                        {
+                            appTot = rdr.IsDBNull(0) ? 0 : rdr.GetInt32(0);
+                            appPend = rdr.IsDBNull(1) ? 0 : rdr.GetInt32(1);
+                        }
+                    }
+                    else if (isEpWanted && !isMvcWanted && !isLabourWanted && !isGraWanted && !isMfaWanted)
+                    {
+                        string epStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID) as MvcEpTotal,
+                                (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as MvcEpPending,
+                                (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID) as LabourEpTotal,
+                                (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as LabourEpPending";
+                        using var cmd = new SqlCommand(epStatsSql, conn);
+                        cmd.Parameters.AddWithValue("@DivID", div.Id);
+                        using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
+                        if (await rdr.ReadAsync(cancellationToken))
+                        {
+                            mvcEpTot = rdr.IsDBNull(0) ? 0 : rdr.GetInt32(0);
+                            mvcEpPend = rdr.IsDBNull(1) ? 0 : rdr.GetInt32(1);
+                            labEpTot = rdr.IsDBNull(2) ? 0 : rdr.GetInt32(2);
+                            labEpPend = rdr.IsDBNull(3) ? 0 : rdr.GetInt32(3);
+                        }
+                    }
+                    else
+                    {
+                        string allStatsSql = @"
+                            SELECT
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID) as MvcTotal,
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'P' OR PendDispStatus IS NULL) AND (DisposalStatus IS NULL OR DisposalStatus <> 'DISPOSED')) as MvcPending,
+                                (SELECT COUNT(*) FROM MVC_CASES WHERE DivisionID = @DivID AND (PendDispStatus = 'D' OR DisposalStatus = 'DISPOSED')) as MvcDisposed,
+
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID) as LabourTotal,
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as LabourPending,
+                                (SELECT COUNT(*) FROM LABOUR_CASES WHERE DivisionID = @DivID AND CaseStatus = 'Disposed') as LabourDisposed,
+
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID) as GraTotal,
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND (CaseStatus IS NULL OR CaseStatus <> 'Disposed')) as GraPending,
+                                (SELECT COUNT(*) FROM GRA_CASES WHERE DivisionCode = @DivID AND CaseStatus = 'Disposed') as GraDisposed,
+
+                                (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID) as MvcEpTotal,
+                                (SELECT COUNT(*) FROM MVC_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as MvcEpPending,
+
+                                (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID) as LabourEpTotal,
+                                (SELECT COUNT(*) FROM LABOUR_EP_DETAILS WHERE DivisionID = @DivID AND (EPStatus IS NULL OR (EPStatus <> 'Closed' AND EPStatus <> 'Disposed'))) as LabourEpPending,
+
+                                (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID) as AppealTotal,
+                                (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES m ON a.CaseID = m.CaseID WHERE m.DivisionID = @DivID AND (a.CorpMFAStatus IS NULL OR a.CorpMFAStatus <> 'Disposed')) as AppealPending";
+
+                        using var cmd = new SqlCommand(allStatsSql, conn);
                         cmd.Parameters.AddWithValue("@DivID", div.Id);
                         using var rdr = await cmd.ExecuteReaderAsync(cancellationToken);
                         if (await rdr.ReadAsync(cancellationToken))
@@ -2368,39 +2588,101 @@ namespace MVCCaseManagement.Services.AI
                         }
                     }
 
-                    int divTot = mvcTot + labTot + graTot + mvcEpTot + labEpTot + appTot;
-                    int divPend = mvcPend + labPend + graPend + mvcEpPend + labEpPend + appPend;
-                    int divDisp = mvcDisp + labDisp + graDisp + (mvcEpTot - mvcEpPend) + (labEpTot - labEpPend) + (appTot - appPend);
-
-                    grandTotalCases += divTot;
-                    grandTotalPending += divPend;
-                    grandTotalDisposed += divDisp;
-
-                    sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Case Status Across All Modules");
-                    sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
-                    sb.AppendLine("|---|:---:|:---:|:---:|");
-                    sb.AppendLine($"| 🚗 **MVC / MACT Accident Claims** | {mvcTot} | **{mvcPend}** | {mvcDisp} |");
-                    sb.AppendLine($"| ⚖️ **Labour & Industrial Disputes (KID/ID)** | {labTot} | **{labPend}** | {labDisp} |");
-                    sb.AppendLine($"| 📜 **Gratuity (PG) Cases** | {graTot} | **{graPend}** | {graDisp} |");
-                    sb.AppendLine($"| 📑 **Appeals (High Court MFA / SC)** | {appTot} | **{appPend}** | {appTot - appPend} |");
-                    sb.AppendLine($"| ⚡ **Execution Petitions (MVC + Labour EP)** | {mvcEpTot + labEpTot} | **{mvcEpPend + labEpPend}** | {(mvcEpTot - mvcEpPend) + (labEpTot - labEpPend)} |");
-                    sb.AppendLine($"| 🟢 **Subtotal: {div.Code}** | **{divTot}** | **{divPend}** | **{divDisp}** |");
-                    sb.AppendLine();
-
-                    // Detect user interest in detailed pending case list
-                    bool isMvcWanted = lower.Contains("mvc") || lower.Contains("mact") || lower.Contains("accident");
-                    bool isLabourWanted = lower.Contains("labour") || lower.Contains("kid") || lower.Contains("industrial");
-                    bool isGraWanted = lower.Contains("gratuity") || lower.Contains("gra") || lower.Contains("pg");
-                    bool isMfaWanted = lower.Contains("mfa") || lower.Contains("appeal") || lower.Contains("high court") || lower.Contains("hc ");
-                    bool isEpWanted = lower.Contains("execution") || System.Text.RegularExpressions.Regex.IsMatch(lower, @"\b(ep|eps)\b");
-                    bool isPendingOrListRequested = lower.Contains("pending") || lower.Contains("case") || lower.Contains("list") || lower.Contains("show") || lower.Contains("want") || lower.Contains("give") || lower.Contains("all");
-                    bool isSpecificModuleRequested = isMvcWanted || isLabourWanted || isGraWanted || isMfaWanted || isEpWanted;
-
-                    // 1. Detailed MVC Pending Cases List
-                    if ((isMvcWanted || (!isSpecificModuleRequested && isPendingOrListRequested)) && mvcPend > 0)
+                    if (isSpecificModuleRequested)
                     {
-                        string mvcListSql = @"
-                            SELECT TOP 30
+                        if (isMvcWanted)
+                        {
+                            grandTotalCases += mvcTot;
+                            grandTotalPending += mvcPend;
+                            grandTotalDisposed += mvcDisp;
+
+                            sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Motor Accident Claims (MVC / MACT)");
+                            sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                            sb.AppendLine("|---|:---:|:---:|:---:|");
+                            sb.AppendLine($"| 🚗 **MVC / MACT Accident Claims** | {mvcTot} | **{mvcPend}** | {mvcDisp} |");
+                            sb.AppendLine();
+                        }
+                        else if (isLabourWanted)
+                        {
+                            grandTotalCases += labTot;
+                            grandTotalPending += labPend;
+                            grandTotalDisposed += labDisp;
+
+                            sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Labour & Industrial Disputes (KID/ID)");
+                            sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                            sb.AppendLine("|---|:---:|:---:|:---:|");
+                            sb.AppendLine($"| ⚖️ **Labour & Industrial Disputes (KID/ID)** | {labTot} | **{labPend}** | {labDisp} |");
+                            sb.AppendLine();
+                        }
+                        else if (isGraWanted)
+                        {
+                            grandTotalCases += graTot;
+                            grandTotalPending += graPend;
+                            grandTotalDisposed += graDisp;
+
+                            sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Payment of Gratuity (PG) Cases");
+                            sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                            sb.AppendLine("|---|:---:|:---:|:---:|");
+                            sb.AppendLine($"| 📜 **Gratuity (PG) Cases** | {graTot} | **{graPend}** | {graDisp} |");
+                            sb.AppendLine();
+                        }
+                        else if (isMfaWanted)
+                        {
+                            grandTotalCases += appTot;
+                            grandTotalPending += appPend;
+                            grandTotalDisposed += (appTot - appPend);
+
+                            sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — High Court Appeals (MFA / SC)");
+                            sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                            sb.AppendLine("|---|:---:|:---:|:---:|");
+                            sb.AppendLine($"| 📑 **Appeals (High Court MFA / SC)** | {appTot} | **{appPend}** | {appTot - appPend} |");
+                            sb.AppendLine();
+                        }
+                        else if (isEpWanted)
+                        {
+                            grandTotalCases += (mvcEpTot + labEpTot);
+                            grandTotalPending += (mvcEpPend + labEpPend);
+                            grandTotalDisposed += ((mvcEpTot - mvcEpPend) + (labEpTot - labEpPend));
+
+                            sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Execution Petitions (EP)");
+                            sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                            sb.AppendLine("|---|:---:|:---:|:---:|");
+                            sb.AppendLine($"| ⚡ **Execution Petitions (MVC + Labour EP)** | {mvcEpTot + labEpTot} | **{mvcEpPend + labEpPend}** | {(mvcEpTot - mvcEpPend) + (labEpTot - labEpPend)} |");
+                            sb.AppendLine();
+                        }
+                    }
+                    else
+                    {
+                        int divTot = mvcTot + labTot + graTot + mvcEpTot + labEpTot + appTot;
+                        int divPend = mvcPend + labPend + graPend + mvcEpPend + labEpPend + appPend;
+                        int divDisp = mvcDisp + labDisp + graDisp + (mvcEpTot - mvcEpPend) + (labEpTot - labEpPend) + (appTot - appPend);
+
+                        grandTotalCases += divTot;
+                        grandTotalPending += divPend;
+                        grandTotalDisposed += divDisp;
+
+                        sb.AppendLine($"#### 🏛️ **{div.Name} ({div.Code})** — Case Status Across All Modules");
+                        sb.AppendLine("| Litigation Module | Total Registered | Pending Cases | Disposed / Concluded |");
+                        sb.AppendLine("|---|:---:|:---:|:---:|");
+                        sb.AppendLine($"| 🚗 **MVC / MACT Accident Claims** | {mvcTot} | **{mvcPend}** | {mvcDisp} |");
+                        sb.AppendLine($"| ⚖️ **Labour & Industrial Disputes (KID/ID)** | {labTot} | **{labPend}** | {labDisp} |");
+                        sb.AppendLine($"| 📜 **Gratuity (PG) Cases** | {graTot} | **{graPend}** | {graDisp} |");
+                        sb.AppendLine($"| 📑 **Appeals (High Court MFA / SC)** | {appTot} | **{appPend}** | {appTot - appPend} |");
+                        sb.AppendLine($"| ⚡ **Execution Petitions (MVC + Labour EP)** | {mvcEpTot + labEpTot} | **{mvcEpPend + labEpPend}** | {(mvcEpTot - mvcEpPend) + (labEpTot - labEpPend)} |");
+                        sb.AppendLine($"| 🟢 **Subtotal: {div.Code}** | **{divTot}** | **{divPend}** | **{divDisp}** |");
+                        sb.AppendLine();
+                    }
+
+                    // 1. Detailed MVC Cases List (Pending or Disposed based on user intent)
+                    if ((isMvcWanted || (!isSpecificModuleRequested && isPendingOrListRequested)) && (isDisposedWanted ? mvcDisp > 0 : mvcPend > 0))
+                    {
+                        int mvcLimit = (isAllRequested || matchedDivs.Count == 1) ? 500 : 30;
+                        string statusWhereClause = isDisposedWanted
+                            ? "(c.PendDispStatus = 'D' OR c.DisposalStatus = 'DISPOSED')"
+                            : "(c.PendDispStatus = 'P' OR c.PendDispStatus IS NULL) AND (c.DisposalStatus IS NULL OR c.DisposalStatus <> 'DISPOSED')";
+
+                        string mvcListSql = $@"
+                            SELECT TOP ({mvcLimit})
                                 c.CaseID,
                                 c.MVCNo,
                                 c.MVCYear,
@@ -2413,8 +2695,7 @@ namespace MVCCaseManagement.Services.AI
                             FROM MVC_CASES c
                             LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE c.DivisionID = @DivID
-                              AND (c.PendDispStatus = 'P' OR c.PendDispStatus IS NULL)
-                              AND (c.DisposalStatus IS NULL OR c.DisposalStatus <> 'DISPOSED')
+                              AND {statusWhereClause}
                             ORDER BY 
                               CASE WHEN c.NextHearingDate IS NOT NULL AND c.NextHearingDate >= CAST(GETDATE() AS DATE) THEN 0 ELSE 1 END,
                               c.NextHearingDate ASC,
@@ -2430,23 +2711,32 @@ namespace MVCCaseManagement.Services.AI
                             while (await mvcRdr.ReadAsync(cancellationToken))
                             {
                                 mvcRows.Add((
-                                    mvcRdr.GetInt32(0),
-                                    mvcRdr.IsDBNull(1) ? "" : mvcRdr.GetString(1),
-                                    mvcRdr.IsDBNull(2) ? 0 : mvcRdr.GetInt32(2),
-                                    mvcRdr.IsDBNull(3) ? "N/A" : mvcRdr.GetString(3),
-                                    mvcRdr.IsDBNull(4) ? "Claimant" : mvcRdr.GetString(4),
-                                    mvcRdr.IsDBNull(5) ? "MACT Tribunal" : mvcRdr.GetString(5),
-                                    mvcRdr.IsDBNull(6) ? "Pending" : mvcRdr.GetString(6),
-                                    mvcRdr.IsDBNull(7) ? null : mvcRdr.GetDateTime(7),
-                                    mvcRdr.IsDBNull(8) ? null : mvcRdr.GetDecimal(8)
+                                     mvcRdr.GetInt32(0),
+                                     mvcRdr.IsDBNull(1) ? "" : mvcRdr.GetString(1),
+                                     mvcRdr.IsDBNull(2) ? 0 : mvcRdr.GetInt32(2),
+                                     mvcRdr.IsDBNull(3) ? "N/A" : mvcRdr.GetString(3),
+                                     mvcRdr.IsDBNull(4) ? "Claimant" : mvcRdr.GetString(4),
+                                     mvcRdr.IsDBNull(5) ? "MACT Tribunal" : mvcRdr.GetString(5),
+                                     mvcRdr.IsDBNull(6) ? "Pending" : mvcRdr.GetString(6),
+                                     mvcRdr.IsDBNull(7) ? null : mvcRdr.GetDateTime(7),
+                                     mvcRdr.IsDBNull(8) ? null : mvcRdr.GetDecimal(8)
                                 ));
                             }
 
                             if (mvcRows.Count > 0)
                             {
                                 sb.AppendLine();
-                                sb.AppendLine($"### 📋 **Active Pending MVC / MACT Claims ({div.Name} — {div.Code})**");
-                                sb.AppendLine($"> Showing **{mvcRows.Count}** pending cases in register (Total pending in division: **{mvcPend}**):");
+                                string listTitle = isDisposedWanted ? "Disposed MVC / MACT Claims" : "Active Pending MVC / MACT Claims";
+                                int relevantCount = isDisposedWanted ? mvcDisp : mvcPend;
+                                sb.AppendLine($"### 📋 **{listTitle} ({div.Name} — {div.Code})**");
+                                if (mvcRows.Count >= relevantCount)
+                                {
+                                    sb.AppendLine($"> Showing all **{mvcRows.Count}** {(isDisposedWanted ? "disposed" : "pending")} cases in register:");
+                                }
+                                else
+                                {
+                                    sb.AppendLine($"> Showing **{mvcRows.Count}** of **{relevantCount}** {(isDisposedWanted ? "disposed" : "pending")} cases in register (Ask *\"List all {relevantCount}\"* for the complete register):");
+                                }
                                 sb.AppendLine();
                                 sb.AppendLine("| # | Case Number | Vehicle No | Claimant / Petitioner | Court / Tribunal | Stage | Next Hearing | Claim (₹) |");
                                 sb.AppendLine("|:---:|---|---|---|---|---|:---:|:---:|");
@@ -2471,8 +2761,9 @@ namespace MVCCaseManagement.Services.AI
                     // 2. Detailed Labour Pending Cases List
                     if ((isLabourWanted || (!isSpecificModuleRequested && isPendingOrListRequested && matchedDivs.Count == 1)) && labPend > 0)
                     {
-                        string labListSql = @"
-                            SELECT TOP 25
+                        int labLimit = (isAllRequested || matchedDivs.Count == 1) ? 500 : 25;
+                        string labListSql = $@"
+                            SELECT TOP ({labLimit})
                                 c.CaseID,
                                 ISNULL(c.CaseType, 'KID') AS CaseType,
                                 c.CaseNumber,
@@ -2514,7 +2805,14 @@ namespace MVCCaseManagement.Services.AI
                             {
                                 sb.AppendLine();
                                 sb.AppendLine($"### ⚖️ **Active Pending Labour Disputes ({div.Name} — {div.Code})**");
-                                sb.AppendLine($"> Showing **{labRows.Count}** dispute cases in register (Total pending in division: **{labPend}**):");
+                                if (labRows.Count >= labPend)
+                                {
+                                    sb.AppendLine($"> Showing all **{labRows.Count}** dispute cases in register:");
+                                }
+                                else
+                                {
+                                    sb.AppendLine($"> Showing **{labRows.Count}** of **{labPend}** dispute cases in register:");
+                                }
                                 sb.AppendLine();
                                 sb.AppendLine("| # | Case Number | Workman / Petitioner | Labour Court / Tribunal | Stage | Next Hearing |");
                                 sb.AppendLine("|:---:|---|---|---|---|:---:|");
@@ -2539,8 +2837,9 @@ namespace MVCCaseManagement.Services.AI
                     // 3. Detailed Gratuity Pending Cases List
                     if (isGraWanted && graPend > 0)
                     {
-                        string graListSql = @"
-                            SELECT TOP 25
+                        int graLimit = (isAllRequested || matchedDivs.Count == 1) ? 500 : 25;
+                        string graListSql = $@"
+                            SELECT TOP ({graLimit})
                                 CaseID,
                                 ISNULL(PGANumber, '') AS PGANumber,
                                 ISNULL(ClaimantName, 'Applicant') AS ClaimantName,
@@ -2574,7 +2873,14 @@ namespace MVCCaseManagement.Services.AI
                             {
                                 sb.AppendLine();
                                 sb.AppendLine($"### 📜 **Active Pending Gratuity (PG) Cases ({div.Name} — {div.Code})**");
-                                sb.AppendLine($"> Showing **{graRows.Count}** gratuity cases in register (Total pending in division: **{graPend}**):");
+                                if (graRows.Count >= graPend)
+                                {
+                                    sb.AppendLine($"> Showing all **{graRows.Count}** gratuity cases in register:");
+                                }
+                                else
+                                {
+                                    sb.AppendLine($"> Showing **{graRows.Count}** of **{graPend}** gratuity cases in register:");
+                                }
                                 sb.AppendLine();
                                 sb.AppendLine("| # | PGA Number | Claimant Name | Controlling Authority | Stage | Next Hearing |");
                                 sb.AppendLine("|:---:|---|---|---|---|:---:|");
@@ -2596,8 +2902,9 @@ namespace MVCCaseManagement.Services.AI
                     // 4. Detailed Appeal / High Court MFA Cases List
                     if (isMfaWanted && appTot > 0)
                     {
-                        string appListSql = @"
-                            SELECT TOP 50
+                        int appLimit = (isAllRequested || matchedDivs.Count == 1) ? 500 : 50;
+                        string appListSql = $@"
+                            SELECT TOP ({appLimit})
                                 a.CaseID,
                                 m.MVCNo,
                                 m.MVCYear,
@@ -2645,7 +2952,14 @@ namespace MVCCaseManagement.Services.AI
                             {
                                 sb.AppendLine();
                                 sb.AppendLine($"### 📑 **High Court MFA & Appeal Cases ({div.Name} — {div.Code})**");
-                                sb.AppendLine($"> Showing **{appRows.Count}** appeal cases in register (Total appeals in division: **{appTot}**, Pending: **{appPend}**):");
+                                if (appRows.Count >= appTot)
+                                {
+                                    sb.AppendLine($"> Showing all **{appRows.Count}** appeal cases in register (Pending: **{appPend}**):");
+                                }
+                                else
+                                {
+                                    sb.AppendLine($"> Showing **{appRows.Count}** of **{appTot}** appeal cases in register (Pending: **{appPend}**):");
+                                }
                                 sb.AppendLine();
                                 sb.AppendLine("| # | High Court Appeal No | HC Bench | Original Case | Vehicle No | Claimant / Respondent | High Court Advocate | Status | Stay Granted |");
                                 sb.AppendLine("|:---:|---|---|---|---|---|---|:---:|:---:|");
@@ -2674,8 +2988,9 @@ namespace MVCCaseManagement.Services.AI
                     // 5. Detailed Execution Petitions (EP) List
                     if (isEpWanted && (mvcEpTot + labEpTot) > 0)
                     {
-                        string epListSql = @"
-                            SELECT TOP 50
+                        int epLimit = (isAllRequested || matchedDivs.Count == 1) ? 500 : 50;
+                        string epListSql = $@"
+                            SELECT TOP ({epLimit})
                                 ep.EPID,
                                 ep.CaseID,
                                 m.MVCNo,
@@ -2750,8 +3065,16 @@ namespace MVCCaseManagement.Services.AI
                 {
                     sb.AppendLine("---");
                     sb.AppendLine();
-                    sb.AppendLine($"### 📈 **Grand Total Summary for {primaryTitle}**");
-                    sb.AppendLine("| Metric | Grand Total Across Modules |");
+                    string summaryHeader = isMvcWanted ? $"Grand Total Summary (MVC Claims) — {primaryTitle}"
+                        : (isLabourWanted ? $"Grand Total Summary (Labour Disputes) — {primaryTitle}"
+                        : (isGraWanted ? $"Grand Total Summary (Gratuity Claims) — {primaryTitle}"
+                        : (isMfaWanted ? $"Grand Total Summary (High Court Appeals) — {primaryTitle}"
+                        : (isEpWanted ? $"Grand Total Summary (Execution Petitions) — {primaryTitle}"
+                        : $"Grand Total Summary for {primaryTitle}"))));
+                    string metricHeader = isSpecificModuleRequested ? "Grand Total (Requested Module)" : "Grand Total Across Modules";
+
+                    sb.AppendLine($"### 📈 **{summaryHeader}**");
+                    sb.AppendLine($"| Metric | {metricHeader} |");
                     sb.AppendLine("|---|:---:|");
                     sb.AppendLine($"| 📌 **Total Pending Cases** | **{grandTotalPending}** |");
                     sb.AppendLine($"| 📁 **Total Registered Cases** | **{grandTotalCases}** |");

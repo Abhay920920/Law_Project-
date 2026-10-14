@@ -105,8 +105,8 @@
                     var isMaster = currentController == "Master" || currentController == "ApiDashboard";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
-                    // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
-                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD");
+                    // Read-only roles: LO, Dy CLO, CLO, MD, Division Controller see only Dashboard + Case List
+                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || User.IsInRole("Division Controller") || User.IsInRole("DC");
                 }
 
                 <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")" href="/Home/Index">
@@ -448,6 +448,7 @@
                     else if (User.IsInRole("CLO")) displayName = "Chief Law Officer";
                     else if (User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) displayName = "Deputy Chief Law Officer";
                     else if (User.IsInRole("LO")) displayName = "Law Officer";
+                    else if (User.IsInRole("Division Controller") || User.IsInRole("DC")) displayName = "Division Controller (" + (User.FindFirst("DivisionName")?.Value ?? "Division") + ")";
                 }
                                 <h3 class="fw-bold text-primary mb-1" id="greetingText">@displayGreeting, @displayName! <span class="ms-1">👋</span></h3>
                                 <p class="text-secondary mb-0">Monitor and manage cases with precision. Your daily case hearing schedule is below.</p>

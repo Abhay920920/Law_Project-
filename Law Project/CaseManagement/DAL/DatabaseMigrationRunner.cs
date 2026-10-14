@@ -1480,6 +1480,103 @@ namespace MVCCaseManagement.DAL
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_1_IndexedRAGMigrationId, migTimer12.ElapsedMilliseconds);
                     }
+
+                    // 14. Versioned Migration: V1_2_2_Add_Division_Controller_Role_And_Users
+                    const string v1_2_2_DivisionControllerMigrationId = "V1_2_2_Add_Division_Controller_Role_And_Users";
+                    bool isV122Applied = false;
+                    using (var checkCmd14 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd14.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_2_DivisionControllerMigrationId });
+                        isV122Applied = (int)(checkCmd14.ExecuteScalar() ?? 0) > 0;
+                    }
+
+                    if (!isV122Applied)
+                    {
+                        logger.LogInformation("Applying migration {MigrationId}...", v1_2_2_DivisionControllerMigrationId);
+                        var migTimer14 = Stopwatch.StartNew();
+
+                        string dcSeedSql = @"
+                            -- Ensure 'Division Controller' Role exists in ROLE_MASTER
+                            IF NOT EXISTS (SELECT 1 FROM ROLE_MASTER WHERE RoleName = 'Division Controller')
+                            BEGIN
+                                INSERT INTO ROLE_MASTER (RoleName, IsActive) VALUES ('Division Controller', 1);
+                            END;
+
+                            DECLARE @DcRoleID INT = (SELECT RoleID FROM ROLE_MASTER WHERE RoleName = 'Division Controller');
+                            DECLARE @DefaultPwd NVARCHAR(256) = '8D969EEF6ECAD3C29A3A629280E686CF0C3F5D5A86AFF3CA12020C923ADC6C92'; -- Standard default 123456
+
+                            -- Seed DC accounts for all 10 operating divisions
+                            -- 1. Bagalkot (Division 1)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_BGK')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_BGK', @DefaultPwd, 'Division Controller (Bagalkot)', 'dc_bgk@nwkrtc.in', '9800000001', @DcRoleID, 1, 1, GETDATE());
+
+                            -- 2. Belagavi (Division 2)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_BGM')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_BGM', @DefaultPwd, 'Division Controller (Belagavi)', 'dc_bgm@nwkrtc.in', '9800000002', @DcRoleID, 2, 1, GETDATE());
+
+                            -- 3. Chikkodi (Division 4)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_CKD')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_CKD', @DefaultPwd, 'Division Controller (Chikkodi)', 'dc_ckd@nwkrtc.in', '9800000004', @DcRoleID, 4, 1, GETDATE());
+
+                            -- 4. Dharwad Rural (Division 6)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_DWR')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_DWR', @DefaultPwd, 'Division Controller (Dharwad)', 'dc_dwr@nwkrtc.in', '9800000006', @DcRoleID, 6, 1, GETDATE());
+
+                            -- 5. Gadag (Division 7)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_GDG')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_GDG', @DefaultPwd, 'Division Controller (Gadag)', 'dc_gdg@nwkrtc.in', '9800000007', @DcRoleID, 7, 1, GETDATE());
+
+                            -- 6. Hubballi Rural (Division 8)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_HBL')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_HBL', @DefaultPwd, 'Division Controller (Hubballi Rural)', 'dc_hbl@nwkrtc.in', '9800000008', @DcRoleID, 8, 1, GETDATE());
+
+                            -- 7. Hubballi-Dharwad City (Division 9)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_HDC')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_HDC', @DefaultPwd, 'Division Controller (HD City)', 'dc_hdc@nwkrtc.in', '9800000009', @DcRoleID, 9, 1, GETDATE());
+
+                            -- 8. Haveri (Division 10)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_HVR')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_HVR', @DefaultPwd, 'Division Controller (Haveri)', 'dc_hvr@nwkrtc.in', '9800000010', @DcRoleID, 10, 1, GETDATE());
+
+                            -- 9. Uttara Kannada / Karwar (Division 11)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_NKD')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_NKD', @DefaultPwd, 'Division Controller (Uttara Kannada)', 'dc_nkd@nwkrtc.in', '9800000011', @DcRoleID, 11, 1, GETDATE());
+
+                            -- 10. Regional Workshop Hubballi (Division 12)
+                            IF NOT EXISTS (SELECT 1 FROM USERS WHERE Username = 'DC_RWH')
+                                INSERT INTO USERS (Username, PasswordHash, FullName, Email, Mobile, RoleID, DivisionID, IsActive, CreatedDate)
+                                VALUES ('DC_RWH', @DefaultPwd, 'Division Controller (Regional Workshop)', 'dc_rwh@nwkrtc.in', '9800000012', @DcRoleID, 12, 1, GETDATE());
+                        ";
+
+                        using (var dcCmd = new SqlCommand(dcSeedSql, conn))
+                        {
+                            dcCmd.CommandTimeout = 60;
+                            dcCmd.ExecuteNonQuery();
+                        }
+
+                        migTimer14.Stop();
+
+                        string recordSql14 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd14 = new SqlCommand(recordSql14, conn))
+                        {
+                            recordCmd14.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_2_DivisionControllerMigrationId });
+                            recordCmd14.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Add Division Controller role to ROLE_MASTER and seed divisional DC accounts (DC_HBL, DC_BGM, etc.)" });
+                            recordCmd14.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer14.ElapsedMilliseconds });
+                            recordCmd14.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_2_DivisionControllerMigrationId, migTimer14.ElapsedMilliseconds);
+                    }
                 }
                 finally
                 {

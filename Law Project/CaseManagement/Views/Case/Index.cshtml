@@ -400,7 +400,7 @@
                                             </td>
                                     <td class="text-end pe-4">
                                         <div class="d-flex justify-content-end gap-2">
-                                            @if (ViewBag.CurrentStatus == "CompliancePending")
+                                            @if (ViewBag.CurrentStatus == "CompliancePending" && !User.IsInRole("Division Controller") && !User.IsInRole("DC"))
                                             {
                                                 <button type="button" class="btn btn-success btn-sm rounded-pill px-3 fw-bold shadow-sm" onclick="openComplianceModal(@item.CaseID, '@item.MVCNo', @item.MVCYear)">
                                                     <i class="bi bi-check-square me-1"></i> Compliance

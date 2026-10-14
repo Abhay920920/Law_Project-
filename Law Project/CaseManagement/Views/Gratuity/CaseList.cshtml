@@ -240,7 +240,7 @@
                                             <a asp-action="Details" asp-route-id="@item.CaseID" class="btn-action btn-view" title="View Full Details">
                                                 <i class="bi bi-eye-fill"></i>
                                             </a>
-                                            @if (ViewBag.IsCentralOffice == false)
+                                            @if (ViewBag.IsCentralOffice == false && !User.IsInRole("Division Controller") && !User.IsInRole("DC"))
                                             {
                                                 if (item.ForwardingStatus == "Sent to Central Office")
                                                 {

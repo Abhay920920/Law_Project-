@@ -213,7 +213,11 @@
     bool detailsIsCentralOffice = detailsDivIdString == "0" || string.IsNullOrEmpty(detailsDivIdString) || detailsDivIdString == "5";
     
     bool canUpdate = !detailsIsCentralOffice;
-    if (!detailsIsCentralOffice && Model.ForwardingStatus == "Sent to Central Office")
+    if (User.IsInRole("Division Controller") || User.IsInRole("DC"))
+    {
+        canUpdate = false;
+    }
+    else if (!detailsIsCentralOffice && Model.ForwardingStatus == "Sent to Central Office")
     {
         canUpdate = false;
     }

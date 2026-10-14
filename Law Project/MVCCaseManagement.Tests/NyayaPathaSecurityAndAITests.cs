@@ -1130,6 +1130,37 @@ namespace MVCCaseManagement.Tests
             Assert.Contains(route.Plan.StatutoryProvisions, act => act.Contains("Payment of Gratuity Act", StringComparison.OrdinalIgnoreCase));
             Assert.True(route.Plan.RequiresLegalPrecedents || route.Plan.RequiresWebSearch);
         }
+
+        [Fact]
+        public void QueryRouter_PendingCasesInHubliRural_RoutesToDivisionalStatistics()
+        {
+            var router = new QueryRouterService(NullLogger<QueryRouterService>.Instance);
+            string query = "PENDING CASES IN HUBLI RURAL DIVISON MVC CASES";
+
+            var route = router.RouteQuery(query);
+
+            Assert.NotNull(route.Plan);
+            Assert.Equal(LegalQueryIntent.DivisionalStatistics, route.Plan.Intent);
+            Assert.Equal(8, route.Plan.DivisionId); // Hubballi Rural
+            Assert.Equal("HBL", route.Plan.DivisionCode);
+            Assert.True(route.Plan.IsDeterministicDatabaseQuery);
+            Assert.Equal(QuerySourceCategory.InternalDatabase, route.PrimaryCategory);
+        }
+
+        [Fact]
+        public void QueryRouter_ListAll98_RecognizedAsDivisionalListQuery()
+        {
+            var router = new QueryRouterService(NullLogger<QueryRouterService>.Instance);
+            string query = "LIST ALL 98";
+
+            var route = router.RouteQuery(query);
+
+            Assert.NotNull(route.Plan);
+            // MentionsListAll is true
+            Assert.Equal(LegalQueryIntent.DivisionalStatistics, route.Plan.Intent);
+            Assert.True(route.Plan.IsDeterministicDatabaseQuery);
+            Assert.Equal(QuerySourceCategory.InternalDatabase, route.PrimaryCategory);
+        }
     }
 }
 

@@ -117,11 +117,17 @@ namespace MVCCaseManagement.Services.AI
                                         lower.Contains("strengths and weaknesses") || lower.Contains("contradictions in our case") ||
                                         lower.Contains("complete legal analysis");
 
+            bool mentionsListAll = lower.Contains("list all") || lower.Contains("full list") || 
+                                   lower.Contains("show all") || lower.Contains("give all") ||
+                                   lower.Contains("all pending") || lower.Contains("all cases") ||
+                                   Regex.IsMatch(lower, @"\b(list\s+all|all\s+\d+|show\s+\d+)\b");
+
             bool mentionsDivisionalStats = (lower.Contains("how many") || lower.Contains("count") || lower.Contains("total cases") ||
                                             lower.Contains("pending cases") || lower.Contains("disposed cases") ||
                                             lower.Contains("cases in") || lower.Contains("cases of") || lower.Contains("cases under") ||
-                                            lower.Contains("statistics") || lower.Contains("case register")) &&
-                                           plan.DivisionId.HasValue;
+                                            lower.Contains("statistics") || lower.Contains("case register") ||
+                                            mentionsListAll) &&
+                                           (plan.DivisionId.HasValue || mentionsListAll);
 
             // Route Evaluation Matrix
             // 0. Specialized Intelligent Retrieval Intents
@@ -156,7 +162,36 @@ namespace MVCCaseManagement.Services.AI
                                           (lower.Contains("compare") && (lower.Contains("mvc") || lower.Contains("case")) && (lower.Contains("and") || lower.Contains("with"))) ||
                                           (lower.Contains("compare") && lower.Contains("mvc") && lower.Contains("labour"));
 
-            if (mentionsAge)
+            bool mentionsPettyBill = lower.Contains("petty bill") || lower.Contains("pettybill") ||
+                                     lower.Contains("settlement bill") || lower.Contains("voucher") ||
+                                     lower.Contains("approval letter") || lower.Contains("approval reference") ||
+                                     lower.Contains("tds deduction") || lower.Contains("tds rate") ||
+                                     lower.Contains("tds amount") || lower.Contains("net payable") ||
+                                     lower.Contains("gross payable") || lower.Contains("cancelled payment") ||
+                                     lower.Contains("cancelled cheque") || lower.Contains("cheque details") ||
+                                     lower.Contains("cheque number") || lower.Contains("cheques") ||
+                                     (lower.Contains("cancel") && (lower.Contains("payment") || lower.Contains("cheque") || lower.Contains("check"))) ||
+                                     lower.Contains("court cost") || lower.Contains("accrued interest") ||
+                                     lower.Contains("award principal") || lower.Contains("bills and payments") ||
+                                     lower.Contains("bill details") || lower.Contains("bill number") ||
+                                     lower.Contains("outstanding") ||
+                                     Regex.IsMatch(lower, @"\b(pb[- ]?\d+)\b") ||
+                                     lower.Contains("ಪೆಟ್ಟಿ ಬಿಲ್") || lower.Contains("ವೋಚರ್") ||
+                                     lower.Contains("ಪಾವತಿ") || lower.Contains("ಟಿಡಿಎಸ್") ||
+                                     lower.Contains("ರದ್ದಾದ ಚೆಕ್") || lower.Contains("ರದ್ದಾದ") ||
+                                     lower.Contains("ನಿವ್ವಳ ಪಾವತಿ") || lower.Contains("ಒಟ್ಟು ಪಾವತಿ") ||
+                                     lower.Contains("ಅನುಮೋದನೆ ಪತ್ರ");
+
+            if (mentionsPettyBill)
+            {
+                plan.Intent = LegalQueryIntent.PettyBillSettlement;
+                plan.IsDeterministicDatabaseQuery = true;
+                plan.SpecificField = "PettyBill";
+                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                result.Reasoning = "Petty bill settlement voucher, payment breakdown, TDS deductions, and outstanding balance routed directly to internal database.";
+            }
+            else if (mentionsAge)
             {
                 int days = 180;
                 if (ageMatch.Success && int.TryParse(ageMatch.Groups[1].Value, out int parsedNum))
@@ -431,7 +466,11 @@ namespace MVCCaseManagement.Services.AI
             plan.PerSourceTimeoutSeconds = 15;
 
             // Question-Driven Aspect Detection: Target only the specific data fields requested
-            if (plan.Intent == LegalQueryIntent.CaseComparison || mentionsCaseComparison)
+            if (plan.Intent == LegalQueryIntent.PettyBillSettlement || mentionsPettyBill)
+            {
+                plan.SpecificField = "PettyBill";
+            }
+            else if (plan.Intent == LegalQueryIntent.CaseComparison || mentionsCaseComparison)
             {
                 plan.SpecificField = "CaseComparison";
             }
@@ -721,6 +760,13 @@ namespace MVCCaseManagement.Services.AI
 
         private static void ExtractCaseIdentifiers(string input, QueryRouteResult result)
         {
+            // Petty Bill Identification: PB-15, PB 15, Bill #15, Petty Bill 15, Voucher 15
+            var pbMatch = Regex.Match(input, @"\b(?:pb[- ]?|petty\s*bill\s*#?\s*|settlement\s*bill\s*#?\s*|bill\s*#\s*|voucher\s*#?\s*)(\d+)\b", RegexOptions.IgnoreCase);
+            if (pbMatch.Success && int.TryParse(pbMatch.Groups[1].Value, out int bId))
+            {
+                result.Plan.PettyBillId = bId;
+            }
+
             // CNR match (e.g. KADH010012342024)
             var cnrMatch = Regex.Match(input, @"\b([A-Z]{4}\d{12})\b", RegexOptions.IgnoreCase);
             if (cnrMatch.Success)

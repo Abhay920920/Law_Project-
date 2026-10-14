@@ -969,7 +969,7 @@ namespace MVCCaseManagement.Controllers
 
             ViewBag.IsCentralOffice = isCO;
             ViewBag.IsCLO = User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO");
-            ViewBag.CanEdit = !isCO && (model.SentToCO != true);
+            ViewBag.CanEdit = !isCO && (model.SentToCO != true) && !User.IsInRole("Division Controller") && !User.IsInRole("DC");
 
             if (isCO && model.SentToCO == true && !model.IsViewedByCO)
             {
@@ -1253,7 +1253,7 @@ namespace MVCCaseManagement.Controllers
 
             ViewBag.IsCentralOffice = isCO;
             ViewBag.IsCLO = User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO");
-            ViewBag.CanEdit = !isCO; // Same logic as Labour cases
+            ViewBag.CanEdit = !isCO && !User.IsInRole("Division Controller") && !User.IsInRole("DC"); // Same logic as Labour cases
             ViewBag.IsServiceMatter = true;
 
             // Use the ServiceID as CaseID for links in Details view if they expect standard ID

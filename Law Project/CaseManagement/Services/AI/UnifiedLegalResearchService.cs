@@ -135,6 +135,63 @@ namespace MVCCaseManagement.Services.AI
                 route.Plan.UserDivisionId = request.DivisionId;
                 route.Plan.UserRole = request.UserRole;
 
+                // 4b. Conversational Memory: If query lacks explicit division, check previous messages in session
+                if (!route.Plan.DivisionId.HasValue && conversationId > 0)
+                {
+                    try
+                    {
+                        var pastMessages = await _auditService.GetMessagesByConversationIdAsync(conversationId, cancellationToken);
+                        if (pastMessages != null && pastMessages.Count > 0)
+                        {
+                            var recentUserMsgs = pastMessages.Where(m => m.Role == "user")
+                                                             .OrderByDescending(m => m.MessageID)
+                                                             .Take(5);
+                            foreach (var pastMsg in recentUserMsgs)
+                            {
+                                if (!string.IsNullOrWhiteSpace(pastMsg.MessageText) && pastMsg.MessageText != request.Question)
+                                {
+                                    var pastRoute = _queryRouter.RouteQuery(pastMsg.MessageText);
+                                    if (pastRoute?.Plan?.DivisionId.HasValue == true)
+                                    {
+                                        route.Plan.DivisionId = pastRoute.Plan.DivisionId.Value;
+                                        route.Plan.DivisionCode = pastRoute.Plan.DivisionCode;
+                                        route.Plan.DivisionName = pastRoute.Plan.DivisionName;
+                                        if (string.IsNullOrWhiteSpace(result.FollowUpContext))
+                                        {
+                                            result.FollowUpContext = $"Retained active division context from conversation: {route.Plan.DivisionName} ({route.Plan.DivisionCode})";
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception exMem)
+                    {
+                        _logger.LogWarning(exMem, "Failed to load conversational memory for division context in conversation {ConvId}", conversationId);
+                    }
+                }
+
+                // If user belongs to an operating division (not Central Office 5) and no division was specified:
+                if (!route.Plan.DivisionId.HasValue && request.DivisionId > 0 && request.DivisionId != 5)
+                {
+                    route.Plan.DivisionId = request.DivisionId;
+                }
+
+                // If query is a list-all request with a known division, ensure it routes to DivisionalStatistics
+                string lowerMsg = (request.Question ?? "").ToLowerInvariant();
+                bool isListAllQuery = lowerMsg.Contains("list all") || lowerMsg.Contains("full list") || 
+                                      lowerMsg.Contains("all pending") || lowerMsg.Contains("all cases") ||
+                                      System.Text.RegularExpressions.Regex.IsMatch(lowerMsg, @"\b(list\s+all|all\s+\d+|show\s+\d+)\b");
+                if (isListAllQuery && route.Plan.DivisionId.HasValue)
+                {
+                    route.Plan.Intent = LegalQueryIntent.DivisionalStatistics;
+                    route.Plan.IsDeterministicDatabaseQuery = true;
+                    route.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                    if (!route.RequiredSources.Contains(QuerySourceCategory.InternalDatabase))
+                        route.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                }
+
                 // Phase 13: Enforce Authorization BEFORE Retrieval
                 if (!IsAuthorized(request.DivisionId, request.UserRole, route.Plan))
                 {
@@ -174,7 +231,8 @@ namespace MVCCaseManagement.Services.AI
                 bool isSpecificCaseDynamicIntent = route.Plan.Intent == LegalQueryIntent.FinancialBalance ||
                                                    route.Plan.Intent == LegalQueryIntent.CaseTimeline ||
                                                    route.Plan.Intent == LegalQueryIntent.DelayAnalysis ||
-                                                   route.Plan.Intent == LegalQueryIntent.MissingEvidence;
+                                                   route.Plan.Intent == LegalQueryIntent.MissingEvidence ||
+                                                   route.Plan.Intent == LegalQueryIntent.PettyBillSettlement;
 
                 if (!resolvedCaseId.HasValue || isMultiCaseOrRegisterIntent || isSpecificCaseDynamicIntent || !string.IsNullOrWhiteSpace(route?.Plan?.CaseNumber))
                 {
@@ -230,6 +288,30 @@ namespace MVCCaseManagement.Services.AI
                         Petitioner = "N/A",
                         Respondent = "NWKRTC / State Road Transport Undertakings"
                     };
+                }
+
+                // Enforce division authorization on resolved case/bill records
+                if (dossier != null && dossier.DivisionId.HasValue && dossier.DivisionId.Value > 0)
+                {
+                    bool isCentralOfficeUser = request.DivisionId == 5 || request.DivisionId == 0 ||
+                                               string.Equals(request.UserRole, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(request.UserRole, "CLO", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(request.UserRole, "Dy CLO", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(request.UserRole, "DyCLO", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(request.UserRole, "MD", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(request.UserRole, "CO", StringComparison.OrdinalIgnoreCase);
+
+                    if (!isCentralOfficeUser && dossier.DivisionId.Value != request.DivisionId)
+                    {
+                        stopwatch.Stop();
+                        _logger.LogWarning("Access Denied: User {UserId} in Division {UserDiv} attempted to access case #{CaseId} in Division {CaseDiv}",
+                            request.UserId, request.DivisionId, dossier.CaseId, dossier.DivisionId.Value);
+
+                        result.Success = false;
+                        result.ErrorMessage = $"Access Denied: You are not authorized to view case or financial records belonging to Division #{dossier.DivisionId.Value}.";
+                        result.ExecutionTimeMs = (int)stopwatch.ElapsedMilliseconds;
+                        return result;
+                    }
                 }
 
                 // 6. Targeted Concurrent Searches based on Route Selection
@@ -947,6 +1029,16 @@ namespace MVCCaseManagement.Services.AI
                 return true;
             }
 
+            // 1a. Petty Bill Settlement Direct Deterministic Engine
+            if (route?.Plan?.Intent == LegalQueryIntent.PettyBillSettlement ||
+                string.Equals(route?.Plan?.SpecificField, "PettyBill", StringComparison.OrdinalIgnoreCase) ||
+                lower.Contains("petty bill") || lower.Contains("pettybill") || lower.Contains("ಪೆಟ್ಟಿ ಬಿಲ್") ||
+                ((lower.Contains("voucher") || lower.Contains("approval letter") || lower.Contains("tds") || lower.Contains("cancelled cheque") || lower.Contains("net payable")) && dossier.PettyBills.Count > 0))
+            {
+                directAnswer = GeneratePettyBillAnswer(dossier, route?.Plan, lower);
+                return true;
+            }
+
             // 1b. Divisional Statistics fallback if DirectMarkdown was not pre-populated
             if (dossier.CaseType == "DivisionalStatistics" ||
                 dossier.CaseType == "VehicleLitigationHistory" ||
@@ -1197,6 +1289,8 @@ namespace MVCCaseManagement.Services.AI
                         aspect = "HearingStage";
                     else if (lower.Contains("claimant") || lower.Contains("petitioner") || lower.Contains("respondent") || lower.Contains("driver") || lower.Contains("conductor") || lower.Contains("token") || lower.Contains("badge") || lower.Contains("who filed") || lower.Contains("who is") || lower.Contains("ಅರ್ಜಿದಾರ") || lower.Contains("ಚಾಲಕ"))
                         aspect = "PartiesLitigants";
+                    else if (lower.Contains("petty bill") || lower.Contains("pettybill") || lower.Contains("voucher") || lower.Contains("settlement bill") || lower.Contains("tds") || lower.Contains("ಪೆಟ್ಟಿ ಬಿಲ್"))
+                        aspect = "PettyBill";
                     else if (lower.Contains("award") || lower.Contains("compensation") || lower.Contains("balance") || lower.Contains("deposit") || lower.Contains("deposited") || lower.Contains("claim amount") || lower.Contains("how much") || lower.Contains("paid") || lower.Contains("unpaid") || lower.Contains("ಪರಿಹಾರ") || lower.Contains("ಮೊತ್ತ") || lower.Contains("ಬಾಕಿ"))
                         aspect = "FinancialBalance";
                     else if (lower.Contains("vehicle") || lower.Contains("bus no") || lower.Contains("bus number") || lower.Contains("accident date") || lower.Contains("fir") || lower.Contains("police station") || lower.Contains("crime") || lower.Contains("ವಾಹನ") || lower.Contains("ಅಪಘಾತ"))
@@ -1220,7 +1314,11 @@ namespace MVCCaseManagement.Services.AI
         {
             var sb = new System.Text.StringBuilder();
 
-            if (aspect == "HearingStage")
+            if (aspect == "PettyBill")
+            {
+                return GeneratePettyBillAnswer(dossier, null, lower);
+            }
+            else if (aspect == "HearingStage")
             {
                 string nextHearing = dossier.NextHearingDate.HasValue 
                     ? dossier.NextHearingDate.Value.ToString("dd-MM-yyyy") 
@@ -1517,6 +1615,186 @@ namespace MVCCaseManagement.Services.AI
 
             sb.AppendLine("---");
             sb.AppendLine("*Source: NWKRTC Central Case Repository (Direct SQL Query — 100% Real-Time & Verified, Zero External LLM Cost).*");
+            return sb.ToString();
+        }
+
+        public static string GeneratePettyBillAnswer(CaseDossier dossier, LegalQueryPlan? plan, string lower)
+        {
+            var sb = new System.Text.StringBuilder();
+            bool isKannada = lower.Contains("ಪೆಟ್ಟಿ") || lower.Contains("ಬಿಲ್") || lower.Contains("ವೋಚರ್") ||
+                             lower.Contains("ಪಾವತಿ") || lower.Contains("ಟಿಡಿಎಸ್") || lower.Contains("ರದ್ದಾದ") ||
+                             lower.Contains("ಬಾಕಿ");
+
+            var bills = dossier.PettyBills ?? new List<PettyBillViewModel>();
+
+            // If a specific BillID is targeted by the query plan, filter to that bill
+            if (plan?.PettyBillId.HasValue == true && plan.PettyBillId.Value > 0)
+            {
+                var matchingBill = bills.FirstOrDefault(b => b.BillID == plan.PettyBillId.Value);
+                if (matchingBill != null)
+                {
+                    bills = new List<PettyBillViewModel> { matchingBill };
+                }
+            }
+
+            if (bills.Count == 0)
+            {
+                sb.AppendLine("## 📑 NYAYA PATHA — Petty Bill Settlement Verification");
+                sb.AppendLine();
+                sb.AppendLine($"> ⚠️ **Status:** {(isKannada ? "ಪೆಟ್ಟಿ ಬಿಲ್ ರಚಿಸಲಾಗಿಲ್ಲ" : "No Petty Bill Generated")} | **Case Reference:** **{dossier.CaseType} #{dossier.CaseNumber}**");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("### ℹ️ Official Repository Verification Result");
+                sb.AppendLine($"No Petty Bill Settlement voucher or payment breakdown has been generated in the NWKRTC database for **{dossier.CaseNumber}** ({dossier.CourtName}).");
+                sb.AppendLine();
+                sb.AppendLine("- **Award Amount in Case:** " + (dossier.StructuredFacts.TryGetValue("Award Amount", out var aa) ? aa : "Not Recorded"));
+                sb.AppendLine("- **Deposited Amount:** " + (dossier.StructuredFacts.TryGetValue("EP Deposited Amount", out var da) ? da : "₹0.00"));
+                sb.AppendLine("- **Tribunal / Court:** " + dossier.CourtName);
+                sb.AppendLine("- **Current Case Stage:** " + dossier.CurrentStage);
+                sb.AppendLine();
+                sb.AppendLine("> 💡 *To generate a Petty Bill settlement voucher for this case, please navigate to the Financial / Petty Bill module in the Case Management system.*");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine("*Source: NWKRTC Central Case Management Database (Direct SQL Query — 100% Real-Time & Traceable, Zero Fabrication).*");
+                return sb.ToString();
+            }
+
+            // Specific inquiry dimensions
+            bool isCancelledQuery = lower.Contains("cancelled") || lower.Contains("canceled") || lower.Contains("ರದ್ದಾದ");
+            bool isTdsQuery = lower.Contains("tds") || lower.Contains("statutory deduction") || lower.Contains("ಟಿಡಿಎಸ್");
+            bool isApprovalQuery = lower.Contains("approval") || lower.Contains("letter") || lower.Contains("file ref") || lower.Contains("ಅನುಮೋದನೆ");
+            bool isOutstandingQuery = lower.Contains("outstanding") || lower.Contains("balance") || lower.Contains("remains") || lower.Contains("ಬಾಕಿ");
+            bool isGeneratedQuery = lower.Contains("has the petty bill been generated") || lower.Contains("been generated") || lower.Contains("generated for") || lower.Contains("ರಚಿಸಲಾಗಿದೆಯೇ");
+
+            sb.AppendLine("## 📑 NYAYA PATHA — Petty Bill Settlement & Financial Voucher");
+            sb.AppendLine();
+
+            if (isGeneratedQuery)
+            {
+                var first = bills[0];
+                string bDate = first.BillDate.HasValue ? first.BillDate.Value.ToString("dd-MM-yyyy") : "Recorded";
+                sb.AppendLine($"> ✅ **Confirmation:** Yes, Petty Bill **#PB-{first.BillID}** has been generated for **{dossier.CaseNumber}** on **{bDate}** (Net Payable: **₹{first.NetPayable:N2}**).");
+                sb.AppendLine();
+            }
+
+            if (bills.Count > 1 && !isCancelledQuery && !isTdsQuery)
+            {
+                sb.AppendLine($"> 📊 **Multiple Petty Bills Linked:** Found **{bills.Count}** settlement bills linked to **{dossier.CaseNumber}**.");
+                sb.AppendLine();
+                sb.AppendLine("---");
+                sb.AppendLine();
+                sb.AppendLine("### 📋 Linked Petty Bills Overview");
+                sb.AppendLine("| Bill ID | Bill Date | Approval Letter No | Award Principal (₹) | Accrued Interest (₹) | TDS (₹) | Net Payable (₹) |");
+                sb.AppendLine("|---|---|---|---|---|---|---|");
+                foreach (var b in bills)
+                {
+                    string bDate = b.BillDate.HasValue ? b.BillDate.Value.ToString("dd-MM-yyyy") : "N/A";
+                    string appLetter = !string.IsNullOrWhiteSpace(b.ApprovalLetterNo) ? b.ApprovalLetterNo : "N/A";
+                    sb.AppendLine($"| **#PB-{b.BillID}** | {bDate} | {appLetter} | ₹{b.EnhancedAmount:N2} | ₹{b.TotalInterest:N2} | ₹{b.TDSAmount:N2} ({b.TDSPercentage}%) | **₹{b.NetPayable:N2}** |");
+                }
+                sb.AppendLine();
+            }
+
+            int billIndex = 1;
+            foreach (var bill in bills)
+            {
+                if (bills.Count > 1)
+                {
+                    sb.AppendLine($"---");
+                    sb.AppendLine($"### 🧾 Petty Bill #{billIndex++}: **#PB-{bill.BillID}**");
+                    sb.AppendLine();
+                }
+
+                string billDateStr = bill.BillDate.HasValue ? bill.BillDate.Value.ToString("dd-MM-yyyy") : "N/A";
+                string appDateStr = bill.ApprovalDate.HasValue ? bill.ApprovalDate.Value.ToString("dd-MM-yyyy") : "N/A";
+                string appLetter = !string.IsNullOrWhiteSpace(bill.ApprovalLetterNo) ? bill.ApprovalLetterNo : "Pending / Not Specified";
+                string fileRef = !string.IsNullOrWhiteSpace(bill.FileRefNo) ? bill.FileRefNo : "Not Recorded";
+
+                sb.AppendLine($"> 🧾 **Bill Reference:** **#PB-{bill.BillID}** | **Bill Date:** **{billDateStr}** | **Net Payable:** **₹{bill.NetPayable:N2}**");
+                sb.AppendLine();
+                sb.AppendLine("#### 🏛️ Administrative & Approval Reference");
+                sb.AppendLine("| Parameter | Official Detail | Verification Source |");
+                sb.AppendLine("|---|---|---|");
+                sb.AppendLine($"| **Linked MVC Case** | **MVC/{bill.MVCNo}/{bill.MVCYear}** | Case Registry |");
+                sb.AppendLine($"| **Claimant / Petitioner** | {bill.PetitionerName ?? dossier.Petitioner} | Primary Litigant |");
+                sb.AppendLine($"| **Tribunal / MACT** | {bill.MACTName ?? dossier.CourtName} | Competent Forum |");
+                sb.AppendLine($"| **Division** | {bill.DivisionName ?? "Assigned Division"} | Corporation Establishment |");
+                sb.AppendLine($"| **Vehicle Registration** | `{bill.VehicleNo ?? dossier.VehicleNo ?? "N/A"}` | Corporation Fleet |");
+                sb.AppendLine($"| **Approval Letter No** | **`{appLetter}`** (Dated: {appDateStr}) | Corporation Sanction Order |");
+                sb.AppendLine($"| **File Reference No** | `{fileRef}` | Law Cell Dispatch File |");
+                sb.AppendLine($"| **Award Phase / Type** | {bill.AwardType ?? "Lower Court"} | Judicial Hierarchy |");
+                sb.AppendLine();
+
+                sb.AppendLine("#### 💰 Financial Breakdown & Statutory Reconciliations");
+                sb.AppendLine("| Accounting Component | Verified Amount (₹) | Statutory & Business Calculation Rule |");
+                sb.AppendLine("|---|---|---|");
+                sb.AppendLine($"| **Award Principal** | **₹{bill.EnhancedAmount:N2}** | Base Award / Enhanced Award Principal |");
+                sb.AppendLine($"| **Accrued Interest** | **₹{bill.TotalInterest:N2}** | Calculated per court decree period(s) |");
+                sb.AppendLine($"| **Court Costs** | **₹{bill.CourtCost:N2}** | Statutory legal costs awarded by Tribunal |");
+                sb.AppendLine($"| ➡️ **Gross Payable** | **₹{bill.GrossPayable:N2}** | `Principal + Interest + Court Costs` |");
+                sb.AppendLine($"| **TDS Deduction ({bill.TDSPercentage}%)** | **-₹{bill.TDSAmount:N2}** | `Accrued Interest × {bill.TDSPercentage}%` (Income Tax Act) |");
+                sb.AppendLine($"| **Previous Payments Deducted** | **-₹{bill.TotalPreviousPayments:N2}** | Selected valid cheques (Excludes cancelled payments) |");
+                sb.AppendLine($"| ➡️ **Total Deductions** | **-₹{bill.TotalDeductions:N2}** | `Previous Payments + TDS Amount` |");
+                sb.AppendLine($"| 🎯 **Net Payable (Settlement)** | **₹{bill.NetPayable:N2}** | `Gross Payable - Total Deductions` |");
+
+                if (bill.IsRelaxationApplied)
+                {
+                    string relFrom = bill.RelaxationFrom.HasValue ? bill.RelaxationFrom.Value.ToString("dd-MM-yyyy") : "N/A";
+                    string relTo = bill.RelaxationTo.HasValue ? bill.RelaxationTo.Value.ToString("dd-MM-yyyy") : "N/A";
+                    sb.AppendLine($"| **Interest Relaxation Period** | {relFrom} to {relTo} | Interest waiver applied |");
+                }
+                sb.AppendLine();
+
+                // Payment and Cheque Ledger
+                if (bill.PreviousPayments != null && bill.PreviousPayments.Count > 0)
+                {
+                    sb.AppendLine("#### 💳 Payment & Cheque Ledger");
+                    sb.AppendLine("| Payment ID | Cheque No | Cheque Date | Amount (₹) | Selection Status | Validity / Status | Remarks |");
+                    sb.AppendLine("|---|---|---|---|---|---|---|");
+                    foreach (var p in bill.PreviousPayments)
+                    {
+                        string chqDate = p.ChequeDate.HasValue ? p.ChequeDate.Value.ToString("dd-MM-yyyy") : "N/A";
+                        string selStatus = p.IsSelected ? "✅ Selected" : "⚪ Unselected";
+                        string validityStatus = p.IsCancelled
+                            ? "❌ **Cancelled (Excluded from deductions)**"
+                            : (p.IsSelected ? "✅ **Valid & Deducted**" : "⚠️ Excluded (Not Selected)");
+                        string remarks = !string.IsNullOrWhiteSpace(p.Remarks) ? p.Remarks : "-";
+
+                        sb.AppendLine($"| #{p.PaymentID} | **{p.ChequeNumber}** | {chqDate} | ₹{p.Amount:N2} | {selStatus} | {validityStatus} | {remarks} |");
+                    }
+                    sb.AppendLine();
+
+                    var cancelledCheques = bill.PreviousPayments.Where(p => p.IsCancelled).ToList();
+                    if (cancelledCheques.Count > 0)
+                    {
+                        sb.AppendLine($"> ⚠️ **Cancelled Payment Audit:** {cancelledCheques.Count} cheque(s) marked cancelled: {string.Join(", ", cancelledCheques.Select(c => $"Cheque #{c.ChequeNumber} (₹{c.Amount:N2})"))}. These are strictly excluded from Total Deductions as per NWKRTC financial rules.");
+                        sb.AppendLine();
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("> ℹ️ **Previous Payments:** No previous interim payments or cheques recorded for this bill.");
+                    sb.AppendLine();
+                }
+
+                // Interest entries breakdown
+                if (bill.InterestEntries != null && bill.InterestEntries.Count > 0)
+                {
+                    sb.AppendLine("#### 📈 Interest Calculation Periods");
+                    sb.AppendLine("| Period From | Period To | Accrued Interest (₹) |");
+                    sb.AppendLine("|---|---|---|");
+                    foreach (var ie in bill.InterestEntries)
+                    {
+                        sb.AppendLine($"| {ie.FromDate:dd-MM-yyyy} | {ie.ToDate:dd-MM-yyyy} | ₹{ie.Amount:N2} |");
+                    }
+                    sb.AppendLine();
+                }
+            }
+
+            sb.AppendLine("---");
+            sb.AppendLine("*Source: NWKRTC Petty Bills & Accounts Settlement Repository (Direct SQL Query — 100% Real-Time & Verified, Zero External LLM Tokens).*");
+
             return sb.ToString();
         }
 

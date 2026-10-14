@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using MVCCaseManagement.Models;
 
 namespace MVCCaseManagement.Models.AI
 {
@@ -315,6 +316,7 @@ namespace MVCCaseManagement.Models.AI
         public List<ExternalLegalSourceDto> ExternalLegalSources { get; set; } = new();
         public List<string> ApplicableProvisions { get; set; } = new();
         public List<DetectedConflictDto> DetectedConflicts { get; set; } = new();
+        public List<PettyBillViewModel> PettyBills { get; set; } = new();
     }
 
     public static class QuerySourceCategory
@@ -352,7 +354,8 @@ namespace MVCCaseManagement.Models.AI
         CaseTimeline,
         DelayAnalysis,
         MissingEvidence,
-        CaseComparison
+        CaseComparison,
+        PettyBillSettlement
     }
 
     public enum EvidenceSufficiencyLevel
@@ -411,6 +414,7 @@ namespace MVCCaseManagement.Models.AI
         public string? SecondaryCaseNumber { get; set; }
         public string? SecondaryCaseType { get; set; }
         public int? SecondaryCaseYear { get; set; }
+        public int? PettyBillId { get; set; }
 
         // Source Requirements
         public bool IsDeterministicDatabaseQuery { get; set; }

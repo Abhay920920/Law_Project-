@@ -124,9 +124,12 @@
                 Active Labour Execution Petitions
             </div>
             <div>
-                 <a href="@Url.Action("Create", "LabourEP")" class="btn btn-primary btn-sm rounded-3 px-3">
-                    <i class="bi bi-plus-circle me-1"></i> New Entry
-                 </a>
+                @if (!User.IsInRole("Division Controller") && !User.IsInRole("DC"))
+                {
+                     <a href="@Url.Action("Create", "LabourEP")" class="btn btn-primary btn-sm rounded-3 px-3">
+                        <i class="bi bi-plus-circle me-1"></i> New Entry
+                     </a>
+                }
             </div>
         </div>
         <div class="gov-card-body p-3 border-top border-bottom bg-light-subtle">
@@ -229,9 +232,12 @@
                                     </td>
                                     <td class="text-end">
                                         <div class="d-flex justify-content-end gap-2">
-                                            <a href="@Url.Action("Edit", "LabourEP", new { id = item.EPID })" class="btn btn-sm btn-outline-primary border-0 p-1" title="Edit">
-                                                <i class="bi bi-pencil-square fs-6"></i>
-                                            </a>
+                                            @if (!User.IsInRole("Division Controller") && !User.IsInRole("DC"))
+                                            {
+                                                <a href="@Url.Action("Edit", "LabourEP", new { id = item.EPID })" class="btn btn-sm btn-outline-primary border-0 p-1" title="Edit">
+                                                    <i class="bi bi-pencil-square fs-6"></i>
+                                                </a>
+                                            }
                                             <a href="@Url.Action("Details", "LabourEP", new { id = item.EPID })" class="btn btn-sm btn-outline-dark border-0 p-1" title="View">
                                                 <i class="bi bi-arrow-right-circle fs-6"></i>
                                             </a>

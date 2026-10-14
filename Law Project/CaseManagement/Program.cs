@@ -26,6 +26,7 @@ builder.Services.AddAntiforgery(options =>
 builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute());
+    options.Filters.Add(new DivisionControllerReadOnlyFilter());
 }).AddRazorRuntimeCompilation();
 
 builder.Services.AddMemoryCache(); // Used for login brute-force, OTP attempt limiting, and OAuth token caching
