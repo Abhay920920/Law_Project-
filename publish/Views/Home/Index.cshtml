@@ -79,7 +79,7 @@
                             <span class="satellite-label">OTHER</span>
                         </a>
 
-                        <!-- Reports -->
+                        <!-- Reports / Petty Bill -->
                         @if (User.FindFirst("DivisionID")?.Value == "0" || User.FindFirst("DivisionID")?.Value == "5" || string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
                         {
                             <a href="@Url.Action("CentralOffice", "Report")" class="nav-satellite" style="--angle: 198deg;">
@@ -91,7 +91,7 @@
                         }
                         else
                         {
-                            <a href="@Url.Action("Index", "Report")" class="nav-satellite" style="--angle: 198deg;">
+                            <a href="/pettybill" class="nav-satellite" style="--angle: 198deg;">
                                 <div class="satellite-icon bg-success-gradient">
                                     <i class="bi bi-file-earmark-bar-graph-fill"></i>
                                 </div>

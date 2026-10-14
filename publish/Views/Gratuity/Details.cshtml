@@ -64,7 +64,7 @@
                     }
                 }
             }
-            @if (!isCO && Model.ForwardingStatus != "Sent to Central Office")
+            @if (!isCO && Model.ForwardingStatus != "Sent to Central Office" && !User.IsInRole("Division Controller") && !User.IsInRole("DC"))
             {
                 <a href="@Url.Action("Edit", "Gratuity", new { id = Model.CaseID })" class="btn btn-primary shadow-sm rounded-pill px-4">
                     <i class="bi bi-pencil-square me-2"></i> EDIT

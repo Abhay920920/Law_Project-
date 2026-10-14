@@ -102,6 +102,13 @@ New-Item -ItemType Directory -Force -Path (Join-Path $webOut "uploads") | Out-Nu
 New-Item -ItemType Directory -Force -Path (Join-Path $webOut "wwwroot\uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $apiOut "logs") | Out-Null
 
+# Copy fresh Views to webOut and rootPublish for Razor Runtime Compilation
+$sourceViews = Join-Path $scriptDir "Law Project\CaseManagement\Views"
+$targetWebViews = Join-Path $webOut "Views"
+Write-Host "  Syncing latest Razor Views to $targetWebViews..." -ForegroundColor Gray
+if (-not (Test-Path $targetWebViews)) { New-Item -ItemType Directory -Force -Path $targetWebViews | Out-Null }
+Copy-Item -Path "$sourceViews\*" -Destination $targetWebViews -Recurse -Force
+
 $rootPublish = Join-Path $scriptDir "publish"
 if (Test-Path $rootPublish) {
     Write-Host "  Syncing to $rootPublish..." -ForegroundColor Gray

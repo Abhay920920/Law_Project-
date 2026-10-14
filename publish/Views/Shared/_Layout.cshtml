@@ -93,17 +93,32 @@
                     var currentModuleQuery = Context.Request.Query["module"].ToString();
                     var divId_Layout = User.FindFirst("DivisionID")?.Value;
                     bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
+                    
+                    var currentPath = Context.Request.Path.Value ?? "";
+                    var isPettyBill = currentPath.StartsWith("/pettybill", StringComparison.OrdinalIgnoreCase) || 
+                                      ((currentController == "Report" || currentController == "PettyBill") && (currentAction == "Index" || string.IsNullOrEmpty(currentAction)));
+
+                    var isReport = (currentController == "Report" && currentAction == "CentralOffice") || (isCO_Layout && currentController == "Report" && !isPettyBill);
                     var isGratuity = currentController == "Gratuity";
                     var isLabour = currentController == "Labour" || currentController == "LabourEP";
-                    var isReport = currentController == "Report";
                     var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
                     var isMaster = currentController == "Master" || currentController == "ApiDashboard";
-                    var isAudit = currentController == "Audit";
-                    var isEP = currentController == "EP";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
-                    // Read-only roles: LO, Dy CLO, CLO, MD see only Dashboard + Case List
-                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD");
+                    var layoutRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? User.FindFirst("Role")?.Value ?? "";
+                    var layoutFullName = User.FindFirst("FullName")?.Value ?? "";
+                    var layoutUsername = User.Identity?.Name ?? "";
+
+                    bool isDivisionController = User.IsInRole("Division Controller") || 
+                                               User.IsInRole("DC") ||
+                                               string.Equals(layoutRole, "Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                                               string.Equals(layoutRole, "DC", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutRole.Contains("Division Controller", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutUsername.StartsWith("DC_", StringComparison.OrdinalIgnoreCase) ||
+                                               layoutFullName.Contains("Division Controller", StringComparison.OrdinalIgnoreCase);
+
+                    // Read-only roles: LO, Dy CLO, CLO, MD, Division Controller see only Dashboard + Case List
+                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || isDivisionController;
                 }
 
                 <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")" href="/Home/Index">
@@ -133,26 +148,51 @@
                 @if (isReport)
                 {
                     <div class="nav-section-title">REPORTS & MIS</div>
-                    <a class="nav-link @(string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
-                        <i class="bi bi-file-earmark-spreadsheet-fill text-primary me-2"></i>
-                        <span>MVC</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
-                        <i class="bi bi-briefcase-fill text-purple me-2" style="color: #8e2de2;"></i>
-                        <span>Labour</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
-                        <i class="bi bi-cash-stack text-warning me-2"></i>
-                        <span>Gratuity</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
-                        <i class="bi bi-folder-symlink-fill text-info me-2"></i>
-                        <span>Others</span>
-                    </a>
-                    <a class="nav-link @(currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
-                        <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
-                        <span>MMR-ST2</span>
-                    </a>
+
+                    @if (isCO_Layout)
+                    {
+                        <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && (string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
+                            <i class="bi bi-truck-front-fill me-2 text-primary"></i>
+                            <span>MVC Monthly Statement</span>
+                        </a>
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
+                            <i class="bi bi-receipt-cutoff me-2 text-success"></i>
+                            <span>Petty Bill</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">LABOUR MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
+                            <i class="bi bi-briefcase-fill me-2" style="color: #8b5cf6;"></i>
+                            <span>Labour Monthly Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">GRATUITY MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
+                            <i class="bi bi-cash-stack me-2" style="color: #f59e0b;"></i>
+                            <span>Gratuity Monthly Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">OTHER COURTS MODULE</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
+                            <i class="bi bi-building me-2" style="color: #06b6d4;"></i>
+                            <span>Other Courts Statement</span>
+                        </a>
+
+                        <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">CONSOLIDATED MIS</div>
+                        <a class="nav-link @(currentAction == "CentralOffice" && (currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
+                            <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
+                            <span>MMR-ST2 Particulars</span>
+                        </a>
+                    }
+                    else
+                    {
+                        <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
+                            <i class="bi bi-receipt-cutoff me-2 text-success"></i>
+                            <span>Petty Bill</span>
+                        </a>
+                    }
                 }
                 else if (isLabour)
                 {
@@ -347,7 +387,7 @@
 
                     @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
                     {
-                        <a class="nav-link @(currentController == "Report" ? "active" : "")" href="/Report">
+                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
                             <i class="bi bi-receipt-cutoff"></i>
                             <span>Petty Bill</span>
                         </a>
@@ -420,6 +460,7 @@
                     else if (User.IsInRole("CLO")) displayName = "Chief Law Officer";
                     else if (User.IsInRole("Dy CLO") || User.IsInRole("DyCLO")) displayName = "Deputy Chief Law Officer";
                     else if (User.IsInRole("LO")) displayName = "Law Officer";
+                    else if (User.IsInRole("Division Controller") || User.IsInRole("DC")) displayName = "Division Controller (" + (User.FindFirst("DivisionName")?.Value ?? "Division") + ")";
                 }
                                 <h3 class="fw-bold text-primary mb-1" id="greetingText">@displayGreeting, @displayName! <span class="ms-1">👋</span></h3>
                                 <p class="text-secondary mb-0">Monitor and manage cases with precision. Your daily case hearing schedule is below.</p>
