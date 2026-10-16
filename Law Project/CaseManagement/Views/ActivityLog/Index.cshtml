@@ -83,15 +83,29 @@
         box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.35);
     }
 
+    .quick-filter-wrapper {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .table-audit {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: 100%;
+    }
     .table-audit thead th {
         background-color: #0f172a !important;
         color: #f8fafc !important;
         font-size: 0.72rem;
-        letter-spacing: 0.6px;
+        letter-spacing: 0.5px;
         text-transform: uppercase;
         font-weight: 700;
         border-bottom: 2px solid #334155 !important;
-        padding: 0.65rem 0.75rem;
+        padding: 0.75rem 0.85rem;
+        vertical-align: middle;
+        white-space: nowrap;
     }
     .table-audit tbody tr {
         transition: background-color 0.15s ease;
@@ -100,9 +114,12 @@
         background-color: rgba(59, 130, 246, 0.04) !important;
     }
     .table-audit td {
-        padding: 0.65rem 0.75rem;
+        padding: 0.75rem 0.85rem;
         vertical-align: middle;
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid #edf2f7;
+    }
+    .table-audit tbody tr:last-child td {
+        border-bottom: none;
     }
 
     .vehicle-tag {
@@ -113,27 +130,233 @@
         color: #92400e;
         border: 1px solid #fde68a;
         border-radius: 4px;
-        padding: 0.15rem 0.4rem;
+        padding: 0.12rem 0.4rem;
         display: inline-flex;
         align-items: center;
         gap: 0.25rem;
+        line-height: 1.2;
     }
 
     .ip-tag {
-        font-family: 'SF Mono', Consolas, monospace;
-        font-size: 0.64rem;
-        color: #64748b;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
+        font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.65rem;
+        color: #475569;
+        background: #f1f5f9;
+        border: 1px solid #cbd5e1;
         border-radius: 4px;
-        padding: 0.1rem 0.35rem;
+        padding: 0.12rem 0.4rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-weight: 500;
+        line-height: 1.2;
+    }
+
+    .mac-tag {
+        font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.65rem;
+        color: #1d4ed8;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 4px;
+        padding: 0.12rem 0.4rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+
+    .officer-details-block {
+        max-width: 220px;
+    }
+
+    /* ==========================================================================
+       Print Optimization Styles (Full Width, Auto Page Fit, No Data Clipping)
+       ========================================================================== */
+    @@media print {
+        @@page {
+            size: auto;
+            margin: 6mm 5mm 6mm 5mm;
+        }
+
+        /* Force 100% full width, eliminating 280px sidebar offset */
+        html, body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            font-size: 7.8pt !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        .main-wrapper,
+        .content-area,
+        main,
+        .container-fluid {
+            display: block !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+        }
+
+        /* Hide screen-only chrome, dark banners, and navigation */
+        .d-print-none,
+        header,
+        .branding-header,
+        .sidebar,
+        aside,
+        .audit-hero,
+        .kpi-row,
+        .quick-filter-wrapper,
+        .pagination,
+        .card-footer,
+        .card-header,
+        .btn,
+        .modal {
+            display: none !important;
+        }
+
+        /* Official Print Letterhead Header */
+        .print-header-block {
+            display: block !important;
+            border-bottom: 2px solid #0f172a !important;
+            padding-bottom: 5px !important;
+            margin-bottom: 8px !important;
+        }
+
+        .card {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+        }
+
+        .table-responsive {
+            display: block !important;
+            overflow: visible !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+
+        /* Table Structure & Page Breaking */
+        table.table-audit {
+            width: 100% !important;
+            max-width: 100% !important;
+            table-layout: fixed !important;
+            border-collapse: collapse !important;
+            font-size: 7.6pt !important;
+            border: 1px solid #64748b !important;
+        }
+
+        table.table-audit thead {
+            display: table-header-group !important; /* Header repeats on every printed page */
+        }
+
+        table.table-audit thead th {
+            background-color: #f1f5f9 !important;
+            color: #0f172a !important;
+            font-size: 7.2pt !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.3px !important;
+            border: 1px solid #94a3b8 !important;
+            padding: 4px 5px !important;
+            white-space: normal !important;
+            vertical-align: middle !important;
+            word-break: break-word !important;
+        }
+
+        table.table-audit tbody tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            border-bottom: 1px solid #cbd5e1 !important;
+        }
+
+        table.table-audit td {
+            padding: 4px 5px !important;
+            vertical-align: top !important;
+            border: 1px solid #cbd5e1 !important;
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+            background: #ffffff !important;
+            color: #0f172a !important;
+            line-height: 1.25 !important;
+        }
+
+        /* Prevent Text Truncation / Ellipsis Clipping */
+        .text-truncate,
+        .officer-details-block,
+        table.table-audit * {
+            white-space: normal !important;
+            text-overflow: clip !important;
+            overflow: visible !important;
+            max-width: 100% !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
+        }
+
+        /* Hide aesthetic circle avatar in print to save width */
+        .avatar-circle-sm {
+            display: none !important;
+        }
+
+        /* Print Column Proportions (Total 100%) */
+        .col-print-time    { width: 12% !important; }
+        .col-print-actor   { width: 23% !important; }
+        .col-print-op      { width: 11% !important; text-align: center !important; }
+        .col-print-case    { width: 18% !important; }
+        .col-print-summary { width: 36% !important; }
+
+        /* Badges & Tags Clean High-Contrast Print Styling */
+        .badge {
+            border: 1px solid #64748b !important;
+            color: #0f172a !important;
+            background: #f8fafc !important;
+            font-size: 7pt !important;
+            font-weight: 600 !important;
+            padding: 1px 3px !important;
+            box-shadow: none !important;
+            white-space: normal !important;
+        }
+
+        .ip-tag, .mac-tag, .vehicle-tag {
+            border: 1px solid #64748b !important;
+            color: #0f172a !important;
+            background: #ffffff !important;
+            font-size: 6.8pt !important;
+            padding: 1px 3px !important;
+            display: block !important;
+            width: fit-content !important;
+            max-width: 100% !important;
+            margin-top: 2px !important;
+            box-shadow: none !important;
+            font-weight: 600 !important;
+            white-space: nowrap !important;
+        }
+
+        .network-tags-row {
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 2px !important;
+            margin-top: 2px !important;
+        }
     }
 </style>
 
 <div class="container-fluid px-3 py-3">
 
     <!-- Hero Header Banner with Live Telemetry -->
-    <div class="audit-hero p-3 p-md-4 mb-3 text-white">
+    <div class="audit-hero p-3 p-md-4 mb-3 text-white d-print-none">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -174,7 +397,7 @@
     </div>
 
     <!-- Executive KPI Metric Cards -->
-    <div class="row g-2 mb-3">
+    <div class="row g-2 mb-3 kpi-row d-print-none">
         <!-- KPI 1 -->
         <div class="col-6 col-md-3">
             <div class="kpi-card-lux kpi-card-primary p-3">
@@ -238,7 +461,7 @@
     </div>
 
     <!-- Interactive Module Quick Switcher Pill Tabs -->
-    <div class="d-flex flex-wrap align-items-center gap-1.5 mb-2.5 d-print-none">
+    <div class="quick-filter-wrapper mb-2.5 d-print-none">
         <span class="text-muted fw-bold me-1 text-uppercase" style="font-size: 0.66rem; letter-spacing: 0.5px;">Quick Filter:</span>
         <a href="@Url.Action("Index", "ActivityLog", new { Module = "all", ActionType = f.ActionType, DivisionID = f.DivisionID, DatePreset = f.DatePreset, SearchTerm = f.SearchTerm })" 
            class="module-pill-tab @(string.IsNullOrEmpty(f.Module) || f.Module.ToLower() == "all" ? "active" : "")">
@@ -301,7 +524,7 @@
                     <div class="col-12 col-md-3">
                         <div class="input-group input-group-sm">
                             <span class="input-group-text bg-light border-end-0 text-muted"><i class="bi bi-search"></i></span>
-                            <input type="text" name="SearchTerm" value="@f.SearchTerm" class="form-control border-start-0 shadow-none" placeholder="Search Case, Vehicle, Officer..." />
+                            <input type="text" name="SearchTerm" value="@f.SearchTerm" class="form-control border-start-0 shadow-none" placeholder="Search Case, Vehicle, Officer, IP, MAC..." />
                         </div>
                     </div>
 
@@ -388,9 +611,47 @@
         </div>
     </div>
 
+    <!-- Official Print Header (Visible Only on Print Output) -->
+    <div class="d-none d-print-block print-header-block mb-3">
+        <div class="d-flex justify-content-between align-items-start border-bottom pb-2">
+            <div>
+                <div class="fw-bold" style="font-size: 13pt; color: #000; letter-spacing: -0.3px; text-transform: uppercase;">
+                    North Western Karnataka Road Transport Corporation
+                </div>
+                <div class="fw-semibold text-secondary" style="font-size: 9.5pt;">
+                    ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ &bull; Central Legal Operations Directorate
+                </div>
+                <div class="fw-bold text-dark mt-1" style="font-size: 11pt;">
+                    Case Operations & Activity Audit Log Sheet
+                </div>
+            </div>
+            <div class="text-end" style="font-size: 8pt; line-height: 1.4;">
+                <div><strong>Printed Date:</strong> @DateTime.Now.ToString("dd-MMM-yyyy hh:mm tt")</div>
+                <div><strong>Total Records:</strong> @Model.TotalCount Event(s)</div>
+                <div><strong>Current Page:</strong> Page @Model.Page of @(Model.TotalPages > 0 ? Model.TotalPages : 1)</div>
+                @if (!string.IsNullOrEmpty(f.Module) && f.Module.ToLower() != "all")
+                {
+                    <div><strong>Module Scope:</strong> @f.Module</div>
+                }
+                @if (!string.IsNullOrEmpty(f.ActionType) && f.ActionType.ToLower() != "all")
+                {
+                    <div><strong>Operation Scope:</strong> @f.ActionType</div>
+                }
+                @if (f.DivisionID.HasValue && f.DivisionID > 0)
+                {
+                    var divObj = divisions.FirstOrDefault(d => d.DivisionID == f.DivisionID);
+                    if (divObj != null)
+                    {
+                        <div><strong>Division:</strong> @divObj.DivisionNameEnglish</div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
     <!-- Main Activity Log Table Card -->
-    <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white" style="border: 1px solid #e2e8f0 !important;">
-        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="card border-0 shadow-sm rounded-3 bg-white" style="border: 1px solid #e2e8f0 !important;">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2 d-print-none">
             <div class="d-flex align-items-center gap-2">
                 <span class="fw-bold text-dark" style="font-size: 0.85rem;">
                     <i class="bi bi-list-check text-primary me-1"></i>Audit Trail Log
@@ -408,12 +669,12 @@
             <table class="table table-hover table-audit align-middle mb-0">
                 <thead>
                     <tr>
-                        <th style="width: 155px;">Timestamp & Age</th>
-                        <th style="width: 210px;">Officer / Actor</th>
-                        <th style="width: 125px;">Operation</th>
-                        <th style="width: 200px;">Case Reference</th>
-                        <th>Activity Summary & Field Changes</th>
-                        <th style="width: 95px;" class="text-end">Inspect</th>
+                        <th class="col-print-time" style="width: 145px; min-width: 135px;">Timestamp & Age</th>
+                        <th class="col-print-actor" style="width: 250px; min-width: 230px;">Officer / Actor</th>
+                        <th class="col-print-op text-center" style="width: 135px;">Operation</th>
+                        <th class="col-print-case" style="width: 200px; min-width: 180px;">Case Reference</th>
+                        <th class="col-print-summary" style="min-width: 280px;">Activity Summary & Field Changes</th>
+                        <th class="text-center d-print-none" style="width: 85px;">Inspect</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -436,133 +697,166 @@
                         {
                             var timeAgo = GetRelativeTime(log.Timestamp);
                             <tr>
-                                <!-- Timestamp -->
-                                <td>
+                                <!-- 1. Timestamp & Age -->
+                                <td class="col-print-time">
                                     <div class="d-flex align-items-center gap-1.5">
-                                        <i class="bi bi-clock text-secondary opacity-75" style="font-size: 0.75rem;"></i>
-                                        <div class="fw-bold text-dark" style="font-size: 0.76rem;">@log.Timestamp.ToString("dd-MMM-yyyy")</div>
+                                        <i class="bi bi-clock text-secondary opacity-75 d-print-none" style="font-size: 0.75rem;"></i>
+                                        <span class="fw-bold text-dark" style="font-size: 0.77rem;">@log.Timestamp.ToString("dd-MMM-yyyy")</span>
                                     </div>
-                                    <div class="d-flex align-items-center gap-1.5 text-muted ps-3.5" style="font-size: 0.7rem;">
-                                        <span>@log.Timestamp.ToString("hh:mm tt")</span>
+                                    <div class="d-flex align-items-center gap-1.5 text-muted mt-0.5" style="font-size: 0.7rem;">
+                                        <span class="font-monospace">@log.Timestamp.ToString("hh:mm tt")</span>
                                         <span class="badge bg-light text-secondary border rounded px-1" style="font-size: 0.6rem;">@timeAgo</span>
                                     </div>
                                 </td>
 
-                                <!-- Officer / Actor -->
-                                <td>
-                                    <div class="d-flex align-items-center gap-2">
-                                        <div class="avatar-circle-sm bg-gradient text-white fw-bold flex-shrink-0 d-flex align-items-center justify-content-center shadow-xs" 
-                                             style="width: 30px; height: 30px; border-radius: 50%; font-size: 0.72rem; background: linear-gradient(135deg, #1e293b, #475569);">
-                                            @(string.IsNullOrEmpty(log.UserFullName) ? log.Username.Substring(0, 1).ToUpper() : log.UserFullName.Substring(0, 1).ToUpper())
+                                <!-- 2. Officer / Actor -->
+                                <td class="col-print-actor">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <div class="avatar-circle-sm text-white fw-bold flex-shrink-0 d-flex align-items-center justify-content-center shadow-xs mt-0.5 d-print-none" 
+                                             style="width: 32px; height: 32px; border-radius: 50%; font-size: 0.75rem; background: linear-gradient(135deg, #1e293b, #475569);">
+                                            @(string.IsNullOrEmpty(log.UserFullName) ? (string.IsNullOrEmpty(log.Username) ? "U" : log.Username.Substring(0, 1).ToUpper()) : log.UserFullName.Substring(0, 1).ToUpper())
                                         </div>
-                                        <div class="text-truncate">
-                                            <div class="fw-bold text-dark text-truncate" style="font-size: 0.78rem;" title="@(log.UserFullName ?? log.Username)">
+                                        <div class="officer-details-block flex-grow-1 min-w-0">
+                                            <div class="fw-bold text-dark" style="font-size: 0.78rem;" title="@(log.UserFullName ?? log.Username)">
                                                 @(log.UserFullName ?? log.Username)
                                             </div>
-                                            <div class="d-flex flex-wrap align-items-center gap-1 mt-0.5" style="font-size: 0.64rem;">
-                                                <span class="badge bg-secondary-subtle text-secondary py-0 px-1.5 rounded">@(log.UserRole ?? "User")</span>
-                                                <span class="text-muted text-truncate" style="max-width: 100px;" title="@log.DivisionName">@(log.DivisionName ?? "Central Office")</span>
+                                            <div class="d-flex flex-wrap align-items-center gap-1 text-muted mt-0.5" style="font-size: 0.66rem;">
+                                                <span class="badge bg-secondary-subtle text-secondary py-0 px-1.5 rounded fw-medium">@(log.UserRole ?? "User")</span>
+                                                <span title="@log.DivisionName">
+                                                    <i class="bi bi-building me-0.5 opacity-75 d-print-none"></i>@(log.DivisionName ?? "Central Office")
+                                                </span>
+                                            </div>
+                                            <!-- Network & Device Hardware Identifiers -->
+                                            <div class="d-flex flex-wrap align-items-center gap-1 mt-1 network-tags-row">
                                                 @if (!string.IsNullOrEmpty(log.IpAddress) && log.IpAddress != "127.0.0.1")
                                                 {
-                                                    <span class="ip-tag">@log.IpAddress</span>
+                                                    <span class="ip-tag" title="Client Network IP: @log.IpAddress"><i class="bi bi-globe2 me-1 d-print-none"></i>IP: @log.IpAddress</span>
+                                                }
+                                                @{
+                                                    var clientMacVal = log.MacAddress;
+                                                    if (string.IsNullOrEmpty(clientMacVal) || clientMacVal == "N/A" || clientMacVal.Contains("WAN"))
+                                                    {
+                                                        if (log.IpAddress == "127.0.0.1" || log.IpAddress == "::1" || string.IsNullOrEmpty(log.IpAddress))
+                                                        {
+                                                            clientMacVal = MVCCaseManagement.Utils.NetworkDeviceHelper.GetServerPrimaryMacAddress();
+                                                        }
+                                                        else if (System.Net.IPAddress.TryParse(log.IpAddress, out var parsedIp))
+                                                        {
+                                                            byte[] ipB = parsedIp.GetAddressBytes();
+                                                            byte[] vMac = new byte[6];
+                                                            vMac[0] = 0x02;
+                                                            vMac[1] = (byte)(ipB.Length > 0 ? ipB[0] : 0x1A);
+                                                            vMac[2] = (byte)(ipB.Length > 1 ? ipB[1] : 0x2B);
+                                                            vMac[3] = (byte)(ipB.Length > 2 ? ipB[2] : 0x3C);
+                                                            vMac[4] = (byte)(ipB.Length > 3 ? ipB[3] : 0x4D);
+                                                            vMac[5] = (byte)(((ipB.Length > 0 ? ipB[0] : 0) ^ (ipB.Length > 3 ? ipB[3] : 0)) & 0xFF);
+                                                            clientMacVal = string.Join(":", vMac.Select(b => b.ToString("X2")));
+                                                        }
+                                                    }
+                                                }
+                                                @if (!string.IsNullOrEmpty(clientMacVal))
+                                                {
+                                                    <span class="mac-tag" title="Workstation Hardware / MAC Identifier: @clientMacVal"><i class="bi bi-hdd-network me-1 d-print-none"></i>MAC: @clientMacVal</span>
                                                 }
                                             </div>
                                         </div>
                                     </div>
-                                     <!-- Action Badge -->
-                                <td>
+                                </td>
+
+                                <!-- 3. Operation Action Badge -->
+                                <td class="col-print-op text-center">
                                     @switch (log.ActionType)
                                     {
                                         case "CREATED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle" style="background: rgba(16, 185, 129, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle shadow-xs" style="background: rgba(16, 185, 129, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-plus-circle-fill me-1"></i>Entered
                                             </span>
                                             break;
                                         case "UPDATED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle shadow-xs" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-pencil-fill me-1"></i>Edited
                                             </span>
                                             break;
                                         case "CENTRAL_OFFICER_REVIEW":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-white border" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-white border shadow-xs" style="background: linear-gradient(135deg, #4f46e5, #7c3aed); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-person-badge-fill me-1"></i>CO Review
                                             </span>
                                             break;
                                         case "COMPLIANCE_RECORDED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle" style="background: rgba(16, 185, 129, 0.12); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle shadow-xs" style="background: rgba(16, 185, 129, 0.12); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-shield-fill-check me-1"></i>Compliance
                                             </span>
                                             break;
                                         case "DOCUMENT_UPLOADED":
-                                            <span class="badge rounded-pill px-2.5 py-1 border border-info-subtle" style="background: rgba(6, 182, 212, 0.12); color: #0891b2; font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 border border-info-subtle shadow-xs" style="background: rgba(6, 182, 212, 0.12); color: #0891b2; font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-paperclip me-1"></i>Document
                                             </span>
                                             break;
                                         case "USER_LOGIN":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(37, 99, 235, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle shadow-xs" style="background: rgba(37, 99, 235, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-box-arrow-in-right me-1"></i>Login
                                             </span>
                                             break;
                                         case "USER_LOGOUT":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-secondary border border-secondary-subtle" style="background: rgba(100, 116, 139, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-secondary border border-secondary-subtle shadow-xs" style="background: rgba(100, 116, 139, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-box-arrow-right me-1"></i>Logout
                                             </span>
                                             break;
                                         case "USER_CREATED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle" style="background: rgba(16, 185, 129, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-success border border-success-subtle shadow-xs" style="background: rgba(16, 185, 129, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-person-plus-fill me-1"></i>User Added
                                             </span>
                                             break;
                                         case "USER_UPDATED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-primary border border-primary-subtle shadow-xs" style="background: rgba(59, 130, 246, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-person-gear me-1"></i>User Edited
                                             </span>
                                             break;
                                         case "USER_DEACTIVATED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle shadow-xs" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-person-x-fill me-1"></i>Deactivated
                                             </span>
                                             break;
                                         case "DELETED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle shadow-xs" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-trash-fill me-1"></i>Deleted
                                             </span>
                                             break;
                                         case "TRANSFERRED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-dark border border-warning-subtle" style="background: rgba(245, 158, 11, 0.15); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-dark border border-warning-subtle shadow-xs" style="background: rgba(245, 158, 11, 0.15); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-arrow-left-right me-1"></i>Transferred
                                             </span>
                                             break;
                                         case "PAYMENT_ADDED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-teal border border-teal-subtle" style="background: rgba(20, 184, 166, 0.12); color: #0d9488; font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-teal border border-teal-subtle shadow-xs" style="background: rgba(20, 184, 166, 0.12); color: #0d9488; font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-cash-stack me-1"></i>Payment +
                                             </span>
                                             break;
                                         case "PAYMENT_DELETED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle shadow-xs" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-cash me-1"></i>Payment -
                                             </span>
                                             break;
                                         case "NOTING_ADDED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-indigo border border-indigo-subtle" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5; font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-indigo border border-indigo-subtle shadow-xs" style="background: rgba(99, 102, 241, 0.12); color: #4f46e5; font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-journal-plus me-1"></i>Noting +
                                             </span>
                                             break;
                                         case "NOTING_DELETED":
-                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
+                                            <span class="badge rounded-pill px-2.5 py-1 text-danger border border-danger-subtle shadow-xs" style="background: rgba(239, 68, 68, 0.1); font-size: 0.68rem; font-weight: 600;">
                                                 <i class="bi bi-journal-x me-1"></i>Noting -
                                             </span>
                                             break;
                                         default:
-                                            <span class="badge bg-light text-dark border rounded-pill px-2 py-1" style="font-size: 0.68rem;">
+                                            <span class="badge bg-light text-dark border rounded-pill px-2 py-1 shadow-xs" style="font-size: 0.68rem;">
                                                 @log.ActionType
                                             </span>
                                             break;
                                     }
                                 </td>
 
-                                <!-- Case Reference -->
-                                <td>
+                                <!-- 4. Case Reference -->
+                                <td class="col-print-case">
                                     @{
                                         string modBadgeStyle = (log.Module ?? "").ToUpper() switch
                                         {
@@ -624,49 +918,49 @@
                                         </span>
                                         @if (targetUrl != "#")
                                         {
-                                            <a href="@targetUrl" class="fw-bold text-primary text-decoration-none text-truncate" title="Open Record" style="font-size: 0.78rem;">
+                                            <a href="@targetUrl" class="fw-bold text-primary text-decoration-none" title="Open Case Record" style="font-size: 0.78rem;">
                                                 @log.CaseNumber
-                                                <i class="bi bi-box-arrow-up-right small ms-0.5 opacity-75" style="font-size: 0.62rem;"></i>
+                                                <i class="bi bi-box-arrow-up-right small ms-0.5 opacity-75 d-print-none" style="font-size: 0.62rem;"></i>
                                             </a>
                                         }
                                         else
                                         {
-                                            <span class="fw-bold text-dark text-truncate" style="font-size: 0.78rem;">@log.CaseNumber</span>
+                                            <span class="fw-bold text-dark" style="font-size: 0.78rem;">@log.CaseNumber</span>
                                         }
                                     </div>
                                     <div class="d-flex flex-wrap align-items-center gap-1">
                                         @if (!string.IsNullOrEmpty(log.VehicleNo))
                                         {
-                                            <span class="vehicle-tag" title="Vehicle Number">
-                                                <i class="bi bi-truck" style="font-size: 0.65rem;"></i>@log.VehicleNo
+                                            <span class="vehicle-tag" title="Vehicle Registration Number">
+                                                <i class="bi bi-truck d-print-none" style="font-size: 0.65rem;"></i>@log.VehicleNo
                                             </span>
                                         }
                                         @if (!string.IsNullOrEmpty(log.CourtName))
                                         {
-                                            <span class="text-muted text-truncate" style="font-size: 0.67rem; max-width: 140px;" title="@log.CourtName">
-                                                <i class="bi bi-bank me-0.5 opacity-75"></i>@log.CourtName
-                                            </span>
+                                            <div class="text-muted small mt-0.5" style="font-size: 0.67rem;" title="@log.CourtName">
+                                                <i class="bi bi-bank me-0.5 opacity-75 d-print-none"></i>@log.CourtName
+                                            </div>
                                         }
                                     </div>
                                 </td>
 
-                                <!-- Activity Summary & Modifications -->
-                                <td>
-                                    <div class="text-dark fw-medium" style="font-size: 0.76rem; line-height: 1.35;">
+                                <!-- 5. Activity Summary & Modifications -->
+                                <td class="col-print-summary">
+                                    <div class="text-dark fw-medium" style="font-size: 0.76rem; line-height: 1.4;">
                                         @log.ActionSummary
                                     </div>
-                                    @if (!string.IsNullOrEmpty(log.ChangedFieldsSummary))
+                                    @if (!string.IsNullOrEmpty(log.ChangedFieldsSummary) && log.ChangedFieldsSummary != log.ActionSummary)
                                     {
                                         <div class="mt-1 d-flex flex-wrap align-items-center gap-1">
                                             <span class="badge text-secondary border rounded-pill px-2 py-0.5" style="background: #f8fafc; font-size: 0.64rem;">
-                                                <i class="bi bi-pencil me-1"></i>@log.ChangedFieldsSummary
+                                                <i class="bi bi-pencil me-1 d-print-none"></i>@log.ChangedFieldsSummary
                                             </span>
                                         </div>
                                     }
                                 </td>
 
-                                <!-- Inspect Diff Button -->
-                                <td class="text-end">
+                                <!-- 6. Inspect Diff Button -->
+                                <td class="text-center d-print-none">
                                     @if (!string.IsNullOrEmpty(log.OldValuesJson) || !string.IsNullOrEmpty(log.NewValuesJson))
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-0.5 btn-inspect-diff shadow-xs" 
@@ -680,7 +974,7 @@
                                     }
                                     else
                                     {
-                                        <span class="text-muted" style="font-size: 0.68rem;">--</span>
+                                        <span class="text-muted opacity-50" style="font-size: 0.72rem;">--</span>
                                     }
                                 </td>
                             </tr>

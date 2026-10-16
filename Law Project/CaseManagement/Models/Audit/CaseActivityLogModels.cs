@@ -14,6 +14,7 @@ namespace MVCCaseManagement.Models.Audit
         public int? DivisionID { get; set; }
         public string? DivisionName { get; set; }
         public string? IpAddress { get; set; }
+        public string? MacAddress { get; set; }
         public string Module { get; set; } = "MVC";
         public int? CaseID { get; set; }
         public string CaseNumber { get; set; } = string.Empty;

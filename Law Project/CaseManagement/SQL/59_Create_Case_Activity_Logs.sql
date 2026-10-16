@@ -19,6 +19,7 @@ BEGIN
         [DivisionID] INT NULL,
         [DivisionName] NVARCHAR(100) NULL,
         [IpAddress] NVARCHAR(50) NULL,
+        [MacAddress] NVARCHAR(50) NULL,
         
         -- Case Classification
         [Module] NVARCHAR(30) NOT NULL,            -- 'MVC', 'LABOUR', 'APPEAL', 'EP', 'GRATUITY', 'MASTER'

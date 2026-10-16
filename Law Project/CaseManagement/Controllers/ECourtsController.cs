@@ -162,6 +162,25 @@ namespace MVCCaseManagement.Controllers
                 ListedThisWeekCount = itemsList.Count(i => i.NextHearingDate.HasValue && i.NextHearingDate.Value.Date >= DateTime.Today && i.NextHearingDate.Value.Date <= DateTime.Today.AddDays(7))
             };
 
+            // Categorize NWKRTC Matters using NwkrtcPartyMatcher across all officer designations & aliases
+            foreach (var item in itemsList)
+            {
+                var roleRes = NwkrtcPartyMatcher.DetectRole(item.PetitionerName, item.RespondentName, item.AppealType);
+                if (roleRes.IsCorporationParty)
+                {
+                    item.NwkrtcRole = roleRes.Role;
+                    item.MatchedDesignation = roleRes.MatchedDesignation;
+                }
+            }
+
+            var nwkrtcList = itemsList.Where(i => i.NwkrtcRole == "With NWKRTC" || i.NwkrtcRole == "Against NWKRTC").ToList();
+
+            vm.NwkrtcTotalCount = nwkrtcList.Count;
+            vm.NwkrtcWithCount = nwkrtcList.Count(i => i.NwkrtcRole == "With NWKRTC");
+            vm.NwkrtcAgainstCount = nwkrtcList.Count(i => i.NwkrtcRole == "Against NWKRTC");
+            vm.NwkrtcListedTodayCount = nwkrtcList.Count(i => i.NextHearingDate.HasValue && i.NextHearingDate.Value.Date == DateTime.Today);
+            vm.NwkrtcItems = nwkrtcList;
+
             vm.Divisions = itemsList.Select(i => i.DivisionName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList()!;
             vm.Divisions.Insert(0, "All");
 
@@ -190,12 +209,158 @@ namespace MVCCaseManagement.Controllers
                     (i.CNRNumber != null && i.CNRNumber.ToLowerInvariant().Contains(term)) ||
                     (i.ArisingMVCNo != null && i.ArisingMVCNo.ToLowerInvariant().Contains(term)) ||
                     (i.PetitionerName != null && i.PetitionerName.ToLowerInvariant().Contains(term)) ||
-                    (i.RespondentName != null && i.RespondentName.ToLowerInvariant().Contains(term))
+                    (i.RespondentName != null && i.RespondentName.ToLowerInvariant().Contains(term)) ||
+                    (i.MatchedDesignation != null && i.MatchedDesignation.ToLowerInvariant().Contains(term))
                 );
             }
 
             vm.Items = filtered.ToList();
             return View(vm);
+        }
+
+        // GET: /ECourts/GetLiveHighCourtPartyCases?estCode=KAHC02&partyName=NWKRTC&regYear=2024&pendDisp=P&multiAlias=false&hearingDate=...&todayOnly=false
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetLiveHighCourtPartyCases(
+            string estCode = "KAHC02", 
+            string partyName = "NWKRTC", 
+            string? regYear = null, 
+            string pendDisp = "P", 
+            bool multiAlias = false,
+            string? hearingDate = null,
+            bool todayOnly = false)
+        {
+            var estCodes = (string.IsNullOrWhiteSpace(estCode) || estCode.Equals("ALL", StringComparison.OrdinalIgnoreCase))
+                ? new[] { "KAHC02", "KAHC01", "KAHC03" }
+                : new[] { estCode.Trim() };
+
+            var years = !string.IsNullOrWhiteSpace(regYear) && regYear != "ALL"
+                ? new[] { regYear.Trim() }
+                : new[] { DateTime.Today.Year.ToString(), (DateTime.Today.Year - 1).ToString(), (DateTime.Today.Year - 2).ToString() };
+
+            string effectiveParty = string.IsNullOrWhiteSpace(partyName) ? "NWKRTC" : partyName.Trim();
+            bool isMulti = multiAlias || string.Equals(effectiveParty, "ALL", StringComparison.OrdinalIgnoreCase) || string.Equals(effectiveParty, "MULTI", StringComparison.OrdinalIgnoreCase);
+
+            var list = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
+            var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenRegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var est in estCodes)
+            {
+                foreach (var y in years)
+                {
+                    List<MVCCaseManagement.Models.PartyCaseSearchResultItem>? batch = null;
+                    if (isMulti)
+                    {
+                        batch = await _napixService.SearchNwkrtcMultiAliasAsync(est, y, pendDisp, isHighCourt: true);
+                    }
+                    else
+                    {
+                        batch = await _napixService.SearchCasesByPartyNameAsync(est, effectiveParty, y, pendDisp, isHighCourt: true);
+                    }
+
+                    if (batch != null && batch.Count > 0)
+                    {
+                        foreach (var item in batch)
+                        {
+                            string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
+                            string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
+
+                            if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
+                                continue;
+                            if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
+                                continue;
+
+                            if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
+                            if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
+
+                            list.Add(item);
+                        }
+                    }
+                }
+            }
+
+            // Parse target hearing date
+            DateTime targetDate = DateTime.Today;
+            if (!string.IsNullOrWhiteSpace(hearingDate))
+            {
+                if (DateTime.TryParseExact(hearingDate.Trim(), new[] { "dd-MM-yyyy", "yyyy-MM-dd", "d-M-yyyy", "dd/MM/yyyy", "d/M/yyyy" },
+                    System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var parsedDt))
+                {
+                    targetDate = parsedDt.Date;
+                }
+                else if (DateTime.TryParse(hearingDate.Trim(), out var parsedAny))
+                {
+                    targetDate = parsedAny.Date;
+                }
+            }
+
+            // Pure dynamic NAPIX Party API cases only - no hardcoded injection and no local DB insertion
+            if (list.Count > 0)
+            {
+                // Optionally tag whether discovered API case exists in local database (reference only)
+                var localCases = (await _ecourtsRepo.GetHighCourtCauseListAsync()).ToList();
+                var cnrMap = localCases
+                    .Where(c => !string.IsNullOrEmpty(c.CNRNumber))
+                    .GroupBy(c => c.CNRNumber!.Trim().ToUpperInvariant())
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var regMap = localCases
+                    .Where(c => !string.IsNullOrEmpty(c.MFANumber))
+                    .GroupBy(c => c.MFANumber!.Trim().ToUpperInvariant())
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                foreach (var item in list)
+                {
+                    MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
+                    if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
+                    {
+                    }
+                    else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
+                    {
+                    }
+
+                    if (matched != null)
+                    {
+                        item.IsLocalMatch = true;
+                        item.LocalCaseId = matched.CaseID;
+                        item.LocalAppealId = matched.AppealID;
+                        item.LocalModule = matched.ModuleSource;
+                    }
+
+                    if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
+                    {
+                        item.IsListedToday = true;
+                    }
+                }
+
+                if (todayOnly)
+                {
+                    list = list.Where(x => x.IsListedToday).ToList();
+                }
+            }
+
+            // Sort: Listed today cases first, then local matches, then by year desc
+            list = list.OrderByDescending(x => x.IsListedToday)
+                       .ThenByDescending(x => x.IsLocalMatch)
+                       .ThenByDescending(x => x.RegYear)
+                       .ThenBy(x => x.RegNumber)
+                       .ToList();
+
+            int totalCount = list.Count;
+            int todayCount = list.Count(x => x.IsListedToday);
+            int withCount = list.Count(x => x.NwkrtcRole == "With NWKRTC");
+            int againstCount = list.Count(x => x.NwkrtcRole == "Against NWKRTC");
+
+            return Json(new { 
+                success = true, 
+                count = totalCount, 
+                todayCount = todayCount,
+                withCount = withCount,
+                againstCount = againstCount,
+                targetHearingDate = targetDate.ToString("dd-MM-yyyy"),
+                data = list
+            });
         }
 
         // GET: /ECourts/GetHighCourtCauselistBenches?estCode=KAHC01&causelistDate=13-08-2026
@@ -1451,6 +1616,346 @@ namespace MVCCaseManagement.Controllers
                 module = norm,
                 diagnostic = lastErr ?? "No live record returned by eCourts Gateway."
             });
+        }
+
+        // ==========================================
+        // MY CASES: Central Office Tracked CNR Hub
+        // ==========================================
+
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult MyCases(string module = "MVC")
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            ViewBag.Module = norm;
+            ViewBag.IsLabour = string.Equals(norm, "Labour", StringComparison.OrdinalIgnoreCase);
+            return View();
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetMyTrackedCases(string module = "MVC")
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            try
+            {
+                using var conn = _db.GetConnection();
+                var cases = await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE RelatedModule = @norm
+                    ORDER BY TrackedID DESC", new { norm });
+                return Json(new { success = true, data = cases });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching My Cases list for module {Module}", norm);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        public class AddTrackedCnrsRequest
+        {
+            public string? CnrNumbers { get; set; }
+            public string Module { get; set; } = "MVC";
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> AddTrackedCnrs([FromBody] AddTrackedCnrsRequest req)
+        {
+            if (req == null || string.IsNullOrWhiteSpace(req.CnrNumbers))
+            {
+                return Json(new { success = false, message = "Please enter one or more CNR numbers." });
+            }
+
+            string norm = NapixQuotaService.NormalizeModule(req.Module);
+            string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+
+            var matches = System.Text.RegularExpressions.Regex.Matches(req.CnrNumbers, @"[A-Za-z0-9]{16}");
+            var distinctCnrs = matches.Cast<System.Text.RegularExpressions.Match>()
+                .Select(m => m.Value.ToUpperInvariant())
+                .Distinct()
+                .ToList();
+
+            if (distinctCnrs.Count == 0)
+            {
+                return Json(new { success = false, message = "No valid 16-character CNR numbers found. eCourts CNR must be exactly 16 characters (e.g., KAHC020060752019)." });
+            }
+
+            int addedCount = 0;
+            int updatedCount = 0;
+            var failedCnrs = new List<object>();
+
+            foreach (var cnr in distinctCnrs)
+            {
+                try
+                {
+                    (bool ok, bool isNew, string? err) = await FetchAndSaveTrackedCnrAsync(cnr, norm, userName);
+                    if (ok)
+                    {
+                        if (isNew) addedCount++; else updatedCount++;
+                    }
+                    else
+                    {
+                        failedCnrs.Add(new { cnr, error = err ?? "No record found on eCourts" });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to track CNR {CNR}", cnr);
+                    failedCnrs.Add(new { cnr, error = ex.Message });
+                }
+            }
+
+            return Json(new {
+                success = true,
+                totalProcessed = distinctCnrs.Count,
+                added = addedCount,
+                updated = updatedCount,
+                failed = failedCnrs,
+                message = $"Processed {distinctCnrs.Count} CNR(s): {addedCount} added, {updatedCount} updated, {failedCnrs.Count} failed/pending."
+            });
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetTrackedCaseDossier(int trackedId)
+        {
+            if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                var record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy, RawJson
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE TrackedID = @trackedId", new { trackedId });
+
+                if (record == null)
+                {
+                    return Json(new { success = false, message = "Case record not found" });
+                }
+
+                if (!string.IsNullOrWhiteSpace(record.RawJson))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(record.RawJson);
+                        return Content(record.RawJson, "application/json");
+                    }
+                    catch { }
+                }
+
+                string norm = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
+                string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+                await FetchAndSaveTrackedCnrAsync(record.CNRNumber, norm, userName);
+
+                var refreshed = await conn.QueryFirstOrDefaultAsync<string>(@"
+                    SELECT RawJson FROM admin_Law.ECOURTS_TRACKED_CASES WHERE TrackedID = @trackedId", new { trackedId });
+
+                if (!string.IsNullOrWhiteSpace(refreshed))
+                {
+                    return Content(refreshed, "application/json");
+                }
+
+                return Json(new { success = false, message = "eCourts dossier data not available for this CNR." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting dossier for trackedId {ID}", trackedId);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet, HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> RefreshTrackedCnr(int trackedId)
+        {
+            if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                var record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, RelatedModule 
+                    FROM admin_Law.ECOURTS_TRACKED_CASES 
+                    WHERE TrackedID = @trackedId", new { trackedId });
+
+                if (record == null) return Json(new { success = false, message = "Record not found" });
+
+                string norm = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
+                string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+                (bool ok, bool isNew, string? err) = await FetchAndSaveTrackedCnrAsync(record.CNRNumber, norm, userName);
+
+                if (ok)
+                {
+                    var updated = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                               NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                               LastSyncedAt, CreatedDate, AddedBy
+                        FROM admin_Law.ECOURTS_TRACKED_CASES
+                        WHERE TrackedID = @trackedId", new { trackedId });
+                    return Json(new { success = true, data = updated, message = "Case details synced successfully from live eCourts." });
+                }
+
+                return Json(new { success = false, message = err ?? "Live refresh failed" });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet, HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> DeleteTrackedCnr(int trackedId)
+        {
+            if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                await conn.ExecuteAsync("DELETE FROM admin_Law.ECOURTS_TRACKED_CASES WHERE TrackedID = @trackedId", new { trackedId });
+                return Json(new { success = true, message = "Case removed from My Cases." });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        private async Task<(bool success, bool isNew, string? error)> FetchAndSaveTrackedCnrAsync(string cnr, string module, string userName)
+        {
+            string cleanCnr = System.Text.RegularExpressions.Regex.Replace(cnr.Trim(), @"[^A-Za-z0-9]", "").ToUpperInvariant();
+            if (cleanCnr.Length != 16)
+            {
+                return (false, false, "CNR must be exactly 16 characters");
+            }
+
+            string norm = NapixQuotaService.NormalizeModule(module);
+            bool isHc = cleanCnr.StartsWith("HC", StringComparison.OrdinalIgnoreCase) || 
+                        (cleanCnr.Length >= 4 && cleanCnr.Substring(2, 2).Equals("HC", StringComparison.OrdinalIgnoreCase));
+
+            var apiResult = await _napixService.GetCnrDetailsAsync(cleanCnr, isHighCourt: isHc, module: norm);
+            if (!apiResult.HasValue)
+            {
+                var err = _napixService.GetLastModuleError(norm);
+                return (false, false, err ?? "No live record returned from eCourts Gateway");
+            }
+
+            var summary = ExtractCnrSummary(apiResult.Value);
+            var history = ExtractHistoryArray(apiResult.Value);
+            var orders = ExtractOrdersArray(apiResult.Value);
+            var iaFilings = ExtractIaArray(apiResult.Value);
+            var processes = ExtractProcessArray(apiResult.Value);
+            var acts = ExtractActsArray(apiResult.Value);
+            var extraParties = ExtractExtraPartiesArray(apiResult.Value);
+            var objections = ExtractObjectionsArray(apiResult.Value);
+            var transfers = ExtractTransfersArray(apiResult.Value);
+            var linkedCases = ExtractLinkedCasesArray(apiResult.Value);
+
+            DateTime? nextDt = null;
+            string[] dateFormats = { "dd-MM-yyyy", "yyyy-MM-dd", "d-M-yyyy", "dd/MM/yyyy", "d/M/yyyy", "yyyy/MM/dd" };
+            if (!string.IsNullOrWhiteSpace(summary?.next_hearing_date) &&
+                DateTime.TryParseExact(summary.next_hearing_date.Trim(), dateFormats, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dValExact))
+            {
+                nextDt = dValExact;
+            }
+            else if (!string.IsNullOrWhiteSpace(summary?.next_hearing_date) && DateTime.TryParse(summary.next_hearing_date, out var dVal))
+            {
+                nextDt = dVal;
+            }
+
+            int caseYr = 0;
+            if (int.TryParse(summary?.registration_date?.Split('-')?.FirstOrDefault(), out int yrVal) && yrVal > 1900)
+            {
+                caseYr = yrVal;
+            }
+            else if (cleanCnr.Length == 16 && int.TryParse(cleanCnr.Substring(12, 4), out int cnrYr))
+            {
+                caseYr = cnrYr;
+            }
+
+            string estCode = cleanCnr.Length >= 6 ? cleanCnr.Substring(0, 6) : "KAHC02";
+
+            var fullDossierObj = new {
+                success = true,
+                cnr = cleanCnr,
+                module = norm,
+                data = summary,
+                history = history,
+                orders = orders,
+                ia_filings = iaFilings,
+                processes = processes,
+                acts = acts,
+                extra_parties = extraParties,
+                objections = objections,
+                transfers = transfers,
+                linked_cases = linkedCases,
+                raw = apiResult.Value,
+                synced_at = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+            };
+
+            string rawDossierJson = JsonSerializer.Serialize(fullDossierObj);
+
+            using var conn = _db.GetConnection();
+            bool exists = await conn.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(1) FROM admin_Law.ECOURTS_TRACKED_CASES 
+                WHERE CNRNumber = @cleanCnr AND RelatedModule = @norm", new { cleanCnr, norm }) > 0;
+
+            await conn.ExecuteAsync(@"
+                MERGE admin_Law.ECOURTS_TRACKED_CASES AS target
+                USING (SELECT @CNRNumber AS CNRNumber, @RelatedModule AS RelatedModule) AS source
+                ON (target.CNRNumber = source.CNRNumber AND target.RelatedModule = source.RelatedModule)
+                WHEN MATCHED THEN
+                    UPDATE SET 
+                        EstCode = @EstCode,
+                        CaseTypeCode = @CaseTypeCode,
+                        CaseNumber = @CaseNumber,
+                        CaseYear = @CaseYear,
+                        Petitioner = @Petitioner,
+                        Respondent = @Respondent,
+                        CaseStatus = @CaseStatus,
+                        NextHearingDate = @NextHearingDate,
+                        StagePurpose = @StagePurpose,
+                        CourtNo = @CourtNo,
+                        JudgeDesignation = @JudgeDesignation,
+                        LastSyncedAt = GETDATE(),
+                        RawJson = @RawJson,
+                        AddedBy = @AddedBy
+                WHEN NOT MATCHED THEN
+                    INSERT (CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, LastSyncedAt, CreatedDate, RawJson, AddedBy)
+                    VALUES (@CNRNumber, @EstCode, @CaseTypeCode, @CaseNumber, @CaseYear, @RelatedModule, 0, @Petitioner, @Respondent, @CaseStatus, @NextHearingDate, @StagePurpose, @CourtNo, @JudgeDesignation, GETDATE(), GETDATE(), @RawJson, @AddedBy);",
+                new {
+                    CNRNumber = cleanCnr,
+                    EstCode = estCode,
+                    CaseTypeCode = summary?.case_type ?? (isHc ? "MFA" : "Case"),
+                    CaseNumber = summary?.case_number ?? "",
+                    CaseYear = caseYr,
+                    RelatedModule = norm,
+                    Petitioner = (summary?.petitioner != null && summary.petitioner.Length > 255 ? summary.petitioner.Substring(0, 255) : summary?.petitioner) ?? "Petitioner",
+                    Respondent = (summary?.respondent != null && summary.respondent.Length > 255 ? summary.respondent.Substring(0, 255) : summary?.respondent) ?? "Respondent",
+                    CaseStatus = summary?.case_status ?? "Pending",
+                    NextHearingDate = nextDt,
+                    StagePurpose = (summary?.stage != null && summary.stage.Length > 255 ? summary.stage.Substring(0, 255) : summary?.stage) ?? "Hearing",
+                    CourtNo = summary?.court_no ?? summary?.establishment_name ?? (isHc ? "High Court" : "Court"),
+                    JudgeDesignation = (summary?.court_no_judge != null && summary.court_no_judge.Length > 255 ? summary.court_no_judge.Substring(0, 255) : (summary?.judge != null && summary.judge.Length > 255 ? summary.judge.Substring(0, 255) : summary?.judge)),
+                    RawJson = rawDossierJson,
+                    AddedBy = userName
+                });
+
+            return (true, !exists, null);
         }
 
         public class CnrSummaryModel

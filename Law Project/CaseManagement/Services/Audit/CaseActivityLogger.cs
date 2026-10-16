@@ -12,6 +12,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MVCCaseManagement.Models.Audit;
+using MVCCaseManagement.Utils;
 
 namespace MVCCaseManagement.Services.Audit
 {
@@ -46,16 +47,18 @@ namespace MVCCaseManagement.Services.Audit
             _logger = logger;
         }
 
-        private (int? userId, string username, string fullName, string role, int? divisionId, string divisionName, string ipAddress) GetCurrentActor()
+        private (int? userId, string username, string fullName, string role, int? divisionId, string divisionName, string ipAddress, string? macAddress) GetCurrentActor()
         {
-            var user = _httpContextAccessor.HttpContext?.User;
+            var context = _httpContextAccessor.HttpContext;
+            var user = context?.User;
             int? userId = null;
             string username = "SYSTEM";
             string fullName = "System Background Worker";
             string role = "System";
             int? divisionId = null;
             string divisionName = "Central Office";
-            string ipAddress = _httpContextAccessor.HttpContext?.Connection?.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            string ipAddress = context?.Connection?.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            string? macAddress = NetworkDeviceHelper.GetClientMacAddress(context);
 
             if (user != null && user.Identity != null && user.Identity.IsAuthenticated)
             {
@@ -78,7 +81,7 @@ namespace MVCCaseManagement.Services.Audit
                 divisionName = user.FindFirstValue("DivisionName") ?? (divisionId == 5 ? "Central Office" : "NWKRTC Division");
             }
 
-            return (userId, username, fullName, role, divisionId, divisionName, ipAddress);
+            return (userId, username, fullName, role, divisionId, divisionName, ipAddress, macAddress);
         }
 
         public async Task LogCaseCreatedAsync(
@@ -109,6 +112,7 @@ namespace MVCCaseManagement.Services.Audit
                     DivisionID = actor.divisionId,
                     DivisionName = actor.divisionName,
                     IpAddress = actor.ipAddress,
+                    MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
                     CaseID = caseId,
                     CaseNumber = caseNumber,
@@ -166,6 +170,7 @@ namespace MVCCaseManagement.Services.Audit
                     DivisionID = actor.divisionId,
                     DivisionName = actor.divisionName,
                     IpAddress = actor.ipAddress,
+                    MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
                     CaseID = caseId,
                     CaseNumber = caseNumber,
@@ -207,6 +212,7 @@ namespace MVCCaseManagement.Services.Audit
                     DivisionID = actor.divisionId,
                     DivisionName = actor.divisionName,
                     IpAddress = actor.ipAddress,
+                    MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
                     CaseID = caseId,
                     CaseNumber = caseNumber,
@@ -249,6 +255,7 @@ namespace MVCCaseManagement.Services.Audit
                     DivisionID = actor.divisionId,
                     DivisionName = actor.divisionName,
                     IpAddress = actor.ipAddress,
+                    MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
                     CaseID = caseId,
                     CaseNumber = caseNumber,
@@ -287,6 +294,7 @@ namespace MVCCaseManagement.Services.Audit
                     DivisionID = actor.divisionId,
                     DivisionName = actor.divisionName,
                     IpAddress = actor.ipAddress,
+                    MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
                     CaseID = caseId,
                     CaseNumber = caseNumber,
@@ -307,12 +315,12 @@ namespace MVCCaseManagement.Services.Audit
             const string sql = @"
                 INSERT INTO CASE_ACTIVITY_LOGS (
                     Timestamp, UserID, Username, UserFullName, UserRole,
-                    DivisionID, DivisionName, IpAddress, Module, CaseID,
+                    DivisionID, DivisionName, IpAddress, MacAddress, Module, CaseID,
                     CaseNumber, VehicleNo, CourtName, ActionType, ActionSummary,
                     ChangedFieldsSummary, OldValuesJson, NewValuesJson
                 ) VALUES (
                     @Timestamp, @UserID, @Username, @UserFullName, @UserRole,
-                    @DivisionID, @DivisionName, @IpAddress, @Module, @CaseID,
+                    @DivisionID, @DivisionName, @IpAddress, @MacAddress, @Module, @CaseID,
                     @CaseNumber, @VehicleNo, @CourtName, @ActionType, @ActionSummary,
                     @ChangedFieldsSummary, @OldValuesJson, @NewValuesJson
                 );";
@@ -329,6 +337,7 @@ namespace MVCCaseManagement.Services.Audit
             cmd.Parameters.AddWithValue("@DivisionID", (object?)log.DivisionID ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@DivisionName", (object?)log.DivisionName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@IpAddress", (object?)log.IpAddress ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@MacAddress", (object?)log.MacAddress ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@Module", log.Module);
             cmd.Parameters.AddWithValue("@CaseID", (object?)log.CaseID ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@CaseNumber", log.CaseNumber);
@@ -417,7 +426,7 @@ namespace MVCCaseManagement.Services.Audit
             // Search Term
             if (!string.IsNullOrEmpty(filter.SearchTerm))
             {
-                whereClauses.Add("(CaseNumber LIKE @Search OR VehicleNo LIKE @Search OR Username LIKE @Search OR UserFullName LIKE @Search OR ActionSummary LIKE @Search)");
+                whereClauses.Add("(CaseNumber LIKE @Search OR VehicleNo LIKE @Search OR Username LIKE @Search OR UserFullName LIKE @Search OR ActionSummary LIKE @Search OR MacAddress LIKE @Search OR IpAddress LIKE @Search)");
                 parameters.Add(new SqlParameter("@Search", $"%{filter.SearchTerm.Trim()}%"));
             }
 
@@ -442,7 +451,7 @@ namespace MVCCaseManagement.Services.Audit
             string dataSql = $@"
                 SELECT 
                     LogID, Timestamp, UserID, Username, UserFullName, UserRole,
-                    DivisionID, DivisionName, IpAddress, Module, CaseID,
+                    DivisionID, DivisionName, IpAddress, MacAddress, Module, CaseID,
                     CaseNumber, VehicleNo, CourtName, ActionType, ActionSummary,
                     ChangedFieldsSummary, OldValuesJson, NewValuesJson
                 FROM CASE_ACTIVITY_LOGS
@@ -473,16 +482,17 @@ namespace MVCCaseManagement.Services.Audit
                         DivisionID = reader.IsDBNull(6) ? null : reader.GetInt32(6),
                         DivisionName = reader.IsDBNull(7) ? null : reader.GetString(7),
                         IpAddress = reader.IsDBNull(8) ? null : reader.GetString(8),
-                        Module = reader.GetString(9),
-                        CaseID = reader.IsDBNull(10) ? null : reader.GetInt32(10),
-                        CaseNumber = reader.GetString(11),
-                        VehicleNo = reader.IsDBNull(12) ? null : reader.GetString(12),
-                        CourtName = reader.IsDBNull(13) ? null : reader.GetString(13),
-                        ActionType = reader.GetString(14),
-                        ActionSummary = reader.GetString(15),
-                        ChangedFieldsSummary = reader.IsDBNull(16) ? null : reader.GetString(16),
-                        OldValuesJson = reader.IsDBNull(17) ? null : reader.GetString(17),
-                        NewValuesJson = reader.IsDBNull(18) ? null : reader.GetString(18)
+                        MacAddress = reader.IsDBNull(9) ? null : reader.GetString(9),
+                        Module = reader.GetString(10),
+                        CaseID = reader.IsDBNull(11) ? null : reader.GetInt32(11),
+                        CaseNumber = reader.GetString(12),
+                        VehicleNo = reader.IsDBNull(13) ? null : reader.GetString(13),
+                        CourtName = reader.IsDBNull(14) ? null : reader.GetString(14),
+                        ActionType = reader.GetString(15),
+                        ActionSummary = reader.GetString(16),
+                        ChangedFieldsSummary = reader.IsDBNull(17) ? null : reader.GetString(17),
+                        OldValuesJson = reader.IsDBNull(18) ? null : reader.GetString(18),
+                        NewValuesJson = reader.IsDBNull(19) ? null : reader.GetString(19)
                     });
                 }
             }

@@ -83,6 +83,8 @@ namespace MVCCaseManagement.Models
         public string? JudgeDesignation { get; set; }
         public DateTime LastSyncedAt { get; set; }
         public DateTime CreatedDate { get; set; }
+        public string? RawJson { get; set; }
+        public string? AddedBy { get; set; }
     }
 
     public class DailyCauseListHeaderModel

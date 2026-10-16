@@ -1577,6 +1577,47 @@ namespace MVCCaseManagement.DAL
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_2_DivisionControllerMigrationId, migTimer14.ElapsedMilliseconds);
                     }
+
+                    // 19. Migration: CASE_ACTIVITY_LOGS MacAddress column
+                    const string v1_2_3_MacAddressMigrationId = "20261016_v1_2_3_Case_Activity_Logs_MacAddress";
+                    bool isV123Applied = false;
+                    using (var checkCmd15 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd15.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_3_MacAddressMigrationId });
+                        isV123Applied = (int)(checkCmd15.ExecuteScalar() ?? 0) > 0;
+                    }
+
+                    if (!isV123Applied)
+                    {
+                        logger.LogInformation("Applying migration {MigrationId}...", v1_2_3_MacAddressMigrationId);
+                        var migTimer15 = Stopwatch.StartNew();
+
+                        string alterSql = @"
+                            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'CASE_ACTIVITY_LOGS' AND COLUMN_NAME = 'MacAddress')
+                            BEGIN
+                                ALTER TABLE [dbo].[CASE_ACTIVITY_LOGS] ADD [MacAddress] NVARCHAR(50) NULL;
+                            END";
+
+                        using (var alterCmd = new SqlCommand(alterSql, conn))
+                        {
+                            alterCmd.CommandTimeout = 60;
+                            alterCmd.ExecuteNonQuery();
+                        }
+
+                        migTimer15.Stop();
+
+                        string recordSql15 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd15 = new SqlCommand(recordSql15, conn))
+                        {
+                            recordCmd15.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_3_MacAddressMigrationId });
+                            recordCmd15.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Add MacAddress column to CASE_ACTIVITY_LOGS for client hardware network tracking" });
+                            recordCmd15.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer15.ElapsedMilliseconds });
+                            recordCmd15.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_3_MacAddressMigrationId, migTimer15.ElapsedMilliseconds);
+                    }
                 }
                 finally
                 {

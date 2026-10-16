@@ -16,6 +16,8 @@ namespace MVCCaseManagement.Utils
         Task<string?> DiscoverCnrAsync(string estCode, string caseType, string regNo, string regYear, bool isHighCourt = false, string module = "MVC");
         Task<string?> DiscoverCnrByFirAsync(string estCode, string policeStationCode, string firNo, string firYear, string module = "MVC");
         Task<string?> DiscoverCnrByPartyNameAsync(string estCode, string partyName, string regYear, string pendDisp = "P", bool isHighCourt = false, string module = "MVC");
+        Task<List<MVCCaseManagement.Models.PartyCaseSearchResultItem>> SearchCasesByPartyNameAsync(string estCode, string partyName, string regYear, string pendDisp = "P", bool isHighCourt = true, string module = "MVC");
+        Task<List<MVCCaseManagement.Models.PartyCaseSearchResultItem>> SearchNwkrtcMultiAliasAsync(string estCode, string regYear, string pendDisp = "P", bool isHighCourt = true, List<string>? customAliases = null, string module = "MVC");
         Task<JsonElement?> GetCaseBusinessAsync(string cnrNumber, string date, bool isHighCourt = false, string module = "MVC");
         Task<JsonElement?> GetCnrDetailsAsync(string cnrNumber, bool isHighCourt = false, string module = "MVC");
         Task<JsonElement?> GetCurrentStatusAsync(string cnr, bool isHighCourt = false, string module = "MVC");

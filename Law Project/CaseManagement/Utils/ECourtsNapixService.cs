@@ -837,6 +837,215 @@ namespace MVCCaseManagement.Utils
             }
         }
 
+        public async Task<List<MVCCaseManagement.Models.PartyCaseSearchResultItem>> SearchCasesByPartyNameAsync(string estCode, string partyName, string regYear, string pendDisp = "P", bool isHighCourt = true, string module = "MVC")
+        {
+            var list = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
+            if (string.IsNullOrWhiteSpace(estCode) || string.IsNullOrWhiteSpace(partyName))
+                return list;
+
+            try
+            {
+                string basePath = isHighCourt ? "hc-party-name-api" : "dc-party-name-api";
+                string action   = isHighCourt ? "partyname"        : "partyName";
+                string y = string.IsNullOrWhiteSpace(regYear) ? DateTime.Today.Year.ToString() : regYear.Trim();
+                string p = string.IsNullOrWhiteSpace(pendDisp) ? "P" : pendDisp.Trim();
+
+                // eCourts v1.3 §5.8 and High Court v1.0 §6.7 define litigant_name
+                string paramsStr = $"est_code={estCode.Trim()}|pend_disp={p}|litigant_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}";
+
+                _logger.LogInformation("[SearchCasesByPartyName] Querying {Base}/{Action}: {Params} ({Module})", basePath, action, paramsStr, module);
+
+                var result = await QueryApiAsync(basePath, action, paramsStr, module: module);
+                if (!result.HasValue || IsErrorJson(result.Value, module))
+                {
+                    // Fallback using petres_name in case court gateway expects petres_name
+                    string altParams = $"est_code={estCode.Trim()}|petres_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}|pend_disp={p}";
+                    var altRes = await QueryApiAsync(basePath, action, altParams, module: module);
+                    if (altRes.HasValue && !IsErrorJson(altRes.Value, module))
+                    {
+                        result = altRes;
+                    }
+                }
+
+                if (!result.HasValue) return list;
+
+                var root = result.Value;
+                string estName = "";
+                if (root.TryGetProperty("establishment_name", out var estEl) && estEl.ValueKind == JsonValueKind.String)
+                {
+                    estName = estEl.GetString() ?? "";
+                }
+
+                string benchName = estCode.ToUpperInvariant() switch
+                {
+                    "KAHC01" => "Principal Bench (Bengaluru)",
+                    "KAHC02" => "Dharwad Bench",
+                    "KAHC03" => "Kalaburagi Bench",
+                    _ => (!string.IsNullOrEmpty(estName) ? estName : "High Court")
+                };
+
+                // Root can contain casenos (dictionary of case1, case2, ...)
+                JsonElement casesContainer = root;
+                if (root.TryGetProperty("casenos", out var cnEl))
+                {
+                    casesContainer = cnEl;
+                }
+                else if (root.TryGetProperty("case_details", out var cdEl))
+                {
+                    casesContainer = cdEl;
+                }
+
+                if (casesContainer.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in casesContainer.EnumerateObject())
+                    {
+                        var caseObj = prop.Value;
+                        if (caseObj.ValueKind == JsonValueKind.Object)
+                        {
+                            var item = ParsePartyCaseItem(caseObj, estCode, estName, benchName);
+                            if (item != null) list.Add(item);
+                        }
+                    }
+                }
+                else if (casesContainer.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var caseObj in casesContainer.EnumerateArray())
+                    {
+                        if (caseObj.ValueKind == JsonValueKind.Object)
+                        {
+                            var item = ParsePartyCaseItem(caseObj, estCode, estName, benchName);
+                            if (item != null) list.Add(item);
+                        }
+                    }
+                }
+
+                return list;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[SearchCasesByPartyName] Exception querying party name for {Party} ({Module})", partyName, module);
+                return list;
+            }
+        }
+
+        public async Task<List<MVCCaseManagement.Models.PartyCaseSearchResultItem>> SearchNwkrtcMultiAliasAsync(
+            string estCode, string regYear, string pendDisp = "P", bool isHighCourt = true, List<string>? customAliases = null, string module = "MVC")
+        {
+            var aliases = (customAliases != null && customAliases.Count > 0)
+                ? customAliases
+                : NwkrtcPartyMatcher.GetDefaultSearchAliases();
+
+            var combined = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
+            var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenRegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var alias in aliases)
+            {
+                try
+                {
+                    var items = await SearchCasesByPartyNameAsync(estCode, alias, regYear, pendDisp, isHighCourt, module);
+                    if (items != null && items.Count > 0)
+                    {
+                        foreach (var item in items)
+                        {
+                            string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
+                            string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
+
+                            if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
+                                continue;
+
+                            if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
+                                continue;
+
+                            if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
+                            if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
+
+                            combined.Add(item);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[SearchNwkrtcMultiAliasAsync] Error querying alias {Alias}", alias);
+                }
+            }
+
+            return combined;
+        }
+
+        private static MVCCaseManagement.Models.PartyCaseSearchResultItem? ParsePartyCaseItem(JsonElement caseObj, string estCode, string estName, string benchName)
+        {
+            string cnr = GetPartyCaseProp(caseObj, "cino", "cnr", "cnr_number", "cnrNo") ?? "";
+            string typeName = GetPartyCaseProp(caseObj, "type_name", "case_type", "type") ?? "";
+            string regNo = GetPartyCaseProp(caseObj, "reg_no", "case_no", "regNumber") ?? "";
+            string regYr = GetPartyCaseProp(caseObj, "reg_year", "case_year", "year") ?? "";
+            string petName = GetPartyCaseProp(caseObj, "pet_name", "petitioner", "party1") ?? "";
+            string resName = GetPartyCaseProp(caseObj, "res_name", "respondent", "party2") ?? "";
+
+            if (string.IsNullOrEmpty(cnr) && string.IsNullOrEmpty(regNo)) return null;
+
+            // Extract hearing date, court hall, and case stage if present in gateway response
+            string? nextDateRaw = GetPartyCaseProp(caseObj, "next_hearing_date", "next_date", "hearing_date", "date_next_list", "dt_next_hearing", "business_date");
+            DateTime? parsedHearingDate = null;
+            if (!string.IsNullOrWhiteSpace(nextDateRaw))
+            {
+                if (DateTime.TryParseExact(nextDateRaw.Trim(), new[] { "dd-MM-yyyy", "yyyy-MM-dd", "d-M-yyyy", "d/M/yyyy", "dd/MM/yyyy", "yyyy/MM/dd" },
+                    System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dtOut))
+                {
+                    parsedHearingDate = dtOut;
+                }
+                else if (DateTime.TryParse(nextDateRaw.Trim(), out var dtAny))
+                {
+                    parsedHearingDate = dtAny;
+                }
+            }
+
+            string? stage = GetPartyCaseProp(caseObj, "purpose_name", "stage", "case_stage", "purpose", "next_purpose");
+            string? courtHall = GetPartyCaseProp(caseObj, "court_no", "court_hall", "court_no_judge", "bench_name", "judge_name");
+            bool isListedToday = parsedHearingDate.HasValue && parsedHearingDate.Value.Date == DateTime.Today;
+
+            // Use NwkrtcPartyMatcher for rigorous multi-designation role detection
+            var roleResult = NwkrtcPartyMatcher.DetectRole(petName, resName);
+            string role = roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
+
+            return new MVCCaseManagement.Models.PartyCaseSearchResultItem
+            {
+                CNRNumber = cnr,
+                CaseType = typeName,
+                RegNumber = regNo,
+                RegYear = regYr,
+                PetitionerName = petName,
+                RespondentName = resName,
+                NwkrtcRole = role,
+                MatchedDesignation = roleResult.MatchedDesignation,
+                EstablishmentName = estName,
+                HighCourtBench = benchName,
+                NextHearingDate = parsedHearingDate,
+                CaseStage = stage,
+                CourtHall = courtHall,
+                IsListedToday = isListedToday
+            };
+        }
+
+        private static string? GetPartyCaseProp(JsonElement el, params string[] propertyNames)
+        {
+            foreach (var name in propertyNames)
+            {
+                if (el.TryGetProperty(name, out var prop))
+                {
+                    if (prop.ValueKind == JsonValueKind.String)
+                    {
+                        var s = prop.GetString();
+                        if (!string.IsNullOrWhiteSpace(s)) return s.Trim();
+                    }
+                    else if (prop.ValueKind == JsonValueKind.Number)
+                    {
+                        return prop.ToString();
+                    }
+                }
+            }
+            return null;
+        }
 
         private static string? ExtractCnrFromElement(JsonElement? element)
         {

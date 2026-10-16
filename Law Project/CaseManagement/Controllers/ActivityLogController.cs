@@ -80,17 +80,19 @@ namespace MVCCaseManagement.Controllers
             var model = await _activityLogger.GetLogSheetAsync(filter, cancellationToken);
 
             var sb = new StringBuilder();
-            sb.AppendLine("LogID,Timestamp,Username,FullName,Role,Division,Module,CaseNumber,VehicleNo,ActionType,Summary,Modifications");
+            sb.AppendLine("LogID,Timestamp,Username,FullName,Role,Division,IpAddress,MacAddress,Module,CaseNumber,VehicleNo,ActionType,Summary,Modifications");
 
             foreach (var log in model.Logs)
             {
-                sb.AppendLine(string.Format("\"{0}\",\"{1:yyyy-MM-dd HH:mm:ss}\",\"{2}\",\"{3}\",\"{4}\",\"{5}\",\"{6}\",\"{7}\",\"{8}\",\"{9}\",\"{10}\",\"{11}\"",
+                sb.AppendLine(string.Format("\"{0}\",\"{1:yyyy-MM-dd HH:mm:ss}\",\"{2}\",\"{3}\",\"{4}\",\"{5}\",\"{6}\",\"{7}\",\"{8}\",\"{9}\",\"{10}\",\"{11}\",\"{12}\",\"{13}\"",
                     log.LogID,
                     log.Timestamp,
                     EscapeCsv(log.Username),
                     EscapeCsv(log.UserFullName ?? ""),
                     EscapeCsv(log.UserRole ?? ""),
                     EscapeCsv(log.DivisionName ?? ""),
+                    EscapeCsv(log.IpAddress ?? ""),
+                    EscapeCsv(log.MacAddress ?? ""),
                     EscapeCsv(log.Module),
                     EscapeCsv(log.CaseNumber),
                     EscapeCsv(log.VehicleNo ?? ""),

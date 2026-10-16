@@ -54,6 +54,13 @@ namespace MVCCaseManagement.Controllers
             _logger = logger;
         }
 
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult MyCases()
+        {
+            return RedirectToAction("MyCases", "ECourts", new { module = "MVC" });
+        }
+
         public IActionResult Index(int page = 1, string search = "", string status = "all")
         {
             int pageSize = 10;

@@ -100,7 +100,7 @@
 
                     var isReport = (currentController == "Report" && currentAction == "CentralOffice") || (isCO_Layout && currentController == "Report" && !isPettyBill);
                     var isGratuity = currentController == "Gratuity";
-                    var isLabour = currentController == "Labour" || currentController == "LabourEP";
+                    var isLabour = currentController == "Labour" || currentController == "LabourEP" || (currentController == "ECourts" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase));
                     var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
                     var isMaster = currentController == "Master" || currentController == "ApiDashboard";
                     var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
@@ -207,6 +207,10 @@
                         <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/Labour/HighCourtCauseList">
                             <i class="bi bi-broadcast-pin text-danger"></i>
                             <span>Live HC Cause List</span>
+                        </a>
+                        <a class="nav-link @((currentController == "Labour" || currentController == "ECourts") && ViewContext.RouteData.Values["action"]?.ToString() == "MyCases" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/ECourts/MyCases?module=Labour">
+                            <i class="bi bi-folder-check text-info"></i>
+                            <span>My Cases</span>
                         </a>
                     }
 
@@ -359,6 +363,11 @@
                         <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
                             <i class="bi bi-calendar-event-fill text-warning"></i>
                             <span>HC Cause List</span>
+                        </a>
+
+                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "MyCases" && (string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/ECourts/MyCases?module=MVC">
+                            <i class="bi bi-folder-check text-info"></i>
+                            <span>My Cases</span>
                         </a>
 
                         <a class="nav-link @(currentController == "Appeal" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantList" || ViewContext.RouteData.Values["action"]?.ToString() == "Register" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimant") ? "active" : "")" href="/Appeal/Register">
@@ -729,6 +738,51 @@
                     window.location.href = '@Url.Action("Index", "ActivityLog")';
                 }
             }, true);
+
+            // Persistent Client Workstation Hardware MAC Identifier for Audit Tracking
+            (function () {
+                try {
+                    var key = 'NWKRTC_DEVICE_MAC';
+                    var devMac = localStorage.getItem(key);
+                    if (!devMac || devMac.length < 12 || devMac.indexOf('DEV-') === 0) {
+                        // Generate deterministic hardware hash from machine characteristics
+                        var fp = [
+                            navigator.userAgent,
+                            navigator.platform || '',
+                            navigator.hardwareConcurrency || 4,
+                            screen.width + 'x' + screen.height,
+                            screen.colorDepth || 24,
+                            new Date().getTimezoneOffset()
+                        ].join('###');
+
+                        var hash = 0;
+                        for (var i = 0; i < fp.length; i++) {
+                            hash = ((hash << 5) - hash) + fp.charCodeAt(i);
+                            hash |= 0;
+                        }
+
+                        // Generate 6 octets formatted as physical MAC address (e.g. 70:85:C2:A1:3F:89)
+                        var bytes = [];
+                        var seed = Math.abs(hash);
+                        for (var j = 0; j < 6; j++) {
+                            var b = ((seed >> (j * 4)) ^ Math.floor(Math.random() * 256)) & 0xFF;
+                            if (j === 0) b = (b & 0xFC) | 0x02; // locally administered unicast
+                            bytes.push(('0' + b.toString(16).toUpperCase()).slice(-2));
+                        }
+                        devMac = bytes.join(':');
+                        localStorage.setItem(key, devMac);
+                    }
+                    // Keep in cookie for every server request / form post
+                    document.cookie = "NWKRTC_DEVICE_MAC=" + encodeURIComponent(devMac) + "; path=/; max-age=31536000; SameSite=Lax";
+
+                    // Attach to jQuery AJAX if present
+                    if (window.jQuery && window.jQuery.ajaxSetup) {
+                        window.jQuery.ajaxSetup({
+                            headers: { 'X-Client-MAC': devMac }
+                        });
+                    }
+                } catch (e) {}
+            })();
         </script>
 </body>
 </html>

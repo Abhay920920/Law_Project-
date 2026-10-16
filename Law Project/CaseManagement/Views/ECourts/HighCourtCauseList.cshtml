@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.HighCourtCauseListViewModel
+﻿@model MVCCaseManagement.Models.HighCourtCauseListViewModel
 @{
     ViewData["Title"] = "High Court Cause List — Central Office";
     ViewData["HidePageHeader"] = true;
@@ -366,44 +366,59 @@
             <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
                 <div class="card-body p-3">
                     <div class="row g-2 align-items-end">
-                        <div class="col-12 col-md-4 col-lg-3">
+                        <div class="col-12 col-md-3 col-lg-3">
                             <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-bank me-1 text-danger"></i>High Court Establishment</label>
                             <select id="liveEstCode" class="form-select form-select-sm fw-bold" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();">
-                                <option value="ALL">All High Court Benches (Bengaluru, Dharwad, Kalaburagi)</option>
+                                <option value="ALL" selected>All High Court Benches (Bengaluru, Dharwad, Kalaburagi)</option>
                                 <option value="KAHC01">High Court of Karnataka — Principal Bench (Bengaluru)</option>
-                                <option value="KAHC02" selected>High Court of Karnataka — Dharwad Bench</option>
+                                <option value="KAHC02">High Court of Karnataka — Dharwad Bench</option>
                                 <option value="KAHC03">High Court of Karnataka — Kalaburagi Bench</option>
                             </select>
                         </div>
 
                         <div class="col-12 col-md-3 col-lg-2">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Causelist Date</label>
+                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Today's Hearing Date</label>
                             <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
                         </div>
 
-                        <div class="col-12 col-md-5 col-lg-4">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall / Judge Bench</label>
-                            <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="fetchLiveHcCauselist()">
+                        <div class="col-12 col-md-3 col-lg-3">
+                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-person-badge-fill me-1 text-danger"></i>Litigant Party Name</label>
+                            <input type="text" id="livePartySearchInput" class="form-control form-control-sm fw-bold" value="NWKRTC" placeholder="e.g. NWKRTC, Managing Director, CPM" oninput="filterLiveCauselistRows()" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
+                        </div>
+
+                        <div class="col-12 col-md-3 col-lg-2">
+                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall / Bench</label>
+                            <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
                                 <option value="ALL">All Benches / Court Halls</option>
                             </select>
                         </div>
 
-                        <div class="col-12 col-md-12 col-lg-3 d-flex gap-2">
+                        <div class="col-12 col-md-12 col-lg-2 d-flex gap-2">
                             <button type="button" class="btn btn-danger btn-sm w-100 fw-bold shadow-sm" onclick="fetchLiveHcCauselist()">
                                 <i class="bi bi-broadcast me-1"></i> Fetch Live Cause List
                             </button>
                         </div>
                     </div>
 
-                    <!-- Scheduled Hearing Dates Quick Bar -->
-                    <div class="mt-2 pt-2 border-top d-flex flex-wrap align-items-center gap-2">
-                        <span class="extra-small fw-bold text-secondary text-uppercase"><i class="bi bi-calendar3 me-1 text-primary"></i>Saved CNR Hearing Dates:</span>
-                        <div id="quickHearingDateChips" class="d-inline-flex flex-wrap gap-1">
-                            <!-- Populated dynamically -->
+                    <!-- Quick Party Presets & Saved CNR Dates Bar -->
+                    <div class="mt-2 pt-2 border-top d-flex flex-wrap align-items-center gap-1">
+                        <span class="extra-small fw-bold text-secondary text-uppercase me-1"><i class="bi bi-tags me-1 text-danger"></i>Party Presets:</span>
+                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small active" id="chipLiveNwkrtc" onclick="setLivePartyPreset('NWKRTC')">NWKRTC</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveMd" onclick="setLivePartyPreset('MANAGING DIRECTOR')">Managing Director</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveCpm" onclick="setLivePartyPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDc" onclick="setLivePartyPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDm" onclick="setLivePartyPreset('DEPOT MANAGER')">Depot Manager</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveAll" onclick="setLivePartyPreset('')">All Parties (Entire Roster)</button>
+
+                        <div class="ms-auto d-flex align-items-center gap-2">
+                            <span class="extra-small fw-bold text-secondary text-uppercase"><i class="bi bi-calendar3 me-1 text-primary"></i>Saved CNR Dates:</span>
+                            <div id="quickHearingDateChips" class="d-inline-flex flex-wrap gap-1">
+                                <!-- Populated dynamically -->
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small fw-bold" onclick="showAllSavedCnrCases()">
+                                <i class="bi bi-card-checklist me-1"></i>View All Saved CNR Cases (<span id="btnAllCnrCount">4</span>)
+                            </button>
                         </div>
-                        <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small fw-bold ms-auto" onclick="showAllSavedCnrCases()">
-                            <i class="bi bi-card-checklist me-1"></i>View All Saved CNR Cases (<span id="btnAllCnrCount">4</span>)
-                        </button>
                     </div>
                 </div>
             </div>
@@ -416,11 +431,20 @@
                         <div class="form-check form-switch m-0 border-start ps-4">
                             <input class="form-check-input" type="checkbox" id="chkOnlyCorp" checked onchange="filterLiveCauselistRows()">
                             <label class="form-check-label fw-bold text-dark small" for="chkOnlyCorp">
-                                <i class="bi bi-shield-check text-primary me-1"></i>Show Only Saved CNR / Corporation Cases
+                                <i class="bi bi-shield-check text-primary me-1"></i>Show Only Corporation Cases
                             </label>
                         </div>
                     </div>
-                    <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Select Bench & Fetch</span>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-secondary py-0 px-2 extra-small active" id="pillFilterAll" onclick="setLiveListingFilter('ALL')">All</button>
+                            <button type="button" class="btn btn-outline-danger py-0 px-2 extra-small fw-bold" id="pillFilterToday" onclick="setLiveListingFilter('TODAY')"><i class="bi bi-bell-fill me-1"></i>Listed Today</button>
+                            <button type="button" class="btn btn-outline-primary py-0 px-2 extra-small" id="pillFilterWith" onclick="setLiveListingFilter('WITH')">With NWKRTC</button>
+                            <button type="button" class="btn btn-outline-warning text-dark py-0 px-2 extra-small" id="pillFilterAgainst" onclick="setLiveListingFilter('AGAINST')">Against NWKRTC</button>
+                            <button type="button" class="btn btn-outline-success py-0 px-2 extra-small" id="pillFilterSaved" onclick="setLiveListingFilter('SAVED')">Saved in DB</button>
+                        </div>
+                        <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Select Bench & Fetch</span>
+                    </div>
                 </div>
                 <div class="card-body p-0">
                     <div id="liveCauselistContainer">
@@ -433,6 +457,7 @@
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
@@ -874,37 +899,174 @@ function fetchLiveHcCauselist() {
     const dateInputVal = document.getElementById('liveDate').value.trim();
     const targetKey = normalizeDateKey(dateInputVal);
     const benchId = document.getElementById('liveBenchId').value;
+    const partyName = (document.getElementById('livePartySearchInput')?.value || 'NWKRTC').trim();
     const container = document.getElementById('liveCauselistContainer');
     const badge = document.getElementById('liveListBadge');
 
     badge.className = "badge bg-warning text-dark px-3 py-1";
-    badge.textContent = "Fetching Live Gateway...";
-    container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-danger" role="status"></div><p class="mt-2 text-muted fw-bold">Querying official High Court Daily Cause List from e-Courts Gateway via NAPIX...</p></div>';
+    badge.textContent = "Querying Live Gateway...";
+    container.innerHTML = `<div class="text-center py-5">
+        <div class="spinner-border text-danger" role="status"></div>
+        <p class="mt-2 text-muted fw-bold">Querying official High Court e-Courts Gateway via NAPIX for '<strong>${partyName || 'NWKRTC'}</strong>' on ${dateInputVal}...</p>
+        <p class="extra-small text-muted mb-0">Cross-referencing Dharwad, Bengaluru, Kalaburagi rosters, designations, and hearing schedules...</p>
+    </div>`;
 
     let targetBench = "";
     if (estCode === "KAHC01") targetBench = "Bengaluru";
     else if (estCode === "KAHC02") targetBench = "Dharwad";
     else if (estCode === "KAHC03") targetBench = "Kalaburagi";
+    else targetBench = "All Benches";
 
-    const queryEst = (estCode === "ALL") ? "KAHC01" : estCode;
+    // Call GetLiveHighCourtPartyCases with partyName & hearingDate
+    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || 'NWKRTC')}&hearingDate=${encodeURIComponent(dateInputVal)}`;
 
-    fetch(`/ECourts/GetHighCourtCauselistDetails?estCode=${encodeURIComponent(queryEst)}&benchId=${encodeURIComponent(benchId)}&causelistDate=${encodeURIComponent(dateInputVal)}`)
+    fetch(partyUrl)
         .then(r => r.json())
         .then(res => {
-            let liveItems = [];
-            if (res && res.success && res.data) {
-                liveItems = extractArrayFromData(res.data);
-            }
-
-            if (liveItems.length > 0) {
-                renderLiveCauseListWithSavedCnrMatch(liveItems, targetKey, dateInputVal, targetBench, container, badge);
+            if (res && res.success && res.data && res.data.length > 0) {
+                renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge, res.todayCount);
             } else {
+                // If live party search returns 0, try causelist details or fallback table
                 renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
             }
         })
         .catch(() => {
             renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
         });
+}
+
+function renderLivePartyCauseList(items, displayDate, targetBench, container, badge, todayCount) {
+    const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
+    const cnrSet = new Set(registeredCases.filter(c => c.CNRNumber).map(c => c.CNRNumber.trim().toUpperCase()));
+
+    badge.className = "badge bg-success px-3 py-1";
+    badge.textContent = `${items.length} Live Cases (${todayCount || 0} Listed Today)`;
+
+    let html = `
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-2.5 bg-light border-bottom">
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-danger text-white px-2.5 py-1">
+                <i class="bi bi-broadcast me-1"></i>Live eCourts Gateway
+            </span>
+            <span class="fw-bold text-dark small">
+                Found <strong>${items.length}</strong> High Court matters for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>'
+            </span>
+            ${todayCount > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 fw-bold"><i class="bi bi-calendar-check me-1"></i>${todayCount} Listed on ${displayDate}</span>` : ''}
+        </div>
+        <div class="extra-small text-muted font-monospace">
+            Bench: <strong>${targetBench}</strong> | Scheduled Date: <strong>${displayDate}</strong>
+        </div>
+    </div>
+    <div class="table-responsive" style="max-height: 580px;">
+        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable">
+            <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom">
+                <tr>
+                    <th style="width: 40px;" class="text-center">#</th>
+                    <th style="min-width: 150px;">Case Number & Year</th>
+                    <th style="min-width: 140px;">Court Hall / Bench</th>
+                    <th style="min-width: 160px;">CNR Number</th>
+                    <th style="min-width: 240px;">Petitioner vs Respondent</th>
+                    <th style="min-width: 140px;">Corporation Role</th>
+                    <th style="min-width: 160px;">Hearing Date & Stage</th>
+                    <th style="min-width: 110px;" class="text-center">Local DB</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+    items.forEach((item, idx) => {
+        const sr = idx + 1;
+        const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
+        const courtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
+        const pet = item.petitionerName || '—';
+        const resName = item.respondentName || '—';
+        const itemCnr = (item.cnrNumber || '').trim().toUpperCase();
+
+        const isCnrMatched = (itemCnr && cnrSet.has(itemCnr)) || item.isLocalMatch;
+        const isCorpMatch = isCnrMatched || item.nwkrtcRole === 'With NWKRTC' || item.nwkrtcRole === 'Against NWKRTC' ||
+            pet.toUpperCase().includes('NWKRTC') || resName.toUpperCase().includes('NWKRTC');
+
+        const isListedToday = item.isListedToday;
+
+        let roleBadge = item.nwkrtcRole === 'With NWKRTC'
+            ? '<span class="badge bg-primary text-white px-2 py-1"><i class="bi bi-shield-check me-1"></i>With NWKRTC</span>'
+            : '<span class="badge bg-warning-subtle text-dark border border-warning px-2 py-1"><i class="bi bi-shield-exclamation me-1 text-danger"></i>Against NWKRTC</span>';
+
+        if (item.matchedDesignation && item.matchedDesignation !== 'None') {
+            roleBadge += `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person-badge me-0.5"></i>${item.matchedDesignation}</div>`;
+        }
+
+        let listingBadge = '';
+        if (isListedToday) {
+            listingBadge = `<span class="badge bg-danger text-white px-2 py-1 shadow-sm d-block mb-1"><i class="bi bi-broadcast me-1"></i>Listed Today (${displayDate})</span>`;
+        } else if (item.nextHearingDate) {
+            let dtStr = item.nextHearingDate;
+            if (dtStr.includes('T')) {
+                const parts = dtStr.split('T')[0].split('-');
+                dtStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            listingBadge = `<strong class="text-primary font-monospace extra-small d-block"><i class="bi bi-calendar-event me-1"></i>${dtStr}</strong>`;
+        } else {
+            listingBadge = `<span class="badge bg-light text-muted border extra-small">Date Awaited / Active</span>`;
+        }
+
+        const stageText = item.caseStage || 'Hearing Active';
+
+        let localBadge = '';
+        if (item.isLocalMatch) {
+            localBadge = `<a href="/Case/Details/${item.localCaseId}" class="badge bg-success text-white text-decoration-none px-2 py-1" title="View in Case Registry">
+                <i class="bi bi-check-circle-fill me-1"></i>Saved (${item.localModule || 'Case'})
+            </a>`;
+        } else {
+            localBadge = `<span class="badge bg-light text-secondary border extra-small">Gateway Live</span>`;
+        }
+
+        const searchTerms = `${pet} ${resName} ${caseNo} ${courtNo} ${itemCnr} ${stageText} ${item.matchedDesignation || ''} ${item.highCourtBench || ''}`.toLowerCase();
+
+        html += `<tr class="live-causelist-row ${isListedToday ? 'table-warning border-warning' : ''} ${isCorpMatch ? 'corp-match-row' : ''}" 
+                     data-is-corp="${isCorpMatch}" 
+                     data-is-saved-cnr="${isCnrMatched}" 
+                     data-is-today="${isListedToday}"
+                     data-role="${item.nwkrtcRole || ''}"
+                     data-is-local="${item.isLocalMatch ? 'true' : 'false'}"
+                     data-search="${searchTerms.replace(/"/g, '&quot;')}">
+            <td class="fw-bold text-center text-muted">${sr}</td>
+            <td>
+                <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
+                <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
+            </td>
+            <td>
+                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
+                    <i class="bi bi-bank2 me-1"></i>${courtNo}
+                </span>
+            </td>
+            <td>
+                <div class="font-monospace fw-bold text-dark extra-small mb-1">${itemCnr || '—'}</div>
+                ${itemCnr ? `
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-primary btn-sm py-0 px-1.5 extra-small" type="button" onclick="syncSingleCnr('${item.localAppealId || item.regNumber}', '${itemCnr}')" title="Sync live status">
+                        <i class="bi bi-arrow-repeat"></i> Sync
+                    </button>
+                    <button class="btn btn-outline-info btn-sm py-0 px-1.5 extra-small" type="button" onclick="openDossierModal('${item.localAppealId || item.regNumber}', '${itemCnr}', '${caseNo}')" title="View Dossier">
+                        <i class="bi bi-journal-text"></i> Dossier
+                    </button>
+                </div>` : ''}
+            </td>
+            <td>
+                <div class="fw-bold text-dark">${pet}</div>
+                <div class="extra-small text-muted">vs ${resName}</div>
+            </td>
+            <td>${roleBadge}</td>
+            <td>
+                ${listingBadge}
+                <span class="badge bg-light text-dark border extra-small">${stageText}</span>
+            </td>
+            <td class="text-center">${localBadge}</td>
+        </tr>`;
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
+    filterLiveCauselistRows();
 }
 
 function renderLiveCauseListWithSavedCnrMatch(items, targetKey, displayDate, targetBench, container, badge) {
@@ -951,7 +1113,8 @@ function renderLiveCauseListWithSavedCnrMatch(items, targetKey, displayDate, tar
             matchBadge = '<span class="badge bg-success text-white px-2 py-1"><i class="bi bi-check2 me-1"></i>Corporation Match</span>';
         }
 
-        html += `<tr class="live-causelist-row ${isCorpMatch ? 'corp-match-row' : ''}" data-is-corp="${isCorpMatch}" data-is-saved-cnr="${isCnrMatched}">
+        const searchTerms = `${pet} ${resName} ${caseNo} ${petAdv} ${resAdv} ${courtNo} ${stage}`.toLowerCase();
+        html += `<tr class="live-causelist-row ${isCorpMatch ? 'corp-match-row' : ''}" data-is-corp="${isCorpMatch}" data-is-saved-cnr="${isCnrMatched}" data-search="${searchTerms.replace(/"/g, '&quot;')}">
             <td class="fw-bold">${sr}</td>
             <td><strong class="text-primary font-monospace fs-6">${caseNo}</strong></td>
             <td><span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold"><i class="bi bi-bank2 me-1"></i>${courtNo}</span></td>
@@ -1047,19 +1210,101 @@ function renderSavedCnrDateMatchTable(targetKey, displayDate, targetBench, conta
     }
 }
 
+let currentLiveListingFilter = 'ALL';
+
+function setLiveListingFilter(filterType) {
+    currentLiveListingFilter = filterType;
+    ['pillFilterAll', 'pillFilterToday', 'pillFilterWith', 'pillFilterAgainst', 'pillFilterSaved'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+
+    if (filterType === 'TODAY') document.getElementById('pillFilterToday')?.classList.add('active');
+    else if (filterType === 'WITH') document.getElementById('pillFilterWith')?.classList.add('active');
+    else if (filterType === 'AGAINST') document.getElementById('pillFilterAgainst')?.classList.add('active');
+    else if (filterType === 'SAVED') document.getElementById('pillFilterSaved')?.classList.add('active');
+    else document.getElementById('pillFilterAll')?.classList.add('active');
+
+    filterLiveCauselistRows();
+}
+
 function filterLiveCauselistRows() {
     const chk = document.getElementById('chkOnlyCorp');
-    if (!chk) return;
-    const onlyCorp = chk.checked;
+    const partyInput = (document.getElementById('livePartySearchInput')?.value || '').trim().toLowerCase();
+    const benchFilter = (document.getElementById('liveBenchId')?.value || 'ALL').trim();
+    const onlyCorp = chk ? chk.checked : false;
     const rows = document.querySelectorAll('.live-causelist-row');
+    let visibleCount = 0;
+
     rows.forEach(r => {
         const isCorp = r.getAttribute('data-is-corp') === 'true';
-        if (onlyCorp && !isCorp) {
-            r.style.display = 'none';
-        } else {
+        const isToday = r.getAttribute('data-is-today') === 'true';
+        const isSaved = r.getAttribute('data-is-local') === 'true' || r.getAttribute('data-is-saved-cnr') === 'true';
+        const role = r.getAttribute('data-role') || '';
+        const searchTxt = r.getAttribute('data-search') || '';
+
+        let matchCorp = !onlyCorp || isCorp;
+        let matchParty = true;
+        if (partyInput) {
+            matchParty = searchTxt.includes(partyInput) || (partyInput.includes('nwkrtc') && isCorp);
+        }
+
+        let matchPill = true;
+        if (currentLiveListingFilter === 'TODAY') matchPill = isToday;
+        else if (currentLiveListingFilter === 'WITH') matchPill = role.includes('With NWKRTC') || role === 'WITH';
+        else if (currentLiveListingFilter === 'AGAINST') matchPill = role.includes('Against NWKRTC') || role === 'AGAINST';
+        else if (currentLiveListingFilter === 'SAVED') matchPill = isSaved;
+
+        let matchBench = true;
+        if (benchFilter !== 'ALL') {
+            matchBench = searchTxt.includes(`court hall ${benchFilter.toLowerCase()}`) || searchTxt.includes(`bench #${benchFilter.toLowerCase()}`);
+        }
+
+        if (matchCorp && matchParty && matchPill && matchBench) {
             r.style.display = '';
+            visibleCount++;
+        } else {
+            r.style.display = 'none';
         }
     });
+
+    const badge = document.getElementById('liveListBadge');
+    if (badge && rows.length > 0) {
+        badge.className = "badge bg-success px-3 py-1";
+        badge.textContent = `${visibleCount} of ${rows.length} Cases Listed`;
+    }
+}
+
+function setLivePartyPreset(party) {
+    const input = document.getElementById('livePartySearchInput');
+    if (input) input.value = party;
+
+    ['chipLiveNwkrtc', 'chipLiveMd', 'chipLiveCpm', 'chipLiveDc', 'chipLiveDm', 'chipLiveAll'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active', 'btn-outline-danger');
+        document.getElementById(id)?.classList.add('btn-outline-secondary');
+    });
+
+    if (party === 'NWKRTC') {
+        const c = document.getElementById('chipLiveNwkrtc');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    } else if (party === 'MANAGING DIRECTOR') {
+        const c = document.getElementById('chipLiveMd');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    } else if (party === 'CHIEF PERSONNEL MANAGER') {
+        const c = document.getElementById('chipLiveCpm');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    } else if (party === 'DIVISIONAL CONTROLLER') {
+        const c = document.getElementById('chipLiveDc');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    } else if (party === 'DEPOT MANAGER') {
+        const c = document.getElementById('chipLiveDm');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    } else if (!party) {
+        const c = document.getElementById('chipLiveAll');
+        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
+    }
+
+    fetchLiveHcCauselist();
 }
 
 function syncSingleCnr(appealId, cnr, isBatch = false) {
@@ -1392,4 +1637,25 @@ function openDossierModal(appealId, cnr, mfaNo) {
             document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Network error fetching dossier.</td></tr>';
         });
 }
+
+// Auto-initialize when page loads or when live tab is opened
+document.addEventListener('DOMContentLoaded', function () {
+    populateScheduledDateChips();
+    loadHcCourtBenches();
+    
+    const liveTabBtn = document.querySelector('button[data-bs-target="#tabLiveHcCauseList"]');
+    if (liveTabBtn) {
+        liveTabBtn.addEventListener('shown.bs.tab', function () {
+            initLiveHcCauselist();
+        });
+    }
+
+    if (window.location.hash === '#tabLiveHcCauseList' || window.location.hash.toLowerCase().includes('live')) {
+        if (liveTabBtn) {
+            const bsTab = new bootstrap.Tab(liveTabBtn);
+            bsTab.show();
+        }
+        initLiveHcCauselist();
+    }
+});
 </script>

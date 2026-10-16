@@ -224,8 +224,11 @@ namespace MVCCaseManagement.DAL
                     m.MACTName,
                     a.CorpMFANextHearingDate AS NextHearingDate,
                     a.CorpMFAStage AS CaseStage,
-                    ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = c.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant / Petitioner') AS PetitionerName,
-                    ISNULL(NULLIF((SELECT TOP 1 RespondentName FROM MVC_CASE_RESPONDENTS WHERE CaseID = c.CaseID AND RespondentName IS NOT NULL AND RespondentName <> ''), ''), 'NWKRTC (Corporation)') AS RespondentName
+                    'The Managing Director, NWKRTC' AS PetitionerName,
+                    ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = c.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant / Respondent') AS RespondentName,
+                    'With NWKRTC' AS NwkrtcRole,
+                    'MVC Appeal' AS CaseCategory,
+                    'MVC' AS ModuleSource
                 FROM APPEAL_DETAILS a
                 INNER JOIN MVC_CASES c ON a.CaseID = c.CaseID
                 LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
@@ -250,12 +253,68 @@ namespace MVCCaseManagement.DAL
                     a.ClaimantMFANextHearingDate AS NextHearingDate,
                     ISNULL(NULLIF(a.ClaimantMFAStage, ''), a.ClaimantMFAStatus) AS CaseStage,
                     ISNULL((SELECT TOP 1 PetitionerName FROM MVC_CASE_PETITIONERS WHERE CaseID = c.CaseID AND PetitionerName IS NOT NULL AND PetitionerName <> ''), 'Claimant / Petitioner') AS PetitionerName,
-                    ISNULL(NULLIF((SELECT TOP 1 RespondentName FROM MVC_CASE_RESPONDENTS WHERE CaseID = c.CaseID AND RespondentName IS NOT NULL AND RespondentName <> ''), ''), 'NWKRTC (Corporation)') AS RespondentName
+                    'The Managing Director, NWKRTC' AS RespondentName,
+                    'Against NWKRTC' AS NwkrtcRole,
+                    'MVC Appeal' AS CaseCategory,
+                    'MVC' AS ModuleSource
                 FROM APPEAL_DETAILS a
                 LEFT JOIN MVC_CASES c ON a.CaseID = c.CaseID
                 LEFT JOIN DIVISION_MASTER d ON ISNULL(a.ClaimantDivisionID, c.DivisionID) = d.DivisionID
                 LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                 WHERE (a.ClaimantMFANumber IS NOT NULL AND a.ClaimantMFANumber <> '') OR (a.ClaimantMFACNRNumber IS NOT NULL AND a.ClaimantMFACNRNumber <> '')
+
+                UNION ALL
+
+                SELECT 
+                    -l.CaseID AS AppealID,
+                    l.CaseID,
+                    'Corporation WP' AS AppealType,
+                    l.CO_WP_CaseNumber AS MFANumber,
+                    l.CO_WP_Year AS MFAYear,
+                    l.CO_WP_CNRNumber AS CNRNumber,
+                    ISNULL(NULLIF(l.CO_WP_HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    NULL AS CourtHall,
+                    l.CaseNumber AS ArisingMVCNo,
+                    l.CaseYear AS ArisingMVCYear,
+                    d.DivisionNameEnglish AS DivisionName,
+                    'Labour Court / Ind. Tribunal' AS MACTName,
+                    l.NextHearingDate AS NextHearingDate,
+                    ISNULL(NULLIF(l.CurrentStage, ''), l.CO_WP_Status) AS CaseStage,
+                    'The Managing Director, NWKRTC' AS PetitionerName,
+                    ISNULL(NULLIF(l.PetitionerName, ''), 'Workman / Respondent') AS RespondentName,
+                    'With NWKRTC' AS NwkrtcRole,
+                    'Labour / Service Writ' AS CaseCategory,
+                    'Labour' AS ModuleSource
+                FROM LABOUR_CASES l
+                LEFT JOIN DIVISION_MASTER d ON l.DivisionID = d.DivisionID
+                WHERE (l.CO_WP_CaseNumber IS NOT NULL AND l.CO_WP_CaseNumber <> '') OR (l.CO_WP_CNRNumber IS NOT NULL AND l.CO_WP_CNRNumber <> '')
+
+                UNION ALL
+
+                SELECT 
+                    -(100000 + l.CaseID) AS AppealID,
+                    l.CaseID,
+                    'Claimant WP' AS AppealType,
+                    l.CO_Claimant_CaseNumber AS MFANumber,
+                    l.CO_Claimant_CaseYear AS MFAYear,
+                    l.CO_Claimant_CNRNumber AS CNRNumber,
+                    ISNULL(NULLIF(l.CO_Claimant_HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    NULL AS CourtHall,
+                    l.CaseNumber AS ArisingMVCNo,
+                    l.CaseYear AS ArisingMVCYear,
+                    d.DivisionNameEnglish AS DivisionName,
+                    'Labour Court / Ind. Tribunal' AS MACTName,
+                    l.NextHearingDate AS NextHearingDate,
+                    ISNULL(NULLIF(l.CurrentStage, ''), l.CO_Claimant_CaseStatus) AS CaseStage,
+                    ISNULL(NULLIF(l.PetitionerName, ''), 'Workman / Claimant') AS PetitionerName,
+                    'The Managing Director, NWKRTC' AS RespondentName,
+                    'Against NWKRTC' AS NwkrtcRole,
+                    'Labour / Service Writ' AS CaseCategory,
+                    'Labour' AS ModuleSource
+                FROM LABOUR_CASES l
+                LEFT JOIN DIVISION_MASTER d ON l.DivisionID = d.DivisionID
+                WHERE (l.CO_Claimant_CaseNumber IS NOT NULL AND l.CO_Claimant_CaseNumber <> '') OR (l.CO_Claimant_CNRNumber IS NOT NULL AND l.CO_Claimant_CNRNumber <> '')
+
                 ORDER BY NextHearingDate ASC, AppealID DESC";
 
             return await conn.QueryAsync<MVCCaseManagement.Models.HighCourtCauseListItem>(sql);

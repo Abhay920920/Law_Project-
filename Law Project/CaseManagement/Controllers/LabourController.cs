@@ -104,6 +104,13 @@ namespace MVCCaseManagement.Controllers
             return Json(new { success = true, data = result });
         }
 
+        [HttpGet]
+        [AllowAnonymous]
+        public IActionResult MyCases()
+        {
+            return RedirectToAction("MyCases", "ECourts", new { module = "Labour" });
+        }
+
         [HttpPost]
         [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SaveLiveHearingDate(int caseId, string? cnrNumber, string? hearingDate, string? stage, string? courtHall)

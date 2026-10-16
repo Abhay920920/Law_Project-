@@ -261,25 +261,27 @@ namespace MVCCaseManagement.Controllers
             // Update last login
             _userRepository.UpdateLastLogin(user.UserID);
 
+            string clientMac = NetworkDeviceHelper.GetClientMacAddress(HttpContext);
             _ = _activityLogger.LogSubEntityActionAsync(
                 "ACCOUNT",
                 user.UserID,
                 user.Username,
                 "USER_LOGIN",
-                $"User '{user.Username}' ({user.FullName}) logged in successfully. Role: {user.RoleName}, Division: {user.DivisionName ?? "Central Office"}",
-                new { user.UserID, user.Username, user.FullName, user.RoleName, user.DivisionID });
+                $"User '{user.Username}' ({user.FullName}) logged in successfully. Role: {user.RoleName}, Division: {user.DivisionName ?? "Central Office"} [MAC: {clientMac}]",
+                new { user.UserID, user.Username, user.FullName, user.RoleName, user.DivisionID, MacAddress = clientMac });
         }
 
         public async Task<IActionResult> Logout()
         {
             var username = User.Identity?.Name ?? "User";
+            string clientMac = NetworkDeviceHelper.GetClientMacAddress(HttpContext);
             _ = _activityLogger.LogSubEntityActionAsync(
                 "ACCOUNT",
                 0,
                 username,
                 "USER_LOGOUT",
-                $"User '{username}' logged out of system",
-                new { username });
+                $"User '{username}' logged out of system [MAC: {clientMac}]",
+                new { username, MacAddress = clientMac });
 
             await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             HttpContext.Session.Clear();
