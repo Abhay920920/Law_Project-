@@ -1413,7 +1413,7 @@ namespace MVCCaseManagement.Controllers
             if (result.HasValue)
             {
                 rawResult = result.Value;
-                parsed = ExtractCnrSummary(result.Value);
+                parsed = ExtractCnrSummary(result.Value, norm);
                 historyList = ExtractHistoryArray(result.Value);
                 ordersList = ExtractOrdersArray(result.Value);
                 iaList = ExtractIaArray(result.Value);
@@ -1640,6 +1640,21 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 using var conn = _db.GetConnection();
+
+                // Self-healing database integrity update:
+                // Ensure no Labour case is mistakenly stored as MFA or MVC or generic 'Case'
+                if (string.Equals(norm, "Labour", StringComparison.OrdinalIgnoreCase))
+                {
+                    await conn.ExecuteAsync(@"
+                        UPDATE admin_Law.ECOURTS_TRACKED_CASES 
+                        SET CaseTypeCode = CASE 
+                            WHEN CNRNumber LIKE '%HC%' OR EstCode LIKE 'KAHC%' THEN 'WP' 
+                            ELSE 'KID' 
+                        END
+                        WHERE RelatedModule = 'Labour' 
+                          AND (CaseTypeCode = 'MFA' OR CaseTypeCode = 'MVC' OR CaseTypeCode = 'Case' OR CaseTypeCode IS NULL OR CaseTypeCode = '')");
+                }
+
                 var cases = (await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
                     SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
                            RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
@@ -1757,6 +1772,14 @@ namespace MVCCaseManagement.Controllers
                     try
                     {
                         using var doc = JsonDocument.Parse(record.RawJson);
+                        string normMod = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
+                        if (string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase) && 
+                            (record.RawJson.Contains("\"case_type\":\"MFA\"") || record.RawJson.Contains("\"case_type\": \"MFA\"")))
+                        {
+                            string sanitized = record.RawJson.Replace("\"case_type\":\"MFA\"", "\"case_type\":\"WP\"")
+                                                             .Replace("\"case_type\": \"MFA\"", "\"case_type\": \"WP\"");
+                            return Content(sanitized, "application/json");
+                        }
                         return Content(record.RawJson, "application/json");
                     }
                     catch { }
@@ -1813,6 +1836,12 @@ namespace MVCCaseManagement.Controllers
                                LastSyncedAt, CreatedDate, AddedBy
                         FROM admin_Law.ECOURTS_TRACKED_CASES
                         WHERE TrackedID = @trackedId", new { trackedId });
+
+                    if (updated != null)
+                    {
+                        updated.CaseTypeCode = ResolveCaseType(updated.CaseTypeCode, updated.CaseNumber, updated.CNRNumber, norm);
+                        updated.CourtNo = FormatCourtHall(updated.CourtNo, updated.JudgeDesignation, updated.EstCode);
+                    }
                     return Json(new { success = true, data = updated, message = "Case details synced successfully from live eCourts." });
                 }
 
@@ -1915,7 +1944,7 @@ namespace MVCCaseManagement.Controllers
 
                 if (matchedItem.HasValue)
                 {
-                    var parsed = ParseCauselistItem(matchedItem.Value, matchedEst, checkDateStr);
+                    var parsed = ParseCauselistItem(matchedItem.Value, matchedEst, checkDateStr, norm);
 
                     // Update DB with live court hall, coram, and causelist item if caseRecord exists
                     if (caseRecord != null)
@@ -2014,7 +2043,7 @@ namespace MVCCaseManagement.Controllers
                         var found = FindCaseInCauselist(item, c.CNRNumber, c.CaseNumber, c.CaseYear);
                         if (found.HasValue)
                         {
-                            var parsed = ParseCauselistItem(found.Value, est, checkDateStr);
+                            var parsed = ParseCauselistItem(found.Value, est, checkDateStr, norm);
                             await conn.ExecuteAsync(@"
                                 UPDATE admin_Law.ECOURTS_TRACKED_CASES SET
                                     CourtNo = COALESCE(@courtHall, CourtNo),
@@ -2139,7 +2168,7 @@ namespace MVCCaseManagement.Controllers
             return list;
         }
 
-        private static dynamic ParseCauselistItem(JsonElement item, string estCode, string listingDate)
+        private static dynamic ParseCauselistItem(JsonElement item, string estCode, string listingDate, string? module = null)
         {
             string? rawCourt = null;
             string? itemNo = null;
@@ -2183,7 +2212,7 @@ namespace MVCCaseManagement.Controllers
             }
 
             string formattedCourt = FormatCourtHall(rawCourt, judge, estCode);
-            string resolvedType = ResolveCaseType(caseType, caseNo, null, null);
+            string resolvedType = ResolveCaseType(caseType, caseNo, null, module);
 
             return new {
                 courtHall = formattedCourt,
@@ -2203,11 +2232,31 @@ namespace MVCCaseManagement.Controllers
 
         /// <summary>
         /// Maps numeric case type codes returned by High Court CIS into official case type acronyms.
+        /// When isLabour is true, High Court defaults to WP and District to KID.
         /// </summary>
-        public static string MapNumericCaseTypeCode(int code, bool isHighCourt)
+        public static string MapNumericCaseTypeCode(int code, bool isHighCourt, bool isLabour = false)
         {
             if (isHighCourt)
             {
+                if (isLabour)
+                {
+                    return code switch
+                    {
+                        1 => "WP",
+                        2 => "WP",
+                        3 => "WA",
+                        4 => "WA",
+                        5 => "CCC",
+                        6 => "CRP",
+                        7 => "CCC",
+                        8 => "CRL.A",
+                        9 => "CRL.P",
+                        10 => "CP",
+                        11 => "RP",
+                        _ => "WP"
+                    };
+                }
+
                 return code switch
                 {
                     1 => "MFA",
@@ -2233,6 +2282,19 @@ namespace MVCCaseManagement.Controllers
             }
             else
             {
+                if (isLabour)
+                {
+                    return code switch
+                    {
+                        1 => "KID",
+                        2 => "KID",
+                        3 => "ID",
+                        4 => "LIR",
+                        5 => "EP",
+                        _ => "KID"
+                    };
+                }
+
                 return code switch
                 {
                     1 => "MVC",
@@ -2253,8 +2315,9 @@ namespace MVCCaseManagement.Controllers
         /// <summary>
         /// Normalizes raw case type text into standardized high-court / district court abbreviation.
         /// e.g. "MISCELLANEOUS FIRST APPEAL" -> "MFA", "WRIT PETITION" -> "WP", "1" -> "MFA".
+        /// For Labour module, MFA/MVC are strictly mapped to WP (High Court) or KID (Lower Court).
         /// </summary>
-        public static string NormalizeCaseTypeAbbreviation(string? raw, bool isHighCourt = true)
+        public static string NormalizeCaseTypeAbbreviation(string? raw, bool isHighCourt = true, bool isLabour = false)
         {
             if (string.IsNullOrWhiteSpace(raw)) return "";
             raw = raw.Trim();
@@ -2262,14 +2325,24 @@ namespace MVCCaseManagement.Controllers
             // Numeric check
             if (int.TryParse(raw, out int numCode) && numCode > 0 && numCode < 100)
             {
-                return MapNumericCaseTypeCode(numCode, isHighCourt);
+                return MapNumericCaseTypeCode(numCode, isHighCourt, isLabour);
             }
 
             string upper = raw.ToUpperInvariant();
 
+            // Strict Labour override: Labour cases are NEVER MFA or MVC
+            if (isLabour)
+            {
+                if (upper.Contains("MISCELLANEOUS FIRST APPEAL") || upper.Contains("MISC FIRST APPEAL") || upper.StartsWith("MFA") || 
+                    upper.Contains("MOTOR ACCIDENT") || upper == "MVC" || upper.StartsWith("M.V.C"))
+                {
+                    return isHighCourt ? "WP" : "KID";
+                }
+            }
+
             // Known full text mappings
             if (upper.Contains("MISCELLANEOUS FIRST APPEAL") || upper.Contains("MISC FIRST APPEAL") || upper.StartsWith("MFA"))
-                return "MFA";
+                return isLabour ? (isHighCourt ? "WP" : "KID") : "MFA";
             if (upper.Contains("WRIT PETITION") || upper.StartsWith("WP") || upper.StartsWith("W.P"))
                 return "WP";
             if (upper.Contains("WRIT APPEAL") || upper.StartsWith("WA") || upper.StartsWith("W.A"))
@@ -2287,7 +2360,7 @@ namespace MVCCaseManagement.Controllers
             if (upper.Contains("CRIMINAL PETITION") || upper.StartsWith("CRL.P") || upper.StartsWith("CRLP"))
                 return "CRL.P";
             if (upper.Contains("MOTOR ACCIDENT") || upper.Contains("MVC") || upper.StartsWith("M.V.C"))
-                return "MVC";
+                return isLabour ? (isHighCourt ? "WP" : "KID") : "MVC";
             if (upper.Contains("KARNATAKA INDUSTRIAL") || upper.StartsWith("KID") || upper.StartsWith("K.I.D"))
                 return "KID";
             if (upper.Contains("INDUSTRIAL DISPUTE") || upper == "ID" || upper.StartsWith("I.D"))
@@ -2318,10 +2391,16 @@ namespace MVCCaseManagement.Controllers
 
         /// <summary>
         /// Comprehensive case type resolution: resolves case type from raw fields, case number, CNR, or module.
-        /// Never defaults to generic "Case" or blank or raw numeric code.
+        /// In Karnataka:
+        /// - Labour module High Court matters are ALWAYS WP (or WA/CCC), NEVER MFA!
+        /// - Labour module District/Tribunal matters are KID/ID/LIR/EP, NEVER MFA or MVC!
+        /// - MVC module High Court matters are MFA, District/Tribunal are MVC.
         /// </summary>
         public static string ResolveCaseType(string? rawType, string? caseNumber, string? cnr, string? module)
         {
+            string normMod = NapixQuotaService.NormalizeModule(module ?? "MVC");
+            bool isLabour = string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase);
+
             bool isHc = false;
             if (!string.IsNullOrWhiteSpace(cnr))
             {
@@ -2329,31 +2408,50 @@ namespace MVCCaseManagement.Controllers
                 isHc = cleanCnr.StartsWith("HC") || (cleanCnr.Length >= 4 && cleanCnr.Substring(2, 2) == "HC");
             }
 
-            string normalized = NormalizeCaseTypeAbbreviation(rawType, isHc);
+            string normalized = NormalizeCaseTypeAbbreviation(rawType, isHc, isLabour);
+
+            // Strict Labour safeguard: A Labour case can NEVER be MFA or MVC
+            if (isLabour)
+            {
+                if (string.IsNullOrWhiteSpace(normalized) || 
+                    normalized.Equals("MFA", StringComparison.OrdinalIgnoreCase) || 
+                    normalized.Equals("MVC", StringComparison.OrdinalIgnoreCase) || 
+                    normalized.Equals("Case", StringComparison.OrdinalIgnoreCase) || 
+                    normalized.Equals("0"))
+                {
+                    normalized = isHc ? "WP" : "KID";
+                }
+                return normalized;
+            }
+
             if (!string.IsNullOrWhiteSpace(normalized) && !normalized.Equals("Case", StringComparison.OrdinalIgnoreCase) && !normalized.Equals("0"))
             {
                 return normalized;
             }
 
-            // Extract from caseNumber if available (e.g. "MFA 102345/2019" or "WP 4567/2021" or "MVC 123/2018")
+            // Extract from caseNumber if available (e.g. "WP 108378/2026" or "MFA 102345/2019" or "MVC 123/2018")
             if (!string.IsNullOrWhiteSpace(caseNumber))
             {
                 var match = System.Text.RegularExpressions.Regex.Match(caseNumber.Trim(), @"^(MFA|WP|WA|RSA|RFA|CRP|CCC|CRL\.?A|CRL\.?P|MVC|KID|ID|LIR|EP|OS|RA|MA|CP|RP)[\s\/\.]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (match.Success)
                 {
-                    return NormalizeCaseTypeAbbreviation(match.Groups[1].Value, isHc);
+                    string extracted = NormalizeCaseTypeAbbreviation(match.Groups[1].Value, isHc, isLabour);
+                    if (isLabour && (extracted.Equals("MFA", StringComparison.OrdinalIgnoreCase) || extracted.Equals("MVC", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        extracted = isHc ? "WP" : "KID";
+                    }
+                    return extracted;
                 }
             }
 
             // Fallback by module and court level
-            string normMod = NapixQuotaService.NormalizeModule(module ?? "MVC");
             if (isHc)
             {
-                return string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase) ? "WP" : "MFA";
+                return isLabour ? "WP" : "MFA";
             }
             else
             {
-                return string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase) ? "KID" : "MVC";
+                return isLabour ? "KID" : "MVC";
             }
         }
 
@@ -2424,7 +2522,7 @@ namespace MVCCaseManagement.Controllers
                 return (false, false, err ?? "No live record returned from eCourts Gateway");
             }
 
-            var summary = ExtractCnrSummary(apiResult.Value);
+            var summary = ExtractCnrSummary(apiResult.Value, norm);
             var history = ExtractHistoryArray(apiResult.Value);
             var orders = ExtractOrdersArray(apiResult.Value);
             var iaFilings = ExtractIaArray(apiResult.Value);
@@ -2563,7 +2661,7 @@ namespace MVCCaseManagement.Controllers
         /// Collects ALL candidate dates and returns the maximum to avoid returning
         /// the first_hearing_date instead of the actual next/upcoming hearing date.
         /// </summary>
-        private static CnrSummaryModel ExtractCnrSummary(System.Text.Json.JsonElement root)
+        private static CnrSummaryModel ExtractCnrSummary(System.Text.Json.JsonElement root, string? module = null)
         {
             // Collect ALL candidates for next hearing date — we'll take the LATEST
             var nextDateCandidates = new List<string>();
@@ -2841,7 +2939,7 @@ namespace MVCCaseManagement.Controllers
             return new CnrSummaryModel
             {
                 cnr_number = cnrNumber,
-                case_type = ResolveCaseType(caseType, caseNumber, cnrNumber, null),
+                case_type = ResolveCaseType(caseType, caseNumber, cnrNumber, module),
                 case_number = caseNumber,
                 registration_date = regDate,
                 establishment_name = estName,

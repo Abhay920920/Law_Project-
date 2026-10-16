@@ -791,6 +791,26 @@
     let currentDossierTrackedId = null;
     let currentDossierObject = null;
 
+    function getDisplayCaseType(c) {
+        if (!c) return "";
+        const isHc = (c.cnrNumber && (c.cnrNumber.startsWith("HC") || c.cnrNumber.substring(2, 4) === "HC")) ||
+                     (c.estCode && c.estCode.startsWith("KAHC"));
+        let type = (c.caseTypeCode || "").trim();
+        const isLabour = (currentModule || "").toLowerCase() === "labour";
+
+        if (isLabour) {
+            if (!type || type === "MFA" || type === "MVC" || type === "Case" || type === "0") {
+                return isHc ? "WP" : "KID";
+            }
+            return type;
+        }
+
+        if (!type || type === "Case" || type === "0") {
+            return isHc ? "MFA" : "MVC";
+        }
+        return type;
+    }
+
     document.addEventListener("DOMContentLoaded", function () {
         loadTrackedCases();
     });
@@ -809,6 +829,9 @@
 
             if (json.success && Array.isArray(json.data)) {
                 allCasesData = json.data;
+                allCasesData.forEach(c => {
+                    c.caseTypeCode = getDisplayCaseType(c);
+                });
                 updateStatsCounters();
                 renderCasesTable();
                 if (showManualRefreshToast) {
@@ -971,7 +994,7 @@
         const filtered = allCasesData.filter(c => {
             // Text search
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
 
@@ -1082,7 +1105,7 @@
                 </td>
                 <td>
                     <div class="d-flex align-items-center gap-1.5 flex-wrap">
-                        <span class="badge bg-primary font-monospace fw-bold">${c.caseTypeCode || "MFA"}</span>
+                        <span class="badge bg-primary font-monospace fw-bold">${getDisplayCaseType(c)}</span>
                         <span class="fw-bold text-dark font-monospace">${c.caseNumber || ""}${c.caseYear ? "/" + c.caseYear : ""}</span>
                     </div>
                     <div class="extra-small text-muted mt-0.5">Est: <span class="font-monospace">${c.estCode || "—"}</span></div>
@@ -1161,7 +1184,7 @@
 
         const toExport = allCasesData.filter(c => {
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
             const st = (c.caseStatus || "").toLowerCase();
@@ -1188,7 +1211,7 @@
         const rows = toExport.map((c, i) => [
             i + 1,
             `"${c.cnrNumber || ""}"`,
-            `"${c.caseTypeCode || ""}"`,
+            `"${getDisplayCaseType(c)}"`,
             `"${c.caseNumber || ""}"`,
             `"${c.caseYear || ""}"`,
             `"${(c.courtNo || "").replace(/"/g, '""')}"`,
@@ -1387,7 +1410,19 @@
         const raw = dossier.raw || {};
         const cnr = dossier.cnr || data.cnr_number || "—";
 
-        document.getElementById("dossierModalTitle").innerText = `${data.case_type || "Case"} ${data.case_number || ""} — Dossier`;
+        const isHc = (cnr && (cnr.startsWith("HC") || cnr.substring(2, 4) === "HC")) ||
+                     (data.establishment_name || "").toLowerCase().includes("high court") ||
+                     (raw.court_est_name || "").toLowerCase().includes("high court");
+        let displayType = (data.case_type || "").trim();
+        if ((currentModule || "").toLowerCase() === "labour") {
+            if (!displayType || displayType === "MFA" || displayType === "MVC" || displayType === "Case" || displayType === "0") {
+                displayType = isHc ? "WP" : "KID";
+            }
+        } else if (!displayType || displayType === "Case" || displayType === "0") {
+            displayType = isHc ? "MFA" : "MVC";
+        }
+
+        document.getElementById("dossierModalTitle").innerText = `${displayType} ${data.case_number || ""} — Dossier`;
         document.getElementById("dossierCnrBadge").innerText = `CNR: ${cnr}`;
 
         const isDisposed = (data.case_status || "").toLowerCase().includes("dispos");
@@ -1398,7 +1433,7 @@
         document.getElementById("dossierSubtitle").innerText = `${data.establishment_name || "High Court of Karnataka"} — Live NAPIX Sync: ${dossier.synced_at || "Recent"}`;
 
         // Overview
-        document.getElementById("dCaseNo").innerText = `${data.case_type || "Case"} ${data.case_number || "—"}`;
+        document.getElementById("dCaseNo").innerText = `${displayType} ${data.case_number || "—"}`;
         document.getElementById("dFilNo").innerText = raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ""}` : (data.filing_date || "—");
         document.getElementById("dFilDate").innerText = data.filing_date || raw.date_of_filing || "—";
         document.getElementById("dRegDate").innerText = data.registration_date || raw.dt_regis || "—";
@@ -2191,7 +2226,7 @@
         } else {
             casesToPrint = allCasesData.filter(c => {
                 if (query) {
-                    const searchStr = `${c.cnrNumber || ""} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                    const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
                     if (!searchStr.includes(query)) return false;
                 }
                 const st = (c.caseStatus || "").toLowerCase();
@@ -2289,7 +2324,7 @@
                     <div style="margin-top: 2px;">${courtBadge}</div>
                 </td>
                 <td style="width: 140px;">
-                    <div class="fw-bold font-mono" style="color: #0369a1;"><span class="module-badge" style="background:#0284c7; padding: 1px 4px; font-size: 8.5px; margin-right: 3px;">${escapeHtml(c.caseTypeCode || "MFA")}</span> ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
+                    <div class="fw-bold font-mono" style="color: #0369a1;"><span class="module-badge" style="background:#0284c7; padding: 1px 4px; font-size: 8.5px; margin-right: 3px;">${escapeHtml(getDisplayCaseType(c))}</span> ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
                     <div class="text-muted" style="font-size: 9px; margin-top: 2px;">Est: ${escapeHtml(c.estCode || "—")}</div>
                 </td>
                 <td style="width: 175px;">
