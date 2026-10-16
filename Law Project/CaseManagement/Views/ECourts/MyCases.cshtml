@@ -792,21 +792,10 @@
     let currentDossierObject = null;
 
     function getDisplayCaseType(c) {
-        if (!c) return "";
-        const isHc = (c.cnrNumber && (c.cnrNumber.startsWith("HC") || c.cnrNumber.substring(2, 4) === "HC")) ||
-                     (c.estCode && c.estCode.startsWith("KAHC"));
+        if (!c) return "—";
         let type = (c.caseTypeCode || "").trim();
-        const isLabour = (currentModule || "").toLowerCase() === "labour";
-
-        if (isLabour) {
-            if (!type || type === "MFA" || type === "MVC" || type === "Case" || type === "0") {
-                return isHc ? "WP" : "KID";
-            }
-            return type;
-        }
-
         if (!type || type === "Case" || type === "0") {
-            return isHc ? "MFA" : "MVC";
+            return "—";
         }
         return type;
     }
@@ -1410,19 +1399,11 @@
         const raw = dossier.raw || {};
         const cnr = dossier.cnr || data.cnr_number || "—";
 
-        const isHc = (cnr && (cnr.startsWith("HC") || cnr.substring(2, 4) === "HC")) ||
-                     (data.establishment_name || "").toLowerCase().includes("high court") ||
-                     (raw.court_est_name || "").toLowerCase().includes("high court");
-        let displayType = (data.case_type || "").trim();
-        if ((currentModule || "").toLowerCase() === "labour") {
-            if (!displayType || displayType === "MFA" || displayType === "MVC" || displayType === "Case" || displayType === "0") {
-                displayType = isHc ? "WP" : "KID";
-            }
-        } else if (!displayType || displayType === "Case" || displayType === "0") {
-            displayType = isHc ? "MFA" : "MVC";
-        }
+        // Case type fetched directly from live NAPI eCourts API payload
+        let displayType = (data.case_type || raw.type_name_reg || raw.type_name_fil || raw.type_name || raw.case_type || "").trim();
+        if (displayType === "Case" || displayType === "0") displayType = "";
 
-        document.getElementById("dossierModalTitle").innerText = `${displayType} ${data.case_number || ""} — Dossier`;
+        document.getElementById("dossierModalTitle").innerText = `${displayType ? displayType + " " : ""}${data.case_number || ""} — Dossier`;
         document.getElementById("dossierCnrBadge").innerText = `CNR: ${cnr}`;
 
         const isDisposed = (data.case_status || "").toLowerCase().includes("dispos");
@@ -1433,7 +1414,7 @@
         document.getElementById("dossierSubtitle").innerText = `${data.establishment_name || "High Court of Karnataka"} — Live NAPIX Sync: ${dossier.synced_at || "Recent"}`;
 
         // Overview
-        document.getElementById("dCaseNo").innerText = `${displayType} ${data.case_number || "—"}`;
+        document.getElementById("dCaseNo").innerText = `${displayType ? displayType + " " : ""}${data.case_number || "—"}`;
         document.getElementById("dFilNo").innerText = raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ""}` : (data.filing_date || "—");
         document.getElementById("dFilDate").innerText = data.filing_date || raw.date_of_filing || "—";
         document.getElementById("dRegDate").innerText = data.registration_date || raw.dt_regis || "—";
