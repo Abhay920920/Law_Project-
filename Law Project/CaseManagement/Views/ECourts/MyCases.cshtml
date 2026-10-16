@@ -87,6 +87,10 @@
                 <i class="bi bi-plus-circle-fill"></i>
                 <span>Add CNR Cases</span>
             </button>
+            <button type="button" class="btn btn-danger btn-sm shadow-sm px-3 py-2 d-flex align-items-center gap-2 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
+                <i class="bi bi-broadcast"></i>
+                <span class="d-none d-sm-inline">Check Live Cause Lists</span>
+            </button>
             <button type="button" class="btn btn-outline-light btn-sm px-3 py-2 d-flex align-items-center gap-2" onclick="printCasesReport('filtered')" title="Print judicial report of current cases">
                 <i class="bi bi-printer-fill"></i>
                 <span class="d-none d-sm-inline">Print Report</span>
@@ -281,13 +285,13 @@
                     <tr>
                         <th style="width: 50px;" class="ps-4">#</th>
                         <th style="min-width: 170px;">CNR Number</th>
-                        <th style="min-width: 140px;">Case No & Type</th>
-                        <th style="min-width: 180px;">Bench / Court & Judge</th>
+                        <th style="min-width: 150px;">Case No & Type</th>
+                        <th style="min-width: 190px;">Court Hall & Bench</th>
                         <th style="min-width: 220px; max-width: 280px;">Parties (Petitioner vs Respondent)</th>
                         <th style="min-width: 160px;">Next Hearing / Stage</th>
                         <th style="min-width: 110px;">Status</th>
                         <th style="min-width: 130px;">Last Synced</th>
-                        <th style="min-width: 160px;" class="text-end pe-4">Actions</th>
+                        <th style="min-width: 180px;" class="text-end pe-4">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="myCasesTbody">
@@ -437,6 +441,11 @@
                     <li class="nav-item">
                         <button class="nav-link active fw-semibold small" id="tab-overview" data-bs-toggle="tab" data-bs-target="#pane-overview" type="button" role="tab">
                             <i class="bi bi-info-circle me-1"></i> Overview & Status
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-semibold small text-danger" id="tab-causelist" data-bs-toggle="tab" data-bs-target="#pane-causelist" type="button" role="tab">
+                            <i class="bi bi-broadcast text-danger me-1"></i> Cause List & Court Hall
                         </button>
                     </li>
                     <li class="nav-item">
@@ -689,6 +698,32 @@
                     </div>
 
 
+                    <!-- 8. Cause List & Court Hall Live Tab -->
+                    <div class="tab-pane fade" id="pane-causelist" role="tabpanel">
+                        <div class="card border rounded-3 shadow-sm mb-3">
+                            <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div>
+                                    <h6 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                                        <i class="bi bi-broadcast text-danger"></i> High Court Live Cause List & Court Hall
+                                    </h6>
+                                    <div class="extra-small text-muted">Queried real-time from official High Court Cause List API (/causelistdetails)</div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <input type="text" id="dCauselistDateInput" class="form-control form-control-sm font-monospace fw-bold" placeholder="DD-MM-YYYY" style="width: 140px;" />
+                                    <button type="button" class="btn btn-danger btn-sm px-3 shadow-sm d-flex align-items-center gap-1.5" onclick="recheckLiveCauseListInModal()">
+                                        <i class="bi bi-arrow-clockwise"></i> Query Live Gateway
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-4" id="dCauselistDetailsBody">
+                                <div class="text-center py-4 text-muted">
+                                    <div class="spinner-border text-danger spinner-border-sm me-2" role="status"></div>
+                                    <span>Querying official High Court Cause List...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
@@ -703,6 +738,43 @@
                         <span>Print Case Dossier</span>
                     </button>
                     <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Live Cause List Modal -->
+<div class="modal fade" id="quickCauseListModal" tabindex="-1" aria-labelledby="quickCauseListModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-danger text-white py-3 px-4">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-white bg-opacity-25 p-2 rounded-circle">
+                        <i class="bi bi-broadcast fs-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="quickCauseListModalTitle">Live Cause List & Court Hall</h5>
+                        <div class="extra-small text-white-50 font-monospace" id="quickCauseListModalSubtitle">High Court of Karnataka</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4" id="quickCauseListModalBody">
+                <div class="text-center py-5">
+                    <div class="spinner-border text-danger" role="status"></div>
+                    <p class="mt-2 text-muted fw-bold mb-0">Connecting to eCourts Gateway (/causelistdetails)...</p>
+                </div>
+            </div>
+            <div class="modal-footer bg-light px-4 py-3 d-flex justify-content-between align-items-center">
+                <div class="extra-small text-muted">
+                    <i class="bi bi-check-circle-fill text-success me-1"></i> Official Live High Court Gateway Data
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm px-3" id="quickCauseListOpenDossierBtn" onclick="openDossierFromQuickCauseList()">
+                        <i class="bi bi-journal-text me-1"></i> View Full Dossier
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -1009,12 +1081,17 @@
                     <div class="mt-1">${courtTierBadge}</div>
                 </td>
                 <td>
-                    <div class="fw-bold text-primary font-monospace">${c.caseTypeCode || "Case"} ${c.caseNumber || ""}${c.caseYear ? "/" + c.caseYear : ""}</div>
-                    <div class="extra-small text-muted">Est: ${c.estCode || "—"}</div>
+                    <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                        <span class="badge bg-primary font-monospace fw-bold">${c.caseTypeCode || "MFA"}</span>
+                        <span class="fw-bold text-dark font-monospace">${c.caseNumber || ""}${c.caseYear ? "/" + c.caseYear : ""}</span>
+                    </div>
+                    <div class="extra-small text-muted mt-0.5">Est: <span class="font-monospace">${c.estCode || "—"}</span></div>
                 </td>
                 <td>
-                    <div class="small fw-semibold text-dark text-truncate" style="max-width: 180px;" title="${c.courtNo || ""}">
-                        ${c.courtNo || "High Court / District Court"}
+                    <div class="d-flex align-items-center gap-1 mb-1">
+                        <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
+                            <i class="bi bi-bank2 me-1 text-secondary"></i>${c.courtNo || "Court Hall"}
+                        </span>
                     </div>
                     <div class="extra-small text-muted text-truncate" style="max-width: 180px;" title="${c.judgeDesignation || ""}">
                         ${c.judgeDesignation || "Presiding Judge"}
@@ -1039,6 +1116,9 @@
                 </td>
                 <td class="text-end pe-4">
                     <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-danger btn-sm px-2" title="Check Live High Court Cause List & Court Hall" id="btnCl_${c.trackedID}" onclick="checkLiveCauseList(${c.trackedID}, '${c.cnrNumber}')">
+                            <i class="bi bi-broadcast"></i>
+                        </button>
                         <button type="button" class="btn btn-outline-primary btn-sm px-2.5 py-1" title="View Full Case Dossier" onclick="openCaseDossier(${c.trackedID})">
                             <i class="bi bi-file-earmark-medical me-1"></i> Dossier
                         </button>
@@ -1450,6 +1530,287 @@
         } else {
             tbodyActs.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-4">No statutory acts recorded.</td></tr>`;
         }
+
+        // 8. Initialize Cause List & Court Hall live inspection tab
+        const clDateInput = document.getElementById("dCauselistDateInput");
+        if (clDateInput) {
+            let defaultDate = "";
+            if (data.next_hearing_date && data.next_hearing_date.includes('-')) {
+                const parts = data.next_hearing_date.split('T')[0].split('-');
+                if (parts.length === 3 && parts[0].length === 2) {
+                    defaultDate = `${parts[0]}-${parts[1]}-${parts[2]}`;
+                } else if (parts.length === 3 && parts[0].length === 4) {
+                    defaultDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                }
+            }
+            if (!defaultDate) {
+                const now = new Date();
+                const dd = String(now.getDate()).padStart(2, '0');
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                defaultDate = `${dd}-${mm}-${now.getFullYear()}`;
+            }
+            clDateInput.value = defaultDate;
+        }
+
+        // Auto load cause list details for this case
+        loadCaseCauseListInModal(currentDossierTrackedId, cnr);
+    }
+
+    // ==========================================
+    // CAUSE LIST & COURT HALL LIVE CONTROLLERS
+    // ==========================================
+
+    let currentQuickTrackedId = null;
+    let currentQuickCnr = null;
+
+    async function loadCaseCauseListInModal(trackedId, cnr, customDate = null) {
+        const container = document.getElementById("dCauselistDetailsBody");
+        if (!container) return;
+
+        const dateInput = document.getElementById("dCauselistDateInput");
+        const queryDate = customDate || (dateInput ? dateInput.value.trim() : "");
+
+        container.innerHTML = `
+            <div class="text-center py-4 text-muted">
+                <div class="spinner-border text-danger spinner-border-sm me-2" role="status"></div>
+                <span class="small fw-semibold">Querying live High Court Cause List for <strong>${queryDate || 'today'}</strong>...</span>
+            </div>`;
+
+        try {
+            const res = await fetch(`/ECourts/GetCaseCauseListDetails?trackedId=${trackedId}&cnrNumber=${encodeURIComponent(cnr || '')}&targetDate=${encodeURIComponent(queryDate)}&module=${encodeURIComponent(currentModule)}`);
+            const json = await res.json();
+            container.innerHTML = renderCauseListDetailsCard(json, queryDate, cnr);
+        } catch (err) {
+            container.innerHTML = `
+                <div class="alert alert-danger d-flex align-items-center gap-2 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <div>
+                        <div class="fw-bold">Unable to query live eCourts Cause List Gateway</div>
+                        <div class="extra-small">Network connection or API rate limit exceeded. Please retry in a few moments.</div>
+                    </div>
+                </div>`;
+        }
+    }
+
+    function recheckLiveCauseListInModal() {
+        if (!currentDossierTrackedId && !currentDossierObject) return;
+        const cnr = currentDossierObject?.cnr || currentDossierObject?.data?.cnr_number || "";
+        const dateInput = document.getElementById("dCauselistDateInput");
+        const queryDate = dateInput ? dateInput.value.trim() : "";
+        loadCaseCauseListInModal(currentDossierTrackedId, cnr, queryDate);
+    }
+
+    async function checkLiveCauseList(trackedId, cnr) {
+        currentQuickTrackedId = trackedId;
+        currentQuickCnr = cnr;
+
+        const btn = document.getElementById(`btnCl_${trackedId}`);
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status"></span>`;
+        }
+
+        const modalEl = document.getElementById("quickCauseListModal");
+        const modal = new bootstrap.Modal(modalEl);
+        document.getElementById("quickCauseListModalTitle").innerText = `Checking Live Cause List...`;
+        document.getElementById("quickCauseListModalSubtitle").innerText = `CNR: ${cnr}`;
+        document.getElementById("quickCauseListModalBody").innerHTML = `
+            <div class="text-center py-5">
+                <div class="spinner-border text-danger" role="status"></div>
+                <p class="mt-2 text-muted fw-bold mb-0">Querying live High Court Gateway (/causelistdetails)...</p>
+                <div class="extra-small text-muted mt-1">Cross-referencing Dharwad, Bengaluru, and Kalaburagi rosters...</div>
+            </div>`;
+        modal.show();
+
+        try {
+            const res = await fetch(`/ECourts/GetCaseCauseListDetails?trackedId=${trackedId}&cnrNumber=${encodeURIComponent(cnr)}&module=${encodeURIComponent(currentModule)}`);
+            const json = await res.json();
+
+            document.getElementById("quickCauseListModalTitle").innerText = json.isListed ? `Listed in High Court Cause List` : `High Court Cause List Status`;
+            document.getElementById("quickCauseListModalBody").innerHTML = renderCauseListDetailsCard(json, json.causelistDate, cnr);
+
+            if (json.matched) {
+                // Refresh main cases table in background so updated Court Hall and stage reflect immediately
+                loadTrackedCases();
+            }
+        } catch (err) {
+            document.getElementById("quickCauseListModalBody").innerHTML = `
+                <div class="alert alert-danger d-flex align-items-center gap-2 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+                    <div>
+                        <div class="fw-bold">Gateway Connection Error</div>
+                        <div class="extra-small">Failed to reach the live eCourts Gateway. Please try again.</div>
+                    </div>
+                </div>`;
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-broadcast"></i>`;
+            }
+        }
+    }
+
+    function openDossierFromQuickCauseList() {
+        const quickModalEl = document.getElementById("quickCauseListModal");
+        const modalInstance = bootstrap.Modal.getInstance(quickModalEl);
+        if (modalInstance) modalInstance.hide();
+        if (currentQuickTrackedId) {
+            openCaseDossier(currentQuickTrackedId);
+        }
+    }
+
+    async function syncAllCauseLists() {
+        showToast("Live Cause List Sync", "Querying today's cause lists across Dharwad, Bengaluru & Kalaburagi benches...", true);
+
+        try {
+            const res = await fetch(`/ECourts/SyncCauseListForTrackedCases?module=${encodeURIComponent(currentModule)}`, { method: "POST" });
+            const json = await res.json();
+
+            if (json.success) {
+                showToast("Cause List Sync Complete", json.message || `Checked ${json.totalCasesChecked} cases: ${json.totalMatches} matched on live roster.`, true);
+                loadTrackedCases();
+            } else {
+                showToast("Sync Notice", json.message || "Failed to sync cause lists.", false);
+            }
+        } catch (err) {
+            showToast("Sync Error", "Network error while connecting to cause list gateway.", false);
+        }
+    }
+
+    function renderCauseListDetailsCard(res, dateStr, cnr) {
+        if (!res || !res.success) {
+            return `
+                <div class="alert alert-warning d-flex align-items-center gap-2 mb-0">
+                    <i class="bi bi-exclamation-circle-fill fs-5 text-warning"></i>
+                    <div>
+                        <div class="fw-bold">Notice from eCourts Cause List Gateway</div>
+                        <div class="small">${res?.message || 'No cause list records returned.'}</div>
+                    </div>
+                </div>`;
+        }
+
+        if (res.isListed && res.data) {
+            const d = res.data;
+            const estBenchName = res.estCode === "KAHC01" ? "Principal Bench (Bengaluru)" : (res.estCode === "KAHC02" ? "Dharwad Bench" : "Kalaburagi Bench");
+
+            return `
+                <div class="alert alert-success border-success bg-success bg-opacity-10 mb-4 p-3 rounded-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-success text-white px-2.5 py-1.5 fs-6 shadow-sm">
+                                <i class="bi bi-broadcast me-1"></i> LISTED TODAY
+                            </span>
+                            <div>
+                                <h6 class="fw-bold mb-0 text-success">Active on High Court Cause List</h6>
+                                <div class="extra-small text-muted">Official Listing Date: <strong class="text-dark font-monospace">${d.listingDate || dateStr}</strong></div>
+                            </div>
+                        </div>
+                        <span class="badge bg-white text-dark border font-monospace px-3 py-1.5 shadow-sm">${res.estCode} — ${estBenchName}</span>
+                    </div>
+                </div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6 col-lg-4">
+                        <div class="p-3 rounded-3 bg-light border h-100">
+                            <div class="text-muted extra-small text-uppercase fw-bold">Court Hall Allocation</div>
+                            <div class="mt-2">
+                                <span class="badge bg-warning-subtle text-dark border border-warning fs-6 px-3 py-2 font-monospace fw-bold shadow-sm d-inline-flex align-items-center">
+                                    <i class="bi bi-bank2 me-2 text-secondary fs-5"></i>${d.courtHall || 'Court Hall'}
+                                </span>
+                            </div>
+                            <div class="extra-small text-muted mt-2">Coram / Hon'ble Bench:</div>
+                            <div class="small fw-bold text-dark mt-0.5">${d.judgeName || 'Hon\'ble High Court Bench'}</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6 col-lg-4">
+                        <div class="p-3 rounded-3 bg-light border h-100">
+                            <div class="text-muted extra-small text-uppercase fw-bold">Cause List Item & Type</div>
+                            <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                <span class="badge bg-primary fs-6 px-3 py-2 font-monospace shadow-sm">
+                                    <i class="bi bi-list-ol me-1"></i>Item #${d.itemNo || '—'}
+                                </span>
+                                <span class="badge bg-info-subtle text-info border border-info px-2.5 py-1.5 fw-bold">
+                                    ${d.causelistType || 'Daily Cause List'}
+                                </span>
+                            </div>
+                            <div class="extra-small text-muted mt-2">Listing Stage / Purpose:</div>
+                            <div class="small fw-semibold text-primary mt-0.5">${d.stage || 'Hearing Active'}</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-12 col-lg-4">
+                        <div class="p-3 rounded-3 bg-light border h-100">
+                            <div class="text-muted extra-small text-uppercase fw-bold">Case Registry Match</div>
+                            <div class="mt-2 d-flex align-items-center gap-1.5">
+                                <span class="badge bg-primary font-monospace fw-bold px-2 py-1">${d.caseType || 'MFA'}</span>
+                                <span class="fw-bold text-dark font-monospace fs-6">${d.caseNo || ''}</span>
+                            </div>
+                            <div class="extra-small text-muted mt-2 font-monospace">CNR: ${cnr || '—'}</div>
+                            <div class="extra-small text-success fw-bold mt-1">
+                                <i class="bi bi-check-circle-fill me-1"></i> Tracked Case Database Synchronized
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card border rounded-3 overflow-hidden shadow-sm">
+                    <div class="card-header bg-white py-2.5 small fw-bold text-dark">
+                        <i class="bi bi-people-fill text-primary me-1.5"></i> Listed Parties & Appearing Advocates
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-3 small">
+                            <div class="col-md-6">
+                                <div class="text-muted extra-small fw-bold text-uppercase">Petitioner / Appellant</div>
+                                <div class="fw-bold text-dark mt-1">${d.petitioner || '—'}</div>
+                                <div class="extra-small text-muted mt-1"><i class="bi bi-person-badge me-1"></i>Advocate: <strong class="text-dark">${d.petAdvocate || 'In Person / Not Assigned'}</strong></div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="text-muted extra-small fw-bold text-uppercase">Respondent / Corporation</div>
+                                <div class="fw-bold text-dark mt-1">${d.respondent || '—'}</div>
+                                <div class="extra-small text-muted mt-1"><i class="bi bi-person-badge me-1"></i>Advocate: <strong class="text-dark">${d.resAdvocate || 'Not Assigned'}</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        // Not listed on this date
+        return `
+            <div class="alert alert-info border-info bg-info bg-opacity-10 mb-4 p-3 rounded-3">
+                <div class="d-flex align-items-start gap-2.5">
+                    <i class="bi bi-info-circle-fill fs-4 text-info mt-0.5"></i>
+                    <div>
+                        <h6 class="fw-bold text-dark mb-1">Not Listed in High Court Cause List for ${dateStr}</h6>
+                        <div class="small text-muted">${res.message || 'The case is not published on the official daily cause list for the selected date.'}</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="text-muted extra-small text-uppercase fw-bold">Current Assigned Court & Hall</div>
+                        <div class="mt-2">
+                            <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold px-3 py-1.5">
+                                <i class="bi bi-bank2 me-1.5 text-secondary"></i>${res.currentCourt || 'Court Hall'}
+                            </span>
+                        </div>
+                        <div class="extra-small text-muted mt-2">Rosters published daily by Registrar Judicial at 6:00 PM for the next judicial working day.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="p-3 bg-light rounded-3 border h-100">
+                        <div class="text-muted extra-small text-uppercase fw-bold">Case Classification</div>
+                        <div class="mt-2 d-flex align-items-center gap-2">
+                            <span class="badge bg-primary font-monospace fw-bold px-2.5 py-1.5">${res.caseType || 'MFA'}</span>
+                            <span class="font-monospace text-dark extra-small">CNR: ${cnr || '—'}</span>
+                        </div>
+                        <div class="extra-small text-muted mt-2">Checked benches: Dharwad (KAHC02), Bengaluru (KAHC01), Kalaburagi (KAHC03).</div>
+                    </div>
+                </div>
+            </div>`;
     }
 
     async function refreshCurrentDossierLive() {
@@ -1927,12 +2288,12 @@
                     <div class="font-mono fw-bold" style="font-size: 11px;">${escapeHtml(c.cnrNumber)}</div>
                     <div style="margin-top: 2px;">${courtBadge}</div>
                 </td>
-                <td style="width: 130px;">
-                    <div class="fw-bold font-mono" style="color: #0369a1;">${escapeHtml(c.caseTypeCode || "Case")} ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
-                    <div class="text-muted" style="font-size: 9px;">Est: ${escapeHtml(c.estCode || "—")}</div>
+                <td style="width: 140px;">
+                    <div class="fw-bold font-mono" style="color: #0369a1;"><span class="module-badge" style="background:#0284c7; padding: 1px 4px; font-size: 8.5px; margin-right: 3px;">${escapeHtml(c.caseTypeCode || "MFA")}</span> ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
+                    <div class="text-muted" style="font-size: 9px; margin-top: 2px;">Est: ${escapeHtml(c.estCode || "—")}</div>
                 </td>
-                <td style="width: 170px;">
-                    <div class="fw-semibold">${escapeHtml(c.courtNo || "High Court / District Court")}</div>
+                <td style="width: 175px;">
+                    <div class="fw-semibold" style="color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px; display: inline-block; padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 10px; margin-bottom: 2px;">${escapeHtml(c.courtNo || "Court Hall")}</div>
                     <div class="text-muted" style="font-size: 9px;">${escapeHtml(c.judgeDesignation || "Presiding Judge")}</div>
                 </td>
                 <td>
@@ -2214,16 +2575,16 @@
                     </div>
 
                     <div>
-                        <div class="grid-item-label">Court / Bench</div>
-                        <div class="grid-item-val">${escapeHtml(data.establishment_name || raw.court_est_name || "—")}</div>
+                        <div class="grid-item-label">Court Hall & Bench</div>
+                        <div class="grid-item-val fw-bold" style="color: #92400e;">${escapeHtml(data.court_no || data.establishment_name || "Court Hall")}</div>
                     </div>
                     <div>
                         <div class="grid-item-label">Presiding Judge / Coram</div>
                         <div class="grid-item-val">${escapeHtml(data.court_no_judge || data.judge || raw.coram || "—")}</div>
                     </div>
                     <div>
-                        <div class="grid-item-label">Bench Type & Jurisdiction</div>
-                        <div class="grid-item-val">${escapeHtml(raw.bench_type || raw.bench_name || "Division / Single Bench")} (${escapeHtml(raw.state_name || "Karnataka")}, ${escapeHtml(raw.dist_name || "Dharwad")})</div>
+                        <div class="grid-item-label">Establishment / Jurisdiction</div>
+                        <div class="grid-item-val">${escapeHtml(data.establishment_name || raw.court_est_name || raw.bench_name || "High Court")} (${escapeHtml(raw.state_name || "Karnataka")}, ${escapeHtml(raw.dist_name || "Dharwad")})</div>
                     </div>
 
                     <div>

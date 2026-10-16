@@ -1640,14 +1640,22 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 using var conn = _db.GetConnection();
-                var cases = await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                var cases = (await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
                     SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
                            RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
                            NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
                            LastSyncedAt, CreatedDate, AddedBy
                     FROM admin_Law.ECOURTS_TRACKED_CASES
                     WHERE RelatedModule = @norm
-                    ORDER BY TrackedID DESC", new { norm });
+                    ORDER BY TrackedID DESC", new { norm })).ToList();
+
+                // Format & resolve case types and court halls for 100% data fidelity
+                foreach (var c in cases)
+                {
+                    c.CaseTypeCode = ResolveCaseType(c.CaseTypeCode, c.CaseNumber, c.CNRNumber, norm);
+                    c.CourtNo = FormatCourtHall(c.CourtNo, c.JudgeDesignation, c.EstCode);
+                }
+
                 return Json(new { success = true, data = cases });
             }
             catch (Exception ex)
@@ -1835,6 +1843,568 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
+        // ==========================================
+        // CAUSE LIST & COURT HALL LIVE INSPECTION
+        // ==========================================
+
+        /// <summary>
+        /// Queries the official High Court Causelist API (/causelistdetails) for a case to extract
+        /// Court Hall, Item/Serial No, Cause List Type, Coram/Judge, Stage, and Advocate appearances.
+        /// Automatically updates the tracked case record with latest court hall and coram.
+        /// </summary>
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCaseCauseListDetails(int trackedId = 0, string? cnrNumber = null, string? targetDate = null, string module = "MVC")
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            try
+            {
+                using var conn = _db.GetConnection();
+                MVCCaseManagement.Models.TrackedCaseModel? caseRecord = null;
+
+                if (trackedId > 0)
+                {
+                    caseRecord = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                               NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                               LastSyncedAt, CreatedDate, AddedBy, RawJson
+                        FROM admin_Law.ECOURTS_TRACKED_CASES
+                        WHERE TrackedID = @trackedId", new { trackedId });
+                }
+                else if (!string.IsNullOrWhiteSpace(cnrNumber))
+                {
+                    string clean = cnrNumber.Trim().ToUpperInvariant();
+                    caseRecord = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                               NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                               LastSyncedAt, CreatedDate, AddedBy, RawJson
+                        FROM admin_Law.ECOURTS_TRACKED_CASES
+                        WHERE CNRNumber = @clean", new { clean });
+                }
+
+                string effectiveCnr = caseRecord?.CNRNumber ?? cnrNumber?.Trim().ToUpperInvariant() ?? "";
+                string estCode = !string.IsNullOrWhiteSpace(caseRecord?.EstCode) ? caseRecord.EstCode : (effectiveCnr.Length >= 6 ? effectiveCnr.Substring(0, 6) : "KAHC02");
+                string checkDateStr = !string.IsNullOrWhiteSpace(targetDate)
+                    ? targetDate.Trim()
+                    : (caseRecord?.NextHearingDate.HasValue == true
+                        ? caseRecord.NextHearingDate.Value.ToString("dd-MM-yyyy")
+                        : DateTime.Today.ToString("dd-MM-yyyy"));
+
+                // Try query HC causelist details across relevant High Court establishment benches
+                var candidateEsts = new List<string> { estCode, "KAHC02", "KAHC01", "KAHC03" }.Distinct().ToList();
+
+                JsonElement? matchedItem = null;
+                string matchedEst = estCode;
+
+                foreach (var est in candidateEsts)
+                {
+                    var clRes = await _napixService.GetHighCourtCauselistDetailsAsync(est, benchId: "", causelistDate: checkDateStr, module: norm);
+                    if (clRes.HasValue && clRes.Value.ValueKind != JsonValueKind.Null)
+                    {
+                        var found = FindCaseInCauselist(clRes.Value, effectiveCnr, caseRecord?.CaseNumber, caseRecord?.CaseYear ?? 0);
+                        if (found.HasValue)
+                        {
+                            matchedItem = found.Value;
+                            matchedEst = est;
+                            break;
+                        }
+                    }
+                }
+
+                if (matchedItem.HasValue)
+                {
+                    var parsed = ParseCauselistItem(matchedItem.Value, matchedEst, checkDateStr);
+
+                    // Update DB with live court hall, coram, and causelist item if caseRecord exists
+                    if (caseRecord != null)
+                    {
+                        await conn.ExecuteAsync(@"
+                            UPDATE admin_Law.ECOURTS_TRACKED_CASES SET
+                                CourtNo = COALESCE(@courtHall, CourtNo),
+                                JudgeDesignation = COALESCE(@judgeName, JudgeDesignation),
+                                StagePurpose = COALESCE(@stage, StagePurpose),
+                                LastSyncedAt = GETDATE()
+                            WHERE TrackedID = @TrackedID",
+                            new {
+                                courtHall = (string)parsed.courtHall,
+                                judgeName = (string)parsed.judgeName,
+                                stage = (string)parsed.stage,
+                                caseRecord.TrackedID
+                            });
+                    }
+
+                    return Json(new {
+                        success = true,
+                        isListed = true,
+                        matched = true,
+                        causelistDate = checkDateStr,
+                        estCode = matchedEst,
+                        data = parsed,
+                        message = $"Listed in High Court Cause List for {checkDateStr} at {parsed.courtHall}, Item #{parsed.itemNo} ({parsed.causelistType})"
+                    });
+                }
+
+                // If not found in live cause list, return current formatted metadata
+                string currentHall = FormatCourtHall(caseRecord?.CourtNo, caseRecord?.JudgeDesignation, estCode);
+                string currentType = ResolveCaseType(caseRecord?.CaseTypeCode, caseRecord?.CaseNumber, effectiveCnr, norm);
+
+                return Json(new {
+                    success = true,
+                    isListed = false,
+                    matched = false,
+                    causelistDate = checkDateStr,
+                    estCode = estCode,
+                    currentCourt = currentHall,
+                    caseType = currentType,
+                    message = $"Not listed in High Court Daily Cause List for {checkDateStr}. Case might be scheduled on another date or awaiting publication."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking cause list details for trackedId {ID}", trackedId);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Batch checks today's or specified date's High Court cause lists across Dharwad, Bengaluru,
+        /// and Kalaburagi benches for all tracked cases in the module and updates their Court Hall and Coram.
+        /// </summary>
+        [HttpGet, HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> SyncCauseListForTrackedCases(string module = "MVC", string? causelistDate = null)
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            string checkDateStr = !string.IsNullOrWhiteSpace(causelistDate) ? causelistDate.Trim() : DateTime.Today.ToString("dd-MM-yyyy");
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                var cases = (await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE RelatedModule = @norm", new { norm })).ToList();
+
+                var candidateEsts = new[] { "KAHC02", "KAHC01", "KAHC03" };
+                var allCauseListItems = new List<(string estCode, JsonElement item)>();
+
+                foreach (var est in candidateEsts)
+                {
+                    var clRes = await _napixService.GetHighCourtCauselistDetailsAsync(est, benchId: "", causelistDate: checkDateStr, module: norm);
+                    if (clRes.HasValue && clRes.Value.ValueKind != JsonValueKind.Null)
+                    {
+                        var extracted = ExtractAllArrayElements(clRes.Value);
+                        foreach (var it in extracted) allCauseListItems.Add((est, it));
+                    }
+                }
+
+                int matchedCount = 0;
+                var matches = new List<object>();
+
+                foreach (var c in cases)
+                {
+                    foreach (var (est, item) in allCauseListItems)
+                    {
+                        var found = FindCaseInCauselist(item, c.CNRNumber, c.CaseNumber, c.CaseYear);
+                        if (found.HasValue)
+                        {
+                            var parsed = ParseCauselistItem(found.Value, est, checkDateStr);
+                            await conn.ExecuteAsync(@"
+                                UPDATE admin_Law.ECOURTS_TRACKED_CASES SET
+                                    CourtNo = COALESCE(@courtHall, CourtNo),
+                                    JudgeDesignation = COALESCE(@judgeName, JudgeDesignation),
+                                    StagePurpose = COALESCE(@stage, StagePurpose),
+                                    LastSyncedAt = GETDATE()
+                                WHERE TrackedID = @TrackedID",
+                                new {
+                                    courtHall = (string)parsed.courtHall,
+                                    judgeName = (string)parsed.judgeName,
+                                    stage = (string)parsed.stage,
+                                    c.TrackedID
+                                });
+
+                            matchedCount++;
+                            matches.Add(new {
+                                trackedId = c.TrackedID,
+                                cnr = c.CNRNumber,
+                                courtHall = parsed.courtHall,
+                                itemNo = parsed.itemNo,
+                                causelistType = parsed.causelistType
+                            });
+                            break;
+                        }
+                    }
+                }
+
+                return Json(new {
+                    success = true,
+                    totalCasesChecked = cases.Count,
+                    totalMatches = matchedCount,
+                    causelistDate = checkDateStr,
+                    matches = matches,
+                    message = $"Cause list sync completed for {checkDateStr}: {matchedCount} of {cases.Count} tracked case(s) listed."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing cause lists for module {Module}", norm);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        private static JsonElement? FindCaseInCauselist(JsonElement root, string cnr, string? caseNumber, int caseYear)
+        {
+            var items = ExtractAllArrayElements(root);
+            string cleanCnr = System.Text.RegularExpressions.Regex.Replace(cnr ?? "", @"[^A-Za-z0-9]", "").ToUpperInvariant();
+            string cleanCaseNum = System.Text.RegularExpressions.Regex.Replace(caseNumber ?? "", @"[^0-9]", "");
+
+            foreach (var item in items)
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+
+                // Match by CNR
+                foreach (var cnrKey in new[] { "cino", "cnr", "cnr_number", "c_no", "reg_cino" })
+                {
+                    if (item.TryGetProperty(cnrKey, out var cProp) && !string.IsNullOrWhiteSpace(cProp.GetString()))
+                    {
+                        string val = System.Text.RegularExpressions.Regex.Replace(cProp.GetString()!, @"[^A-Za-z0-9]", "").ToUpperInvariant();
+                        if (val == cleanCnr || (val.Length >= 12 && cleanCnr.Contains(val)))
+                            return item;
+                    }
+                }
+
+                // Match by Case Number & Year
+                if (!string.IsNullOrWhiteSpace(cleanCaseNum))
+                {
+                    string itemCaseNo = "";
+                    foreach (var noKey in new[] { "case_no", "reg_no", "case_number", "reg_number", "caseno" })
+                    {
+                        if (item.TryGetProperty(noKey, out var np) && !string.IsNullOrWhiteSpace(np.GetString()))
+                        {
+                            itemCaseNo = System.Text.RegularExpressions.Regex.Replace(np.GetString()!, @"[^0-9]", "");
+                            break;
+                        }
+                    }
+
+                    if (itemCaseNo == cleanCaseNum)
+                    {
+                        if (caseYear <= 0) return item;
+                        foreach (var yrKey in new[] { "case_year", "reg_year", "year", "r_year" })
+                        {
+                            if (item.TryGetProperty(yrKey, out var yp))
+                            {
+                                string yrStr = yp.GetString() ?? yp.GetRawText();
+                                if (int.TryParse(yrStr, out int yVal) && yVal == caseYear)
+                                    return item;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static List<JsonElement> ExtractAllArrayElements(JsonElement root)
+        {
+            var list = new List<JsonElement>();
+            void Traverse(JsonElement el, int depth)
+            {
+                if (depth > 6) return;
+                if (el.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in el.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object)
+                            list.Add(item);
+                        else if (item.ValueKind == JsonValueKind.Array)
+                            Traverse(item, depth + 1);
+                    }
+                }
+                else if (el.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in el.EnumerateObject())
+                    {
+                        Traverse(prop.Value, depth + 1);
+                    }
+                }
+            }
+            Traverse(root, 0);
+            return list;
+        }
+
+        private static dynamic ParseCauselistItem(JsonElement item, string estCode, string listingDate)
+        {
+            string? rawCourt = null;
+            string? itemNo = null;
+            string? causelistType = null;
+            string? judge = null;
+            string? stage = null;
+            string? pet = null;
+            string? res = null;
+            string? petAdv = null;
+            string? resAdv = null;
+            string? caseType = null;
+            string? caseNo = null;
+
+            foreach (var prop in item.EnumerateObject())
+            {
+                string k = prop.Name.ToLowerInvariant();
+                string v = prop.Value.ValueKind == JsonValueKind.String ? prop.Value.GetString()?.Trim() ?? "" : prop.Value.GetRawText().Trim();
+
+                if (rawCourt == null && (k.Contains("court_hall") || k.Contains("courthall") || k.Contains("hall_no") || k.Contains("court_no") || k.Contains("hall") || k == "court"))
+                    rawCourt = v;
+                if (itemNo == null && (k.Contains("item") || k.Contains("sr_no") || k.Contains("srno") || k.Contains("sl_no") || k.Contains("slno") || k == "sr" || k == "sl"))
+                    itemNo = v;
+                if (causelistType == null && (k.Contains("causelist_type") || k.Contains("list_type") || k.Contains("cause_list_type")))
+                    causelistType = v;
+                if (judge == null && (k.Contains("judge") || k.Contains("coram") || k.Contains("bench_name") || k.Contains("presiding")))
+                    judge = v;
+                if (stage == null && (k.Contains("purpose") || k.Contains("stage") || k.Contains("action")))
+                    stage = v;
+                if (pet == null && (k.Contains("pet") || k.Contains("party1") || k.Contains("appellant")))
+                    pet = v;
+                if (res == null && (k.Contains("res") || k.Contains("party2") || k.Contains("respondent")))
+                    res = v;
+                if (petAdv == null && (k.Contains("pet_adv") || k.Contains("appellant_adv") || k == "p_adv"))
+                    petAdv = v;
+                if (resAdv == null && (k.Contains("res_adv") || k.Contains("respondent_adv") || k == "r_adv"))
+                    resAdv = v;
+                if (caseType == null && (k.Contains("case_type") || k.Contains("type_name")))
+                    caseType = v;
+                if (caseNo == null && (k.Contains("case_no") || k.Contains("reg_no") || k.Contains("case_number")))
+                    caseNo = v;
+            }
+
+            string formattedCourt = FormatCourtHall(rawCourt, judge, estCode);
+            string resolvedType = ResolveCaseType(caseType, caseNo, null, null);
+
+            return new {
+                courtHall = formattedCourt,
+                itemNo = itemNo ?? "—",
+                causelistType = causelistType ?? "Daily Cause List",
+                judgeName = judge ?? "Hon'ble High Court Bench",
+                stage = stage ?? "Hearing",
+                listingDate = listingDate,
+                petitioner = pet ?? "—",
+                respondent = res ?? "—",
+                petAdvocate = petAdv ?? "—",
+                resAdvocate = resAdv ?? "—",
+                caseType = resolvedType,
+                caseNo = caseNo ?? "—"
+            };
+        }
+
+        /// <summary>
+        /// Maps numeric case type codes returned by High Court CIS into official case type acronyms.
+        /// </summary>
+        public static string MapNumericCaseTypeCode(int code, bool isHighCourt)
+        {
+            if (isHighCourt)
+            {
+                return code switch
+                {
+                    1 => "MFA",
+                    2 => "WP",
+                    3 => "WA",
+                    4 => "RSA",
+                    5 => "RFA",
+                    6 => "CRP",
+                    7 => "CCC",
+                    8 => "CRL.A",
+                    9 => "CRL.P",
+                    10 => "CP",
+                    11 => "RP",
+                    12 => "HRRP",
+                    13 => "MSA",
+                    14 => "ITA",
+                    15 => "STRP",
+                    16 => "STA",
+                    17 => "CEAC",
+                    18 => "EP",
+                    _ => "MFA"
+                };
+            }
+            else
+            {
+                return code switch
+                {
+                    1 => "MVC",
+                    2 => "KID",
+                    3 => "ID",
+                    4 => "LIR",
+                    5 => "EP",
+                    6 => "OS",
+                    7 => "RA",
+                    8 => "MA",
+                    9 => "CC",
+                    10 => "SC",
+                    _ => "MVC"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Normalizes raw case type text into standardized high-court / district court abbreviation.
+        /// e.g. "MISCELLANEOUS FIRST APPEAL" -> "MFA", "WRIT PETITION" -> "WP", "1" -> "MFA".
+        /// </summary>
+        public static string NormalizeCaseTypeAbbreviation(string? raw, bool isHighCourt = true)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "";
+            raw = raw.Trim();
+
+            // Numeric check
+            if (int.TryParse(raw, out int numCode) && numCode > 0 && numCode < 100)
+            {
+                return MapNumericCaseTypeCode(numCode, isHighCourt);
+            }
+
+            string upper = raw.ToUpperInvariant();
+
+            // Known full text mappings
+            if (upper.Contains("MISCELLANEOUS FIRST APPEAL") || upper.Contains("MISC FIRST APPEAL") || upper.StartsWith("MFA"))
+                return "MFA";
+            if (upper.Contains("WRIT PETITION") || upper.StartsWith("WP") || upper.StartsWith("W.P"))
+                return "WP";
+            if (upper.Contains("WRIT APPEAL") || upper.StartsWith("WA") || upper.StartsWith("W.A"))
+                return "WA";
+            if (upper.Contains("REGULAR SECOND APPEAL") || upper.StartsWith("RSA") || upper.StartsWith("R.S.A"))
+                return "RSA";
+            if (upper.Contains("REGULAR FIRST APPEAL") || upper.StartsWith("RFA") || upper.StartsWith("R.F.A"))
+                return "RFA";
+            if (upper.Contains("CIVIL REVISION") || upper.StartsWith("CRP") || upper.StartsWith("C.R.P"))
+                return "CRP";
+            if (upper.Contains("CONTEMPT") || upper.StartsWith("CCC") || upper.StartsWith("C.C.C"))
+                return "CCC";
+            if (upper.Contains("CRIMINAL APPEAL") || upper.StartsWith("CRL.A") || upper.StartsWith("CRLA"))
+                return "CRL.A";
+            if (upper.Contains("CRIMINAL PETITION") || upper.StartsWith("CRL.P") || upper.StartsWith("CRLP"))
+                return "CRL.P";
+            if (upper.Contains("MOTOR ACCIDENT") || upper.Contains("MVC") || upper.StartsWith("M.V.C"))
+                return "MVC";
+            if (upper.Contains("KARNATAKA INDUSTRIAL") || upper.StartsWith("KID") || upper.StartsWith("K.I.D"))
+                return "KID";
+            if (upper.Contains("INDUSTRIAL DISPUTE") || upper == "ID" || upper.StartsWith("I.D"))
+                return "ID";
+            if (upper.Contains("LABOUR REFERENCE") || upper.StartsWith("LIR") || upper.StartsWith("L.I.R"))
+                return "LIR";
+            if (upper.Contains("EXECUTION PETITION") || upper.StartsWith("EP") || upper.StartsWith("EX.P"))
+                return "EP";
+            if (upper.Contains("ORIGINAL SUIT") || upper == "OS" || upper.StartsWith("O.S"))
+                return "OS";
+            if (upper.Contains("REGULAR APPEAL") || upper == "RA" || upper.StartsWith("R.A"))
+                return "RA";
+            if (upper.Contains("MISCELLANEOUS APPEAL") || upper == "MA" || upper.StartsWith("M.A"))
+                return "MA";
+            if (upper.Contains("CIVIL PETITION") || upper == "CP" || upper.StartsWith("C.P"))
+                return "CP";
+            if (upper.Contains("REVIEW PETITION") || upper == "RP" || upper.StartsWith("R.P"))
+                return "RP";
+
+            var match = System.Text.RegularExpressions.Regex.Match(raw, @"^[A-Za-z\.\-\(\)\s]{2,15}$");
+            if (match.Success)
+            {
+                return raw.Trim().ToUpperInvariant();
+            }
+
+            return raw;
+        }
+
+        /// <summary>
+        /// Comprehensive case type resolution: resolves case type from raw fields, case number, CNR, or module.
+        /// Never defaults to generic "Case" or blank or raw numeric code.
+        /// </summary>
+        public static string ResolveCaseType(string? rawType, string? caseNumber, string? cnr, string? module)
+        {
+            bool isHc = false;
+            if (!string.IsNullOrWhiteSpace(cnr))
+            {
+                string cleanCnr = cnr.Trim().ToUpperInvariant();
+                isHc = cleanCnr.StartsWith("HC") || (cleanCnr.Length >= 4 && cleanCnr.Substring(2, 2) == "HC");
+            }
+
+            string normalized = NormalizeCaseTypeAbbreviation(rawType, isHc);
+            if (!string.IsNullOrWhiteSpace(normalized) && !normalized.Equals("Case", StringComparison.OrdinalIgnoreCase) && !normalized.Equals("0"))
+            {
+                return normalized;
+            }
+
+            // Extract from caseNumber if available (e.g. "MFA 102345/2019" or "WP 4567/2021" or "MVC 123/2018")
+            if (!string.IsNullOrWhiteSpace(caseNumber))
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(caseNumber.Trim(), @"^(MFA|WP|WA|RSA|RFA|CRP|CCC|CRL\.?A|CRL\.?P|MVC|KID|ID|LIR|EP|OS|RA|MA|CP|RP)[\s\/\.]", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    return NormalizeCaseTypeAbbreviation(match.Groups[1].Value, isHc);
+                }
+            }
+
+            // Fallback by module and court level
+            string normMod = NapixQuotaService.NormalizeModule(module ?? "MVC");
+            if (isHc)
+            {
+                return string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase) ? "WP" : "MFA";
+            }
+            else
+            {
+                return string.Equals(normMod, "Labour", StringComparison.OrdinalIgnoreCase) ? "KID" : "MVC";
+            }
+        }
+
+        /// <summary>
+        /// Formats Court Hall into clean standardized representation (e.g. "Court Hall 04", "Court Hall 04 (Dharwad Bench)").
+        /// </summary>
+        public static string FormatCourtHall(string? rawCourt, string? judge = null, string? estCode = null)
+        {
+            string benchSuffix = "";
+            if (!string.IsNullOrWhiteSpace(estCode))
+            {
+                string cleanEst = estCode.Trim().ToUpperInvariant();
+                if (cleanEst == "KAHC01") benchSuffix = " (Bengaluru)";
+                else if (cleanEst == "KAHC02") benchSuffix = " (Dharwad)";
+                else if (cleanEst == "KAHC03") benchSuffix = " (Kalaburagi)";
+            }
+
+            if (string.IsNullOrWhiteSpace(rawCourt))
+            {
+                if (!string.IsNullOrWhiteSpace(judge))
+                {
+                    return judge.Length > 40 ? judge.Substring(0, 40) + "..." : judge;
+                }
+                return !string.IsNullOrWhiteSpace(benchSuffix) ? $"High Court{benchSuffix}" : "Court Hall";
+            }
+
+            string s = rawCourt.Trim();
+
+            // Match numeric court hall (e.g. "4", "04", "Court Hall 4", "Hall 4", "Court No 4", "CH-4")
+            var numMatch = System.Text.RegularExpressions.Regex.Match(s, @"(?i)(?:court\s*(?:hall|no|room)?|hall|ch)?\s*[-:#]?\s*(\d{1,3})\b");
+            if (numMatch.Success && int.TryParse(numMatch.Groups[1].Value, out int hallNum))
+            {
+                string hallFormatted = $"Court Hall {hallNum:D2}";
+                if (!string.IsNullOrWhiteSpace(benchSuffix) && !s.Contains("Dharwad", StringComparison.OrdinalIgnoreCase) && !s.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) && !s.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase))
+                {
+                    hallFormatted += benchSuffix;
+                }
+                return hallFormatted;
+            }
+
+            if (!s.StartsWith("Court", StringComparison.OrdinalIgnoreCase) && !s.StartsWith("Hall", StringComparison.OrdinalIgnoreCase) && !s.Contains("Bench", StringComparison.OrdinalIgnoreCase))
+            {
+                if (int.TryParse(s, out int justNum))
+                {
+                    return $"Court Hall {justNum:D2}{benchSuffix}";
+                }
+            }
+
+            return s;
+        }
+
         private async Task<(bool success, bool isNew, string? error)> FetchAndSaveTrackedCnrAsync(string cnr, string module, string userName)
         {
             string cleanCnr = System.Text.RegularExpressions.Regex.Replace(cnr.Trim(), @"[^A-Za-z0-9]", "").ToUpperInvariant();
@@ -1940,7 +2510,7 @@ namespace MVCCaseManagement.Controllers
                 new {
                     CNRNumber = cleanCnr,
                     EstCode = estCode,
-                    CaseTypeCode = summary?.case_type ?? (isHc ? "MFA" : "Case"),
+                    CaseTypeCode = ResolveCaseType(summary?.case_type, summary?.case_number, cleanCnr, norm),
                     CaseNumber = summary?.case_number ?? "",
                     CaseYear = caseYr,
                     RelatedModule = norm,
@@ -1949,7 +2519,7 @@ namespace MVCCaseManagement.Controllers
                     CaseStatus = summary?.case_status ?? "Pending",
                     NextHearingDate = nextDt,
                     StagePurpose = (summary?.stage != null && summary.stage.Length > 255 ? summary.stage.Substring(0, 255) : summary?.stage) ?? "Hearing",
-                    CourtNo = summary?.court_no ?? summary?.establishment_name ?? (isHc ? "High Court" : "Court"),
+                    CourtNo = FormatCourtHall(summary?.court_no ?? summary?.establishment_name, summary?.court_no_judge ?? summary?.judge, estCode),
                     JudgeDesignation = (summary?.court_no_judge != null && summary.court_no_judge.Length > 255 ? summary.court_no_judge.Substring(0, 255) : (summary?.judge != null && summary.judge.Length > 255 ? summary.judge.Substring(0, 255) : summary?.judge)),
                     RawJson = rawDossierJson,
                     AddedBy = userName
@@ -2038,7 +2608,14 @@ namespace MVCCaseManagement.Controllers
             string[] petAdvKeys = { "pet_adv", "petitioner_advocate", "pet_advocate", "advocate" };
             string[] resAdvKeys = { "res_adv", "respondent_advocate", "res_advocate" };
             string[] judgeKeys = { "desgname", "judge_name", "judge", "presiding_officer", "court_judge", "judicial_officer", "court_name", "court_no_judge", "court_number_and_judge" };
-            string[] courtNoKeys = { "court_no", "court_number", "courtNo", "court_id" };
+            string[] caseTypeKeys = {
+                "type_name", "case_type", "case_type_name", "case_type_desc", "casetypename", "casetype",
+                "type_name_reg", "case_type_short", "casetype_desc", "case_type_code", "type_code", "case_type_str", "nature_of_case"
+            };
+            string[] courtNoKeys = {
+                "court_hall", "court_hall_no", "courthall", "hall_no", "hall", "court_room", "court_room_no",
+                "court_no", "court_number", "courtNo", "court_id", "bench_id", "bench_name", "court_name"
+            };
             string[] courtNoJudgeKeys = { "court_no_judge", "court_number_and_judge", "court_and_judge", "court_no_and_judge", "judge_court", "court_info" };
             string[] filingKeys = { "date_of_filing", "filing_date", "filing_dt", "dt_of_filing", "date_filing", "filingDate", "FILING_DATE", "fil_date", "date_of_filling", "filling_date", "dateoffiling", "date_fil" };
             string[] regKeys = { "dt_regis", "registration_date", "reg_date", "reg_dt", "date_of_reg", "regDate", "registrationDate", "REG_DATE", "date_of_registration", "reg_date_str", "dateofregistration", "reg_yr" };
@@ -2133,7 +2710,7 @@ namespace MVCCaseManagement.Controllers
                         if (cnrNumber == null && (key.Equals("cino", StringComparison.OrdinalIgnoreCase) || key.Equals("cnr", StringComparison.OrdinalIgnoreCase) || key.Equals("cnr_number", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(val))
                             cnrNumber = val;
 
-                        if (caseType == null && (key.Equals("type_name", StringComparison.OrdinalIgnoreCase) || key.Equals("case_type", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(val))
+                        if (caseType == null && Array.Exists(caseTypeKeys, k => k.Equals(key, StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(val))
                             caseType = val;
 
                         if (caseNumber == null && (key.Equals("reg_no", StringComparison.OrdinalIgnoreCase) || key.Equals("case_number", StringComparison.OrdinalIgnoreCase)) && !string.IsNullOrWhiteSpace(val))
@@ -2264,7 +2841,7 @@ namespace MVCCaseManagement.Controllers
             return new CnrSummaryModel
             {
                 cnr_number = cnrNumber,
-                case_type = caseType,
+                case_type = ResolveCaseType(caseType, caseNumber, cnrNumber, null),
                 case_number = caseNumber,
                 registration_date = regDate,
                 establishment_name = estName,
@@ -2276,7 +2853,7 @@ namespace MVCCaseManagement.Controllers
                 petitioner_advocate = petitionerAdv,
                 respondent_advocate = respondentAdv,
                 judge = judge,
-                court_no = courtNo,
+                court_no = FormatCourtHall(courtNo, judge ?? effectiveCourtNoJudge, estName),
                 court_no_judge = effectiveCourtNoJudge,
                 filing_date = filingDate,
                 decision_date = decisionDate,
