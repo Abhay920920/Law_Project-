@@ -85,6 +85,13 @@ namespace MVCCaseManagement.Models
         public DateTime CreatedDate { get; set; }
         public string? RawJson { get; set; }
         public string? AddedBy { get; set; }
+
+        // Dynamic properties extracted from authentic eCourts NAPIX payload
+        public string? CourtEstName { get; set; }
+        public string? BenchId { get; set; }
+        public string? BenchName { get; set; }
+        public string? CauseListType { get; set; }
+        public string? ItemNo { get; set; }
     }
 
     public class DailyCauseListHeaderModel

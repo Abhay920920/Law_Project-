@@ -95,6 +95,55 @@
                 <i class="bi bi-printer-fill"></i>
                 <span class="d-none d-sm-inline">Print Report</span>
             </button>
+            <!-- Export Excel / CSV Split Button -->
+            <div class="btn-group shadow-sm">
+                <button type="button" class="btn btn-success btn-sm px-3 py-2 d-flex align-items-center gap-2 fw-semibold" onclick="exportToExcel('filtered')" title="Export filtered cases to Microsoft Excel (.xls)">
+                    <i class="bi bi-file-earmark-excel-fill"></i>
+                    <span class="d-none d-sm-inline">Export Excel</span>
+                </button>
+                <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split px-2" data-bs-toggle="dropdown" aria-expanded="false" title="More Export Options">
+                    <span class="visually-hidden">Toggle Dropdown</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
+                    <li>
+                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
+                            <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
+                            <div>
+                                <div class="fw-bold">Export Current View (.xls)</div>
+                                <div class="extra-small text-muted">Filtered cases with styling & columns</div>
+                            </div>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
+                            <i class="bi bi-collection-fill text-primary fs-6"></i>
+                            <div>
+                                <div class="fw-bold">Export All Cases (.xls)</div>
+                                <div class="extra-small text-muted">Complete master tracking workbook</div>
+                            </div>
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <li>
+                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
+                            <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                            <div>
+                                <div class="fw-bold">Export Current View to CSV</div>
+                                <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
+                            </div>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
+                            <i class="bi bi-file-earmark-spreadsheet text-secondary fs-6"></i>
+                            <div>
+                                <div class="fw-bold">Export All Cases to CSV</div>
+                                <div class="extra-small text-muted">Complete UTF-8 CSV master dataset</div>
+                            </div>
+                        </a>
+                    </li>
+                </ul>
+            </div>
             <button type="button" class="btn btn-outline-light btn-sm px-3 py-2 d-flex align-items-center gap-2" onclick="loadTrackedCases(true)" title="Refresh table data">
                 <i class="bi bi-arrow-clockwise" id="refreshBtnIcon"></i>
                 <span class="d-none d-sm-inline">Refresh</span>
@@ -230,9 +279,52 @@
                         </ul>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1.5 shadow-sm" onclick="exportToCsv()">
-                        <i class="bi bi-download me-1"></i> Export CSV
-                    </button>
+                    <!-- Export to Excel / CSV Dropdown Button -->
+                    <div class="btn-group">
+                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1.5 shadow-sm dropdown-toggle d-flex align-items-center gap-1.5" data-bs-toggle="dropdown" aria-expanded="false" title="Export cases to Microsoft Excel or CSV">
+                            <i class="bi bi-file-earmark-excel-fill text-success"></i>
+                            <span>Export Excel</span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
+                                    <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Export Current View (.xls)</div>
+                                        <div class="extra-small text-muted">Filtered cases with styling & columns</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
+                                    <i class="bi bi-collection-fill text-primary fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Export All Cases (.xls)</div>
+                                        <div class="extra-small text-muted">Complete master tracking workbook</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider my-1"></li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
+                                    <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Export Current View to CSV</div>
+                                        <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
+                                    <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Export All Cases to CSV</div>
+                                        <div class="extra-small text-muted">All cases in UTF-8 CSV</div>
+                                    </div>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
@@ -530,6 +622,9 @@
                                             <div class="col-md-4"><strong>Main Matter CNR:</strong> <span id="dMainMatterCnr" class="text-muted font-monospace">—</span></div>
                                             <div class="col-md-4"><strong>Lower Court:</strong> <span id="dLowerCourt" class="text-muted">—</span></div>
                                             <div class="col-md-4"><strong>Lower Court Case No:</strong> <span id="dLowerCourtCaseNo" class="text-muted">—</span></div>
+                                            <div class="col-md-4"><strong>Transferred From:</strong> <span id="dTransferEst" class="text-muted">—</span></div>
+                                            <div class="col-md-4"><strong>Transfer Date:</strong> <span id="dTransferDate" class="text-muted font-monospace">—</span></div>
+                                            <div class="col-md-4"><strong>Connected / Linked Cases:</strong> <span id="dConnectedCases" class="text-muted font-monospace">—</span></div>
                                         </div>
                                     </div>
                                 </div>
@@ -645,11 +740,11 @@
                             <table class="table table-hover align-middle mb-0 small">
                                 <thead class="bg-light sticky-top">
                                     <tr>
-                                        <th style="width: 40px;">#</th>
-                                        <th style="width: 160px;">IA Number</th>
+                                        <th style="width: 40px;" class="text-center">#</th>
+                                        <th style="width: 170px;">IA Number</th>
                                         <th style="width: 130px;">Date of Filing</th>
-                                        <th>Party / Applicant</th>
-                                        <th style="width: 120px;">Status</th>
+                                        <th>Party / Applicant & Prayer Purpose</th>
+                                        <th style="width: 120px;" class="text-center">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="dTbodyIa">
@@ -665,11 +760,11 @@
                             <table class="table table-hover align-middle mb-0 small">
                                 <thead class="bg-light sticky-top">
                                     <tr>
-                                        <th style="width: 40px;">#</th>
-                                        <th style="width: 120px;">Process ID</th>
-                                        <th>Title / Notice</th>
+                                        <th style="width: 40px;" class="text-center">#</th>
+                                        <th style="width: 130px;">Process ID</th>
+                                        <th>Process / Notice Title & Recipient</th>
                                         <th style="width: 130px;">Issue Date</th>
-                                        <th style="width: 140px;">Notice Type</th>
+                                        <th style="width: 150px;">Notice Type / Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="dTbodyProcess">
@@ -724,6 +819,7 @@
                         </div>
                     </div>
 
+
                 </div>
             </div>
 
@@ -748,7 +844,7 @@
 <div class="modal fade" id="quickCauseListModal" tabindex="-1" aria-labelledby="quickCauseListModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
-            <div class="modal-header bg-danger text-white py-3 px-4">
+            <div class="modal-header bg-danger text-white py-3 px-4 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">
                     <div class="bg-white bg-opacity-25 p-2 rounded-circle">
                         <i class="bi bi-broadcast fs-5 text-white"></i>
@@ -758,7 +854,12 @@
                         <div class="extra-small text-white-50 font-monospace" id="quickCauseListModalSubtitle">High Court of Karnataka</div>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="d-flex align-items-center gap-2">
+                    <div class="input-group input-group-sm" style="width: 175px;">
+                        <input type="date" class="form-control form-control-sm" id="quickCauseListDateInput" onchange="recheckQuickCauseListCustomDate()" title="Change cause list inspection date" />
+                    </div>
+                    <button type="button" class="btn-close btn-close-white ms-1" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
             </div>
             <div class="modal-body p-4" id="quickCauseListModalBody">
                 <div class="text-center py-5">
@@ -863,9 +964,13 @@
             }
 
             if (c.nextHearingDate) {
-                const hDateStr = c.nextHearingDate.split('T')[0];
-                if (hDateStr >= todayStr) {
-                    upcoming++;
+                const dt = new Date(c.nextHearingDate);
+                const yr = dt.getFullYear();
+                if (yr > 1990 && yr < 2090) {
+                    const hDateStr = c.nextHearingDate.split('T')[0];
+                    if (hDateStr >= todayStr) {
+                        upcoming++;
+                    }
                 }
             }
         });
@@ -983,7 +1088,7 @@
         const filtered = allCasesData.filter(c => {
             // Text search
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
 
@@ -995,15 +1100,25 @@
             if (selectedFilter === "pending" && isDisposed) return false;
             if (selectedFilter === "upcoming") {
                 if (!c.nextHearingDate) return false;
+                const dt = new Date(c.nextHearingDate);
+                const yr = dt.getFullYear();
+                if (yr <= 1990 || yr >= 2090) return false;
                 const hDateStr = c.nextHearingDate.split('T')[0];
                 if (hDateStr < todayStr) return false;
             }
 
             // Hearing Date Filter
-            const hDate = c.nextHearingDate ? c.nextHearingDate.split('T')[0] : null;
+            let hDate = null;
+            if (c.nextHearingDate) {
+                const dt = new Date(c.nextHearingDate);
+                const yr = dt.getFullYear();
+                if (yr > 1990 && yr < 2090) {
+                    hDate = c.nextHearingDate.split('T')[0];
+                }
+            }
 
             if (preset === "unscheduled") {
-                if (hDate) return false;
+                if (hDate || isDisposed) return false;
             } else if (preset === "overdue") {
                 if (!hDate || hDate >= todayStr || isDisposed) return false;
             } else {
@@ -1056,21 +1171,31 @@
             const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
             const statusBadge = isDisposed
                 ? `<span class="badge bg-success-subtle text-success border border-success extra-small"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`
-                : `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${c.caseStatus || "Pending"}</span>`;
+                : `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${c.caseStatus || "—"}</span>`;
 
             // Next hearing date formatting
-            let hearingDisplay = '<span class="text-muted extra-small fst-italic">Date Pending</span>';
+            let hearingDisplay = `
+                <div class="fw-semibold text-secondary">
+                    <i class="bi bi-hourglass-split me-1"></i>Date Awaited
+                </div>
+                <div class="extra-small text-muted text-truncate" style="max-width: 150px;" title="${c.stagePurpose || "—"}">
+                    ${c.stagePurpose || "—"}
+                </div>`;
+
             if (c.nextHearingDate) {
                 const dt = new Date(c.nextHearingDate);
-                const dtFormatted = dt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' });
-                const isUpcoming = dt.toISOString().split('T')[0] >= todayStr;
-                hearingDisplay = `
-                    <div class="fw-bold ${isUpcoming ? "text-primary" : "text-dark"}">
-                        <i class="bi bi-calendar-event me-1"></i>${dtFormatted}
-                    </div>
-                    <div class="extra-small text-muted text-truncate" style="max-width: 150px;">
-                        ${c.stagePurpose || "Hearing"}
-                    </div>`;
+                const yr = dt.getFullYear();
+                if (yr > 1990 && yr < 2090) {
+                    const dtFormatted = dt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' });
+                    const isUpcoming = dt.toISOString().split('T')[0] >= todayStr;
+                    hearingDisplay = `
+                        <div class="fw-bold ${isUpcoming ? "text-primary" : "text-dark"}">
+                            <i class="bi bi-calendar-event me-1"></i>${dtFormatted}
+                        </div>
+                        <div class="extra-small text-muted text-truncate" style="max-width: 150px;" title="${c.stagePurpose || "—"}">
+                            ${c.stagePurpose || "—"}
+                        </div>`;
+                }
             }
 
             // Last synced formatting
@@ -1100,21 +1225,28 @@
                     <div class="extra-small text-muted mt-0.5">Est: <span class="font-monospace">${c.estCode || "—"}</span></div>
                 </td>
                 <td>
-                    <div class="d-flex align-items-center gap-1 mb-1">
+                    <div class="fw-bold text-dark text-truncate small" style="max-width: 220px;" title="${c.courtEstName || c.estCode || 'Court'}">
+                        <i class="bi bi-building me-1 text-primary"></i>${c.courtEstName || c.estCode || 'Court'}
+                    </div>
+                    <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
                         <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
-                            <i class="bi bi-bank2 me-1 text-secondary"></i>${c.courtNo || "Court Hall"}
+                            <i class="bi bi-bank2 me-1 text-secondary"></i>${c.courtNo || "—"}
                         </span>
+                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? c.itemNo : `Item #${c.itemNo}`}</span>` : ''}
+                        ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${c.benchId}</span>` : ''}
+                        ${c.benchName ? `<span class="badge bg-light text-dark border extra-small">${c.benchName}</span>` : ''}
                     </div>
-                    <div class="extra-small text-muted text-truncate" style="max-width: 180px;" title="${c.judgeDesignation || ""}">
-                        ${c.judgeDesignation || "Presiding Judge"}
+                    <div class="extra-small text-muted text-truncate" style="max-width: 220px;" title="${c.judgeDesignation || ""}">
+                        <i class="bi bi-person-lines-fill me-1 text-secondary"></i>${c.judgeDesignation || "—"}
                     </div>
+                    ${c.causeListType ? `<div class="extra-small text-secondary mt-0.5"><i class="bi bi-list-check me-1 text-success"></i>${c.causeListType}</div>` : ''}
                 </td>
                 <td>
                     <div class="fw-bold text-dark text-truncate" style="max-width: 260px;" title="${c.petitioner || ""}">
-                        ${c.petitioner || "Petitioner"}
+                        ${c.petitioner || "—"}
                     </div>
                     <div class="extra-small text-muted text-truncate" style="max-width: 260px;" title="${c.respondent || ""}">
-                        vs ${c.respondent || "Respondent"}
+                        vs ${c.respondent || "—"}
                     </div>
                 </td>
                 <td>
@@ -1156,13 +1288,11 @@
     }
 
     // ==========================================
-    // Export Filtered Cases to CSV
+    // EXPORT TO EXCEL (.XLS) & CSV (.CSV) ENGINE
     // ==========================================
-    function exportToCsv() {
-        if (!allCasesData || allCasesData.length === 0) {
-            showToast("Export", "No case records to export.", false);
-            return;
-        }
+    function getCasesForExport(scope = 'filtered') {
+        if (!allCasesData || allCasesData.length === 0) return [];
+        if (scope === 'all') return [...allCasesData];
 
         const query = (document.getElementById("caseSearchInput").value || "").trim().toLowerCase();
         const selectedFilter = document.querySelector('input[name="statusFilter"]:checked')?.value || "all";
@@ -1171,9 +1301,9 @@
         const toVal = document.getElementById("hearingDateTo")?.value || "";
         const todayStr = new Date().toISOString().split('T')[0];
 
-        const toExport = allCasesData.filter(c => {
+        return allCasesData.filter(c => {
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
             const st = (c.caseStatus || "").toLowerCase();
@@ -1195,32 +1325,229 @@
             }
             return true;
         });
+    }
 
-        const headers = ["#", "CNR Number", "Case Type", "Case Number", "Year", "Court", "Judge", "Petitioner", "Respondent", "Next Hearing Date", "Stage/Purpose", "Status", "Last Synced"];
-        const rows = toExport.map((c, i) => [
-            i + 1,
-            `"${c.cnrNumber || ""}"`,
-            `"${getDisplayCaseType(c)}"`,
-            `"${c.caseNumber || ""}"`,
-            `"${c.caseYear || ""}"`,
-            `"${(c.courtNo || "").replace(/"/g, '""')}"`,
-            `"${(c.judgeDesignation || "").replace(/"/g, '""')}"`,
-            `"${(c.petitioner || "").replace(/"/g, '""')}"`,
-            `"${(c.respondent || "").replace(/"/g, '""')}"`,
-            `"${c.nextHearingDate ? c.nextHearingDate.split('T')[0] : ""}"`,
-            `"${(c.stagePurpose || "").replace(/"/g, '""')}"`,
-            `"${(c.caseStatus || "").replace(/"/g, '""')}"`,
-            `"${c.lastSyncedAt || ""}"`
-        ]);
+    function exportToExcel(scope = 'filtered') {
+        if (!allCasesData || allCasesData.length === 0) {
+            showToast("Export", `No case records currently tracked under ${currentModule} to export. Add CNR numbers to track cases.`, false);
+            return;
+        }
 
-        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-        const encodedUri = encodeURI(csvContent);
+        let toExport = getCasesForExport(scope);
+        if (toExport.length === 0) {
+            if (scope === 'filtered' && allCasesData.length > 0) {
+                showToast("Export Notice", `No cases matched active filter. Exporting all ${allCasesData.length} tracked cases instead.`, true);
+                toExport = [...allCasesData];
+            } else {
+                showToast("Export", "No cases match the selected criteria to export.", false);
+                return;
+            }
+        }
+
+        const todayStr = new Date().toISOString().split('T')[0];
+        const printTime = new Date().toLocaleString("en-GB", {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+
+        const isLabour = currentModule.toLowerCase() === "labour";
+        const moduleLabel = isLabour ? "LABOUR DISPUTES & INDUSTRIAL TRIBUNALS" : "MVC / MACT MOTOR ACCIDENT CLAIMS";
+
+        // MSO Excel text format so long CNR numbers are never converted to scientific notation
+        const msoText = "mso-number-format: '\\" + String.fromCharCode(64) + "';";
+
+        let rowsHtml = "";
+        toExport.forEach((c, index) => {
+            const isHc = (c.cnrNumber || "").startsWith("HC") || (c.cnrNumber && c.cnrNumber.length >= 4 && c.cnrNumber.substring(2, 4).toUpperCase() === "HC");
+            const courtTier = isHc ? "High Court" : "District / Lower Court";
+            const caseType = getDisplayCaseType(c);
+            const caseNum = `${c.caseNumber || ""}${c.caseYear ? "/" + c.caseYear : ""}`;
+            const st = (c.caseStatus || "").toLowerCase();
+            const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
+            const statusText = isDisposed ? "DISPOSED" : (c.caseStatus || "PENDING");
+            const statusStyle = isDisposed ? "background-color: #dcfce7; color: #15803d; font-weight: bold;" : "background-color: #fef3c7; color: #b45309; font-weight: bold;";
+
+            let hearingDateStr = "Date Awaited";
+            if (c.nextHearingDate) {
+                const dt = new Date(c.nextHearingDate);
+                if (!isNaN(dt.getTime()) && dt.getFullYear() > 1990 && dt.getFullYear() < 2090) {
+                    hearingDateStr = dt.toISOString().split('T')[0];
+                }
+            }
+
+            let syncedDateStr = "";
+            if (c.lastSyncedAt) {
+                const sDt = new Date(c.lastSyncedAt);
+                if (!isNaN(sDt.getTime())) {
+                    syncedDateStr = sDt.toLocaleString("en-GB");
+                }
+            }
+
+            rowsHtml += `
+            <tr>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${index + 1}</td>
+                <td style="${msoText} font-family: monospace; font-weight: bold; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.cnrNumber || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(courtTier)}</td>
+                <td style="font-weight: bold; color: #0369a1; border: 0.5pt solid #cbd5e1;">${escapeHtml(caseType)}</td>
+                <td style="${msoText} font-family: monospace; border: 0.5pt solid #cbd5e1;">${escapeHtml(caseNum)}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.caseYear || "")}</td>
+                <td style="${msoText} border: 0.5pt solid #cbd5e1;">${escapeHtml(c.estCode || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.courtEstName || c.estCode || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.courtNo || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.benchName || (c.benchId ? `Bench ${c.benchId}` : ""))}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.judgeDesignation || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.causeListType || "")}</td>
+                <td style="font-weight: bold; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.petitioner || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.respondent || "")}</td>
+                <td style="mso-number-format: 'yyyy-mm-dd'; text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(hearingDateStr)}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.stagePurpose || "")}</td>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1; ${statusStyle}">${escapeHtml(statusText)}</td>
+                <td style="border: 0.5pt solid #cbd5e1; font-size: 8.5pt; color: #64748b;">${escapeHtml(syncedDateStr)}</td>
+            </tr>`;
+        });
+
+        const excelHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <!--[if gte mso 9]>
+    <xml>
+        <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+                <x:ExcelWorksheet>
+                    <x:Name>Tracked Cases</x:Name>
+                    <x:WorksheetOptions>
+                        <x:DisplayGridlines/>
+                    </x:WorksheetOptions>
+                </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+        </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 10pt; }
+        table { border-collapse: collapse; width: 100%; }
+        .hdr-title { font-size: 14pt; font-weight: bold; color: #0f172a; text-align: left; }
+        .hdr-sub { font-size: 10pt; color: #0284c7; font-weight: bold; text-align: left; }
+        .hdr-meta { font-size: 9pt; color: #64748b; }
+        th { background-color: #0f172a; color: #ffffff; font-weight: bold; font-size: 10pt; border: 0.5pt solid #000000; padding: 6px 8px; text-align: left; vertical-align: middle; }
+        td { font-size: 9.5pt; vertical-align: top; padding: 5px 7px; }
+    </style>
+</head>
+<body>
+    <table>
+        <tr>
+            <td colspan="18" class="hdr-title">North Western Karnataka Road Transport Corporation (NWKRTC)</td>
+        </tr>
+        <tr>
+            <td colspan="18" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
+        </tr>
+        <tr>
+            <td colspan="18" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
+        </tr>
+        <tr><td colspan="18"></td></tr>
+        <thead>
+            <tr>
+                <th style="width: 40px; text-align: center;">#</th>
+                <th style="width: 160px;">CNR Number</th>
+                <th style="width: 120px;">Court Tier</th>
+                <th style="width: 110px;">Case Type</th>
+                <th style="width: 120px;">Case Number</th>
+                <th style="width: 60px;">Year</th>
+                <th style="width: 80px;">Est Code</th>
+                <th style="width: 250px;">Court Establishment Name</th>
+                <th style="width: 140px;">Court Hall / Room</th>
+                <th style="width: 140px;">Bench Roster</th>
+                <th style="width: 220px;">Presiding Judge / Coram</th>
+                <th style="width: 130px;">Cause List Type</th>
+                <th style="width: 260px;">Petitioner(s)</th>
+                <th style="width: 260px;">Respondent(s)</th>
+                <th style="width: 120px; text-align: center;">Next Hearing Date</th>
+                <th style="width: 160px;">Listing Stage / Purpose</th>
+                <th style="width: 110px; text-align: center;">Case Status</th>
+                <th style="width: 140px;">Last Synced With eCourts</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${rowsHtml}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        const blob = new Blob(["\uFEFF", excelHtml], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `MyCases_${currentModule}_${new Date().toISOString().split('T')[0]}.csv`);
+        link.href = url;
+        link.download = `NWKRTC_MyCases_${currentModule}_${todayStr}.xls`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        showToast("Export Complete", `Exported ${toExport.length} cases to Excel (.xls).`, true);
+    }
+
+    function exportToCsv(scope = 'filtered') {
+        if (!allCasesData || allCasesData.length === 0) {
+            showToast("Export", `No case records currently tracked under ${currentModule} to export. Add CNR numbers to track cases.`, false);
+            return;
+        }
+
+        let toExport = getCasesForExport(scope);
+        if (toExport.length === 0) {
+            if (scope === 'filtered' && allCasesData.length > 0) {
+                showToast("Export Notice", `No cases matched active filter. Exporting all ${allCasesData.length} tracked cases instead.`, true);
+                toExport = [...allCasesData];
+            } else {
+                showToast("Export", "No cases match the selected criteria to export.", false);
+                return;
+            }
+        }
+
+        const headers = [
+            "#", "CNR Number", "Court Tier", "Case Type", "Case Number", "Case Year",
+            "Est Code", "Court Establishment", "Court Hall", "Bench", "Presiding Judge",
+            "Cause List Type", "Petitioner", "Respondent", "Next Hearing Date",
+            "Stage/Purpose", "Case Status", "Last Synced At"
+        ];
+
+        const rows = toExport.map((c, i) => {
+            const isHc = (c.cnrNumber || "").startsWith("HC") || (c.cnrNumber && c.cnrNumber.length >= 4 && c.cnrNumber.substring(2, 4).toUpperCase() === "HC");
+            const courtTier = isHc ? "High Court" : "District / Lower Court";
+            const hDate = c.nextHearingDate ? c.nextHearingDate.split('T')[0] : "";
+            return [
+                i + 1,
+                `"${(c.cnrNumber || "").replace(/"/g, '""')}"`,
+                `"${courtTier}"`,
+                `"${(getDisplayCaseType(c) || "").replace(/"/g, '""')}"`,
+                `"${(c.caseNumber || "").replace(/"/g, '""')}"`,
+                `"${c.caseYear || ""}"`,
+                `"${(c.estCode || "").replace(/"/g, '""')}"`,
+                `"${(c.courtEstName || c.estCode || "").replace(/"/g, '""')}"`,
+                `"${(c.courtNo || "").replace(/"/g, '""')}"`,
+                `"${(c.benchName || (c.benchId ? `Bench ${c.benchId}` : "")).replace(/"/g, '""')}"`,
+                `"${(c.judgeDesignation || "").replace(/"/g, '""')}"`,
+                `"${(c.causeListType || "").replace(/"/g, '""')}"`,
+                `"${(c.petitioner || "").replace(/"/g, '""')}"`,
+                `"${(c.respondent || "").replace(/"/g, '""')}"`,
+                `"${hDate}"`,
+                `"${(c.stagePurpose || "").replace(/"/g, '""')}"`,
+                `"${(c.caseStatus || "").replace(/"/g, '""')}"`,
+                `"${(c.lastSyncedAt || "").replace(/"/g, '""')}"`
+            ].join(",");
+        });
+
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `NWKRTC_MyCases_${currentModule}_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
         showToast("Export Complete", `Exported ${toExport.length} cases to CSV.`, true);
     }
 
@@ -1298,7 +1625,7 @@
                 setTimeout(() => {
                     const modalEl = document.getElementById('addCnrModal');
                     const modal = bootstrap.Modal.getInstance(modalEl);
-                    if (modal && json.added > 0) {
+                    if (modal && (json.added > 0 || json.updated > 0)) {
                         modal.hide();
                         clearCnrInput();
                     }
@@ -1389,7 +1716,8 @@
         } catch (err) {
             console.error("Error loading dossier:", err);
             document.getElementById("dossierModalTitle").innerText = "Error Loading Dossier";
-            document.getElementById("dossierRawJsonPre").innerText = "Failed to load dossier data.";
+            const rawPre = document.getElementById("dossierRawJsonPre");
+            if (rawPre) rawPre.innerText = "Failed to load dossier data.";
         }
     }
 
@@ -1409,9 +1737,9 @@
         const isDisposed = (data.case_status || "").toLowerCase().includes("dispos");
         const statusBadge = document.getElementById("dossierStatusBadge");
         statusBadge.className = isDisposed ? "badge bg-success" : "badge bg-warning text-dark";
-        statusBadge.innerText = data.case_status || "Pending";
+        statusBadge.innerText = data.case_status || "—";
 
-        document.getElementById("dossierSubtitle").innerText = `${data.establishment_name || "High Court of Karnataka"} — Live NAPIX Sync: ${dossier.synced_at || "Recent"}`;
+        document.getElementById("dossierSubtitle").innerText = `${data.establishment_name || raw.court_est_name || "—"} — Live NAPIX Sync: ${dossier.synced_at || "Recent"}`;
 
         // Overview
         document.getElementById("dCaseNo").innerText = `${displayType ? displayType + " " : ""}${data.case_number || "—"}`;
@@ -1419,15 +1747,24 @@
         document.getElementById("dFilDate").innerText = data.filing_date || raw.date_of_filing || "—";
         document.getElementById("dRegDate").innerText = data.registration_date || raw.dt_regis || "—";
 
-        document.getElementById("dNextHearing").innerText = data.next_hearing_date ? data.next_hearing_date : "Date Not Listed / Pending";
+        let hearingText = "—";
+        if (data.next_hearing_date) {
+            const dt = new Date(data.next_hearing_date);
+            const yr = dt.getFullYear();
+            if (yr > 1990 && yr < 2090) {
+                hearingText = dt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' });
+            }
+        }
+        document.getElementById("dNextHearing").innerText = hearingText;
         document.getElementById("dStage").innerText = data.stage || raw.purpose_name || "—";
         document.getElementById("dFirstHearing").innerText = data.first_hearing_date || raw.date_first_list || "—";
         document.getElementById("dDisposalDate").innerText = data.decision_date || raw.date_of_decision || "—";
 
-        document.getElementById("dCourtName").innerText = data.establishment_name || raw.court_est_name || "High Court of Karnataka";
-        document.getElementById("dJudgeName").innerText = data.court_no_judge || data.judge || raw.coram || "—";
-        document.getElementById("dBenchType").innerText = raw.bench_type || raw.bench_name || "Division / Single Bench";
-        document.getElementById("dStateDist").innerText = `${raw.state_name || "Karnataka"}, ${raw.dist_name || "Dharwad"}`;
+        document.getElementById("dCourtName").innerText = data.establishment_name || raw.court_est_name || "—";
+        document.getElementById("dJudgeName").innerText = raw.coram || data.court_no_judge || data.judge || "—";
+        let benchDesc = raw.bench_name || (raw.bench_type == 1 ? "Single Bench" : raw.bench_type == 2 ? "Division Bench" : raw.bench_type == 3 ? "Full Bench" : "—");
+        document.getElementById("dBenchType").innerText = benchDesc;
+        document.getElementById("dStateDist").innerText = `${raw.state_name || "—"}, ${raw.dist_name || "—"}`;
 
         // Metadata
         document.getElementById("dNatureDisposal").innerText = data.nature_of_disposal || raw.disposal_type || "—";
@@ -1435,16 +1772,46 @@
         document.getElementById("dCauselistType").innerText = raw.causelist_type || "—";
         document.getElementById("dMainMatterCnr").innerText = raw.main_matter_cino || "—";
         document.getElementById("dLowerCourt").innerText = raw.lower_court_name || "—";
-        document.getElementById("dLowerCourtCaseNo").innerText = raw.lower_court_caseno || "—";
+        document.getElementById("dLowerCourtCaseNo").innerText = raw.lower_court_caseno ? `${raw.lower_court_caseno}${raw.lower_court_dec_dt ? ' (Decided: ' + raw.lower_court_dec_dt + ')' : ''}` : (data.lower_court_caseno || "—");
 
-        // Parties
+        const transferEst = data.transfer_est || raw.transfer_est || (dossier.transfers && dossier.transfers.length > 0 ? (dossier.transfers[0].transfer_from_est || dossier.transfers[0].from_est) : null);
+        const transferEstEl = document.getElementById("dTransferEst");
+        if (transferEstEl) transferEstEl.innerText = transferEst || "—";
+
+        const transferDate = data.transfer_date || raw.transfer_date || (dossier.transfers && dossier.transfers.length > 0 ? (dossier.transfers[0].transfer_date || dossier.transfers[0].date) : null);
+        const transferDateEl = document.getElementById("dTransferDate");
+        if (transferDateEl) transferDateEl.innerText = transferDate || "—";
+
+        let linkedCasesStr = "—";
+        if (dossier.linked_cases && dossier.linked_cases.length > 0) {
+            linkedCasesStr = dossier.linked_cases.map(lc => lc.case_number || lc.cino || lc.reg_no || JSON.stringify(lc)).join(", ");
+        } else if (raw.connected_cases || raw.connected_case) {
+            linkedCasesStr = typeof raw.connected_cases === 'string' ? raw.connected_cases : JSON.stringify(raw.connected_cases);
+        }
+        const linkedEl = document.getElementById("dConnectedCases");
+        if (linkedEl) linkedEl.innerText = linkedCasesStr;
+
+        const rawJsonEl = document.getElementById("dossierRawJsonPre");
+        if (rawJsonEl) rawJsonEl.innerText = currentRawJsonString || JSON.stringify(dossier, null, 2);
+
+        // Parties Helper
+        function formatExtraParties(val) {
+            if (!val) return "None";
+            if (typeof val === 'string') return val;
+            if (typeof val === 'object') {
+                const arr = Object.values(val).filter(v => typeof v === 'string' && v.trim().length > 0);
+                return arr.length > 0 ? arr.join(", ") : "None";
+            }
+            return String(val);
+        }
+
         document.getElementById("dPetName").innerText = data.petitioner || raw.pet_name || "—";
         document.getElementById("dPetAdv").innerText = data.petitioner_advocate || raw.pet_adv || "Not Assigned / In Person";
-        document.getElementById("dPetExtra").innerText = raw.pet_extra_party || data.extra_party || "None";
+        document.getElementById("dPetExtra").innerText = formatExtraParties(raw.pet_extra_party);
 
         document.getElementById("dResName").innerText = data.respondent || raw.res_name || "—";
         document.getElementById("dResAdv").innerText = data.respondent_advocate || raw.res_adv || "Not Assigned / In Person";
-        document.getElementById("dResExtra").innerText = raw.res_extra_party || "None";
+        document.getElementById("dResExtra").innerText = formatExtraParties(raw.res_extra_party || data.extra_party);
 
         // Proceedings History
         const history = dossier.history || [];
@@ -1482,7 +1849,7 @@
                     <td class="text-muted fw-bold">${i + 1}</td>
                     <td class="font-monospace">${o.order_date || o.date || "—"}</td>
                     <td class="font-monospace fw-bold">${o.order_number || o.order_no || `#${i+1}`}</td>
-                    <td>${o.order_details || o.details || o.short_order || "Order Passed"}</td>
+                    <td>${o.order_details || o.details || o.short_order || "—"}</td>
                     <td>${o.judge_name || o.judge || "—"}</td>
                     <td class="text-end">${actionBtn}</td>
                 </tr>`;
@@ -1491,45 +1858,103 @@
             tbodyO.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No formal court orders uploaded yet.</td></tr>`;
         }
 
-        // IA Filings
-        const iaList = dossier.ia_filings || [];
+        // IA Filings Helper Extraction with multi-source fallback
+        let rawIa = dossier.ia_filings;
+        if (!rawIa || (Array.isArray(rawIa) && rawIa.length === 0)) {
+            rawIa = raw.iafiling || raw.ia_filing || raw.ia_filings || raw.ia_details || raw.ias || raw.interim_application || raw.interim_applications || [];
+        }
+        let iaList = [];
+        if (Array.isArray(rawIa)) {
+            iaList = rawIa;
+        } else if (typeof rawIa === 'object' && rawIa !== null) {
+            iaList = Object.values(rawIa);
+        }
+
         document.getElementById("dossierIaCount").innerText = iaList.length;
         const tbodyIa = document.getElementById("dTbodyIa");
         if (iaList.length > 0) {
             tbodyIa.innerHTML = iaList.map((ia, i) => {
-                const isPending = (ia.ia_pend_disp || "").toUpperCase() === "P";
-                const badge = isPending
-                    ? `<span class="badge bg-warning-subtle text-dark border border-warning extra-small">Pending</span>`
-                    : `<span class="badge bg-success-subtle text-success border border-success extra-small">Disposed</span>`;
+                let iaNo = ia.ia_number || ia.ia_no || ia.no || ia.ianumber || ia.ia_num || `IA #${i + 1}`;
+                let classification = ia.classification || ia.ia_prayer || ia.prayer || ia.purpose || "";
+
+                if (typeof iaNo === 'string') {
+                    const classMatch = iaNo.match(/(?:<b>\s*)?classification\s*:\s*(?:<\/b>\s*)?([^<]+)/i);
+                    if (classMatch && classMatch[1] && !classification) {
+                        classification = classMatch[1].trim();
+                    }
+                    iaNo = iaNo.replace(/<\/?b>/gi, '').replace(/<\/?br\s*\/?>/gi, ' - ').replace(/classification\s*:\s*.*$/i, '').trim();
+                    if (iaNo.endsWith('-')) iaNo = iaNo.slice(0, -1).trim();
+                }
+
+                const filingDate = formatDateSafe(ia.date_of_filing || ia.filing_date || ia.date || ia.filingdate);
+                const party = ia.ia_pet_name || ia.party_name || ia.applicant || ia.party || ia.petitioner || "—";
+
+                const st = (ia.ia_pend_disp || ia.status || ia.ia_status || "").trim().toUpperCase();
+                let badge = `<span class="badge bg-secondary-subtle text-secondary border extra-small">Recorded</span>`;
+                if (st === "P" || st.includes("PEND")) {
+                    badge = `<span class="badge bg-warning-subtle text-dark border border-warning extra-small">Pending</span>`;
+                } else if (st === "D" || st.includes("DISPOS")) {
+                    badge = `<span class="badge bg-success-subtle text-success border border-success extra-small">Disposed</span>`;
+                } else if (st.includes("ALLOW")) {
+                    badge = `<span class="badge bg-primary-subtle text-primary border border-primary extra-small">Allowed</span>`;
+                } else if (st.includes("DISMISS") || st.includes("REJECT")) {
+                    badge = `<span class="badge bg-danger-subtle text-danger border border-danger extra-small">Dismissed</span>`;
+                }
+
                 return `
                 <tr>
-                    <td class="text-muted fw-bold">${i + 1}</td>
-                    <td class="font-monospace fw-bold text-primary">${ia.ia_number || `IA #${i+1}`}</td>
-                    <td class="font-monospace">${ia.date_of_filing || "—"}</td>
-                    <td>${ia.ia_pet_name || "—"}</td>
-                    <td>${badge}</td>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="font-monospace fw-bold text-primary">${escapeHtml(iaNo)}</td>
+                    <td class="font-monospace">${filingDate}</td>
+                    <td>
+                        <div class="fw-semibold text-dark">${escapeHtml(party)}</div>
+                        ${classification ? `<div class="extra-small text-muted mt-0.5"><span class="badge bg-light text-primary border me-1 fw-bold">Classification</span>${escapeHtml(classification)}</div>` : ''}
+                    </td>
+                    <td class="text-center">${badge}</td>
                 </tr>`;
             }).join("");
         } else {
-            tbodyIa.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No interim applications found.</td></tr>`;
+            tbodyIa.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No interim applications recorded in eCourts payload.</td></tr>`;
         }
 
-        // Processes
-        const processes = dossier.processes || [];
+        // Processes Helper Extraction with multi-source fallback
+        let rawProc = dossier.processes;
+        if (!rawProc || (Array.isArray(rawProc) && rawProc.length === 0)) {
+            rawProc = raw.processes || raw.case_processes || raw.process || raw.process_details || raw.notice_details || raw.notices || raw.notice || raw.process_issued || raw.case_process || [];
+        }
+        let processes = [];
+        if (Array.isArray(rawProc)) {
+            processes = rawProc;
+        } else if (typeof rawProc === 'object' && rawProc !== null) {
+            processes = Object.values(rawProc);
+        }
+
         document.getElementById("dossierProcessCount").innerText = processes.length;
         const tbodyProc = document.getElementById("dTbodyProcess");
         if (processes.length > 0) {
-            tbodyProc.innerHTML = processes.map((p, i) => `
+            tbodyProc.innerHTML = processes.map((p, i) => {
+                const procId = p.process_id || p.process_no || p.id || p.sr_no || p.processid || `P-${i + 1}`;
+                const pTitle = p.process_title || p.title || p.process_name || p.name || p.details || p.notice_title || "Notice / Process";
+                const pParty = p.party_name || p.recipient || p.issued_to || p.pet_name || p.res_name || p.party || "";
+                const pDate = formatDateSafe(p.issue_date || p.process_date || p.date || p.issued_date || p.dispatch_date);
+                const rDate = p.return_date || p.next_date || "";
+                const nType = p.notice_type || p.type || p.process_type || p.status || p.process_status || "Process Issued";
+
+                return `
                 <tr>
-                    <td class="text-muted fw-bold">${i + 1}</td>
-                    <td class="font-monospace">${p.process_id || "—"}</td>
-                    <td class="fw-semibold">${p.process_title || p.title || "Notice Issued"}</td>
-                    <td class="font-monospace">${p.issue_date || "—"}</td>
-                    <td><span class="badge bg-light text-dark border extra-small">${p.notice_type || "Notice"}</span></td>
-                </tr>
-            `).join("");
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="font-monospace fw-bold text-primary">${escapeHtml(procId)}</td>
+                    <td>
+                        <div class="fw-semibold text-dark">${escapeHtml(pTitle)}</div>
+                        ${pParty ? `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person me-1"></i>Issued To: <strong>${escapeHtml(pParty)}</strong></div>` : ''}
+                        ${rDate ? `<div class="extra-small text-muted">Return Date: ${escapeHtml(formatDateSafe(rDate))}</div>` : ''}
+                    </td>
+                    <td class="font-monospace">${pDate}</td>
+                    <td><span class="badge bg-light text-dark border extra-small">${escapeHtml(nType)}</span></td>
+                </tr>`;
+            }).join("");
         } else {
-            tbodyProc.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No process notices recorded.</td></tr>`;
+            tbodyProc.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">No process notices recorded in eCourts payload.</td></tr>`;
         }
 
         // Acts
@@ -1579,12 +2004,15 @@
     let currentQuickTrackedId = null;
     let currentQuickCnr = null;
 
-    async function loadCaseCauseListInModal(trackedId, cnr, customDate = null) {
+    async function loadCaseCauseListInModal(trackedId, cnr, customDate) {
         const container = document.getElementById("dCauselistDetailsBody");
         if (!container) return;
 
+        let queryDate = (typeof customDate !== 'undefined' && customDate) ? customDate : "";
         const dateInput = document.getElementById("dCauselistDateInput");
-        const queryDate = customDate || (dateInput ? dateInput.value.trim() : "");
+        if (!queryDate && dateInput) {
+            queryDate = dateInput.value.trim();
+        }
 
         container.innerHTML = `
             <div class="text-center py-4 text-muted">
@@ -1616,9 +2044,25 @@
         loadCaseCauseListInModal(currentDossierTrackedId, cnr, queryDate);
     }
 
-    async function checkLiveCauseList(trackedId, cnr) {
+    async function checkLiveCauseList(trackedId, cnr, customDate) {
         currentQuickTrackedId = trackedId;
         currentQuickCnr = cnr;
+
+        let queryDate = (typeof customDate !== 'undefined' && customDate) ? customDate : "";
+        const dateInput = document.getElementById("quickCauseListDateInput");
+        if (dateInput) {
+            if (queryDate) {
+                dateInput.value = queryDate;
+            } else if (!dateInput.value) {
+                dateInput.value = new Date().toISOString().split('T')[0];
+            }
+            if (!queryDate) {
+                queryDate = dateInput.value;
+            }
+        }
+        if (!queryDate) {
+            queryDate = new Date().toISOString().split('T')[0];
+        }
 
         const btn = document.getElementById(`btnCl_${trackedId}`);
         if (btn) {
@@ -1627,26 +2071,37 @@
         }
 
         const modalEl = document.getElementById("quickCauseListModal");
-        const modal = new bootstrap.Modal(modalEl);
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         document.getElementById("quickCauseListModalTitle").innerText = `Checking Live Cause List...`;
         document.getElementById("quickCauseListModalSubtitle").innerText = `CNR: ${cnr}`;
         document.getElementById("quickCauseListModalBody").innerHTML = `
             <div class="text-center py-5">
                 <div class="spinner-border text-danger" role="status"></div>
-                <p class="mt-2 text-muted fw-bold mb-0">Querying live High Court Gateway (/causelistdetails)...</p>
-                <div class="extra-small text-muted mt-1">Cross-referencing Dharwad, Bengaluru, and Kalaburagi rosters...</div>
+                <p class="mt-2 text-muted fw-bold mb-0">Querying live High Court e-Courts Gateway for <strong>${queryDate || 'today'}</strong>...</p>
+                <div class="extra-small text-muted mt-1">Cross-referencing Dharwad (KAHC02), Bengaluru (KAHC01), and Kalaburagi (KAHC03) rosters...</div>
             </div>`;
         modal.show();
 
         try {
-            const res = await fetch(`/ECourts/GetCaseCauseListDetails?trackedId=${trackedId}&cnrNumber=${encodeURIComponent(cnr)}&module=${encodeURIComponent(currentModule)}`);
+            const res = await fetch(`/ECourts/GetCaseCauseListDetails?trackedId=${trackedId}&cnrNumber=${encodeURIComponent(cnr)}&targetDate=${encodeURIComponent(queryDate)}&module=${encodeURIComponent(currentModule)}`);
             const json = await res.json();
 
             document.getElementById("quickCauseListModalTitle").innerText = json.isListed ? `Listed in High Court Cause List` : `High Court Cause List Status`;
-            document.getElementById("quickCauseListModalBody").innerHTML = renderCauseListDetailsCard(json, json.causelistDate, cnr);
+            if (json.courtName) {
+                document.getElementById("quickCauseListModalSubtitle").innerText = `${json.courtName} | CNR: ${cnr}`;
+            }
+            document.getElementById("quickCauseListModalBody").innerHTML = renderCauseListDetailsCard(json, json.causelistDate || queryDate, cnr);
 
-            if (json.matched) {
-                // Refresh main cases table in background so updated Court Hall and stage reflect immediately
+            if (json.matched || json.isListed) {
+                const matchedCase = allCasesData.find(x => x.trackedID === trackedId);
+                if (matchedCase && json.data) {
+                    if (json.data.courtHall) matchedCase.courtNo = json.data.courtHall;
+                    if (json.data.itemNo) matchedCase.itemNo = json.data.itemNo;
+                    if (json.data.benchId) matchedCase.benchId = json.data.benchId;
+                    if (json.data.benchName) matchedCase.benchName = json.data.benchName;
+                    if (json.data.causelistType) matchedCase.causeListType = json.data.causelistType;
+                    renderCasesTable();
+                }
                 loadTrackedCases();
             }
         } catch (err) {
@@ -1664,6 +2119,13 @@
                 btn.innerHTML = `<i class="bi bi-broadcast"></i>`;
             }
         }
+    }
+
+    function recheckQuickCauseListCustomDate() {
+        if (!currentQuickTrackedId && !currentQuickCnr) return;
+        const dateInput = document.getElementById("quickCauseListDateInput");
+        const val = dateInput ? dateInput.value : "";
+        checkLiveCauseList(currentQuickTrackedId, currentQuickCnr, val);
     }
 
     function openDossierFromQuickCauseList() {
@@ -1728,11 +2190,17 @@
                 <div class="row g-3 mb-4">
                     <div class="col-md-6 col-lg-4">
                         <div class="p-3 rounded-3 bg-light border h-100">
-                            <div class="text-muted extra-small text-uppercase fw-bold">Court Hall Allocation</div>
-                            <div class="mt-2">
+                            <div class="text-muted extra-small text-uppercase fw-bold">Court Hall & Bench</div>
+                            ${(d.courtName || res.courtName) ? `
+                            <div class="small fw-bold text-dark mt-1 text-truncate" title="${d.courtName || res.courtName}">
+                                <i class="bi bi-building me-1 text-primary"></i>${d.courtName || res.courtName}
+                            </div>` : ''}
+                            <div class="mt-2 d-flex align-items-center gap-1.5 flex-wrap">
                                 <span class="badge bg-warning-subtle text-dark border border-warning fs-6 px-3 py-2 font-monospace fw-bold shadow-sm d-inline-flex align-items-center">
                                     <i class="bi bi-bank2 me-2 text-secondary fs-5"></i>${d.courtHall || 'Court Hall'}
                                 </span>
+                                ${(d.benchId || res.benchId) ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${d.benchId || res.benchId}</span>` : ''}
+                                ${(d.benchName || res.benchName) ? `<span class="badge bg-white text-dark border extra-small">${d.benchName || res.benchName}</span>` : ''}
                             </div>
                             <div class="extra-small text-muted mt-2">Coram / Hon'ble Bench:</div>
                             <div class="small fw-bold text-dark mt-0.5">${d.judgeName || 'Hon\'ble High Court Bench'}</div>
@@ -1743,12 +2211,17 @@
                         <div class="p-3 rounded-3 bg-light border h-100">
                             <div class="text-muted extra-small text-uppercase fw-bold">Cause List Item & Type</div>
                             <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                                ${(d.itemNo && d.itemNo !== '—') ? `
                                 <span class="badge bg-primary fs-6 px-3 py-2 font-monospace shadow-sm">
-                                    <i class="bi bi-list-ol me-1"></i>Item #${d.itemNo || '—'}
-                                </span>
+                                    <i class="bi bi-list-ol me-1"></i>${(d.itemNo.toString().startsWith('Item') || d.itemNo.toString().startsWith('List') || d.itemNo.toString().startsWith('Sl') ? d.itemNo : `Item #${d.itemNo}`)}
+                                </span>` : `
+                                <span class="badge bg-secondary-subtle text-dark border border-secondary fs-6 px-3 py-2 font-monospace shadow-sm" title="Cause list serial number is assigned upon publication by the registry">
+                                    <i class="bi bi-clock-history me-1 text-secondary"></i>Awaiting Publication
+                                </span>`}
+                                ${(d.causelistType || res.causelistType) ? `
                                 <span class="badge bg-info-subtle text-info border border-info px-2.5 py-1.5 fw-bold">
-                                    ${d.causelistType || 'Daily Cause List'}
-                                </span>
+                                    ${d.causelistType || res.causelistType}
+                                </span>` : ''}
                             </div>
                             <div class="extra-small text-muted mt-2">Listing Stage / Purpose:</div>
                             <div class="small fw-semibold text-primary mt-0.5">${d.stage || 'Hearing Active'}</div>
@@ -1803,29 +2276,67 @@
                 </div>
             </div>
 
-            <div class="row g-3">
+            <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <div class="p-3 bg-light rounded-3 border h-100">
-                        <div class="text-muted extra-small text-uppercase fw-bold">Current Assigned Court & Hall</div>
-                        <div class="mt-2">
-                            <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold px-3 py-1.5">
-                                <i class="bi bi-bank2 me-1.5 text-secondary"></i>${res.currentCourt || 'Court Hall'}
+                        <div class="text-muted extra-small text-uppercase fw-bold">Court, Hall & Bench Details</div>
+                        ${res.courtName ? `
+                        <div class="small fw-bold text-dark mt-1 text-truncate" title="${res.courtName}">
+                            <i class="bi bi-building me-1 text-primary"></i>${res.courtName}
+                        </div>` : ''}
+                        <div class="mt-2 d-flex align-items-center gap-1.5 flex-wrap">
+                            <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold px-2.5 py-1.5">
+                                <i class="bi bi-bank2 me-1.5 text-secondary"></i>${res.currentCourt || 'High Court of Karnataka'}
                             </span>
+                            ${res.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${res.benchId}</span>` : ''}
+                            ${res.benchName ? `<span class="badge bg-white text-dark border extra-small">${res.benchName}</span>` : ''}
                         </div>
-                        <div class="extra-small text-muted mt-2">Rosters published daily by Registrar Judicial at 6:00 PM for the next judicial working day.</div>
+                        <div class="small fw-semibold text-dark mt-2" title="${res.coram || ''}">
+                            <i class="bi bi-person-lines-fill me-1 text-primary"></i>${res.coram || 'Hon\'ble Judges Assigned'}
+                        </div>
+                        ${res.causelistType ? `<div class="extra-small text-secondary mt-1"><i class="bi bi-list-check me-1 text-success"></i>${res.causelistType}</div>` : ''}
+                        <div class="extra-small text-muted mt-1">Rosters published daily by Registrar Judicial at 6:00 PM.</div>
                     </div>
                 </div>
 
                 <div class="col-md-6">
                     <div class="p-3 bg-light rounded-3 border h-100">
-                        <div class="text-muted extra-small text-uppercase fw-bold">Case Classification</div>
+                        <div class="text-muted extra-small text-uppercase fw-bold">Next Hearing / Listing Status</div>
                         <div class="mt-2 d-flex align-items-center gap-2">
-                            <span class="badge bg-primary font-monospace fw-bold px-2.5 py-1.5">${res.caseType || 'MFA'}</span>
-                            <span class="font-monospace text-dark extra-small">CNR: ${cnr || '—'}</span>
+                            <span class="badge bg-primary-subtle text-primary border border-primary fw-bold px-2.5 py-1.5">
+                                <i class="bi bi-hourglass-split me-1"></i>${res.nextHearingDate || 'Date Awaited'}
+                            </span>
                         </div>
-                        <div class="extra-small text-muted mt-2">Checked benches: Dharwad (KAHC02), Bengaluru (KAHC01), Kalaburagi (KAHC03).</div>
+                        <div class="extra-small text-muted mt-2">Current Stage: <strong class="text-dark">${res.stage || 'FINAL HEARING'}</strong></div>
+                        <div class="extra-small text-muted">CNR: <span class="font-monospace text-dark">${cnr || '—'}</span></div>
                     </div>
                 </div>
+            </div>
+
+            <div class="card border rounded-3 overflow-hidden shadow-sm mb-3">
+                <div class="card-header bg-white py-2 small fw-bold text-dark">
+                    <i class="bi bi-people-fill text-primary me-1.5"></i> Litigants & Advocates
+                </div>
+                <div class="card-body p-3">
+                    <div class="row g-2 small">
+                        <div class="col-md-6">
+                            <div class="text-muted extra-small fw-bold text-uppercase">Petitioner</div>
+                            <div class="fw-bold text-dark text-truncate">${res.petitioner || '—'}</div>
+                            <div class="extra-small text-muted mt-0.5">Advocate: <strong class="text-dark">${res.petAdvocate || '—'}</strong></div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-muted extra-small fw-bold text-uppercase">Respondent</div>
+                            <div class="fw-bold text-dark text-truncate">${res.respondent || '—'}</div>
+                            <div class="extra-small text-muted mt-0.5">Advocate: <strong class="text-dark">${res.resAdvocate || '—'}</strong></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-end">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" onclick="openDossierFromQuickCauseList()">
+                    <i class="bi bi-file-earmark-medical me-1"></i> View Comprehensive Case Dossier
+                </button>
             </div>`;
     }
 
@@ -1875,6 +2386,19 @@
             .replace(/'/g, '&#39;');
     }
 
+    function formatExtraParties(val) {
+        if (!val) return "None";
+        if (typeof val === 'string') {
+            const trimmed = val.trim();
+            return (trimmed && trimmed !== '—') ? trimmed : "None";
+        }
+        if (typeof val === 'object') {
+            const arr = Object.values(val).filter(v => typeof v === 'string' && v.trim().length > 0 && v.trim() !== '—');
+            return arr.length > 0 ? arr.join(", ") : "None";
+        }
+        return String(val);
+    }
+
     function formatDateSafe(val) {
         if (!val) return "—";
         try {
@@ -1902,7 +2426,7 @@
     // High-Fidelity Print Runner via Hidden Iframe (Popup-Blocker Immune)
     function executePrintHtml(htmlTitle, htmlBody, orientation = 'landscape') {
         const pageOrientation = orientation === 'portrait' ? 'portrait' : 'landscape';
-        const pageMargin = orientation === 'portrait' ? '12mm 15mm' : '8mm 10mm';
+        const pageMargin = orientation === 'portrait' ? '10mm 12mm' : '8mm 10mm';
 
         const printHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -1925,15 +2449,16 @@
             background: #ffffff;
             margin: 0;
             padding: 0;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.35;
         }
-        .text-center { text-align: center; }
-        .text-end { text-align: right; }
-        .text-muted { color: #64748b; }
-        .fw-bold { font-weight: 700; }
-        .fw-semibold { font-weight: 600; }
-        .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .text-center { text-align: center !important; }
+        .text-end { text-align: right !important; }
+        .text-start { text-align: left !important; }
+        .text-muted { color: #64748b !important; }
+        .fw-bold { font-weight: 700 !important; }
+        .fw-semibold { font-weight: 600 !important; }
+        .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; }
 
         /* Official Letterhead */
         .official-header {
@@ -1959,7 +2484,7 @@
             margin: 0 0 2px 0;
         }
         .doc-title {
-            font-size: 12px;
+            font-size: 11.5px;
             font-weight: 700;
             color: #0284c7;
             text-transform: uppercase;
@@ -1983,17 +2508,17 @@
             align-items: center;
             background: #f8fafc;
             border: 1px solid #cbd5e1;
-            border-radius: 6px;
+            border-radius: 5px;
             padding: 6px 10px;
-            margin-bottom: 12px;
-            font-size: 10px;
+            margin-bottom: 10px;
+            font-size: 9.5px;
         }
         .stat-badge {
             display: inline-block;
             padding: 2px 7px;
             border-radius: 4px;
             font-weight: 700;
-            font-size: 10px;
+            font-size: 9.5px;
             margin-left: 4px;
             border: 1px solid #94a3b8;
         }
@@ -2007,24 +2532,27 @@
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 12px;
+            table-layout: fixed;
         }
         .report-table th {
             background-color: #f1f5f9;
             color: #1e293b;
             border: 1px solid #94a3b8;
-            padding: 6px 8px;
+            padding: 5px 7px;
             text-align: left;
-            font-size: 9.5px;
+            font-size: 9px;
             text-transform: uppercase;
             font-weight: 700;
             letter-spacing: 0.3px;
+            vertical-align: middle;
         }
         .report-table td {
             border: 1px solid #cbd5e1;
-            padding: 6px 8px;
+            padding: 5px 7px;
             vertical-align: top;
-            font-size: 10px;
+            font-size: 9.5px;
             word-break: break-word;
+            overflow-wrap: break-word;
         }
         .report-table tr {
             page-break-inside: avoid;
@@ -2037,95 +2565,180 @@
         /* Dossier Sections */
         .dossier-card {
             border: 1px solid #cbd5e1;
-            border-radius: 6px;
-            margin-bottom: 12px;
+            border-radius: 5px;
+            margin-bottom: 10px;
             page-break-inside: avoid;
             break-inside: avoid;
             background: #ffffff;
+            overflow: hidden;
         }
         .dossier-card-header {
             background: #f1f5f9;
             border-bottom: 1px solid #cbd5e1;
-            padding: 6px 12px;
-            font-size: 11px;
+            padding: 5px 10px;
+            font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
             color: #0f172a;
+            letter-spacing: 0.3px;
         }
         .dossier-card-body {
-            padding: 10px 12px;
+            padding: 0;
         }
-        .dossier-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px 14px;
-            font-size: 10.5px;
+
+        /* 4-column key-value table for Case Registration Details */
+        .dossier-table-info {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            margin: 0;
         }
-        .grid-item-label {
-            font-size: 9px;
-            text-transform: uppercase;
-            color: #64748b;
+        .dossier-table-info th {
+            width: 18%;
+            background-color: #f8fafc;
+            color: #475569;
+            font-size: 8.5px;
             font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.25px;
+            padding: 4px 7px;
+            border: 1px solid #cbd5e1;
+            vertical-align: middle;
+            text-align: left;
         }
-        .grid-item-val {
-            font-weight: 600;
+        .dossier-table-info td {
+            width: 32%;
+            background-color: #ffffff;
             color: #0f172a;
-            margin-top: 1px;
+            font-size: 9.5px;
+            font-weight: 600;
+            padding: 4px 7px;
+            border: 1px solid #cbd5e1;
+            vertical-align: middle;
+            word-break: break-word;
+        }
+
+        /* Parties Table in Dossier */
+        .parties-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            margin: 0;
+        }
+        .parties-table td {
+            vertical-align: top;
+            padding: 7px 9px;
+            border: 1px solid #cbd5e1;
+            background: #ffffff;
+        }
+        .party-box-header {
+            font-size: 8px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            display: inline-block;
+            margin-bottom: 4px;
+        }
+        .party-header-pet {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+        .party-header-res {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .party-name-bold {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.35;
+            margin-bottom: 3px;
+        }
+        .party-field-row {
+            font-size: 9px;
+            margin-top: 2px;
+            color: #334155;
+            line-height: 1.3;
+        }
+
+        /* Parties in Ledger Table */
+        .party-petitioner {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 9.5px;
+            line-height: 1.3;
+        }
+        .party-respondent {
+            font-size: 9px;
+            color: #334155;
+            margin-top: 2px;
+            line-height: 1.3;
+        }
+        .party-vs {
+            color: #dc2626;
+            font-weight: 800;
+            font-size: 8px;
+            text-transform: uppercase;
+            margin-right: 3px;
         }
 
         /* Status Pills */
         .badge-pending {
             display: inline-block;
-            padding: 1px 6px;
+            padding: 1.5px 6px;
             border: 1px solid #d97706;
             color: #b45309;
             background: #fffbeb;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: 8px;
             text-transform: uppercase;
         }
         .badge-disposed {
             display: inline-block;
-            padding: 1px 6px;
+            padding: 1.5px 6px;
             border: 1px solid #16a34a;
             color: #15803d;
             background: #f0fdf4;
             border-radius: 3px;
             font-weight: 700;
-            font-size: 9px;
+            font-size: 8px;
             text-transform: uppercase;
         }
         .badge-court-hc {
             display: inline-block;
-            padding: 1px 5px;
+            padding: 1px 4px;
             border: 1px solid #2563eb;
             color: #1d4ed8;
             background: #eff6ff;
             border-radius: 3px;
-            font-size: 8.5px;
+            font-size: 8px;
             font-weight: 700;
         }
         .badge-court-dc {
             display: inline-block;
-            padding: 1px 5px;
+            padding: 1px 4px;
             border: 1px solid #64748b;
             color: #475569;
             background: #f8fafc;
             border-radius: 3px;
-            font-size: 8.5px;
+            font-size: 8px;
             font-weight: 700;
         }
 
         /* Footer */
         .report-footer {
-            margin-top: 15px;
-            padding-top: 10px;
+            margin-top: 12px;
+            padding-top: 8px;
             border-top: 1px dashed #94a3b8;
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            font-size: 9.5px;
+            font-size: 8.5px;
             color: #64748b;
             page-break-inside: avoid;
             break-inside: avoid;
@@ -2207,7 +2820,7 @@
         } else {
             casesToPrint = allCasesData.filter(c => {
                 if (query) {
-                    const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""}`.toLowerCase();
+                    const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""}`.toLowerCase();
                     if (!searchStr.includes(query)) return false;
                 }
                 const st = (c.caseStatus || "").toLowerCase();
@@ -2283,7 +2896,7 @@
             const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
             const statusHtml = isDisposed
                 ? `<span class="badge-disposed">Disposed</span>`
-                : `<span class="badge-pending">${escapeHtml(c.caseStatus || "Pending")}</span>`;
+                : `<span class="badge-pending">${escapeHtml(c.caseStatus || "—")}</span>`;
 
             let hearingHtml = '<span class="text-muted" style="font-style: italic;">Date Pending</span>';
             if (c.nextHearingDate) {
@@ -2291,7 +2904,7 @@
                 const isUpcoming = c.nextHearingDate.split('T')[0] >= todayStr;
                 hearingHtml = `
                     <div class="fw-bold ${isUpcoming ? "text-primary" : ""}">${dtFormatted}</div>
-                    <div class="text-muted" style="font-size: 9px;">${escapeHtml(c.stagePurpose || "Hearing")}</div>
+                    <div class="text-muted" style="font-size: 9px;">${escapeHtml(c.stagePurpose || "—")}</div>
                 `;
             }
 
@@ -2299,30 +2912,30 @@
 
             rowsHtml += `
             <tr>
-                <td class="text-center fw-bold text-muted" style="width: 32px;">${index + 1}</td>
-                <td style="width: 145px;">
-                    <div class="font-mono fw-bold" style="font-size: 11px;">${escapeHtml(c.cnrNumber)}</div>
+                <td class="text-center fw-bold text-muted">${index + 1}</td>
+                <td>
+                    <div class="font-mono fw-bold" style="font-size: 10.5px;">${escapeHtml(c.cnrNumber)}</div>
                     <div style="margin-top: 2px;">${courtBadge}</div>
                 </td>
-                <td style="width: 140px;">
-                    <div class="fw-bold font-mono" style="color: #0369a1;"><span class="module-badge" style="background:#0284c7; padding: 1px 4px; font-size: 8.5px; margin-right: 3px;">${escapeHtml(getDisplayCaseType(c))}</span> ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
-                    <div class="text-muted" style="font-size: 9px; margin-top: 2px;">Est: ${escapeHtml(c.estCode || "—")}</div>
-                </td>
-                <td style="width: 175px;">
-                    <div class="fw-semibold" style="color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px; display: inline-block; padding: 1px 6px; font-family: ui-monospace, monospace; font-size: 10px; margin-bottom: 2px;">${escapeHtml(c.courtNo || "Court Hall")}</div>
-                    <div class="text-muted" style="font-size: 9px;">${escapeHtml(c.judgeDesignation || "Presiding Judge")}</div>
+                <td>
+                    <div class="fw-bold font-mono" style="color: #0369a1;"><span class="module-badge" style="background:#0284c7; padding: 1px 4px; font-size: 8px; margin-right: 3px;">${escapeHtml(getDisplayCaseType(c))}</span> ${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</div>
+                    <div class="text-muted" style="font-size: 8.5px; margin-top: 2px;">Est: ${escapeHtml(c.estCode || "—")}</div>
                 </td>
                 <td>
-                    <div class="party-petitioner">${escapeHtml(c.petitioner || "Petitioner")}</div>
-                    <div class="party-respondent" style="margin-top: 2px;"><strong>vs</strong> ${escapeHtml(c.respondent || "Respondent")}</div>
+                    <div class="fw-semibold" style="color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 3px; display: inline-block; padding: 1px 5px; font-family: ui-monospace, monospace; font-size: 9px; margin-bottom: 2px;">${escapeHtml(c.courtNo || "—")}</div>
+                    <div class="text-muted" style="font-size: 8.5px; line-height: 1.25;">${escapeHtml(c.judgeDesignation || "—")}</div>
                 </td>
-                <td style="width: 125px;">
+                <td>
+                    <div class="party-petitioner">${escapeHtml(c.petitioner || "—")}</div>
+                    <div class="party-respondent"><span class="party-vs">vs</span> ${escapeHtml(c.respondent || "—")}</div>
+                </td>
+                <td>
                     ${hearingHtml}
                 </td>
-                <td class="text-center" style="width: 90px;">
+                <td class="text-center">
                     ${statusHtml}
                 </td>
-                <td class="text-muted" style="width: 115px; font-size: 9.5px;">
+                <td class="text-center text-muted" style="font-size: 8.5px;">
                     ${syncedStr}
                 </td>
             </tr>`;
@@ -2355,17 +2968,17 @@
             </div>
         </div>
 
-        <table class="report-table">
+        <table class="report-table" style="table-layout: fixed;">
             <thead>
                 <tr>
-                    <th class="text-center">#</th>
-                    <th>CNR Number</th>
-                    <th>Case No & Type</th>
-                    <th>Court / Bench & Coram</th>
+                    <th class="text-center" style="width: 32px;">#</th>
+                    <th style="width: 145px;">CNR Number</th>
+                    <th style="width: 140px;">Case No & Type</th>
+                    <th style="width: 175px;">Court / Bench & Coram</th>
                     <th>Parties (Petitioner vs Respondent)</th>
-                    <th>Next Hearing / Stage</th>
-                    <th class="text-center">Status</th>
-                    <th>Last Synced</th>
+                    <th style="width: 125px;">Next Hearing / Stage</th>
+                    <th class="text-center" style="width: 85px;">Status</th>
+                    <th class="text-center" style="width: 105px;">Last Synced</th>
                 </tr>
             </thead>
             <tbody>
@@ -2428,9 +3041,18 @@
         const raw = dossier.raw || {};
         const cnr = dossier.cnr || data.cnr_number || "—";
         const history = dossier.history || [];
-        const orders = dossier.orders || [];
-        const iaList = dossier.ia_filings || [];
-        const processes = dossier.processes || [];
+        // Multi-source extraction for IA and Processes in Print
+        let printRawIa = dossier.ia_filings;
+        if (!printRawIa || (Array.isArray(printRawIa) && printRawIa.length === 0)) {
+            printRawIa = raw.iafiling || raw.ia_filing || raw.ia_filings || raw.ia_details || raw.ias || [];
+        }
+        const iaList = Array.isArray(printRawIa) ? printRawIa : (typeof printRawIa === 'object' && printRawIa !== null ? Object.values(printRawIa) : []);
+
+        let printRawProc = dossier.processes;
+        if (!printRawProc || (Array.isArray(printRawProc) && printRawProc.length === 0)) {
+            printRawProc = raw.processes || raw.case_processes || raw.process || raw.process_details || raw.notice_details || raw.notices || raw.notice || raw.process_issued || [];
+        }
+        const processes = Array.isArray(printRawProc) ? printRawProc : (typeof printRawProc === 'object' && printRawProc !== null ? Object.values(printRawProc) : []);
         const acts = dossier.acts || [];
 
         const isDisposed = (data.case_status || "").toLowerCase().includes("dispos");
@@ -2443,22 +3065,33 @@
             hour: '2-digit', minute: '2-digit', hour12: true
         });
 
+        // Transfer and Connected Cases extraction
+        const transferEst = data.transfer_est || raw.transfer_est || (dossier.transfers && dossier.transfers.length > 0 ? (dossier.transfers[0].transfer_from_est || dossier.transfers[0].from_est) : null);
+        const transferDate = data.transfer_date || raw.transfer_date || (dossier.transfers && dossier.transfers.length > 0 ? (dossier.transfers[0].transfer_date || dossier.transfers[0].date) : null);
+
+        let linkedCasesStr = "—";
+        if (dossier.linked_cases && dossier.linked_cases.length > 0) {
+            linkedCasesStr = dossier.linked_cases.map(lc => lc.case_number || lc.cino || lc.reg_no || (typeof lc === 'string' ? lc : JSON.stringify(lc))).join(", ");
+        } else if (raw.connected_cases || raw.connected_case) {
+            linkedCasesStr = typeof raw.connected_cases === 'string' ? raw.connected_cases : JSON.stringify(raw.connected_cases);
+        }
+
         // 1. Proceedings History Rows
         let historyRows = "";
         if (history.length > 0) {
             historyRows = history.map((h, i) => `
                 <tr>
-                    <td class="text-center fw-bold text-muted" style="width: 25px;">${i + 1}</td>
-                    <td class="font-mono" style="width: 85px;">${escapeHtml(h.business_date || "—")}</td>
-                    <td class="font-mono fw-bold" style="width: 85px; color: #0284c7;">${escapeHtml(h.hearing_date || "—")}</td>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="text-center font-mono">${escapeHtml(h.business_date || "—")}</td>
+                    <td class="text-center font-mono fw-bold" style="color: #0284c7;">${escapeHtml(h.hearing_date || "—")}</td>
                     <td>${escapeHtml(h.purpose_of_listing || h.purpose || "—")}</td>
-                    <td class="font-mono" style="width: 85px;">${escapeHtml(h.next_date || "—")}</td>
+                    <td class="text-center font-mono">${escapeHtml(h.next_date || "—")}</td>
                     <td>${escapeHtml(h.next_purpose || "—")}</td>
                     <td>${escapeHtml(h.judge || h.judge_name || "—")}</td>
                 </tr>
             `).join("");
         } else {
-            historyRows = `<tr><td colspan="7" class="text-center text-muted" style="padding: 12px;">No historical proceedings recorded in eCourts payload.</td></tr>`;
+            historyRows = `<tr><td colspan="7" class="text-center text-muted" style="padding: 10px;">No historical proceedings recorded in eCourts payload.</td></tr>`;
         }
 
         // 2. Orders & Judgements Rows
@@ -2466,52 +3099,88 @@
         if (orders.length > 0) {
             ordersRows = orders.map((o, i) => `
                 <tr>
-                    <td class="text-center fw-bold text-muted" style="width: 25px;">${i + 1}</td>
-                    <td class="font-mono" style="width: 85px;">${escapeHtml(o.order_date || o.date || "—")}</td>
-                    <td class="font-mono fw-bold" style="width: 75px;">${escapeHtml(o.order_number || o.order_no || `#${i+1}`)}</td>
-                    <td>${escapeHtml(o.order_details || o.details || o.short_order || "Order Passed")}</td>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="text-center font-mono">${escapeHtml(o.order_date || o.date || "—")}</td>
+                    <td class="text-center font-mono fw-bold">${escapeHtml(o.order_number || o.order_no || `#${i+1}`)}</td>
+                    <td>${escapeHtml(o.order_details || o.details || o.short_order || "—")}</td>
                     <td>${escapeHtml(o.judge_name || o.judge || "—")}</td>
                 </tr>
             `).join("");
         } else {
-            ordersRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 12px;">No formal court orders recorded yet.</td></tr>`;
+            ordersRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 10px;">No formal court orders recorded yet.</td></tr>`;
         }
 
         // 3. IA Applications Rows
         let iaRows = "";
         if (iaList.length > 0) {
             iaRows = iaList.map((ia, i) => {
-                const isPending = (ia.ia_pend_disp || "").toUpperCase() === "P";
-                const badge = isPending
-                    ? `<span class="badge-pending">Pending</span>`
-                    : `<span class="badge-disposed">Disposed</span>`;
+                let iaNo = ia.ia_number || ia.ia_no || ia.no || ia.ianumber || ia.ia_num || `IA #${i + 1}`;
+                let classification = ia.classification || ia.ia_prayer || ia.prayer || ia.purpose || "";
+
+                if (typeof iaNo === 'string') {
+                    const classMatch = iaNo.match(/(?:<b>\s*)?classification\s*:\s*(?:<\/b>\s*)?([^<]+)/i);
+                    if (classMatch && classMatch[1] && !classification) {
+                        classification = classMatch[1].trim();
+                    }
+                    iaNo = iaNo.replace(/<\/?b>/gi, '').replace(/<\/?br\s*\/?>/gi, ' - ').replace(/classification\s*:\s*.*$/i, '').trim();
+                    if (iaNo.endsWith('-')) iaNo = iaNo.slice(0, -1).trim();
+                }
+
+                const filingDate = formatDateSafe(ia.date_of_filing || ia.filing_date || ia.date || ia.filingdate);
+                const party = ia.ia_pet_name || ia.party_name || ia.applicant || ia.party || ia.petitioner || "—";
+
+                const st = (ia.ia_pend_disp || ia.status || ia.ia_status || "").trim().toUpperCase();
+                let badge = `<span class="badge-pending">Recorded</span>`;
+                if (st === "P" || st.includes("PEND")) {
+                    badge = `<span class="badge-pending">Pending</span>`;
+                } else if (st === "D" || st.includes("DISPOS") || st.includes("ALLOW")) {
+                    badge = `<span class="badge-disposed">${st.includes("ALLOW") ? "Allowed" : "Disposed"}</span>`;
+                } else if (st.includes("DISMISS") || st.includes("REJECT")) {
+                    badge = `<span class="badge-disposed" style="color: #991b1b; background: #fee2e2;">Dismissed</span>`;
+                }
+
                 return `
                 <tr>
-                    <td class="text-center fw-bold text-muted" style="width: 25px;">${i + 1}</td>
-                    <td class="font-mono fw-bold" style="width: 120px; color: #0369a1;">${escapeHtml(ia.ia_number || `IA #${i+1}`)}</td>
-                    <td class="font-mono" style="width: 90px;">${escapeHtml(ia.date_of_filing || "—")}</td>
-                    <td>${escapeHtml(ia.ia_pet_name || "—")}</td>
-                    <td class="text-center" style="width: 80px;">${badge}</td>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="font-mono fw-bold" style="color: #0369a1;">${escapeHtml(iaNo)}</td>
+                    <td class="text-center font-mono">${filingDate}</td>
+                    <td>
+                        <div class="fw-semibold text-dark">${escapeHtml(party)}</div>
+                        ${classification ? `<div style="font-size: 8.5px; color: #475569; margin-top: 1px;"><strong style="color: #0284c7;">Purpose:</strong> ${escapeHtml(classification)}</div>` : ''}
+                    </td>
+                    <td class="text-center">${badge}</td>
                 </tr>`;
             }).join("");
         } else {
-            iaRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 12px;">No interim applications recorded.</td></tr>`;
+            iaRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 10px;">No interim applications recorded in eCourts payload.</td></tr>`;
         }
 
         // 4. Process Rows
         let processRows = "";
         if (processes.length > 0) {
-            processRows = processes.map((p, i) => `
+            processRows = processes.map((p, i) => {
+                const procId = p.process_id || p.process_no || p.id || p.sr_no || p.processid || `P-${i + 1}`;
+                const pTitle = p.process_title || p.title || p.process_name || p.name || p.details || p.notice_title || "Notice / Process";
+                const pParty = p.party_name || p.recipient || p.issued_to || p.pet_name || p.res_name || p.party || "";
+                const pDate = formatDateSafe(p.issue_date || p.process_date || p.date || p.issued_date || p.dispatch_date);
+                const rDate = p.return_date || p.next_date || "";
+                const nType = p.notice_type || p.type || p.process_type || p.status || p.process_status || "Process Issued";
+
+                return `
                 <tr>
-                    <td class="text-center fw-bold text-muted" style="width: 25px;">${i + 1}</td>
-                    <td class="font-mono" style="width: 80px;">${escapeHtml(p.process_id || "—")}</td>
-                    <td class="fw-semibold">${escapeHtml(p.process_title || p.title || "Notice Issued")}</td>
-                    <td class="font-mono" style="width: 90px;">${escapeHtml(p.issue_date || "—")}</td>
-                    <td style="width: 100px;">${escapeHtml(p.notice_type || "Notice")}</td>
-                </tr>
-            `).join("");
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="text-center font-mono fw-bold">${escapeHtml(procId)}</td>
+                    <td>
+                        <div class="fw-semibold text-dark">${escapeHtml(pTitle)}</div>
+                        ${pParty ? `<div style="font-size: 8.5px; color: #475569;">Issued To: <strong>${escapeHtml(pParty)}</strong></div>` : ''}
+                        ${rDate ? `<div style="font-size: 8.5px; color: #64748b;">Return Date: ${escapeHtml(formatDateSafe(rDate))}</div>` : ''}
+                    </td>
+                    <td class="text-center font-mono">${pDate}</td>
+                    <td class="text-center"><span class="badge-court-dc">${escapeHtml(nType)}</span></td>
+                </tr>`;
+            }).join("");
         } else {
-            processRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 12px;">No process notices recorded.</td></tr>`;
+            processRows = `<tr><td colspan="5" class="text-center text-muted" style="padding: 10px;">No process notices recorded in eCourts payload.</td></tr>`;
         }
 
         // 5. Acts Rows
@@ -2519,13 +3188,13 @@
         if (acts.length > 0) {
             actsRows = acts.map((a, i) => `
                 <tr>
-                    <td class="text-center fw-bold text-muted" style="width: 25px;">${i + 1}</td>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
                     <td class="fw-semibold">${escapeHtml(a.act || a.act_name || "—")}</td>
-                    <td class="font-mono" style="width: 220px;">${escapeHtml(a.section || "—")}</td>
+                    <td class="font-mono">${escapeHtml(a.section || "—")}</td>
                 </tr>
             `).join("");
         } else {
-            actsRows = `<tr><td colspan="3" class="text-center text-muted" style="padding: 12px;">No statutory acts recorded.</td></tr>`;
+            actsRows = `<tr><td colspan="3" class="text-center text-muted" style="padding: 10px;">No statutory acts recorded.</td></tr>`;
         }
 
         const bodyHtml = `
@@ -2537,116 +3206,121 @@
             </div>
             <div class="text-end">
                 <div>${statusBadge}</div>
-                <div class="text-muted" style="font-size: 9px; margin-top: 4px;">
+                <div class="text-muted" style="font-size: 8.5px; margin-top: 3px;">
                     Dossier Printed: <strong>${printTime}</strong>
                 </div>
             </div>
         </div>
 
         <!-- CNR Banner -->
-        <div class="meta-container" style="background: #f1f5f9; border-color: #94a3b8; margin-bottom: 12px;">
+        <div class="meta-container" style="background: #f1f5f9; border-color: #94a3b8; margin-bottom: 10px;">
             <div>
-                <span class="text-muted text-uppercase" style="font-size: 9px; font-weight: 700;">CNR Number:</span>
-                <span class="font-mono fw-bold" style="font-size: 13px; margin-left: 4px; color: #0f172a;">${escapeHtml(cnr)}</span>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">CNR Number:</span>
+                <span class="font-mono fw-bold" style="font-size: 12px; margin-left: 4px; color: #0f172a;">${escapeHtml(cnr)}</span>
             </div>
             <div>
-                <span class="text-muted text-uppercase" style="font-size: 9px; font-weight: 700;">Case:</span>
-                <span class="fw-bold" style="font-size: 13px; margin-left: 4px; color: #0369a1;">${escapeHtml(data.case_type || "Case")} ${escapeHtml(data.case_number || "—")}</span>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">Case:</span>
+                <span class="fw-bold" style="font-size: 12px; margin-left: 4px; color: #0369a1;">${escapeHtml(data.case_type || "Case")} ${escapeHtml(data.case_number || "—")}</span>
             </div>
             <div>
-                <span class="text-muted text-uppercase" style="font-size: 9px; font-weight: 700;">Court:</span>
-                <span class="fw-semibold" style="font-size: 11px; margin-left: 4px;">${escapeHtml(data.establishment_name || raw.court_est_name || "High Court of Karnataka")}</span>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">Court:</span>
+                <span class="fw-semibold" style="font-size: 10.5px; margin-left: 4px;">${escapeHtml(data.establishment_name || raw.court_est_name || "—")}</span>
             </div>
         </div>
 
-        <!-- Section 1: Registration & Court Details -->
+        <!-- Section 1: Registration & Court Details (Rigid 4-Column Key-Value Table) -->
         <div class="dossier-card">
             <div class="dossier-card-header">1. Case Registration & Court Information</div>
             <div class="dossier-card-body">
-                <div class="dossier-grid">
-                    <div>
-                        <div class="grid-item-label">Case No & Type</div>
-                        <div class="grid-item-val font-mono" style="color: #0369a1;">${escapeHtml(data.case_type || "")} ${escapeHtml(data.case_number || "—")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Filing No & Date</div>
-                        <div class="grid-item-val">${escapeHtml(raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ""}` : (data.filing_date || "—"))} (${escapeHtml(data.filing_date || raw.date_of_filing || "—")})</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Registration Date</div>
-                        <div class="grid-item-val">${escapeHtml(data.registration_date || raw.dt_regis || "—")}</div>
-                    </div>
-
-                    <div>
-                        <div class="grid-item-label">Next Hearing Date</div>
-                        <div class="grid-item-val" style="color: #b45309;">${escapeHtml(data.next_hearing_date || "Date Pending / Not Listed")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Listing Stage / Purpose</div>
-                        <div class="grid-item-val">${escapeHtml(data.stage || raw.purpose_name || "—")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Disposal Date</div>
-                        <div class="grid-item-val">${escapeHtml(data.decision_date || raw.date_of_decision || "—")}</div>
-                    </div>
-
-                    <div>
-                        <div class="grid-item-label">Court Hall & Bench</div>
-                        <div class="grid-item-val fw-bold" style="color: #92400e;">${escapeHtml(data.court_no || data.establishment_name || "Court Hall")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Presiding Judge / Coram</div>
-                        <div class="grid-item-val">${escapeHtml(data.court_no_judge || data.judge || raw.coram || "—")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Establishment / Jurisdiction</div>
-                        <div class="grid-item-val">${escapeHtml(data.establishment_name || raw.court_est_name || raw.bench_name || "High Court")} (${escapeHtml(raw.state_name || "Karnataka")}, ${escapeHtml(raw.dist_name || "Dharwad")})</div>
-                    </div>
-
-                    <div>
-                        <div class="grid-item-label">Nature of Disposal</div>
-                        <div class="grid-item-val">${escapeHtml(data.nature_of_disposal || raw.disposal_type || "—")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Main Matter CNR</div>
-                        <div class="grid-item-val font-mono">${escapeHtml(raw.main_matter_cino || "—")}</div>
-                    </div>
-                    <div>
-                        <div class="grid-item-label">Lower Court Record</div>
-                        <div class="grid-item-val">${escapeHtml(raw.lower_court_name || "—")} (${escapeHtml(raw.lower_court_caseno || "—")})</div>
-                    </div>
-                </div>
+                <table class="dossier-table-info">
+                    <tbody>
+                        <tr>
+                            <th>Case No & Type</th>
+                            <td class="font-mono" style="color: #0369a1;">${escapeHtml(data.case_type || "")} ${escapeHtml(data.case_number || "—")}</td>
+                            <th>CNR Number</th>
+                            <td class="font-mono fw-bold">${escapeHtml(cnr)}</td>
+                        </tr>
+                        <tr>
+                            <th>Filing No & Date</th>
+                            <td>${escapeHtml(raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ""}` : (data.filing_date || "—"))} (${escapeHtml(data.filing_date || raw.date_of_filing || "—")})</td>
+                            <th>Registration Date</th>
+                            <td>${escapeHtml(data.registration_date || raw.dt_regis || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Next Hearing Date</th>
+                            <td class="fw-bold" style="color: #b45309;">${escapeHtml(data.next_hearing_date || "Date Pending / Not Listed")}</td>
+                            <th>Listing Stage / Purpose</th>
+                            <td>${escapeHtml(data.stage || raw.purpose_name || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Court Hall & Bench</th>
+                            <td class="fw-bold" style="color: #92400e;">${escapeHtml(data.court_no || data.establishment_name || "—")}</td>
+                            <th>Presiding Judge / Coram</th>
+                            <td>${escapeHtml(data.court_no_judge || data.judge || raw.coram || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Establishment / Court</th>
+                            <td>${escapeHtml(data.establishment_name || raw.court_est_name || raw.bench_name || "—")}</td>
+                            <th>State & District</th>
+                            <td>${escapeHtml(raw.state_name || "—")}, ${escapeHtml(raw.dist_name || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Judicial Branch</th>
+                            <td>${escapeHtml(raw.judicial_branch || "—")}</td>
+                            <th>Cause List Type</th>
+                            <td>${escapeHtml(raw.causelist_type || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Case Status & Decision</th>
+                            <td>${escapeHtml(data.case_status || "—")}${data.decision_date || raw.date_of_decision ? ` (Decided: ${escapeHtml(data.decision_date || raw.date_of_decision)})` : ""}</td>
+                            <th>Nature of Disposal</th>
+                            <td>${escapeHtml(data.nature_of_disposal || raw.disposal_type || "—")}</td>
+                        </tr>
+                        <tr>
+                            <th>Main Matter CNR</th>
+                            <td class="font-mono">${escapeHtml(raw.main_matter_cino || "—")}</td>
+                            <th>Connected / Linked Cases</th>
+                            <td>${escapeHtml(linkedCasesStr)}</td>
+                        </tr>
+                        <tr>
+                            <th>Lower Court Record</th>
+                            <td>${escapeHtml(raw.lower_court_name || "—")}${raw.lower_court_caseno ? ` (${escapeHtml(raw.lower_court_caseno)}${raw.lower_court_dec_dt ? ' Decided: ' + escapeHtml(raw.lower_court_dec_dt) : ''})` : ""}</td>
+                            <th>Transfer Details</th>
+                            <td>${escapeHtml(transferEst ? `${transferEst}${transferDate ? ' on ' + transferDate : ''}` : "—")}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
-        <!-- Section 2: Parties & Representation -->
+        <!-- Section 2: Parties & Representation (Structured 2-Column Parties Table) -->
         <div class="dossier-card">
             <div class="dossier-card-header">2. Parties & Legal Representation</div>
-            <div class="dossier-card-body" style="padding: 8px 12px;">
-                <table style="width: 100%; border-collapse: collapse;">
+            <div class="dossier-card-body">
+                <table class="parties-table">
                     <tr>
-                        <td style="width: 50%; vertical-align: top; padding-right: 12px; border-right: 1px solid #e2e8f0;">
-                            <div class="grid-item-label" style="color: #1e3a8a;">Petitioner(s) Details</div>
-                            <div style="font-size: 11.5px; font-weight: 700; color: #0f172a; margin-top: 2px;">
+                        <td style="width: 50%;">
+                            <span class="party-box-header party-header-pet">Petitioner(s) / Appellant(s)</span>
+                            <div class="party-name-bold">
                                 ${escapeHtml(data.petitioner || raw.pet_name || "—")}
                             </div>
-                            <div style="margin-top: 4px; font-size: 10px;">
-                                <strong>Advocate:</strong> ${escapeHtml(data.petitioner_advocate || raw.pet_adv || "Not Assigned / In Person")}
+                            <div class="party-field-row">
+                                <strong>Legal Counsel / Advocate:</strong> ${escapeHtml(data.petitioner_advocate || raw.pet_adv || "Not Assigned / In Person")}
                             </div>
-                            <div class="text-muted" style="margin-top: 2px; font-size: 9.5px;">
-                                <strong>Extra Petitioners:</strong> ${escapeHtml(raw.pet_extra_party || data.extra_party || "None")}
+                            <div class="party-field-row text-muted">
+                                <strong>Additional Petitioner(s):</strong> ${escapeHtml(formatExtraParties(raw.pet_extra_party || data.extra_party))}
                             </div>
                         </td>
-                        <td style="width: 50%; vertical-align: top; padding-left: 12px;">
-                            <div class="grid-item-label" style="color: #b91c1c;">Respondent(s) Details</div>
-                            <div style="font-size: 11.5px; font-weight: 700; color: #0f172a; margin-top: 2px;">
+                        <td style="width: 50%;">
+                            <span class="party-box-header party-header-res">Respondent(s) / Defendant(s)</span>
+                            <div class="party-name-bold">
                                 ${escapeHtml(data.respondent || raw.res_name || "—")}
                             </div>
-                            <div style="margin-top: 4px; font-size: 10px;">
-                                <strong>Advocate:</strong> ${escapeHtml(data.respondent_advocate || raw.res_adv || "Not Assigned / In Person")}
+                            <div class="party-field-row">
+                                <strong>Legal Counsel / Advocate:</strong> ${escapeHtml(data.respondent_advocate || raw.res_adv || "Not Assigned / In Person")}
                             </div>
-                            <div class="text-muted" style="margin-top: 2px; font-size: 9.5px;">
-                                <strong>Extra Respondents:</strong> ${escapeHtml(raw.res_extra_party || "None")}
+                            <div class="party-field-row text-muted">
+                                <strong>Additional Respondent(s):</strong> ${escapeHtml(formatExtraParties(raw.res_extra_party))}
                             </div>
                         </td>
                     </tr>
@@ -2657,16 +3331,16 @@
         <!-- Section 3: Proceedings History -->
         <div class="dossier-card">
             <div class="dossier-card-header">3. Full Court Proceedings History (${history.length} Hearings Recorded)</div>
-            <div class="dossier-card-body" style="padding: 0;">
-                <table class="report-table" style="margin-bottom: 0;">
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
                         <tr>
-                            <th class="text-center">#</th>
-                            <th>Business Date</th>
-                            <th>Hearing Date</th>
-                            <th>Purpose of Listing / Stage</th>
-                            <th>Next Date</th>
-                            <th>Next Purpose</th>
+                            <th class="text-center" style="width: 28px;">#</th>
+                            <th class="text-center" style="width: 85px;">Business Date</th>
+                            <th class="text-center" style="width: 85px;">Hearing Date</th>
+                            <th style="width: 24%;">Purpose of Listing / Stage</th>
+                            <th class="text-center" style="width: 85px;">Next Date</th>
+                            <th style="width: 22%;">Next Purpose</th>
                             <th>Judge / Coram</th>
                         </tr>
                     </thead>
@@ -2680,15 +3354,15 @@
         <!-- Section 4: Orders & Judgements -->
         <div class="dossier-card">
             <div class="dossier-card-header">4. Court Orders & Judgements (${orders.length} Uploaded)</div>
-            <div class="dossier-card-body" style="padding: 0;">
-                <table class="report-table" style="margin-bottom: 0;">
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
                         <tr>
-                            <th class="text-center">#</th>
-                            <th>Order Date</th>
-                            <th>Order No</th>
+                            <th class="text-center" style="width: 28px;">#</th>
+                            <th class="text-center" style="width: 85px;">Order Date</th>
+                            <th class="text-center" style="width: 80px;">Order No</th>
                             <th>Judicial Summary / Direction</th>
-                            <th>Judge</th>
+                            <th style="width: 25%;">Presiding Judge</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2701,15 +3375,15 @@
         <!-- Section 5: IA Filings & Applications -->
         <div class="dossier-card">
             <div class="dossier-card-header">5. Interlocutory Applications (IA Filings: ${iaList.length})</div>
-            <div class="dossier-card-body" style="padding: 0;">
-                <table class="report-table" style="margin-bottom: 0;">
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
                         <tr>
-                            <th class="text-center">#</th>
-                            <th>IA Number</th>
-                            <th>Filing Date</th>
+                            <th class="text-center" style="width: 28px;">#</th>
+                            <th style="width: 130px;">IA Number</th>
+                            <th class="text-center" style="width: 90px;">Filing Date</th>
                             <th>Party / Applicant</th>
-                            <th class="text-center">Status</th>
+                            <th class="text-center" style="width: 85px;">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2722,15 +3396,15 @@
         <!-- Section 6: Process Issued -->
         <div class="dossier-card">
             <div class="dossier-card-header">6. Process & Court Notices (${processes.length})</div>
-            <div class="dossier-card-body" style="padding: 0;">
-                <table class="report-table" style="margin-bottom: 0;">
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
                         <tr>
-                            <th class="text-center">#</th>
-                            <th>Process ID</th>
+                            <th class="text-center" style="width: 28px;">#</th>
+                            <th class="text-center" style="width: 90px;">Process ID</th>
                             <th>Title / Notice</th>
-                            <th>Issue Date</th>
-                            <th>Notice Type</th>
+                            <th class="text-center" style="width: 95px;">Issue Date</th>
+                            <th class="text-center" style="width: 110px;">Notice Type</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2742,14 +3416,14 @@
 
         <!-- Section 7: Acts & Sections -->
         <div class="dossier-card">
-            <div class="dossier-card-header">7. Statutory Acts & Sections</div>
-            <div class="dossier-card-body" style="padding: 0;">
-                <table class="report-table" style="margin-bottom: 0;">
+            <div class="dossier-card-header">7. Statutory Acts & Sections (${acts.length})</div>
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
                         <tr>
-                            <th class="text-center">#</th>
-                            <th>Act Name</th>
-                            <th>Section</th>
+                            <th class="text-center" style="width: 28px;">#</th>
+                            <th style="width: 60%;">Act Name</th>
+                            <th style="width: 40%;">Section / Provision</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2829,6 +3503,10 @@
 
     /* Page-level Browser Native Print (Ctrl+P) Optimizations */
     @@media print {
+        header,
+        .main-header,
+        aside.sidebar,
+        .sidebar,
         .mycases-header-gradient,
         .kpi-card-clean,
         .card-header,
@@ -2842,12 +3520,13 @@
         .status-filter-group {
             display: none !important;
         }
-        body, .mycases-page, .card {
+        body, .mycases-page, .card, .main-content, .content-wrapper, main {
             background: #ffffff !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0 !important;
             margin: 0 !important;
+            width: 100% !important;
         }
         .table-responsive {
             overflow: visible !important;
@@ -2861,17 +3540,24 @@
         .table-cases {
             width: 100% !important;
             border-collapse: collapse !important;
+            table-layout: fixed !important;
         }
         .table-cases th, .table-cases td {
-            border: 1px solid #333333 !important;
-            padding: 5px 8px !important;
-            font-size: 10.5px !important;
-            color: #000000 !important;
+            border: 1px solid #94a3b8 !important;
+            padding: 4px 6px !important;
+            font-size: 9.5px !important;
+            color: #0f172a !important;
             background: #ffffff !important;
+            vertical-align: top !important;
+            word-break: break-word !important;
+            overflow-wrap: break-word !important;
         }
         .table-cases th {
             background: #f1f5f9 !important;
             font-weight: 700 !important;
+            text-align: left !important;
+            text-transform: uppercase !important;
+            font-size: 8.5px !important;
         }
         .table-cases tr {
             page-break-inside: avoid !important;

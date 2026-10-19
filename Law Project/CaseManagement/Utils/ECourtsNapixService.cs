@@ -1264,12 +1264,12 @@ namespace MVCCaseManagement.Utils
         {
             if (isHighCourt)
             {
-                string hcParams = $"est_code={estCode}|court_no={courtNo}|causelist_date={causelistDate}";
-                return await QueryApiAsync("hc-causelist-details-api", "causelistdetails", hcParams, module: module);
+                return await GetHighCourtCauselistDetailsAsync(estCode, courtNo, causelistDate, module: module);
             }
             else
             {
-                string distParams = $"est_code={estCode}|court_no={courtNo}|causelist_date={causelistDate}|type={type}";
+                string ciCri = (type.Equals("criminal", StringComparison.OrdinalIgnoreCase) || type == "3") ? "3" : "2";
+                string distParams = $"est_code={estCode}|court_no={courtNo}|causelist_date={causelistDate}|ci_cri={ciCri}";
                 return await QueryApiAsync("dc-causelist-api", "causelist", distParams, module: module);
             }
         }
@@ -1787,9 +1787,11 @@ namespace MVCCaseManagement.Utils
             }
 
             string clean = inputDate.Trim();
-            list.Add(clean);
 
-            if (DateTime.TryParse(clean, out var dt))
+            // Always prioritize yyyy-MM-dd format as required by official NAPIX OpenAPI specs
+            if (DateTime.TryParse(clean, out var dt) ||
+                DateTime.TryParseExact(clean, new[] { "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "yyyy/MM/dd", "d-M-yyyy", "d/M/yyyy" },
+                    System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out dt))
             {
                 string f1 = dt.ToString("yyyy-MM-dd");
                 string f2 = dt.ToString("dd-MM-yyyy");
@@ -1799,6 +1801,7 @@ namespace MVCCaseManagement.Utils
                 if (!list.Contains(f2)) list.Add(f2);
                 if (!list.Contains(f3)) list.Add(f3);
             }
+            if (!list.Contains(clean)) list.Add(clean);
             return list;
         }
 
@@ -1827,20 +1830,23 @@ namespace MVCCaseManagement.Utils
 
             foreach (var d in dateVariants)
             {
+                // Official NAPIX Section 7.2.4 strict sequence: est_code|causelist_date|bench_id
                 string paramsStr = !string.IsNullOrWhiteSpace(benchId) && benchId != "ALL"
-                    ? $"est_code={estCode}|bench_id={benchId}|causelist_date={d}"
+                    ? $"est_code={estCode}|causelist_date={d}|bench_id={benchId}"
                     : $"est_code={estCode}|causelist_date={d}";
 
                 var res = await QueryApiAsync("hc-causelist-details-api", "causelistdetails", paramsStr, module: module);
                 if (res.HasValue && !IsErrorJson(res.Value)) return res;
 
+                // Also try variant with bench_id before causelist_date as secondary fallback
                 if (!string.IsNullOrWhiteSpace(benchId) && benchId != "ALL")
                 {
-                    res = await QueryApiAsync("hc-causelist-details-api", "causelistdetails", $"est_code={estCode}|causelist_date={d}", module: module);
+                    res = await QueryApiAsync("hc-causelist-details-api", "causelistdetails", $"est_code={estCode}|bench_id={benchId}|causelist_date={d}", module: module);
                     if (res.HasValue && !IsErrorJson(res.Value)) return res;
                 }
 
-                res = await QueryApiAsync("hc-show-causelist-api", "showcauselist", paramsStr, module: module);
+                // Try showcauselist with official sequence: est_code|bench_id|causelist_id|causelist_date
+                res = await QueryApiAsync("hc-show-causelist-api", "showcauselist", $"est_code={estCode}|bench_id={benchId}|causelist_date={d}", module: module);
                 if (res.HasValue && !IsErrorJson(res.Value)) return res;
             }
 
