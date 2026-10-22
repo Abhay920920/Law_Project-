@@ -6,6 +6,8 @@ using MVCCaseManagement.Models;
 using MVCCaseManagement.Models.Audit;
 using MVCCaseManagement.Services.Audit;
 using System.Security.Claims;
+using System.Text;
+using System.Net;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -308,6 +310,267 @@ namespace MVCCaseManagement.Controllers
             ViewBag.IsCentralOffice = isCentralOffice;
 
             return View(cases);
+        }
+
+        [HttpGet]
+        public IActionResult ExportToExcel(string search = "", string status = "all")
+        {
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5";
+            int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
+
+            if (!string.IsNullOrEmpty(search))
+            {
+                status = "all";
+            }
+            else if (isCentralOffice && !Request.Query.ContainsKey("status") && status == "all") 
+            {
+                if (User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO"))
+                {
+                    status = "PendingDecision";
+                }
+                else if (User.IsInRole("MD"))
+                {
+                    status = "PendingCompetentAuthority";
+                }
+                else
+                {
+                    status = "SentToCO";
+                }
+            }
+
+            if (status == "ArisingApplication")
+            {
+                var arisingCases = _arisingRepo.GetAll(isCentralOffice ? 0 : divisionId, 1, 100000, search);
+                return ExportArisingCasesToExcel(arisingCases, status, search);
+            }
+
+            var cases = _labourRepo.GetAllCases(isCentralOffice ? 0 : divisionId, 1, 100000, search, status);
+            return ExportLabourCasesToExcel(cases, status, search, isCentralOffice);
+        }
+
+        private IActionResult ExportLabourCasesToExcel(IEnumerable<LabourCase> cases, string status, string search, bool isCentralOffice)
+        {
+            var sb = new StringBuilder();
+            string statusDisplay = string.IsNullOrEmpty(status) || status == "all" ? "All Cases" : status;
+            string searchDisplay = string.IsNullOrEmpty(search) ? "None" : search;
+            string timestamp = DateTime.Now.ToString("dd-MMM-yyyy hh:mm tt");
+            int count = cases != null ? cases.Count() : 0;
+
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\" xmlns=\"http://www.w3.org/TR/REC-html40\">");
+            sb.AppendLine("<head>");
+            sb.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+            sb.AppendLine("<!--[if gte mso 9]>");
+            sb.AppendLine("<xml>");
+            sb.AppendLine(" <x:ExcelWorkbook>");
+            sb.AppendLine("  <x:ExcelWorksheets>");
+            sb.AppendLine("   <x:ExcelWorksheet>");
+            sb.AppendLine("    <x:Name>Labour Cases</x:Name>");
+            sb.AppendLine("    <x:WorksheetOptions>");
+            sb.AppendLine("      <x:DisplayGridlines/>");
+            sb.AppendLine("    </x:WorksheetOptions>");
+            sb.AppendLine("   </x:ExcelWorksheet>");
+            sb.AppendLine("  </x:ExcelWorksheets>");
+            sb.AppendLine(" </x:ExcelWorkbook>");
+            sb.AppendLine("</xml>");
+            sb.AppendLine("<![endif]-->");
+            sb.AppendLine("<style>");
+            sb.AppendLine("  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; }");
+            sb.AppendLine("  table { border-collapse: collapse; width: 100%; }");
+            sb.AppendLine("  .title-header { background-color: #1e3a8a; color: #ffffff; font-size: 14pt; font-weight: bold; text-align: center; padding: 12px; }");
+            sb.AppendLine("  .sub-header { background-color: #f1f5f9; color: #334155; font-size: 10pt; text-align: center; padding: 6px; border: 1px solid #cbd5e1; }");
+            sb.AppendLine("  th { background-color: #0f172a; color: #ffffff; font-weight: bold; font-size: 10.5pt; text-align: left; padding: 8px 10px; border: 1px solid #94a3b8; }");
+            sb.AppendLine("  td { font-size: 10pt; padding: 6px 10px; border: 1px solid #cbd5e1; vertical-align: top; }");
+            sb.AppendLine("  .row-even { background-color: #ffffff; }");
+            sb.AppendLine("  .row-odd { background-color: #f8fafc; }");
+            sb.AppendLine("  .text-fmt { mso-number-format: \"\\@\"; }");
+            sb.AppendLine("  .center { text-align: center; }");
+            sb.AppendLine("</style>");
+            sb.AppendLine("</head>");
+            sb.AppendLine("<body>");
+
+            sb.AppendLine("<table>");
+            sb.AppendLine("<tr><td colspan=\"21\" class=\"title-header\">NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION (NWKRTC)</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"21\" class=\"sub-header\"><strong>LABOUR CASE REGISTRY</strong> | Filter: <strong>{WebUtility.HtmlEncode(statusDisplay)}</strong> | Search: <strong>{WebUtility.HtmlEncode(searchDisplay)}</strong> | Exported: <strong>{timestamp}</strong> | Total Records: <strong>{count}</strong></td></tr>");
+            sb.AppendLine("<tr><td colspan=\"21\" style=\"height: 10px;\"></td></tr>");
+
+            sb.AppendLine("<tr>");
+            sb.AppendLine("<th class=\"center\" style=\"width: 45px;\">#</th>");
+            sb.AppendLine("<th>Division</th>");
+            sb.AppendLine("<th>Case Type</th>");
+            sb.AppendLine("<th>Case No / Year</th>");
+            sb.AppendLine("<th>Court Name</th>");
+            sb.AppendLine("<th>CNR Number</th>");
+            sb.AppendLine("<th>Petitioner Name</th>");
+            sb.AppendLine("<th>Employee No</th>");
+            sb.AppendLine("<th>Designation</th>");
+            sb.AppendLine("<th>Corporation WA No / Year</th>");
+            sb.AppendLine("<th>Corporation WA Status</th>");
+            sb.AppendLine("<th>Corporation WP No / Year</th>");
+            sb.AppendLine("<th>Corporation WP Status</th>");
+            sb.AppendLine("<th>Claimant WA / WP</th>");
+            sb.AppendLine("<th>Case Status</th>");
+            sb.AppendLine("<th>Current Stage</th>");
+            sb.AppendLine("<th>Next Hearing Date</th>");
+            sb.AppendLine("<th>Advocate Name</th>");
+            sb.AppendLine("<th>Action Taken / Remarks</th>");
+            sb.AppendLine("<th>Disposal Result</th>");
+            sb.AppendLine("<th>Stay / Compliance</th>");
+            sb.AppendLine("</tr>");
+
+            int slNo = 1;
+            if (cases != null)
+            {
+                foreach (var item in cases)
+                {
+                    string rowClass = (slNo % 2 == 0) ? "row-even" : "row-odd";
+                    string displayNo = !string.IsNullOrEmpty(item.CaseNumber) ? item.CaseNumber : (!string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) ? item.CO_Claimant_CaseNumber : (!string.IsNullOrEmpty(item.CO_WP_CaseNumber) ? item.CO_WP_CaseNumber : "-"));
+                    string displayYr = item.CaseYear > 0 ? item.CaseYear.ToString() : (item.CO_Claimant_CaseYear.HasValue && item.CO_Claimant_CaseYear > 0 ? item.CO_Claimant_CaseYear.Value.ToString() : (item.CO_WP_Year.HasValue && item.CO_WP_Year > 0 ? item.CO_WP_Year.Value.ToString() : "-"));
+                    string displayCourt = !string.IsNullOrEmpty(item.CourtName) ? item.CourtName : (!string.IsNullOrEmpty(item.CO_Claimant_Court) ? item.CO_Claimant_Court : (!string.IsNullOrEmpty(item.CO_WP_HighCourtBench) ? item.CO_WP_HighCourtBench : "-"));
+
+                    string waNo = !string.IsNullOrEmpty(item.CO_WA_CaseNumber) ? $"{item.CO_WA_CaseNumber}/{item.CO_WA_Year?.ToString() ?? "-"}" : (!string.IsNullOrEmpty(item.Arising_CO_WA_CaseNumber) ? $"{item.Arising_CO_WA_CaseNumber}/{item.Arising_CO_WA_Year?.ToString() ?? "-"}" : "-");
+                    string waStatus = !string.IsNullOrEmpty(item.CO_WA_Status) ? item.CO_WA_Status : (!string.IsNullOrEmpty(item.Arising_CO_WA_Status) ? item.Arising_CO_WA_Status : "-");
+
+                    string wpNo = !string.IsNullOrEmpty(item.CO_WP_CaseNumber) ? $"{item.CO_WP_CaseNumber}/{item.CO_WP_Year?.ToString() ?? "-"}" : (!string.IsNullOrEmpty(item.Arising_CO_WP_CaseNumber) ? $"{item.Arising_CO_WP_CaseNumber}/{item.Arising_CO_WP_Year?.ToString() ?? "-"}" : (!string.IsNullOrEmpty(item.CO_Service_WPNumber) ? $"{item.CO_Service_WPNumber}/{item.CO_Service_WPYear?.ToString() ?? "-"}" : "-"));
+                    string wpStatus = !string.IsNullOrEmpty(item.CO_WP_Status) ? item.CO_WP_Status : (!string.IsNullOrEmpty(item.Arising_CO_WP_Status) ? item.Arising_CO_WP_Status : (!string.IsNullOrEmpty(item.CO_Service_Status) ? item.CO_Service_Status : "-"));
+
+                    string claimantDetails = !string.IsNullOrEmpty(item.CO_Claimant_CaseNumber) ? $"{item.CO_Claimant_CaseNumber}/{item.CO_Claimant_CaseYear?.ToString() ?? "-"} ({item.CO_Claimant_CaseStatus ?? "Pending"})" : "-";
+
+                    string hearingDateStr = item.NextHearingDate.HasValue ? item.NextHearingDate.Value.ToString("dd-MMM-yyyy") : "-";
+                    string advocateName = !string.IsNullOrEmpty(item.AdvocateName) ? item.AdvocateName : "-";
+
+                    string stayInfo = (item.CO_WP_StayGranted == true || item.CO_Reinstatement_StayGranted == true || item.CO_Service_StayGranted == true) ? "Stay Granted" : "-";
+
+                    sb.AppendLine($"<tr class=\"{rowClass}\">");
+                    sb.AppendLine($"<td class=\"center\">{slNo++}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.DivisionName ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CaseType ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(displayNo + " / " + displayYr)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(displayCourt)}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(item.CNRNumber ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.PetitionerName ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt center\">{WebUtility.HtmlEncode(item.EmployeeNo ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.Designation ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(waNo)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(waStatus)}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(wpNo)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(wpStatus)}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(claimantDetails)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CaseStatus ?? "Pending")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CurrentStage ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"center\">{WebUtility.HtmlEncode(hearingDateStr)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(advocateName)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CO_ActionTaken ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.DisposalResult ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(stayInfo)}</td>");
+                    sb.AppendLine("</tr>");
+                }
+            }
+
+            sb.AppendLine("</table>");
+            sb.AppendLine("</body>");
+            sb.AppendLine("</html>");
+
+            string cleanStatus = string.IsNullOrEmpty(status) ? "All" : status.Replace(" ", "_");
+            string fileName = $"Labour_Cases_{cleanStatus}_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+            return File(Encoding.UTF8.GetBytes(sb.ToString()), "application/vnd.ms-excel", fileName);
+        }
+
+        private IActionResult ExportArisingCasesToExcel(IEnumerable<ArisingApplication> cases, string status, string search)
+        {
+            var sb = new StringBuilder();
+            string searchDisplay = string.IsNullOrEmpty(search) ? "None" : search;
+            string timestamp = DateTime.Now.ToString("dd-MMM-yyyy hh:mm tt");
+            int count = cases != null ? cases.Count() : 0;
+
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\" xmlns=\"http://www.w3.org/TR/REC-html40\">");
+            sb.AppendLine("<head>");
+            sb.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+            sb.AppendLine("<!--[if gte mso 9]>");
+            sb.AppendLine("<xml>");
+            sb.AppendLine(" <x:ExcelWorkbook>");
+            sb.AppendLine("  <x:ExcelWorksheets>");
+            sb.AppendLine("   <x:ExcelWorksheet>");
+            sb.AppendLine("    <x:Name>Arising Applications</x:Name>");
+            sb.AppendLine("    <x:WorksheetOptions>");
+            sb.AppendLine("      <x:DisplayGridlines/>");
+            sb.AppendLine("    </x:WorksheetOptions>");
+            sb.AppendLine("   </x:ExcelWorksheet>");
+            sb.AppendLine("  </x:ExcelWorksheets>");
+            sb.AppendLine(" </x:ExcelWorkbook>");
+            sb.AppendLine("</xml>");
+            sb.AppendLine("<![endif]-->");
+            sb.AppendLine("<style>");
+            sb.AppendLine("  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; }");
+            sb.AppendLine("  table { border-collapse: collapse; width: 100%; }");
+            sb.AppendLine("  .title-header { background-color: #d97706; color: #ffffff; font-size: 14pt; font-weight: bold; text-align: center; padding: 12px; }");
+            sb.AppendLine("  .sub-header { background-color: #f1f5f9; color: #334155; font-size: 10pt; text-align: center; padding: 6px; border: 1px solid #cbd5e1; }");
+            sb.AppendLine("  th { background-color: #0f172a; color: #ffffff; font-weight: bold; font-size: 10.5pt; text-align: left; padding: 8px 10px; border: 1px solid #94a3b8; }");
+            sb.AppendLine("  td { font-size: 10pt; padding: 6px 10px; border: 1px solid #cbd5e1; vertical-align: top; }");
+            sb.AppendLine("  .row-even { background-color: #ffffff; }");
+            sb.AppendLine("  .row-odd { background-color: #f8fafc; }");
+            sb.AppendLine("  .text-fmt { mso-number-format: \"\\@\"; }");
+            sb.AppendLine("  .center { text-align: center; }");
+            sb.AppendLine("</style>");
+            sb.AppendLine("</head>");
+            sb.AppendLine("<body>");
+
+            sb.AppendLine("<table>");
+            sb.AppendLine("<tr><td colspan=\"12\" class=\"title-header\">NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION (NWKRTC)</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"12\" class=\"sub-header\"><strong>LABOUR ARISING APPLICATIONS</strong> | Search: <strong>{WebUtility.HtmlEncode(searchDisplay)}</strong> | Exported: <strong>{timestamp}</strong> | Total Records: <strong>{count}</strong></td></tr>");
+            sb.AppendLine("<tr><td colspan=\"12\" style=\"height: 10px;\"></td></tr>");
+
+            sb.AppendLine("<tr>");
+            sb.AppendLine("<th class=\"center\" style=\"width: 45px;\">#</th>");
+            sb.AppendLine("<th>Division</th>");
+            sb.AppendLine("<th>Arising App No / Year</th>");
+            sb.AppendLine("<th>Court Name</th>");
+            sb.AppendLine("<th>CNR Number</th>");
+            sb.AppendLine("<th>Petitioner Name</th>");
+            sb.AppendLine("<th>Linked Original Case No / Year</th>");
+            sb.AppendLine("<th>Original Court Name</th>");
+            sb.AppendLine("<th>Case Status</th>");
+            sb.AppendLine("<th>Current Stage</th>");
+            sb.AppendLine("<th>Next Hearing Date</th>");
+            sb.AppendLine("<th>Documents / Objections</th>");
+            sb.AppendLine("</tr>");
+
+            int slNo = 1;
+            if (cases != null)
+            {
+                foreach (var item in cases)
+                {
+                    string rowClass = (slNo % 2 == 0) ? "row-even" : "row-odd";
+                    string hearingDateStr = item.NextHearingDate.HasValue ? item.NextHearingDate.Value.ToString("dd-MMM-yyyy") : "-";
+                    string parentCase = !string.IsNullOrEmpty(item.Parent_CaseNumber) ? $"{item.Parent_CaseNumber} / {item.Parent_CaseYear?.ToString() ?? "-"}" : "-";
+                    string docObj = $"{(item.IsDocumentSent ? "Doc Sent; " : "")}{(item.IsObjectionFiled ? "Objection Filed" : "")}".Trim();
+                    if (string.IsNullOrEmpty(docObj)) docObj = "-";
+
+                    sb.AppendLine($"<tr class=\"{rowClass}\">");
+                    sb.AppendLine($"<td class=\"center\">{slNo++}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.DivisionName ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(item.CaseNumber + " / " + (item.CaseYear?.ToString() ?? "-"))}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CourtName ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(item.CNRNumber ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.PetitionerName ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"text-fmt\">{WebUtility.HtmlEncode(parentCase)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.Parent_CourtName ?? "-")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CaseStatus ?? "Pending")}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(item.CurrentStage ?? "-")}</td>");
+                    sb.AppendLine($"<td class=\"center\">{WebUtility.HtmlEncode(hearingDateStr)}</td>");
+                    sb.AppendLine($"<td>{WebUtility.HtmlEncode(docObj)}</td>");
+                    sb.AppendLine("</tr>");
+                }
+            }
+
+            sb.AppendLine("</table>");
+            sb.AppendLine("</body>");
+            sb.AppendLine("</html>");
+
+            string fileName = $"Labour_Arising_Applications_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+            return File(Encoding.UTF8.GetBytes(sb.ToString()), "application/vnd.ms-excel", fileName);
         }
 
         [HttpGet]

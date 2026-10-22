@@ -105,9 +105,40 @@
 
     <!-- Results Table -->
     <div class="table-card mb-4">
-        <div class="table-card-header">
-            <div class="registry-title"><i class="bi bi-folder2-open"></i> Labour Case Registry</div>
-            <div class="text-secondary small fw-bold">Records Found: @Model.Count()</div>
+        <div class="table-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3">
+                <div class="registry-title"><i class="bi bi-folder2-open"></i> Labour Case Registry</div>
+                <span class="badge bg-light text-secondary border fw-semibold">Records Found: @Model.Count()</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="btn-group shadow-sm">
+                    <a href="@Url.Action("ExportToExcel", "Labour", new { search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })" 
+                       class="btn btn-sm btn-success fw-semibold d-flex align-items-center gap-1 px-3 py-1"
+                       title="Export all records matching current filters to Excel (.xls)">
+                        <i class="bi bi-file-earmark-excel-fill"></i>
+                        <span>Export to Excel</span>
+                    </a>
+                    <button type="button" class="btn btn-sm btn-success dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-expanded="false" title="Export options">
+                        <span class="visually-hidden">Toggle Dropdown</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0" style="font-size: 0.85rem;">
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center gap-2" 
+                               href="@Url.Action("ExportToExcel", "Labour", new { search = ViewBag.CurrentSearch, status = ViewBag.CurrentStatus })">
+                                <i class="bi bi-file-earmark-spreadsheet-fill text-success"></i>
+                                <span>Export Filtered Cases (All Records)</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center gap-2" 
+                               href="javascript:void(0)" onclick="exportVisibleTableToExcel()">
+                                <i class="bi bi-table text-primary"></i>
+                                <span>Export Visible Table (Current Page)</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -779,6 +810,46 @@
                         });
                 });
             });
+
+            window.exportVisibleTableToExcel = function () {
+                var table = document.getElementById("casesTable");
+                if (!table) return;
+
+                var clone = table.cloneNode(true);
+                // Remove the last column ('Actions') from all rows
+                for (var i = 0; i < clone.rows.length; i++) {
+                    var row = clone.rows[i];
+                    if (row.cells.length > 0) {
+                        row.deleteCell(row.cells.length - 1);
+                    }
+                }
+
+                var msoText = "mso-number-format: '\\" + String.fromCharCode(64) + "';";
+                var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">' +
+                    '<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8">' +
+                    '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>' +
+                    '<x:Name>Visible Cases</x:Name>' +
+                    '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>' +
+                    '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->' +
+                    '<style>' +
+                    'body { font-family: Calibri, Arial, sans-serif; }' +
+                    'table { border-collapse: collapse; width: 100%; }' +
+                    'th { background-color: #1e3a8a; color: #ffffff; padding: 8px 10px; border: 1px solid #cbd5e1; font-weight: bold; }' +
+                    'td { padding: 6px 10px; border: 1px solid #cbd5e1; font-size: 10pt; vertical-align: top; }' +
+                    '.font-monospace, .data-id { ' + msoText + ' }' +
+                    '</style></head><body>' +
+                    '<table>' + clone.innerHTML + '</table></body></html>';
+
+                var blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'Labour_Cases_Visible_Page_' + new Date().toISOString().slice(0, 10) + '.xls';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
         </script>
     }
 }
