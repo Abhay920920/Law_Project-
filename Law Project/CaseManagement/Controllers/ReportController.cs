@@ -140,14 +140,14 @@ namespace MVCCaseManagement.Controllers
                                     d.DivisionID,
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate < @StartDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                             AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) >= @StartDate)
                                         THEN 1 ELSE 0 END) as BeginningPending,
                                         
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
                                             OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                         THEN 1 ELSE 0 END) as EntrustedCount,
                                         
                                     SUM(CASE WHEN 
@@ -174,7 +174,7 @@ namespace MVCCaseManagement.Controllers
 
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
                                             AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) > @EndDate)
                                         THEN 1 ELSE 0 END) as EndingPending
                                 FROM DIVISION_MASTER d
@@ -199,14 +199,14 @@ namespace MVCCaseManagement.Controllers
                                     d.DivisionID,
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate < @StartDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                             AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) >= @StartDate)
                                         THEN 1 ELSE 0 END) as BeginningPending,
                                         
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
                                             OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                         THEN 1 ELSE 0 END) as EntrustedCount,
                                         
                                     SUM(CASE WHEN 
@@ -233,7 +233,7 @@ namespace MVCCaseManagement.Controllers
 
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
-                                            AND (c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
+                                            AND (c.CaseStatus = 'Pending' OR c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
                                             AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) > @EndDate)
                                         THEN 1 ELSE 0 END) as EndingPending
                                 FROM DIVISION_MASTER d
