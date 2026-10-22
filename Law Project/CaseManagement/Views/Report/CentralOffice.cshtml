@@ -90,7 +90,11 @@
     }
 
     /* Fixed 145px Width For Corporation Total Column */
-    .total-col {
+    .total-col,
+    .statement-table th.total-col,
+    .statement-table td.total-col,
+    .statement-table td.total-col.amount-cell,
+    .total-col.amount-cell {
         background-color: #e9ecef !important;
         font-weight: 700 !important;
         text-align: center !important;
@@ -111,6 +115,13 @@
         font-size: 0.74rem !important;
         letter-spacing: -0.2px !important;
         font-weight: 600 !important;
+    }
+
+    /* Ensure all cells in total column remain strictly centered */
+    .total-col.amount-cell,
+    .statement-table td.total-col.amount-cell {
+        text-align: center !important;
+        padding-right: 8px !important;
     }
 
     .category-header {
@@ -1000,7 +1011,7 @@ else
                                         @(isGratuity ? $"₹ {div.GratuityAmountDue:N2}" : div.AccountsPendingCasesCount.ToString())
                                     </td>
                                 }
-                                <td class="total-col text-dark @(isGratuity ? "amount-cell" : "")" style="font-size:0.75rem;">
+                                <td class="total-col text-dark @(isGratuity ? "amount-cell" : "") text-center" style="font-size:0.75rem; text-align: center !important;">
                                     @(isGratuity ? $"₹ {Model.Divisions.Sum(d => d.GratuityAmountDue):N2}" : Model.Divisions.Sum(d => d.AccountsPendingCasesCount).ToString())
                                 </td>
                             </tr>
@@ -1076,7 +1087,7 @@ else
                                 {
                                     <td class="amount-cell" style="font-size:0.73rem;">₹ @div.CompensationPaidAmount.ToString("N2")</td>
                                 }
-                                <td class="total-col amount-cell" style="font-size:0.75rem;">₹ @Model.Divisions.Sum(d => d.CompensationPaidAmount).ToString("N2")</td>
+                                <td class="total-col amount-cell text-center" style="font-size:0.75rem; text-align: center !important;">₹ @Model.Divisions.Sum(d => d.CompensationPaidAmount).ToString("N2")</td>
                             </tr>
 
                             <!-- 8. No. of cases Compensation paid -->
@@ -1096,7 +1107,7 @@ else
                                 {
                                     <td class="text-dark amount-cell" style="font-size:0.73rem;">₹ @div.OutstandingBalanceAmount.ToString("N2")</td>
                                 }
-                                <td class="total-col text-dark amount-cell" style="font-size:0.75rem;">₹ @Model.Divisions.Sum(d => d.OutstandingBalanceAmount).ToString("N2")</td>
+                                <td class="total-col text-dark amount-cell text-center" style="font-size:0.75rem; text-align: center !important;">₹ @Model.Divisions.Sum(d => d.OutstandingBalanceAmount).ToString("N2")</td>
                             </tr>
                         }
                         </tbody>
