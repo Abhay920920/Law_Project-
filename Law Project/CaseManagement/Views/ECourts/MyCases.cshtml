@@ -418,7 +418,7 @@
                         <th style="min-width: 150px;">Case No & Type</th>
                         <th style="min-width: 190px;">Court Hall & Bench</th>
                         <th style="min-width: 220px; max-width: 280px;">Parties (Petitioner vs Respondent)</th>
-                        <th style="min-width: 220px;">Hearing Date &amp; Daily Proceedings Analysis</th>
+                        <th style="min-width: 160px;">Next Hearing / Stage</th>
                         <th style="min-width: 110px;">Status</th>
                         <th style="min-width: 130px;">Last Synced</th>
                         <th style="min-width: 210px;" class="text-end pe-4">Actions</th>
@@ -1681,28 +1681,6 @@
                 </div>`;
         }
 
-        // Last Concluded Hearing & Daily Proceeding Summary
-        let lastProceedingDisplay = "";
-        if (c.lastHearingDate) {
-            const lDt = new Date(c.lastHearingDate);
-            const lDtStr = !isNaN(lDt.getTime()) ? lDt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short' }) : c.lastHearingDate;
-            const procText = c.lastProceeding || "Hearing Concluded";
-            lastProceedingDisplay = `
-                <div class="mt-1 pt-1 border-top border-light-subtle extra-small text-muted text-truncate" style="max-width: 200px;" title="Last Listing: ${escapeHtml(c.lastHearingDate)} — ${escapeHtml(procText)}">
-                    <i class="bi bi-clock-history text-secondary me-1"></i><span class="fw-semibold text-dark">${lDtStr}:</span> ${escapeHtml(procText)}
-                </div>`;
-        }
-
-        // Proceedings count pill and quick modal trigger
-        const totalH = c.totalHearings || 0;
-        const hearingsPill = `
-            <div class="mt-1 d-flex align-items-center gap-1.5 flex-wrap">
-                <button type="button" class="btn btn-xs btn-outline-info py-0 px-2 extra-small rounded-pill shadow-xs" onclick="openDailyProceedingsModal(${c.trackedID})" title="View Complete Daily Proceedings Timeline & Verbatim Orders">
-                    <i class="bi bi-journal-text me-1"></i>${totalH} Hearing${totalH === 1 ? '' : 's'}
-                </button>
-                ${c.avgDaysBetweenHearings ? `<span class="badge bg-light text-muted border extra-small" title="Average interval between court hearings">~${c.avgDaysBetweenHearings}d avg</span>` : ''}
-            </div>`;
-
         // Last synced formatting
         let syncedStr = "—";
         if (c.lastSyncedAt) {
@@ -1764,8 +1742,6 @@
             </td>
             <td>
                 ${hearingDisplay}
-                ${lastProceedingDisplay}
-                ${hearingsPill}
             </td>
             <td>
                 ${statusBadge}
