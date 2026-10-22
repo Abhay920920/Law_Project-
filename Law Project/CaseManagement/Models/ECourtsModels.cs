@@ -92,6 +92,19 @@ namespace MVCCaseManagement.Models
         public string? BenchName { get; set; }
         public string? CauseListType { get; set; }
         public string? ItemNo { get; set; }
+
+        // Daily Proceedings & Hearing Date Analysis properties
+        public string? FirstHearingDate { get; set; }
+        public string? LastHearingDate { get; set; }
+        public string? LastProceeding { get; set; }
+        public string? LastHearingJudge { get; set; }
+        public int TotalHearings { get; set; }
+        public int? DaysToNextHearing { get; set; }
+        public int? DaysSinceLastHearing { get; set; }
+        public double? AvgDaysBetweenHearings { get; set; }
+        public string? HearingUrgency { get; set; } // TODAY, TOMORROW, THIS_WEEK, THIS_MONTH, OVERDUE, UPCOMING, UNSCHEDULED, DISPOSED
+        public string? HearingAnalysisSummary { get; set; }
+        public List<Dictionary<string, string?>>? ProceedingsHistory { get; set; }
     }
 
     public class DailyCauseListHeaderModel

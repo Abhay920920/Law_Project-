@@ -1751,6 +1751,7 @@ namespace MVCCaseManagement.Controllers
                     }
 
                     c.CourtNo = FormatCourtHall(c.CourtNo, c.JudgeDesignation, c.EstCode);
+                    PopulateHearingAnalysisAndProceedings(c, DateTime.Today);
                 }
 
                 return Json(new { success = true, data = cases });
@@ -2063,6 +2064,295 @@ namespace MVCCaseManagement.Controllers
             {
                 return Json(new { success = false, message = ex.Message });
             }
+        }
+
+        // ==========================================
+        // DAILY PROCEEDINGS & HEARING DATE ANALYSIS
+        // ==========================================
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCaseProceedings(int trackedId)
+        {
+            if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                var record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy, RawJson
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE TrackedID = @trackedId", new { trackedId });
+
+                if (record == null) return Json(new { success = false, message = "Case record not found" });
+
+                if (string.IsNullOrWhiteSpace(record.RawJson))
+                {
+                    string norm = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
+                    string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+                    await FetchAndSaveTrackedCnrAsync(record.CNRNumber, norm, userName);
+                    record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                               NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                               LastSyncedAt, CreatedDate, AddedBy, RawJson
+                        FROM admin_Law.ECOURTS_TRACKED_CASES
+                        WHERE TrackedID = @trackedId", new { trackedId });
+                }
+
+                if (record != null)
+                {
+                    record.CaseTypeCode = ResolveCaseType(record.CaseTypeCode, record.CaseNumber, record.CNRNumber, record.RelatedModule ?? "MVC");
+                    record.CourtNo = FormatCourtHall(record.CourtNo, record.JudgeDesignation, record.EstCode);
+                    PopulateHearingAnalysisAndProceedings(record, DateTime.Today);
+                    return Json(new { success = true, data = record });
+                }
+
+                return Json(new { success = false, message = "No proceedings data available." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting proceedings for trackedId {ID}", trackedId);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> FetchLiveHearingProceeding(string cnrNumber, string hearingDate, bool isHighCourt = false, string module = "MVC")
+        {
+            if (string.IsNullOrWhiteSpace(cnrNumber) || string.IsNullOrWhiteSpace(hearingDate))
+            {
+                return Json(new { success = false, message = "CNR Number and Hearing Date are required." });
+            }
+
+            string clean = cnrNumber.Trim().ToUpperInvariant();
+            if (!isHighCourt && (clean.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || clean.Contains("HC")))
+            {
+                isHighCourt = true;
+            }
+
+            string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(module) ? "MVC" : module);
+
+            try
+            {
+                var result = await _napixService.GetCaseBusinessAsync(clean, hearingDate, isHighCourt, effectiveModule);
+                if (result.HasValue && IsValidJsonData(result))
+                {
+                    return Json(new { success = true, data = result.Value, cnr = clean, date = hearingDate });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Live NAPIX GetCaseBusiness failed for CNR {CNR} on date {Date}", clean, hearingDate);
+            }
+
+            var lastErr = _napixService.GetLastModuleError(effectiveModule);
+            return Json(new { 
+                success = false, 
+                message = !string.IsNullOrWhiteSpace(lastErr) 
+                    ? $"eCourts NAPIX: {lastErr}" 
+                    : $"No verbatim proceedings recorded on eCourts NJDG for {hearingDate}.",
+                cnr = clean,
+                date = hearingDate
+            });
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> SyncAllTrackedProceedings([FromBody] AddTrackedCnrsRequest? req)
+        {
+            string mod = req?.Module ?? "MVC";
+            string norm = NapixQuotaService.NormalizeModule(mod);
+            string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                var cnrs = (await conn.QueryAsync<string>(@"
+                    SELECT CNRNumber 
+                    FROM admin_Law.ECOURTS_TRACKED_CASES 
+                    WHERE RelatedModule = @norm
+                    ORDER BY TrackedID DESC", new { norm })).ToList();
+
+                int synced = 0;
+                int failed = 0;
+                foreach (var cnr in cnrs)
+                {
+                    try
+                    {
+                        var res = await FetchAndSaveTrackedCnrAsync(cnr, norm, userName);
+                        if (res.success) synced++;
+                        else failed++;
+                    }
+                    catch
+                    {
+                        failed++;
+                    }
+                }
+
+                return Json(new { 
+                    success = true, 
+                    message = $"Successfully synced proceedings for {synced} case(s)." + (failed > 0 ? $" ({failed} failed or rate-limited)" : ""),
+                    syncedCount = synced,
+                    failedCount = failed
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error syncing all tracked proceedings for module {Module}", norm);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        public static void PopulateHearingAnalysisAndProceedings(MVCCaseManagement.Models.TrackedCaseModel c, DateTime today)
+        {
+            if (string.IsNullOrWhiteSpace(c.RawJson)) return;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(c.RawJson);
+                var root = doc.RootElement;
+                
+                List<Dictionary<string, string?>> rawHistory = null;
+                if (root.TryGetProperty("history", out var hArr) && hArr.ValueKind == JsonValueKind.Array)
+                {
+                    rawHistory = new List<Dictionary<string, string?>>();
+                    foreach (var item in hArr.EnumerateArray())
+                    {
+                        if (item.ValueKind == JsonValueKind.Object)
+                        {
+                            var dict = new Dictionary<string, string?>();
+                            foreach (var prop in item.EnumerateObject())
+                            {
+                                dict[prop.Name] = prop.Value.ValueKind == JsonValueKind.String 
+                                    ? prop.Value.GetString() 
+                                    : prop.Value.ToString();
+                            }
+                            rawHistory.Add(dict);
+                        }
+                    }
+                }
+                else
+                {
+                    rawHistory = ExtractHistoryArray(root);
+                }
+
+                if (rawHistory != null && rawHistory.Count > 0)
+                {
+                    c.TotalHearings = rawHistory.Count;
+
+                    var parsedHearings = new List<(DateTime? Date, Dictionary<string, string?> Row)>();
+                    foreach (var h in rawHistory)
+                    {
+                        string? dtStr = h.GetValueOrDefault("hearing_date") ?? 
+                                        h.GetValueOrDefault("business_date") ?? 
+                                        h.GetValueOrDefault("next_date");
+
+                        DateTime? dt = null;
+                        if (!string.IsNullOrWhiteSpace(dtStr) && TryParseFlexibleDate(dtStr, out var pDt) && !IsCisSentinelDate(pDt))
+                        {
+                            dt = pDt;
+                        }
+                        parsedHearings.Add((dt, h));
+                    }
+
+                    var withDates = parsedHearings.Where(p => p.Date.HasValue).OrderBy(p => p.Date.Value).ToList();
+                    if (withDates.Count > 0)
+                    {
+                        c.FirstHearingDate = withDates.First().Date.Value.ToString("yyyy-MM-dd");
+                        
+                        var pastListings = withDates.Where(p => p.Date.Value.Date <= today.Date).ToList();
+                        if (pastListings.Count > 0)
+                        {
+                            var latestPast = pastListings.Last();
+                            c.LastHearingDate = latestPast.Date.Value.ToString("yyyy-MM-dd");
+                            c.LastProceeding = latestPast.Row.GetValueOrDefault("business") ?? 
+                                               latestPast.Row.GetValueOrDefault("purpose_of_listing") ?? 
+                                               latestPast.Row.GetValueOrDefault("next_purpose");
+                            c.LastHearingJudge = latestPast.Row.GetValueOrDefault("judge") ?? 
+                                                 latestPast.Row.GetValueOrDefault("judge_name");
+                            c.DaysSinceLastHearing = (int)(today.Date - latestPast.Date.Value.Date).TotalDays;
+                        }
+                        else
+                        {
+                            var firstPast = withDates.First();
+                            c.LastHearingDate = firstPast.Date.Value.ToString("yyyy-MM-dd");
+                            c.LastProceeding = firstPast.Row.GetValueOrDefault("business") ?? firstPast.Row.GetValueOrDefault("purpose_of_listing");
+                        }
+
+                        if (withDates.Count >= 2)
+                        {
+                            double span = (withDates.Last().Date.Value - withDates.First().Date.Value).TotalDays;
+                            c.AvgDaysBetweenHearings = Math.Round(span / (withDates.Count - 1), 1);
+                        }
+                    }
+
+                    c.ProceedingsHistory = rawHistory.OrderByDescending(h => {
+                        string? s = h.GetValueOrDefault("hearing_date") ?? h.GetValueOrDefault("business_date") ?? h.GetValueOrDefault("next_date");
+                        if (!string.IsNullOrWhiteSpace(s) && TryParseFlexibleDate(s, out var d)) return d;
+                        return DateTime.MinValue;
+                    }).ToList();
+                }
+
+                bool isDisposed = (c.CaseStatus ?? "").IndexOf("dispos", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                  (c.CaseStatus ?? "").IndexOf("dismiss", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                  (c.CaseStatus ?? "").IndexOf("allowed", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (isDisposed)
+                {
+                    c.HearingUrgency = "DISPOSED";
+                    c.HearingAnalysisSummary = $"{c.TotalHearings} hearing(s) concluded • Case Disposed";
+                }
+                else if (c.NextHearingDate.HasValue && !IsCisSentinelDate(c.NextHearingDate.Value))
+                {
+                    int diffDays = (int)(c.NextHearingDate.Value.Date - today.Date).TotalDays;
+                    c.DaysToNextHearing = diffDays;
+
+                    if (diffDays == 0)
+                    {
+                        c.HearingUrgency = "TODAY";
+                        c.HearingAnalysisSummary = $"🔥 LISTED TODAY • Stage: {c.StagePurpose ?? "Hearing"}";
+                    }
+                    else if (diffDays == 1)
+                    {
+                        c.HearingUrgency = "TOMORROW";
+                        c.HearingAnalysisSummary = $"⚡ Listed Tomorrow • Stage: {c.StagePurpose ?? "Hearing"}";
+                    }
+                    else if (diffDays > 1 && diffDays <= 7)
+                    {
+                        c.HearingUrgency = "THIS_WEEK";
+                        c.HearingAnalysisSummary = $"Listed in {diffDays} days ({c.NextHearingDate.Value:dd MMM yyyy}) • Stage: {c.StagePurpose ?? "Hearing"}";
+                    }
+                    else if (diffDays > 7 && diffDays <= 30)
+                    {
+                        c.HearingUrgency = "THIS_MONTH";
+                        c.HearingAnalysisSummary = $"Upcoming on {c.NextHearingDate.Value:dd MMM yyyy} ({diffDays} days away)";
+                    }
+                    else if (diffDays < 0)
+                    {
+                        c.HearingUrgency = "OVERDUE";
+                        c.HearingAnalysisSummary = $"⚠️ Overdue by {Math.Abs(diffDays)} days (was {c.NextHearingDate.Value:dd MMM yyyy}) • Awaiting updated board noting";
+                    }
+                    else
+                    {
+                        c.HearingUrgency = "UPCOMING";
+                        c.HearingAnalysisSummary = $"Listed on {c.NextHearingDate.Value:dd MMM yyyy}";
+                    }
+                }
+                else
+                {
+                    c.HearingUrgency = "UNSCHEDULED";
+                    c.HearingAnalysisSummary = c.TotalHearings > 0 
+                        ? $"{c.TotalHearings} hearing(s) on record • Next date awaited from registry" 
+                        : "Initial listing date awaited";
+                }
+            }
+            catch { }
         }
 
         // ==========================================

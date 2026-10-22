@@ -87,6 +87,10 @@
                 <i class="bi bi-plus-circle-fill"></i>
                 <span>Add CNR Cases</span>
             </button>
+            <button type="button" class="btn btn-info btn-sm shadow-sm px-3 py-2 d-flex align-items-center gap-2 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
+                <i class="bi bi-journal-check"></i>
+                <span class="d-none d-sm-inline">Sync All Proceedings</span>
+            </button>
             <button type="button" class="btn btn-danger btn-sm shadow-sm px-3 py-2 d-flex align-items-center gap-2 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
                 <i class="bi bi-broadcast"></i>
                 <span class="d-none d-sm-inline">Check Live Cause Lists</span>
@@ -414,10 +418,10 @@
                         <th style="min-width: 150px;">Case No & Type</th>
                         <th style="min-width: 190px;">Court Hall & Bench</th>
                         <th style="min-width: 220px; max-width: 280px;">Parties (Petitioner vs Respondent)</th>
-                        <th style="min-width: 160px;">Next Hearing / Stage</th>
+                        <th style="min-width: 220px;">Hearing Date &amp; Daily Proceedings Analysis</th>
                         <th style="min-width: 110px;">Status</th>
                         <th style="min-width: 130px;">Last Synced</th>
-                        <th style="min-width: 180px;" class="text-end pe-4">Actions</th>
+                        <th style="min-width: 210px;" class="text-end pe-4">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="myCasesTbody">
@@ -1045,6 +1049,151 @@
     </div>
 </div>
 
+<!-- ======================================================== -->
+<!-- MODAL: Daily Proceedings & Hearing Date Analysis         -->
+<!-- ======================================================== -->
+<div class="modal fade" id="dailyProceedingsModal" tabindex="-1" aria-labelledby="dailyProceedingsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <!-- Modal Header -->
+            <div class="modal-header bg-dark text-white p-3 p-md-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                        <span class="badge bg-warning text-dark font-monospace fw-bold" id="dpModalCaseType">-</span>
+                        <span class="badge bg-primary font-monospace" id="dpModalCnr">-</span>
+                        <span class="badge bg-secondary font-monospace" id="dpModalCourtHall">-</span>
+                        <span class="badge bg-success" id="dpModalStatus">-</span>
+                    </div>
+                    <h5 class="modal-title fw-bold text-white mb-0" id="dpModalTitle">
+                        <i class="bi bi-journal-text me-2 text-warning"></i>Daily Proceedings &amp; Hearing Date Analysis
+                    </h5>
+                    <div class="text-light text-opacity-75 small mt-1" id="dpModalParties">
+                        Petitioner vs Respondent
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="printProceedingsModal()" title="Print Proceedings History">
+                        <i class="bi bi-printer me-1"></i>Print
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="copyAllProceedingsText()" title="Copy all proceedings to clipboard">
+                        <i class="bi bi-clipboard me-1"></i>Copy
+                    </button>
+                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body p-3 p-md-4 bg-light">
+                <!-- Hearing Date Analysis KPI Cards -->
+                <div class="row g-3 mb-4">
+                    <div class="col-sm-6 col-xl-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 border-start border-4 border-primary">
+                            <span class="text-muted extra-small text-uppercase fw-bold">Next Scheduled Hearing</span>
+                            <div class="fw-bold fs-5 text-primary mt-1" id="dpMetricNextDate">—</div>
+                            <div class="extra-small text-dark fw-semibold mt-0.5 text-truncate" id="dpMetricNextStage">—</div>
+                            <div class="mt-1" id="dpMetricUrgencyBadge"></div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-xl-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 border-start border-4 border-info">
+                            <span class="text-muted extra-small text-uppercase fw-bold">Last Concluded Listing</span>
+                            <div class="fw-bold fs-5 text-dark mt-1" id="dpMetricLastDate">—</div>
+                            <div class="extra-small text-muted mt-0.5 text-truncate" id="dpMetricLastJudge">—</div>
+                            <div class="extra-small text-primary fw-semibold mt-1" id="dpMetricDaysSince">—</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-xl-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 border-start border-4 border-warning">
+                            <span class="text-muted extra-small text-uppercase fw-bold">Hearing Velocity &amp; Count</span>
+                            <div class="fw-bold fs-5 text-warning mb-0 mt-1" id="dpMetricTotalHearings">0</div>
+                            <div class="extra-small text-muted mt-0.5" id="dpMetricAvgInterval">Avg interval: —</div>
+                            <div class="extra-small text-secondary mt-1" id="dpMetricFirstDate">First listed: —</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-6 col-xl-3">
+                        <div class="card border-0 shadow-sm rounded-3 p-3 bg-white h-100 border-start border-4 border-success">
+                            <span class="text-muted extra-small text-uppercase fw-bold">Assigned Desk / Court</span>
+                            <div class="fw-bold small text-dark mt-1 text-truncate" id="dpMetricWorker">—</div>
+                            <div class="extra-small text-muted text-truncate mt-0.5" id="dpMetricEstName">—</div>
+                            <div class="extra-small text-success fw-bold mt-1" id="dpMetricSyncedAt">Synced recently</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live NAPIX Fetch Section (Roznama Verbatim) -->
+                <div id="dpLiveRoznamaSection" class="card border-0 shadow-sm rounded-3 mb-4 bg-white d-none">
+                    <div class="card-header bg-primary text-white py-2.5 px-3 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-broadcast fs-5 text-warning"></i>
+                            <div>
+                                <strong class="small">Live e-Courts NAPIX Verbatim Proceeding (Roznama)</strong>
+                                <span class="badge bg-warning text-dark extra-small ms-2" id="dpLiveBadge">Live NAPIX Gateway</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1 extra-small" onclick="closeLiveRoznamaBox()">
+                            <i class="bi bi-x-lg"></i> Close Box
+                        </button>
+                    </div>
+                    <div class="card-body p-3 bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small fw-bold text-dark" id="dpLiveHearingDateLabel">Hearing Date: —</span>
+                            <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1 extra-small" onclick="copyLiveRoznamaText()">
+                                <i class="bi bi-clipboard me-1"></i>Copy Verbatim Order
+                            </button>
+                        </div>
+                        <div id="dpLiveRoznamaText" class="p-3 border rounded-3 bg-light text-dark font-monospace" style="white-space: pre-wrap; max-height: 250px; overflow-y: auto; font-size: 13px; line-height: 1.6;">
+                            Querying live e-Courts NAPIX Gateway...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Proceedings History & Timeline Table -->
+                <div class="card border-0 shadow-sm rounded-3 bg-white overflow-hidden">
+                    <div class="card-header bg-white py-3 px-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <i class="bi bi-calendar-range-fill text-primary"></i>
+                            <h6 class="fw-bold mb-0 text-dark">Chronological Daily Proceedings Timeline (<span id="dpTableCount">0</span> Hearings)</h6>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 extra-small shadow-xs" onclick="syncCurrentCaseProceedings()" id="btnSyncCurrentProceedings">
+                                <i class="bi bi-arrow-clockwise me-1"></i>Sync Case Live
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-responsive" style="max-height: 480px;">
+                        <table class="table table-hover align-middle mb-0 small" id="dpProceedingsTable">
+                            <thead class="bg-light sticky-top text-uppercase extra-small text-muted">
+                                <tr>
+                                    <th style="width: 45px;" class="ps-3">#</th>
+                                    <th style="min-width: 110px;">Hearing Date</th>
+                                    <th style="min-width: 110px;">Business Date</th>
+                                    <th style="min-width: 170px;">Purpose / Stage</th>
+                                    <th style="min-width: 110px;">Next Date</th>
+                                    <th style="min-width: 150px;">Next Purpose</th>
+                                    <th style="min-width: 160px;">Judge / Coram</th>
+                                    <th style="min-width: 220px;">Daily Proceeding / Roznama</th>
+                                    <th style="min-width: 120px;" class="text-end pe-3">Live Fetch</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dpProceedingsTbody">
+                                <tr><td colspan="9" class="text-center py-5 text-muted">Loading proceedings history...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer bg-white p-3 d-flex justify-content-between">
+                <div class="extra-small text-muted">
+                    <i class="bi bi-shield-check text-success me-1"></i> Verified against official e-Courts NAPIX &amp; NJDG Gateway
+                </div>
+                <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;" id="myCasesToastContainer"></div>
 
@@ -1054,6 +1203,21 @@
     let allCasesData = [];
     let currentDossierTrackedId = null;
     let currentDossierObject = null;
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    function escapeJs(str) {
+        if (str === null || str === undefined) return "";
+        return String(str).replace(/'/g, "\\'").replace(/"/g, '\\"');
+    }
 
     function getDisplayCaseType(c) {
         if (!c) return "—";
@@ -1477,14 +1641,18 @@
 
         const todayStr = new Date().toISOString().split('T')[0];
 
-        // Next hearing date formatting
-        let hearingDisplay = `
-            <div class="fw-semibold text-secondary">
-                <i class="bi bi-hourglass-split me-1"></i>Date Awaited
-            </div>
-            <div class="extra-small text-muted text-truncate" style="max-width: 150px;" title="${escapeHtml(c.stagePurpose || "—")}">
-                ${escapeHtml(c.stagePurpose || "—")}
-            </div>`;
+        // Next Hearing Date & Urgency Analysis formatting
+        let hearingDisplay = "";
+        let urgencyBadge = "";
+        if (c.hearingUrgency === "TODAY") {
+            urgencyBadge = `<span class="badge bg-danger text-white extra-small px-1.5 py-0.5"><i class="bi bi-fire me-0.5"></i>TODAY</span>`;
+        } else if (c.hearingUrgency === "TOMORROW") {
+            urgencyBadge = `<span class="badge bg-warning text-dark extra-small px-1.5 py-0.5"><i class="bi bi-lightning-fill me-0.5"></i>TOMORROW</span>`;
+        } else if (c.hearingUrgency === "THIS_WEEK") {
+            urgencyBadge = `<span class="badge bg-primary-subtle text-primary border border-primary extra-small px-1.5 py-0.5">${c.daysToNextHearing}d left</span>`;
+        } else if (c.hearingUrgency === "OVERDUE") {
+            urgencyBadge = `<span class="badge bg-danger-subtle text-danger border border-danger extra-small px-1.5 py-0.5">${Math.abs(c.daysToNextHearing)}d overdue</span>`;
+        }
 
         if (c.nextHearingDate) {
             const dt = new Date(c.nextHearingDate);
@@ -1493,14 +1661,47 @@
                 const dtFormatted = dt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' });
                 const isUpcoming = dt.toISOString().split('T')[0] >= todayStr;
                 hearingDisplay = `
-                    <div class="fw-bold ${isUpcoming ? "text-primary" : "text-dark"}">
-                        <i class="bi bi-calendar-event me-1"></i>${dtFormatted}
+                    <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                        <span class="fw-bold ${isUpcoming ? "text-primary" : "text-danger"}"><i class="bi bi-calendar-event me-1"></i>${dtFormatted}</span>
+                        ${urgencyBadge}
                     </div>
-                    <div class="extra-small text-muted text-truncate" style="max-width: 150px;" title="${escapeHtml(c.stagePurpose || "—")}">
-                        ${escapeHtml(c.stagePurpose || "—")}
+                    <div class="extra-small text-dark fw-semibold text-truncate mt-0.5" style="max-width: 190px;" title="${escapeHtml(c.stagePurpose || "—")}">
+                        <i class="bi bi-bookmark-star text-secondary me-0.5"></i>${escapeHtml(c.stagePurpose || "—")}
                     </div>`;
             }
         }
+
+        if (!hearingDisplay) {
+            hearingDisplay = `
+                <div class="fw-semibold text-secondary">
+                    <i class="bi bi-hourglass-split me-1"></i>Date Awaited
+                </div>
+                <div class="extra-small text-muted text-truncate" style="max-width: 190px;" title="${escapeHtml(c.stagePurpose || "—")}">
+                    ${escapeHtml(c.stagePurpose || "—")}
+                </div>`;
+        }
+
+        // Last Concluded Hearing & Daily Proceeding Summary
+        let lastProceedingDisplay = "";
+        if (c.lastHearingDate) {
+            const lDt = new Date(c.lastHearingDate);
+            const lDtStr = !isNaN(lDt.getTime()) ? lDt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short' }) : c.lastHearingDate;
+            const procText = c.lastProceeding || "Hearing Concluded";
+            lastProceedingDisplay = `
+                <div class="mt-1 pt-1 border-top border-light-subtle extra-small text-muted text-truncate" style="max-width: 200px;" title="Last Listing: ${escapeHtml(c.lastHearingDate)} — ${escapeHtml(procText)}">
+                    <i class="bi bi-clock-history text-secondary me-1"></i><span class="fw-semibold text-dark">${lDtStr}:</span> ${escapeHtml(procText)}
+                </div>`;
+        }
+
+        // Proceedings count pill and quick modal trigger
+        const totalH = c.totalHearings || 0;
+        const hearingsPill = `
+            <div class="mt-1 d-flex align-items-center gap-1.5 flex-wrap">
+                <button type="button" class="btn btn-xs btn-outline-info py-0 px-2 extra-small rounded-pill shadow-xs" onclick="openDailyProceedingsModal(${c.trackedID})" title="View Complete Daily Proceedings Timeline & Verbatim Orders">
+                    <i class="bi bi-journal-text me-1"></i>${totalH} Hearing${totalH === 1 ? '' : 's'}
+                </button>
+                ${c.avgDaysBetweenHearings ? `<span class="badge bg-light text-muted border extra-small" title="Average interval between court hearings">~${c.avgDaysBetweenHearings}d avg</span>` : ''}
+            </div>`;
 
         // Last synced formatting
         let syncedStr = "—";
@@ -1563,6 +1764,8 @@
             </td>
             <td>
                 ${hearingDisplay}
+                ${lastProceedingDisplay}
+                ${hearingsPill}
             </td>
             <td>
                 ${statusBadge}
@@ -1572,6 +1775,9 @@
             </td>
             <td class="text-end pe-4">
                 <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-info btn-sm px-2.5" title="Daily Proceedings & Hearing Date Analysis" onclick="openDailyProceedingsModal(${c.trackedID})">
+                        <i class="bi bi-journal-text me-1"></i><span class="d-none d-xl-inline">Proceedings</span>
+                    </button>
                     <button type="button" class="btn btn-outline-danger btn-sm px-2" title="Check Live High Court Cause List & Court Hall" id="btnCl_${c.trackedID}" onclick="checkLiveCauseList(${c.trackedID}, '${c.cnrNumber}')">
                         <i class="bi bi-broadcast"></i>
                     </button>
@@ -1581,7 +1787,7 @@
                     <button type="button" class="btn btn-outline-dark btn-sm px-2" title="Print Case Dossier" onclick="printSingleCase(${c.trackedID})">
                         <i class="bi bi-printer"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-info btn-sm px-2" title="Reassign Case Worker" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')">
+                    <button type="button" class="btn btn-outline-secondary btn-sm px-2" title="Reassign Case Worker" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')">
                         <i class="bi bi-person-gear"></i>
                     </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm px-2" title="Sync live with eCourts" id="btnSync_${c.trackedID}" onclick="syncCaseLive(${c.trackedID})">
@@ -1900,6 +2106,11 @@
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.respondent || "")}</td>
                 <td style="mso-number-format: 'yyyy-mm-dd'; text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(hearingDateStr)}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.stagePurpose || "")}</td>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.hearingUrgency || "UNSCHEDULED")}</td>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${c.totalHearings || 0}</td>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.firstHearingDate || "—")}</td>
+                <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.lastHearingDate || "—")}</td>
+                <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.lastProceeding || "—")}</td>
                 <td style="text-align: center; border: 0.5pt solid #cbd5e1; ${statusStyle}">${escapeHtml(statusText)}</td>
                 <td style="border: 0.5pt solid #cbd5e1; font-weight: bold; color: #1e293b;">${escapeHtml(c.addedBy || "Central Office")}</td>
                 <td style="border: 0.5pt solid #cbd5e1; font-size: 8.5pt; color: #64748b;">${escapeHtml(syncedDateStr)}</td>
@@ -1936,15 +2147,15 @@
 <body>
     <table>
         <tr>
-            <td colspan="19" class="hdr-title">North Western Karnataka Road Transport Corporation (NWKRTC)</td>
+            <td colspan="24" class="hdr-title">North Western Karnataka Road Transport Corporation (NWKRTC)</td>
         </tr>
         <tr>
-            <td colspan="19" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
+            <td colspan="24" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
         </tr>
         <tr>
-            <td colspan="19" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
+            <td colspan="24" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
         </tr>
-        <tr><td colspan="19"></td></tr>
+        <tr><td colspan="24"></td></tr>
         <thead>
             <tr>
                 <th style="width: 40px; text-align: center;">#</th>
@@ -1963,6 +2174,11 @@
                 <th style="width: 260px;">Respondent(s)</th>
                 <th style="width: 120px; text-align: center;">Next Hearing Date</th>
                 <th style="width: 160px;">Listing Stage / Purpose</th>
+                <th style="width: 110px; text-align: center;">Hearing Urgency</th>
+                <th style="width: 80px; text-align: center;">Total Hearings</th>
+                <th style="width: 110px; text-align: center;">First Listed</th>
+                <th style="width: 110px; text-align: center;">Last Listing</th>
+                <th style="width: 240px;">Last Proceeding / Roznama</th>
                 <th style="width: 110px; text-align: center;">Case Status</th>
                 <th style="width: 140px;">Case Worker / Desk</th>
                 <th style="width: 140px;">Last Synced With eCourts</th>
@@ -2009,7 +2225,8 @@
             "#", "CNR Number", "Court Tier", "Case Type", "Case Number", "Case Year",
             "Est Code", "Court Establishment", "Court Hall", "Bench", "Presiding Judge",
             "Cause List Type", "Petitioner", "Respondent", "Next Hearing Date",
-            "Stage/Purpose", "Case Status", "Case Worker", "Last Synced At"
+            "Stage/Purpose", "Hearing Urgency", "Total Hearings", "First Listed Date",
+            "Last Listing Date", "Last Proceeding Summary", "Case Status", "Case Worker", "Last Synced At"
         ];
 
         const rows = toExport.map((c, i) => {
@@ -2033,6 +2250,11 @@
                 `"${(c.respondent || "").replace(/"/g, '""')}"`,
                 `"${hDate}"`,
                 `"${(c.stagePurpose || "").replace(/"/g, '""')}"`,
+                `"${(c.hearingUrgency || "UNSCHEDULED")}"`,
+                `"${c.totalHearings || 0}"`,
+                `"${c.firstHearingDate || ""}"`,
+                `"${c.lastHearingDate || ""}"`,
+                `"${(c.lastProceeding || "").replace(/"/g, '""')}"`,
                 `"${(c.caseStatus || "").replace(/"/g, '""')}"`,
                 `"${(c.addedBy || "Central Office").replace(/"/g, '""')}"`,
                 `"${(c.lastSyncedAt || "").replace(/"/g, '""')}"`
@@ -2203,6 +2425,444 @@
             }
         } catch (err) {
             showToast("Error", "Network error during removal.", false);
+        }
+    }
+
+    // ========================================================
+    // Daily Proceedings & Hearing Date Analysis Engine
+    // ========================================================
+    let currentProceedingsTrackedId = null;
+    let currentProceedingsCase = null;
+    let currentProceedingsList = [];
+
+    async function openDailyProceedingsModal(trackedId) {
+        currentProceedingsTrackedId = trackedId;
+        const modalEl = document.getElementById('dailyProceedingsModal');
+        if (!modalEl) return;
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+        // Close live roznama box if open
+        closeLiveRoznamaBox();
+
+        // Check if case is already in allCasesData cache
+        let cachedCase = allCasesData.find(x => (x.trackedID == trackedId || x.trackedId == trackedId || x.id == trackedId));
+        if (cachedCase) {
+            currentProceedingsCase = cachedCase;
+            populateDailyProceedingsModal(cachedCase, cachedCase.proceedingsHistory || []);
+        } else {
+            // Show loading placeholder
+            document.getElementById("dpModalTitle").innerHTML = `<i class="bi bi-journal-text me-2 text-warning"></i>Loading Daily Proceedings...`;
+            document.getElementById("dpProceedingsTbody").innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted"><span class="spinner-border spinner-border-sm me-2 text-primary"></span>Loading proceedings analysis from database...</td></tr>`;
+        }
+
+        // Fetch fresh proceedings details from server
+        try {
+            const res = await fetch(`/ECourts/GetCaseProceedings?trackedId=${trackedId}`);
+            const json = await res.json();
+            if (json.success && json.caseInfo) {
+                currentProceedingsCase = json.caseInfo;
+                currentProceedingsList = json.proceedings || [];
+                populateDailyProceedingsModal(json.caseInfo, currentProceedingsList);
+            } else if (!cachedCase) {
+                document.getElementById("dpProceedingsTbody").innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${json.message || "Failed to load proceedings."}</td></tr>`;
+            }
+        } catch (err) {
+            console.error("Error fetching case proceedings:", err);
+            if (!cachedCase) {
+                document.getElementById("dpProceedingsTbody").innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>Network error loading proceedings.</td></tr>`;
+            }
+        }
+    }
+
+    function populateDailyProceedingsModal(c, hist) {
+        currentProceedingsList = hist || [];
+
+        // Header
+        const displayType = getDisplayCaseType(c);
+        document.getElementById("dpModalCaseType").innerText = displayType || "CASE";
+        document.getElementById("dpModalCnr").innerText = c.cnrNumber || "—";
+        document.getElementById("dpModalCourtHall").innerText = c.courtEstablishmentName || c.courtEstName || "District / High Court";
+        
+        const statusEl = document.getElementById("dpModalStatus");
+        const statusText = (c.caseStatus || "PENDING").toUpperCase();
+        statusEl.innerText = statusText;
+        statusEl.className = (statusText.includes("DISP") || statusText.includes("DISMISS")) ? "badge bg-secondary" : "badge bg-success";
+
+        document.getElementById("dpModalTitle").innerHTML = `<i class="bi bi-journal-text me-2 text-warning"></i>${escapeHtml(displayType)} ${escapeHtml(c.caseNumber || "")} — Daily Proceedings &amp; Hearing Analysis`;
+        document.getElementById("dpModalParties").innerText = `${c.petitioner || "Petitioner"} vs ${c.respondent || "Respondent"}`;
+
+        // KPI 1: Next Scheduled Hearing
+        const nextDt = c.nextHearingDate ? (typeof c.nextHearingDate === 'string' && c.nextHearingDate.includes('T') ? c.nextHearingDate.split('T')[0] : c.nextHearingDate) : "—";
+        document.getElementById("dpMetricNextDate").innerText = nextDt;
+        document.getElementById("dpMetricNextStage").innerText = c.stagePurpose || c.caseStage || c.stage || "Stage not specified";
+        
+        // Urgency badge
+        const urgencyContainer = document.getElementById("dpMetricUrgencyBadge");
+        urgencyContainer.innerHTML = getHearingUrgencyBadge(c.hearingUrgency, c.daysToNextHearing);
+
+        // KPI 2: Last Concluded Listing
+        document.getElementById("dpMetricLastDate").innerText = c.lastHearingDate || "—";
+        document.getElementById("dpMetricLastJudge").innerText = c.lastHearingJudge ? `Coram: ${c.lastHearingJudge}` : (c.lastProceeding ? `Proc: ${c.lastProceeding.substring(0, 35)}...` : "Coram: —");
+        document.getElementById("dpMetricDaysSince").innerText = (c.daysSinceLastHearing !== null && c.daysSinceLastHearing !== undefined)
+            ? `${c.daysSinceLastHearing} days since last listing`
+            : "—";
+
+        // KPI 3: Hearing Velocity & Count
+        const totalCount = (hist && hist.length > 0) ? hist.length : (c.totalHearings || 0);
+        document.getElementById("dpMetricTotalHearings").innerText = `${totalCount} Listed Hearings`;
+        document.getElementById("dpMetricAvgInterval").innerText = c.avgDaysBetweenHearings ? `Avg interval: ~${c.avgDaysBetweenHearings} days` : "Avg interval: —";
+        document.getElementById("dpMetricFirstDate").innerText = c.firstHearingDate ? `First listed: ${c.firstHearingDate}` : "First listed: —";
+
+        // KPI 4: Assigned Desk / Court
+        document.getElementById("dpMetricWorker").innerText = c.addedBy || c.caseWorkerName || "Unassigned Case Worker";
+        document.getElementById("dpMetricEstName").innerText = c.courtEstablishmentName || c.courtEstName || "eCourts Gateway";
+        document.getElementById("dpMetricSyncedAt").innerText = c.lastSyncedAt ? `Synced: ${new Date(c.lastSyncedAt).toLocaleString("en-GB")}` : "Verified eCourts Record";
+
+        // Table Count
+        document.getElementById("dpTableCount").innerText = totalCount;
+
+        // Render Chronological Timeline Table
+        const tbody = document.getElementById("dpProceedingsTbody");
+        if (hist && hist.length > 0) {
+            tbody.innerHTML = hist.map((h, i) => {
+                const hearingDt = h.hearing_date || h.hearingDate || "—";
+                const busDt = h.business_date || h.businessDate || "—";
+                const purpose = h.purpose_of_listing || h.purpose || h.stage || "—";
+                const nextDate = h.next_date || h.nextDate || "—";
+                const nextPurpose = h.next_purpose || h.nextPurpose || "—";
+                const judge = h.judge || h.judge_name || h.judgeName || "—";
+                const roznama = (h.business || h.roznama || h.proceeding || h.order || "").trim();
+
+                const isLatest = (i === hist.length - 1);
+                const rowClass = isLatest ? "table-warning bg-opacity-25" : "";
+
+                return `
+                <tr class="${rowClass}" id="dpRow_${i}">
+                    <td class="ps-3 text-muted fw-bold">
+                        ${i + 1}
+                        ${isLatest ? '<span class="badge bg-warning text-dark extra-small d-block" style="font-size: 9px;">LATEST</span>' : ''}
+                    </td>
+                    <td class="font-monospace fw-bold text-primary">${escapeHtml(hearingDt)}</td>
+                    <td class="font-monospace text-muted small">${escapeHtml(busDt)}</td>
+                    <td>
+                        <span class="badge bg-light text-dark border extra-small px-2 py-1 fw-semibold text-wrap text-start">
+                            ${escapeHtml(purpose)}
+                        </span>
+                    </td>
+                    <td class="font-monospace fw-bold ${nextDate !== '—' ? 'text-success' : 'text-muted'}">${escapeHtml(nextDate)}</td>
+                    <td class="small text-muted">${escapeHtml(nextPurpose)}</td>
+                    <td class="small text-truncate" style="max-width: 160px;" title="${escapeHtml(judge)}">${escapeHtml(judge)}</td>
+                    <td class="small" style="max-width: 250px;">
+                        <div id="dpRoznamaCell_${i}" class="text-break font-monospace" style="font-size: 11.5px; line-height: 1.4;">
+                            ${roznama ? escapeHtml(roznama) : '<span class="text-muted fst-italic">No offline roznama text</span>'}
+                        </div>
+                    </td>
+                    <td class="text-end pe-3">
+                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill extra-small px-2 py-1 text-nowrap shadow-xs"
+                                onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(hearingDt)}', ${c.isHighCourt ? 'true' : 'false'}, ${i})">
+                            <i class="bi bi-broadcast me-1"></i>Fetch Roznama
+                        </button>
+                    </td>
+                </tr>`;
+            }).join("");
+        } else {
+            tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted"><i class="bi bi-calendar-x fs-4 d-block mb-2 text-secondary"></i>No daily proceedings or hearing history recorded in eCourts repository yet.</td></tr>`;
+        }
+    }
+
+    function getHearingUrgencyBadge(urgency, days) {
+        if (!urgency) return `<span class="badge bg-light text-muted border extra-small">Unscheduled</span>`;
+        switch (urgency.toUpperCase()) {
+            case "TODAY":
+                return `<span class="badge bg-danger text-white extra-small"><i class="bi bi-fire me-1"></i>TODAY</span>`;
+            case "TOMORROW":
+                return `<span class="badge bg-warning text-dark extra-small"><i class="bi bi-lightning-fill me-1"></i>TOMORROW</span>`;
+            case "THIS_WEEK":
+                return `<span class="badge bg-info text-dark extra-small"><i class="bi bi-calendar-event me-1"></i>THIS WEEK (${days}d left)</span>`;
+            case "THIS_MONTH":
+                return `<span class="badge bg-primary text-white extra-small"><i class="bi bi-calendar3 me-1"></i>IN ${days} DAYS</span>`;
+            case "UPCOMING":
+                return `<span class="badge bg-primary text-white extra-small"><i class="bi bi-calendar3 me-1"></i>IN ${days} DAYS</span>`;
+            case "OVERDUE":
+                return `<span class="badge bg-danger text-white extra-small"><i class="bi bi-exclamation-triangle-fill me-1"></i>OVERDUE (${Math.abs(days)}d ago)</span>`;
+            case "DISPOSED":
+                return `<span class="badge bg-secondary text-white extra-small"><i class="bi bi-check-circle-fill me-1"></i>DISPOSED</span>`;
+            default:
+                return `<span class="badge bg-light text-muted border extra-small">Unscheduled</span>`;
+        }
+    }
+
+    // ==========================================
+    // Fetch Live Hearing Roznama (NAPIX Gateway)
+    // ==========================================
+    async function fetchLiveHearingRoznama(cnrNumber, hearingDate, isHighCourt, rowIndex) {
+        if (!cnrNumber || !hearingDate || hearingDate === "—") {
+            showToast("Invalid Request", "Hearing date is required to fetch verbatim proceeding.", false);
+            return;
+        }
+
+        const liveSection = document.getElementById("dpLiveRoznamaSection");
+        const liveDateLabel = document.getElementById("dpLiveHearingDateLabel");
+        const liveText = document.getElementById("dpLiveRoznamaText");
+
+        liveSection.classList.remove("d-none");
+        liveDateLabel.innerText = `Hearing Date: ${hearingDate} (CNR: ${cnrNumber})`;
+        liveText.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary"></span>Connecting to live e-Courts NAPIX Gateway for verbatim roznama...`;
+
+        liveSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        try {
+            const url = `/ECourts/FetchLiveHearingProceeding?cnrNumber=${encodeURIComponent(cnrNumber)}&hearingDate=${encodeURIComponent(hearingDate)}&isHighCourt=${isHighCourt}&module=${encodeURIComponent(currentModule)}`;
+            const res = await fetch(url);
+            const json = await res.json();
+
+            if (json.success) {
+                const bData = json.data || {};
+                const businessText = (json.business || bData.business || bData.roznama || bData.proceeding || "").trim();
+                if (businessText) {
+                    liveText.innerText = businessText;
+                    showToast("Roznama Fetched", `Verbatim proceeding for ${hearingDate} fetched successfully.`, true);
+
+                    if (rowIndex !== null && rowIndex !== undefined) {
+                        const cell = document.getElementById(`dpRoznamaCell_${rowIndex}`);
+                        if (cell) {
+                            cell.innerHTML = `<strong class="text-success"><i class="bi bi-check2 me-1"></i>Live Fetched:</strong><br>${escapeHtml(businessText)}`;
+                        }
+                    }
+                } else {
+                    const stagePurpose = json.purpose || bData.purpose || bData.stage || bData.short_order_det || "—";
+                    const nextDateStr = json.nextDate || bData.next_date || bData.nextDate || "—";
+                    const fallbackInfo = `e-Courts recorded purpose: "${stagePurpose}" | Next Date: "${nextDateStr}"\nNo separate long-form written roznama text was recorded by the bench clerk for this hearing date.`;
+                    liveText.innerText = fallbackInfo;
+                    showToast("Notice", `Hearing details retrieved, but no separate verbatim roznama text was recorded.`, true);
+                }
+            } else {
+                liveText.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>${escapeHtml(json.message || "e-Courts live gateway returned no proceeding details for this date.")}</span>`;
+                showToast("Fetch Failed", json.message || "Failed to query e-Courts.", false);
+            }
+        } catch (err) {
+            console.error("Error fetching live roznama:", err);
+            liveText.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i>Network error communicating with server gateway.</span>`;
+            showToast("Network Error", "Failed to connect to eCourts gateway.", false);
+        }
+    }
+
+    function closeLiveRoznamaBox() {
+        const liveSection = document.getElementById("dpLiveRoznamaSection");
+        if (liveSection) liveSection.classList.add("d-none");
+    }
+
+    function copyLiveRoznamaText() {
+        const text = document.getElementById("dpLiveRoznamaText").innerText;
+        if (!text || text.includes("Connecting to live")) {
+            showToast("Copy Notice", "No roznama text to copy.", false);
+            return;
+        }
+        navigator.clipboard.writeText(text).then(() => {
+            showToast("Copied", "Verbatim roznama text copied to clipboard.", true);
+        }).catch(() => {
+            showToast("Copy Failed", "Could not access clipboard.", false);
+        });
+    }
+
+    function copyAllProceedingsText() {
+        if (!currentProceedingsCase || !currentProceedingsList || currentProceedingsList.length === 0) {
+            showToast("Copy Notice", "No proceedings history available to copy.", false);
+            return;
+        }
+        const c = currentProceedingsCase;
+        let transcript = `DAILY COURT PROCEEDINGS REPORT\n`;
+        transcript += `========================================================\n`;
+        transcript += `Case: ${getDisplayCaseType(c)} ${c.caseNumber || ""} | CNR: ${c.cnrNumber}\n`;
+        transcript += `Parties: ${c.petitioner || "Petitioner"} vs ${c.respondent || "Respondent"}\n`;
+        transcript += `Court: ${c.courtEstablishmentName || c.courtEstName || "eCourts"}\n`;
+        transcript += `Next Scheduled Hearing: ${c.nextHearingDate || "—"} (${c.stagePurpose || c.caseStage || c.stage || "—"})\n`;
+        transcript += `Total Hearings: ${currentProceedingsList.length} | Avg Interval: ~${c.avgDaysBetweenHearings || "—"} days\n`;
+        transcript += `========================================================\n\n`;
+
+        currentProceedingsList.forEach((h, i) => {
+            const hDate = h.hearing_date || h.hearingDate || "—";
+            const bDate = h.business_date || h.businessDate || "—";
+            const purp = h.purpose_of_listing || h.purpose || "—";
+            const nDate = h.next_date || h.nextDate || "—";
+            const nPurp = h.next_purpose || h.nextPurpose || "—";
+            const judge = h.judge || h.judge_name || "—";
+            const biz = (h.business || h.roznama || h.proceeding || "").trim();
+
+            transcript += `#${i + 1} | Hearing Date: ${hDate} (Business Date: ${bDate})\n`;
+            transcript += `   Purpose / Stage: ${purp}\n`;
+            transcript += `   Next Date: ${nDate} (${nPurp})\n`;
+            transcript += `   Coram / Judge: ${judge}\n`;
+            if (biz) transcript += `   Proceeding / Roznama: ${biz}\n`;
+            transcript += `--------------------------------------------------------\n`;
+        });
+
+        navigator.clipboard.writeText(transcript).then(() => {
+            showToast("Copied", `All ${currentProceedingsList.length} proceedings copied to clipboard.`, true);
+        }).catch(() => {
+            showToast("Copy Failed", "Could not access clipboard.", false);
+        });
+    }
+
+    function printProceedingsModal() {
+        if (!currentProceedingsCase || !currentProceedingsList) {
+            showToast("Print Notice", "No proceedings data loaded to print.", false);
+            return;
+        }
+        const c = currentProceedingsCase;
+        const printWin = window.open('', '_blank', 'width=900,height=700');
+        if (!printWin) {
+            showToast("Pop-up Blocked", "Please allow pop-ups to print proceedings.", false);
+            return;
+        }
+
+        let rowsHtml = currentProceedingsList.map((h, i) => `
+            <tr>
+                <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${i + 1}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; font-weight: bold;">${h.hearing_date || h.hearingDate || "—"}</td>
+                <td style="border: 1px solid #ddd; padding: 6px;">${h.business_date || h.businessDate || "—"}</td>
+                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.purpose_of_listing || h.purpose || "—")}</td>
+                <td style="border: 1px solid #ddd; padding: 6px; font-weight: bold;">${h.next_date || h.nextDate || "—"}</td>
+                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.next_purpose || h.nextPurpose || "—")}</td>
+                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.judge || h.judge_name || "—")}</td>
+                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.business || h.roznama || h.proceeding || "—")}</td>
+            </tr>
+        `).join("");
+
+        const content = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Daily Proceedings - ${escapeHtml(c.cnrNumber)}</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; margin: 20px; color: #222; }
+                h2 { margin: 0 0 5px 0; font-size: 18px; }
+                .subtitle { color: #555; margin-bottom: 15px; font-size: 13px; }
+                .kpi-box { display: flex; gap: 15px; margin-bottom: 20px; background: #f8f9fa; padding: 12px; border: 1px solid #e9ecef; border-radius: 6px; }
+                .kpi-col { flex: 1; }
+                .kpi-label { font-size: 10px; text-transform: uppercase; color: #6c757d; font-weight: bold; }
+                .kpi-val { font-size: 14px; font-weight: bold; color: #0d6efd; margin-top: 2px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+                th { background-color: #f1f3f5; border: 1px solid #ddd; padding: 7px; text-align: left; font-size: 10px; text-transform: uppercase; }
+                .footer { margin-top: 20px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
+            </style>
+        </head>
+        <body>
+            <h2>${escapeHtml(getDisplayCaseType(c))} ${escapeHtml(c.caseNumber || "")} &mdash; Daily Court Proceedings</h2>
+            <div class="subtitle">
+                <strong>CNR:</strong> ${escapeHtml(c.cnrNumber)} | 
+                <strong>Parties:</strong> ${escapeHtml(c.petitioner || "Petitioner")} vs ${escapeHtml(c.respondent || "Respondent")} | 
+                <strong>Court:</strong> ${escapeHtml(c.courtEstablishmentName || c.courtEstName || "District / High Court")}
+            </div>
+            <div class="kpi-box">
+                <div class="kpi-col">
+                    <div class="kpi-label">Next Hearing</div>
+                    <div class="kpi-val">${escapeHtml(c.nextHearingDate || "—")}</div>
+                    <small>${escapeHtml(c.stagePurpose || c.caseStage || c.stage || "—")}</small>
+                </div>
+                <div class="kpi-col">
+                    <div class="kpi-label">Last Listing</div>
+                    <div class="kpi-val" style="color: #333;">${escapeHtml(c.lastHearingDate || "—")}</div>
+                    <small>${c.daysSinceLastHearing != null ? c.daysSinceLastHearing + " days ago" : "—"}</small>
+                </div>
+                <div class="kpi-col">
+                    <div class="kpi-label">Hearings Velocity</div>
+                    <div class="kpi-val" style="color: #d63384;">${currentProceedingsList.length} Listed</div>
+                    <small>Avg Interval: ~${c.avgDaysBetweenHearings || "—"} days</small>
+                </div>
+                <div class="kpi-col">
+                    <div class="kpi-label">Assigned Desk</div>
+                    <div class="kpi-val" style="color: #198754;">${escapeHtml(c.addedBy || c.caseWorkerName || "Unassigned")}</div>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 30px;">#</th>
+                        <th>Hearing Date</th>
+                        <th>Business Date</th>
+                        <th>Purpose / Stage</th>
+                        <th>Next Date</th>
+                        <th>Next Purpose</th>
+                        <th>Judge / Coram</th>
+                        <th>Daily Proceeding / Roznama</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHtml}
+                </tbody>
+            </table>
+            <div class="footer">
+                Printed from Law Project eCourts Module &bull; Verified against official e-Courts NAPIX Record &bull; ${new Date().toLocaleString()}
+            </div>
+            <script>
+                window.onload = function() { window.print(); }
+            <\/script>
+        </body>
+        </html>`;
+
+        printWin.document.open();
+        printWin.document.write(content);
+        printWin.document.close();
+    }
+
+    async function syncCurrentCaseProceedings() {
+        if (!currentProceedingsTrackedId) return;
+        const btn = document.getElementById("btnSyncCurrentProceedings");
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Syncing...`;
+        }
+
+        try {
+            await syncCase(currentProceedingsTrackedId);
+            showToast("Case Synced", "Refreshing proceedings analysis...", true);
+            await openDailyProceedingsModal(currentProceedingsTrackedId);
+        } catch (err) {
+            showToast("Sync Error", "Could not sync case proceedings.", false);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-arrow-clockwise me-1"></i>Sync Case Live`;
+            }
+        }
+    }
+
+    // ========================================================
+    // Bulk Sync All Tracked Proceedings Across Module
+    // ========================================================
+    async function syncAllProceedings() {
+        const btn = document.getElementById("btnSyncAllProceedings");
+        const origHtml = btn ? btn.innerHTML : "";
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Syncing All Cases...`;
+        }
+
+        showToast("Sync Initiated", `Fetching latest daily proceedings & hearing updates for all ${currentModule} cases...`, true);
+
+        try {
+            const res = await fetch(`/ECourts/SyncAllTrackedProceedings`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ module: currentModule })
+            });
+            const json = await res.json();
+            if (json.success) {
+                showToast("Bulk Sync Complete", json.message || `All cases synced successfully.`, true);
+                loadTrackedCases();
+            } else {
+                showToast("Sync Notice", json.message || "Failed to sync all cases.", false);
+            }
+        } catch (err) {
+            console.error("Bulk sync error:", err);
+            showToast("Network Error", "Failed to communicate with sync service.", false);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
         }
     }
 

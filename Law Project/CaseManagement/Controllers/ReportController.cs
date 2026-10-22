@@ -141,18 +141,19 @@ namespace MVCCaseManagement.Controllers
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate < @StartDate))
                                             AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
-                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ModifiedDate >= @StartDate)
+                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) >= @StartDate)
                                         THEN 1 ELSE 0 END) as BeginningPending,
                                         
                                     SUM(CASE WHEN 
-                                            (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
-                                            OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)
+                                            ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
+                                            OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
+                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                         THEN 1 ELSE 0 END) as EntrustedCount,
                                         
                                     SUM(CASE WHEN 
                                             ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) 
                                              OR (c.DisposalDate IS NULL AND UPPER(c.CaseStatus) = 'DISPOSED' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
-                                            AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'PARTIALLY FAVOR', 'SETTLED', 'FAVOR (SETTLED)'))
+                                            AND NOT (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED'))
                                         THEN 1 ELSE 0 END) as DisposedFavorCount,
                                         
                                     SUM(CASE WHEN 
@@ -174,7 +175,7 @@ namespace MVCCaseManagement.Controllers
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
                                             AND (c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
-                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ModifiedDate > @EndDate)
+                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) > @EndDate)
                                         THEN 1 ELSE 0 END) as EndingPending
                                 FROM DIVISION_MASTER d
                                 LEFT JOIN CombinedLabourCases c ON c.DivisionID = d.DivisionID
@@ -199,18 +200,19 @@ namespace MVCCaseManagement.Controllers
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate < @StartDate))
                                             AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
-                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ModifiedDate >= @StartDate)
+                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) >= @StartDate)
                                         THEN 1 ELSE 0 END) as BeginningPending,
                                         
                                     SUM(CASE WHEN 
-                                            (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
-                                            OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)
+                                            ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
+                                            OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
+                                            AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                         THEN 1 ELSE 0 END) as EntrustedCount,
                                         
                                     SUM(CASE WHEN 
                                             ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) 
                                              OR (c.DisposalDate IS NULL AND UPPER(c.CaseStatus) = 'DISPOSED' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
-                                            AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'PARTIALLY FAVOR', 'SETTLED', 'FAVOR (SETTLED)'))
+                                            AND NOT (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED'))
                                         THEN 1 ELSE 0 END) as DisposedFavorCount,
                                         
                                     SUM(CASE WHEN 
@@ -232,7 +234,7 @@ namespace MVCCaseManagement.Controllers
                                     SUM(CASE WHEN 
                                             ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
                                             AND (c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
-                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ModifiedDate > @EndDate)
+                                            AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR COALESCE(c.DisposalDate, c.ModifiedDate) > @EndDate)
                                         THEN 1 ELSE 0 END) as EndingPending
                                 FROM DIVISION_MASTER d
                                 LEFT JOIN LABOUR_CASES c ON c.DivisionID = d.DivisionID {caseTypeFilter}
@@ -342,24 +344,25 @@ namespace MVCCaseManagement.Controllers
                                 SUM(CASE WHEN 
                                         ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate < @StartDate))
                                         AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
-                                        AND (c.CaseStatus IS NULL OR c.CaseStatus <> 'Disposed' OR c.ModifiedDate >= @StartDate)
+                                        AND (c.CaseStatus IS NULL OR c.CaseStatus <> 'Disposed' OR COALESCE(c.DisposalDate, c.ClosureDate, c.ModifiedDate) >= @StartDate)
                                     THEN 1 ELSE 0 END) as BeginningPending,
                                     
                                 SUM(CASE WHEN 
-                                        (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
-                                        OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)
+                                        ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
+                                        OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
+                                        AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate)
                                     THEN 1 ELSE 0 END) as EntrustedCount,
                                     
                                 SUM(CASE WHEN 
                                         ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) 
-                                         OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
-                                        AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'FAVOR (SETTLED)'))
+                                         OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND COALESCE(c.ClosureDate, c.ModifiedDate) >= @StartDate AND COALESCE(c.ClosureDate, c.ModifiedDate) <= @EndDate))
+                                        AND NOT (UPPER(ISNULL(c.DisposalResult,'')) LIKE '%AGAINST%' OR UPPER(ISNULL(c.DisposalResult,'')) IN ('ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED'))
                                     THEN 1 ELSE 0 END) as DisposedFavorCount,
                                     
                                 SUM(CASE WHEN 
                                         ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) 
-                                         OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
-                                        AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE'))
+                                         OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND COALESCE(c.ClosureDate, c.ModifiedDate) >= @StartDate AND COALESCE(c.ClosureDate, c.ModifiedDate) <= @EndDate))
+                                        AND (UPPER(ISNULL(c.DisposalResult,'')) LIKE '%AGAINST%' OR UPPER(ISNULL(c.DisposalResult,'')) IN ('ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED'))
                                     THEN 1 ELSE 0 END) as DisposedAgainstCount,
 
                                 SUM(CASE WHEN 
@@ -375,7 +378,7 @@ namespace MVCCaseManagement.Controllers
                                 SUM(CASE WHEN 
                                         ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
                                         AND (c.DisposalDate IS NULL OR c.DisposalDate > @EndDate)
-                                        AND (c.CaseStatus IS NULL OR c.CaseStatus <> 'Disposed' OR c.ModifiedDate > @EndDate)
+                                        AND (c.CaseStatus IS NULL OR c.CaseStatus <> 'Disposed' OR COALESCE(c.DisposalDate, c.ClosureDate, c.ModifiedDate) > @EndDate)
                                     THEN 1 ELSE 0 END) as EndingPending,
 
                                 SUM(CASE WHEN (c.ComplianceStatus IS NULL OR UPPER(c.ComplianceStatus) <> 'COMPLIED')
@@ -489,24 +492,25 @@ namespace MVCCaseManagement.Controllers
                                     THEN 1 ELSE 0 END) as BeginningPending,
                                     
                                 SUM(CASE WHEN 
-                                        (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
-                                        OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)
+                                        ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
+                                        OR (c.EntrustmentDate IS NULL AND c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
+                                        AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate)
                                     THEN 1 ELSE 0 END) as EntrustedCount,
                                     
                                 SUM(CASE WHEN 
-                                        ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
-                                        AND (UPPER(ISNULL(c.Result,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'FAVOR (SETTLED)', 'SETTLED'))
+                                        ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate AND UPPER(c.CaseStatus) = 'DISPOSED'))
+                                        AND NOT (UPPER(ISNULL(c.Result,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED'))
                                     THEN 1 ELSE 0 END) as DisposedFavorCount,
                                     
                                 SUM(CASE WHEN 
-                                        ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate))
+                                        ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate AND UPPER(c.CaseStatus) = 'DISPOSED'))
                                         AND (UPPER(ISNULL(c.Result,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED'))
                                     THEN 1 ELSE 0 END) as DisposedAgainstCount,
 
                                 SUM(CASE WHEN 
                                         ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedDate <= @EndDate))
                                         AND (c.ClosureDate IS NULL OR c.ClosureDate > @EndDate)
-                                        AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ModifiedDate > @EndDate)
+                                        AND (c.CaseStatus IS NULL OR UPPER(c.CaseStatus) <> 'DISPOSED' OR c.ClosureDate > @EndDate OR c.ModifiedDate > @EndDate)
                                     THEN 1 ELSE 0 END) as EndingPending
                             FROM DIVISION_MASTER d
                             LEFT JOIN OTHER_CASES c ON c.DivisionID = d.DivisionID {caseTypeFilter}
@@ -697,7 +701,7 @@ namespace MVCCaseManagement.Controllers
                         // 3. OTHER COURTS (District / MACT / Labour Court / CA / Consumer / LAC etc.)
                         try
                         {
-                            string ocQuery = @"
+                                string ocQuery = @"
                                 SELECT 
                                     ISNULL(SUM(BeginningPending), 0) as BeginningPending,
                                     ISNULL(SUM(EntrustedCount), 0) as EntrustedCount,
@@ -706,21 +710,22 @@ namespace MVCCaseManagement.Controllers
                                 FROM (
                                     -- MVC District / MACT
                                     SELECT 
-                                        SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedAt < @StartDate)) AND (COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) IS NULL OR COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
-                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedAt >= @StartDate AND c.CreatedAt <= @EndDate)) THEN 1 ELSE 0 END) as EntrustedCount,
-                                        SUM(CASE WHEN COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate AND COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'FAVOR (SETTLED)', 'SETTLED', 'CLOSED IN FAVOR') THEN 1 ELSE 0 END) as DisposedFavorCount,
-                                        SUM(CASE WHEN COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate AND COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED') THEN 1 ELSE 0 END) as DisposedAgainstCount
+                                        SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedAt < @StartDate)) AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
+                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedAt >= @StartDate AND c.CreatedAt <= @EndDate)) AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate) THEN 1 ELSE 0 END) as EntrustedCount,
+                                        SUM(CASE WHEN c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate AND NOT (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED') OR (ad.AwardAmount IS NOT NULL AND ad.AwardAmount > 0)) THEN 1 ELSE 0 END) as DisposedFavorCount,
+                                        SUM(CASE WHEN (c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate OR (ad.AwardDate >= @StartDate AND ad.AwardDate <= @EndDate)) AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED') OR (ad.AwardAmount IS NOT NULL AND ad.AwardAmount > 0)) THEN 1 ELSE 0 END) as DisposedAgainstCount
                                     FROM MVC_CASES c
                                     LEFT JOIN MVC_CASE_ADVERSE_DETAILS ad ON ad.CaseID = c.CaseID
+                                    WHERE (c.PendDispStatus IS NULL OR UPPER(c.PendDispStatus) <> 'D' OR c.ClosureDate >= @StartDate)
 
                                     UNION ALL
 
                                     -- Labour Trial / Industrial Court (KID/ID/Arising)
                                     SELECT 
                                         SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedDate < @StartDate)) AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
-                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) THEN 1 ELSE 0 END) as EntrustedCount,
-                                        SUM(CASE WHEN c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED') THEN 1 ELSE 0 END) as DisposedFavorCount,
-                                        SUM(CASE WHEN c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE') THEN 1 ELSE 0 END) as DisposedAgainstCount
+                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate) THEN 1 ELSE 0 END) as EntrustedCount,
+                                        SUM(CASE WHEN ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) OR (c.DisposalDate IS NULL AND UPPER(c.CaseStatus) = 'DISPOSED' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate)) AND NOT (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED')) THEN 1 ELSE 0 END) as DisposedFavorCount,
+                                        SUM(CASE WHEN ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) OR (c.DisposalDate IS NULL AND UPPER(c.CaseStatus) = 'DISPOSED' AND c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate)) AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED')) THEN 1 ELSE 0 END) as DisposedAgainstCount
                                     FROM LABOUR_CASES c
                                     WHERE NOT ((c.CO_WP_CaseNumber IS NOT NULL AND RTRIM(LTRIM(c.CO_WP_CaseNumber)) <> '') OR (c.CO_WA_CaseNumber IS NOT NULL AND RTRIM(LTRIM(c.CO_WA_CaseNumber)) <> '') OR UPPER(ISNULL(c.CaseType,'')) LIKE '%WP%' OR UPPER(ISNULL(c.CaseType,'')) LIKE '%WA%' OR (c.ClaimantSCNumber IS NOT NULL AND RTRIM(LTRIM(c.ClaimantSCNumber)) <> '') OR UPPER(ISNULL(c.CaseType,'')) LIKE '%SL%')
 
@@ -729,9 +734,9 @@ namespace MVCCaseManagement.Controllers
                                     -- Gratuity Controlling / Appellate Authority
                                     SELECT 
                                         SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedDate < @StartDate)) AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
-                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) THEN 1 ELSE 0 END) as EntrustedCount,
-                                        SUM(CASE WHEN c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED') THEN 1 ELSE 0 END) as DisposedFavorCount,
-                                        SUM(CASE WHEN c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate AND UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE') THEN 1 ELSE 0 END) as DisposedAgainstCount
+                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate) THEN 1 ELSE 0 END) as EntrustedCount,
+                                        SUM(CASE WHEN ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND COALESCE(c.ClosureDate, c.ModifiedDate) >= @StartDate AND COALESCE(c.ClosureDate, c.ModifiedDate) <= @EndDate)) AND NOT (UPPER(ISNULL(c.DisposalResult,'')) LIKE '%AGAINST%' OR UPPER(ISNULL(c.DisposalResult,'')) IN ('ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED')) THEN 1 ELSE 0 END) as DisposedFavorCount,
+                                        SUM(CASE WHEN ((c.DisposalDate >= @StartDate AND c.DisposalDate <= @EndDate) OR (c.DisposalDate IS NULL AND c.CaseStatus = 'Disposed' AND COALESCE(c.ClosureDate, c.ModifiedDate) >= @StartDate AND COALESCE(c.ClosureDate, c.ModifiedDate) <= @EndDate)) AND (UPPER(ISNULL(c.DisposalResult,'')) LIKE '%AGAINST%' OR UPPER(ISNULL(c.DisposalResult,'')) IN ('ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED')) THEN 1 ELSE 0 END) as DisposedAgainstCount
                                     FROM GRA_CASES c
                                     WHERE NOT (UPPER(ISNULL(c.CourtType,'')) LIKE '%SUPREME%' OR UPPER(ISNULL(c.AppealCourt,'')) LIKE '%SUPREME%' OR UPPER(ISNULL(c.AppealNumber,'')) LIKE '%SLP%' OR UPPER(ISNULL(c.CourtType,'')) LIKE '%HIGH%' OR UPPER(ISNULL(c.AppealCourt,'')) LIKE '%HIGH%' OR UPPER(ISNULL(c.AppealNumber,'')) LIKE '%WP%' OR UPPER(ISNULL(c.AppealNumber,'')) LIKE '%WA%')
 
@@ -740,9 +745,9 @@ namespace MVCCaseManagement.Controllers
                                     -- Others (OS, Consumer, LAC, ECA, etc.)
                                     SELECT 
                                         SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedDate < @StartDate)) AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
-                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) THEN 1 ELSE 0 END) as EntrustedCount,
-                                        SUM(CASE WHEN c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate AND UPPER(ISNULL(c.Result,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED') THEN 1 ELSE 0 END) as DisposedFavorCount,
-                                        SUM(CASE WHEN c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate AND UPPER(ISNULL(c.Result,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE') THEN 1 ELSE 0 END) as DisposedAgainstCount
+                                        SUM(CASE WHEN ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate) THEN 1 ELSE 0 END) as EntrustedCount,
+                                        SUM(CASE WHEN ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate AND UPPER(c.CaseStatus) = 'DISPOSED')) AND NOT (UPPER(ISNULL(c.Result,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED')) THEN 1 ELSE 0 END) as DisposedFavorCount,
+                                        SUM(CASE WHEN ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (c.ModifiedDate >= @StartDate AND c.ModifiedDate <= @EndDate AND UPPER(c.CaseStatus) = 'DISPOSED')) AND (UPPER(ISNULL(c.Result,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED')) THEN 1 ELSE 0 END) as DisposedAgainstCount
                                     FROM OTHER_CASES c
                                     WHERE NOT (UPPER(ISNULL(c.Court,'')) LIKE '%SUPREME%' OR UPPER(ISNULL(c.CaseType,'')) LIKE '%SLP%' OR UPPER(ISNULL(c.Court,'')) LIKE '%HIGH%' OR UPPER(ISNULL(c.CaseType,'')) LIKE '%WP%' OR UPPER(ISNULL(c.CaseType,'')) LIKE '%WA%')
                                 ) oc_all";
@@ -778,36 +783,37 @@ namespace MVCCaseManagement.Controllers
                                 d.DivisionID,
                                 SUM(CASE WHEN 
                                         ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.EntrustmentDate IS NULL AND COALESCE(c.CreatedAt, c.ModifiedDate) < @StartDate))
-                                        AND (COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) IS NULL OR COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) >= @StartDate)
-                                        AND (c.DisposalStatus IS NULL OR UPPER(c.DisposalStatus) NOT IN ('DISPOSED', 'CLOSED') OR COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate)
+                                        AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate)
+                                        AND (c.DisposalStatus IS NULL OR UPPER(c.DisposalStatus) NOT IN ('DISPOSED', 'CLOSED') OR c.ClosureDate >= @StartDate)
+                                        AND (c.PendDispStatus IS NULL OR UPPER(c.PendDispStatus) <> 'D' OR c.ClosureDate >= @StartDate)
                                     THEN 1 ELSE 0 END) as BeginningPending,
                                     
                                 SUM(CASE WHEN 
-                                        (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
-                                        OR (c.EntrustmentDate IS NULL AND COALESCE(c.CreatedAt, c.ModifiedDate) >= @StartDate AND COALESCE(c.CreatedAt, c.ModifiedDate) <= @EndDate)
+                                        ((c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate)
+                                        OR (c.EntrustmentDate IS NULL AND COALESCE(c.CreatedAt, c.ModifiedDate) >= @StartDate AND COALESCE(c.CreatedAt, c.ModifiedDate) <= @EndDate))
+                                        AND (c.ClosureDate IS NULL OR c.ClosureDate >= @StartDate)
                                     THEN 1 ELSE 0 END) as EntrustedCount,
                                     
                                 SUM(CASE WHEN 
-                                        ((COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate AND COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) <= @EndDate) 
-                                         OR (c.ClosureDate IS NOT NULL AND c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate))
-                                        AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED', 'EX-PARTE', 'FAVOR (SETTLED)', 'SETTLED', 'CLOSED IN FAVOR'))
+                                        (c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate)
+                                        AND NOT (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED') OR (ad.AwardAmount IS NOT NULL AND ad.AwardAmount > 0))
                                     THEN 1 ELSE 0 END) as DisposedFavorCount,
                                     
                                 SUM(CASE WHEN 
-                                        ((COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate AND COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) <= @EndDate) 
-                                         OR (ad.AwardDate IS NOT NULL AND ad.AwardDate >= @StartDate AND ad.AwardDate <= @EndDate))
-                                        AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED'))
+                                        ((c.ClosureDate >= @StartDate AND c.ClosureDate <= @EndDate) OR (ad.AwardDate >= @StartDate AND ad.AwardDate <= @EndDate))
+                                        AND (UPPER(ISNULL(c.DisposalResult,'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE', 'PARTIALLY ALLOWED', 'AWARDED') OR (ad.AwardAmount IS NOT NULL AND ad.AwardAmount > 0))
                                     THEN 1 ELSE 0 END) as DisposedAgainstCount,
                                     
                                 SUM(CASE WHEN 
-                                        ((COALESCE(c.TransferDate, c.ModifiedDate, c.UpdatedAt) >= @StartDate AND COALESCE(c.TransferDate, c.ModifiedDate, c.UpdatedAt) <= @EndDate))
+                                        ((c.TransferDate >= @StartDate AND c.TransferDate <= @EndDate))
                                         AND (UPPER(ISNULL(c.DisposalResult,'')) = 'TRANSFERRED' OR UPPER(ISNULL(c.DisposalStatus,'')) = 'TRANSFERRED')
                                     THEN 1 ELSE 0 END) as TransferredCount,
 
                                 SUM(CASE WHEN 
                                         ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate <= @EndDate) OR (c.EntrustmentDate IS NULL AND c.CreatedAt <= @EndDate))
-                                        AND (COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) IS NULL OR COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate) > @EndDate)
-                                        AND (c.DisposalStatus IS NULL OR UPPER(c.DisposalStatus) NOT IN ('DISPOSED', 'CLOSED') OR COALESCE(ad.DisposedOnDate, c.ClosureDate, ad.AwardDate, c.ModifiedDate, c.UpdatedAt) > @EndDate)
+                                        AND (c.ClosureDate IS NULL OR c.ClosureDate > @EndDate)
+                                        AND (c.DisposalStatus IS NULL OR UPPER(c.DisposalStatus) NOT IN ('DISPOSED', 'CLOSED') OR c.ClosureDate > @EndDate)
+                                        AND (c.PendDispStatus IS NULL OR UPPER(c.PendDispStatus) <> 'D' OR c.ClosureDate > @EndDate)
                                     THEN 1 ELSE 0 END) as EndingPending
                             FROM DIVISION_MASTER d
                             LEFT JOIN MVC_CASES c ON c.DivisionID = d.DivisionID
@@ -1059,7 +1065,12 @@ namespace MVCCaseManagement.Controllers
                         SELECT 
                             SUM(CASE WHEN ((c.EntrustmentDate IS NOT NULL AND c.EntrustmentDate < @StartDate) OR (c.CreatedDate < @StartDate)) AND (c.DisposalDate IS NULL OR c.DisposalDate >= @StartDate) THEN 1 ELSE 0 END) as BeginningPending,
                             SUM(CASE WHEN (c.CO_WA_CaseNumber IS NOT NULL AND c.CO_WA_CaseNumber <> '') AND ((c.CO_WA_EntrustmentDate >= @StartDate AND c.CO_WA_EntrustmentDate <= @EndDate) OR (c.EntrustmentDate >= @StartDate AND c.EntrustmentDate <= @EndDate) OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate)) THEN 1 ELSE 0 END) as EntrustedCorp,
-                            0 as EntrustedClaimant,
+                            SUM(CASE WHEN ((c.CO_Claimant_CaseNumber IS NOT NULL AND c.CO_Claimant_CaseNumber <> '' AND UPPER(c.CO_Claimant_CaseNumber) LIKE '%WA%') 
+                                        OR (c.CO_FurtherAppeal_CaseNumber IS NOT NULL AND c.CO_FurtherAppeal_CaseNumber <> '' AND UPPER(c.CO_FurtherAppeal_CaseNumber) LIKE '%WA%'))
+                                     AND ((c.CO_Claimant_EntrustmentDate >= @StartDate AND c.CO_Claimant_EntrustmentDate <= @EndDate) 
+                                       OR (c.CO_FurtherAppeal_EntrustmentDate >= @StartDate AND c.CO_FurtherAppeal_EntrustmentDate <= @EndDate)
+                                       OR (c.CreatedDate >= @StartDate AND c.CreatedDate <= @EndDate))
+                                THEN 1 ELSE 0 END) as EntrustedClaimant,
                             SUM(CASE WHEN COALESCE(c.CO_Disposal_Date, c.DisposalDate) >= @StartDate AND COALESCE(c.CO_Disposal_Date, c.DisposalDate) <= @EndDate THEN 1 ELSE 0 END) as TotalDisposed,
                             SUM(CASE WHEN COALESCE(c.CO_Disposal_Date, c.DisposalDate) >= @StartDate AND COALESCE(c.CO_Disposal_Date, c.DisposalDate) <= @EndDate AND UPPER(ISNULL(COALESCE(c.CO_WA_Outcome, c.DisposalResult),'')) IN ('FAVOR', 'FAVOUR', 'DISMISSED') THEN 1 ELSE 0 END) as DisposedFavorCorp,
                             SUM(CASE WHEN COALESCE(c.CO_Disposal_Date, c.DisposalDate) >= @StartDate AND COALESCE(c.CO_Disposal_Date, c.DisposalDate) <= @EndDate AND UPPER(ISNULL(COALESCE(c.CO_WA_Outcome, c.DisposalResult),'')) IN ('AGAINST', 'ALLOWED', 'ADVERSE') THEN 1 ELSE 0 END) as DisposedFavorClaimant,
