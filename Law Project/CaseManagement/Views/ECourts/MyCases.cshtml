@@ -2435,11 +2435,12 @@
         // Fetch fresh proceedings details from server
         try {
             const res = await fetch(`/ECourts/GetCaseProceedings?trackedId=${trackedId}`);
-            const json = await res.json();
-            if (json.success && json.caseInfo) {
-                currentProceedingsCase = json.caseInfo;
-                currentProceedingsList = json.proceedings || [];
-                populateDailyProceedingsModal(json.caseInfo, currentProceedingsList);
+            const cInfo = json.caseInfo || json.data;
+            const pList = json.proceedings || (cInfo && cInfo.proceedingsHistory) || [];
+            if (json.success && cInfo) {
+                currentProceedingsCase = cInfo;
+                currentProceedingsList = pList;
+                populateDailyProceedingsModal(cInfo, pList);
             } else if (!cachedCase) {
                 document.getElementById("dpProceedingsTbody").innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${json.message || "Failed to load proceedings."}</td></tr>`;
             }
