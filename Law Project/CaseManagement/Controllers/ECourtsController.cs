@@ -1766,6 +1766,7 @@ namespace MVCCaseManagement.Controllers
         {
             public string? CnrNumbers { get; set; }
             public string Module { get; set; } = "MVC";
+            public string? CaseWorker { get; set; }
         }
 
         [HttpPost]
@@ -1779,7 +1780,8 @@ namespace MVCCaseManagement.Controllers
             }
 
             string norm = NapixQuotaService.NormalizeModule(req.Module);
-            string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+            string defaultUser = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+            string userName = !string.IsNullOrWhiteSpace(req.CaseWorker) ? req.CaseWorker.Trim() : defaultUser;
 
             var matches = System.Text.RegularExpressions.Regex.Matches(req.CnrNumbers, @"[A-Za-z0-9]{16}");
             var distinctCnrs = matches.Cast<System.Text.RegularExpressions.Match>()
@@ -1825,6 +1827,123 @@ namespace MVCCaseManagement.Controllers
                 failed = failedCnrs,
                 message = $"Processed {distinctCnrs.Count} CNR(s): {addedCount} added, {updatedCount} updated, {failedCnrs.Count} failed/pending."
             });
+        }
+
+        public class ReassignCaseWorkerRequest
+        {
+            public int TrackedId { get; set; }
+            public string? NewWorker { get; set; }
+        }
+
+        public class BulkReassignCaseWorkerRequest
+        {
+            public List<int>? TrackedIds { get; set; }
+            public string? NewWorker { get; set; }
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> ReassignCaseWorker([FromBody] ReassignCaseWorkerRequest req)
+        {
+            if (req == null || req.TrackedId <= 0)
+            {
+                return Json(new { success = false, message = "Invalid request or case ID." });
+            }
+
+            string newWorker = string.IsNullOrWhiteSpace(req.NewWorker) ? "Central Office" : req.NewWorker.Trim();
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                int affected = await conn.ExecuteAsync(
+                    "UPDATE admin_Law.ECOURTS_TRACKED_CASES SET AddedBy = @newWorker WHERE TrackedID = @TrackedId",
+                    new { newWorker, req.TrackedId });
+
+                if (affected > 0)
+                {
+                    return Json(new { success = true, message = $"Case successfully assigned to {newWorker}." });
+                }
+                return Json(new { success = false, message = "Case record not found." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reassign case worker for TrackedID {TrackedID}", req.TrackedId);
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        [AllowAnonymous]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> BulkReassignCaseWorker([FromBody] BulkReassignCaseWorkerRequest req)
+        {
+            if (req == null || req.TrackedIds == null || req.TrackedIds.Count == 0)
+            {
+                return Json(new { success = false, message = "Please select at least one case." });
+            }
+
+            string newWorker = string.IsNullOrWhiteSpace(req.NewWorker) ? "Central Office" : req.NewWorker.Trim();
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                int affected = await conn.ExecuteAsync(
+                    "UPDATE admin_Law.ECOURTS_TRACKED_CASES SET AddedBy = @newWorker WHERE TrackedID IN @TrackedIds",
+                    new { newWorker, req.TrackedIds });
+
+                return Json(new { success = true, count = affected, message = $"{affected} case(s) reassigned to {newWorker}." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to bulk reassign case workers");
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCaseWorkers(string module = "MVC")
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            try
+            {
+                var designated = string.Equals(norm, "Labour", StringComparison.OrdinalIgnoreCase)
+                    ? new List<string> {
+                        "Labour 1 ( Sahana)",
+                        "Labour 2 ( Pavitra)",
+                        "Gratuity ( Karthik)",
+                        "Service & Other Matters ( Ajay )"
+                    }
+                    : new List<string> {
+                        "MFA 1 ( V V Arekeri )",
+                        "MFA 2 ( Raju P )"
+                    };
+
+                using var conn = _db.GetConnection();
+                var workers = (await conn.QueryAsync<string>(@"
+                    SELECT DISTINCT AddedBy 
+                    FROM admin_Law.ECOURTS_TRACKED_CASES 
+                    WHERE RelatedModule = @norm AND AddedBy IS NOT NULL AND AddedBy <> ''", new { norm })).ToList();
+
+                var systemUsers = (await conn.QueryAsync<string>(@"
+                    SELECT DISTINCT FullName 
+                    FROM USERS 
+                    WHERE IsActive = 1 AND FullName IS NOT NULL AND FullName <> ''")).ToList();
+
+                var combined = designated
+                    .Union(workers)
+                    .Union(systemUsers)
+                    .Where(w => !string.IsNullOrWhiteSpace(w))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                return Json(new { success = true, workers = combined, designated });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = ex.Message });
+            }
         }
 
         [HttpGet]
@@ -3397,7 +3516,7 @@ namespace MVCCaseManagement.Controllers
                         JudgeDesignation = @JudgeDesignation,
                         LastSyncedAt = GETDATE(),
                         RawJson = @RawJson,
-                        AddedBy = @AddedBy
+                        AddedBy = COALESCE(NULLIF(target.AddedBy, ''), NULLIF(@AddedBy, ''), 'Central Office')
                 WHEN NOT MATCHED THEN
                     INSERT (CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, LastSyncedAt, CreatedDate, RawJson, AddedBy)
                     VALUES (@CNRNumber, @EstCode, @CaseTypeCode, @CaseNumber, @CaseYear, @RelatedModule, 0, @Petitioner, @Respondent, @CaseStatus, @NextHearingDate, @StagePurpose, @CourtNo, @JudgeDesignation, GETDATE(), GETDATE(), @RawJson, @AddedBy);",
