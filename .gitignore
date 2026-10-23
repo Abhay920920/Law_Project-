@@ -35,10 +35,6 @@ publish/
 Final_Publish/
 *.nupkg
 packages/
-Obfuscated/
-**/Obfuscated/
-Mapping.txt
-**/Mapping.txt
 scratch/
 __pycache__/
 *.pyc

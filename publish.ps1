@@ -75,27 +75,6 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "  [OK] MVCCaseManagement published." -ForegroundColor Green
 
-# Step 3.5: Enterprise Code Obfuscation & String Encryption (Anti-Decompilation)
-Write-Host "  [Obfuscation] Applying C# code obfuscation & string encryption to production binaries..." -ForegroundColor Cyan
-$obfuscarXml = Join-Path "$scriptDir\Law Project\CaseManagement" "obfuscar.xml"
-if (Test-Path $obfuscarXml) {
-    Push-Location $webOut
-    try {
-        & obfuscar.console $obfuscarXml
-        if (Test-Path ".\Obfuscated\MVCCaseManagement.dll") {
-            Move-Item -Force ".\Obfuscated\MVCCaseManagement.dll" ".\MVCCaseManagement.dll"
-            if (Test-Path ".\Obfuscated") { Remove-Item -Recurse -Force ".\Obfuscated" }
-            Write-Host "  [OK] MVCCaseManagement.dll successfully obfuscated & string-encrypted." -ForegroundColor Green
-        } else {
-            Write-Warning "Obfuscar ran but .\Obfuscated\MVCCaseManagement.dll was not found."
-        }
-    } catch {
-        Write-Warning "Obfuscar step notice: $_"
-    } finally {
-        Pop-Location
-    }
-}
-
 # Step 4: Publish NapixEcourtsApi
 Write-Host ""
 Write-Host "[4/4] Publishing NapixEcourtsApi (Microservice)..." -ForegroundColor Yellow
