@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Obfuscator>
+  <Var name="InPath" value="." />
+  <Var name="OutPath" value=".\Obfuscated" />
+  
+  <AssemblySearchPath path="C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App\9.0.12" />
+  <AssemblySearchPath path="C:\Program Files\dotnet\shared\Microsoft.NETCore.App\9.0.12" />
+  
+  <!-- Enterprise Source Code Protection & Anti-Decompilation Rules -->
+  <Var name="KeepPublicApi" value="false" />
+  <Var name="HideStrings" value="true" />
+  <Var name="RenameProperties" value="true" />
+  <Var name="RenameEvents" value="true" />
+  <Var name="RenameFields" value="true" />
+  <Var name="UseUnicodeNames" value="false" />
+  <Var name="HidePrivateApi" value="true" />
+  <Var name="ReuseNames" value="true" />
+  <Var name="OptimizeMethods" value="true" />
+  <Var name="SuppressIldasm" value="true" />
+
+  <!-- Target Assembly: MVCCaseManagement.dll -->
+  <Module file="$(InPath)\MVCCaseManagement.dll">
+    <!-- Keep Controller names and Action methods accessible to ASP.NET Core URL router -->
+    <SkipType name="MVCCaseManagement.Controllers.*" skipMethods="true" skipFields="false" skipProperties="false" />
+
+    <!-- Keep Model and ViewModel properties for HTTP POST Form / JSON Model Binding -->
+    <SkipType name="MVCCaseManagement.Models.*" skipMethods="false" skipFields="false" skipProperties="true" />
+
+    <!-- 
+      THE FOLLOWING MAJOR CODE LOGIC MODULES ARE FULLY OBFUSCATED & ENCRYPTED:
+      - MVCCaseManagement.DAL.* (DBHelper, CaseRepository, UserRepository, Gratuity, Notifications, SQL queries)
+      - MVCCaseManagement.Services.* (Background sync, Quota, AI Engines, Audit, Session, Reporting)
+      - MVCCaseManagement.Utils.* (NapixSyncEngine, SecretProtector, TR18, SMSService, NetworkDeviceHelper)
+      - MVCCaseManagement.Common.* (Internal helpers, constants, filters)
+    -->
+  </Module>
+</Obfuscator>

@@ -3,8 +3,27 @@ using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Common;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Utils;
+using MVCCaseManagement.Utils.Security;
+
+// CLI Secret Encryption Utility: dotnet run -- encrypt "raw_secret" or --encrypt "raw_secret"
+int encryptIdx = Array.FindIndex(args, a => a.Equals("encrypt", StringComparison.OrdinalIgnoreCase) || a.Equals("--encrypt", StringComparison.OrdinalIgnoreCase));
+if (encryptIdx >= 0 && encryptIdx + 1 < args.Length)
+{
+    string secret = args[encryptIdx + 1];
+    string encrypted = SecretProtector.Encrypt(secret);
+    Console.WriteLine("\n========================================================");
+    Console.WriteLine("  NWKRTC Case Management - Secret Protector Utility");
+    Console.WriteLine("========================================================");
+    Console.WriteLine($"Plain Text : {secret}");
+    Console.WriteLine($"Cipher Text: {encrypted}");
+    Console.WriteLine("========================================================\n");
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Automatically decrypt all ENC(...) credentials in-memory for zero-friction protection
+builder.Configuration.DecryptConfiguration();
 
 // Add logging configuration to prevent EventLog object disposal crashes on Windows background services
 builder.Logging.ClearProviders();
