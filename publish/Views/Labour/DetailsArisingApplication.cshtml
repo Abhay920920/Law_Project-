@@ -10,7 +10,7 @@
     bool isCO = (ViewBag.IsCentralOffice == true) || string.IsNullOrEmpty(divIdStr) || divIdStr == "0" || divIdStr == "5" || sessDivId == 0 || sessDivId == 5 || User.IsInRole("MD") || User.IsInRole("CLO") || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("Admin");
 }
 
-<div class="container-fluid fade-in py-4">
+<div class="container-fluid fade-in py-4 d-print-none">
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4 d-print-none">
         <div>
@@ -1187,32 +1187,463 @@
     </div>
 </div>
 
-<!-- Print-only View -->
+<!-- Print-only View: Official Case Dossier Report -->
 <div class="d-none d-print-block print-container">
-    <div class="text-center mb-5">
-        <h2 class="text-uppercase fw-bold mb-1">Arising Application Detail Report</h2>
-        <p class="mb-0">NWKRTC - @Model.DivisionName Division</p>
-        <hr />
+    @{
+        var prParent = (ViewBag.ParentCase as MVCCaseManagement.Models.LabourCase) ?? (ViewBag.LinkedParentCase as MVCCaseManagement.Models.LabourCase);
+        var prConnectedEPs = ViewBag.ConnectedEPs as List<MVCCaseManagement.Models.LabourEPViewModel>;
+        decimal prAwardAmt = Model.AwardAmount ?? 0;
+        decimal prTotalPaid = Model.Payments != null ? Model.Payments.Sum(p => p.Amount) : 0;
+        decimal prBalance = prAwardAmt - prTotalPaid;
+
+        bool prHasWP = !string.IsNullOrWhiteSpace(Model.CO_WP_CaseNumber) || (prParent != null && !string.IsNullOrWhiteSpace(prParent.CO_WP_CaseNumber));
+        bool prHasWA = !string.IsNullOrWhiteSpace(Model.CO_WA_CaseNumber) || (prParent != null && !string.IsNullOrWhiteSpace(prParent.CO_WA_CaseNumber));
+        bool prHasReinstatement = Model.CO_IsWorkmanReinstated || !string.IsNullOrWhiteSpace(Model.CO_ReinstatedSubjectToWP);
+        bool prHasSLP = !string.IsNullOrWhiteSpace(Model.CO_FurtherAppeal_CaseNumber) || (prParent != null && !string.IsNullOrWhiteSpace(prParent.CO_FurtherAppeal_CaseNumber));
+    }
+
+    <!-- Official Corporation Letterhead Header -->
+    <div class="print-header text-center mb-3 pb-2 border-bottom border-2 border-dark">
+        <h4 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px; font-size: 14pt;">North Western Karnataka Road Transport Corporation</h4>
+        <h5 class="fw-bold mb-1 text-uppercase text-secondary" style="font-size: 11pt;">
+            @(string.IsNullOrEmpty(Model.DivisionName) ? "Central Office" : Model.DivisionName.ToUpper() + " Division") — Law Section
+        </h5>
+        <div class="badge bg-dark text-white px-3 py-1 fs-6 text-uppercase fw-bold my-1">
+            Official Case Dossier &amp; Proforma Report: Arising Application (Labour)
+        </div>
+        <div class="small text-muted mt-1" style="font-size: 8pt;">
+            Under Section 33-C(2) / 33(2)(b) / Misc. of the Industrial Disputes Act, 1947
+        </div>
     </div>
 
-    <table class="table table-bordered w-100">
-        <tr><th style="width: 30%;">Division</th><td>@Model.DivisionName</td></tr>
-        <tr><th>Court Name</th><td>@Model.CourtName</td></tr>
-        <tr><th>Arising No / Year</th><td>@Model.CaseNumber / @Model.CaseYear</td></tr>
-        <tr><th>Linked Original Case</th><td>@Model.Parent_CaseNumber / @Model.Parent_CaseYear</td></tr>
-        <tr><th>Petitioner Name</th><td>@Model.PetitionerName</td></tr>
-        <tr><th>Assigned Advocate</th><td>@Model.AdvocateName</td></tr>
-        <tr><th>Overall Status</th><td>@Model.CaseStatus</td></tr>
-        @if (Model.CaseStatus == "Disposed") {
-            <tr><th>Disposal Date</th><td>@Model.DisposalDate?.ToShortDateString()</td></tr>
-            <tr><th>Disposal Result</th><td>@Model.DisposalResult</td></tr>
-        }
+    <!-- Quick Telemetry Bar -->
+    <table class="table table-bordered border-dark print-table mb-2" style="font-size: 8.5pt;">
+        <tr style="background-color: #f8fafc;">
+            <td style="width: 25%;"><strong>Arising App No:</strong> @Model.CaseNumber / @Model.CaseYear</td>
+            <td style="width: 25%;"><strong>16-Digit CNR:</strong> @(Model.CNRNumber ?? "Not Linked")</td>
+            <td style="width: 25%;"><strong>Status:</strong> @Model.CaseStatus @(!string.IsNullOrEmpty(Model.DisposalResult) ? $"({Model.DisposalResult})" : "")</td>
+            <td style="width: 25%;"><strong>Report Dt:</strong> @DateTime.Now.ToString("dd-MMM-yyyy hh:mm tt")</td>
+        </tr>
     </table>
 
-    <div class="mt-4">
-        <h6 class="fw-bold">General Remarks:</h6>
-        <div class="border p-3 rounded">
-            @(Model.Remarks ?? "No remarks recorded.")
+    <!-- Master Numbered Proforma Table -->
+    <table class="table table-bordered border-dark print-table w-100">
+        <tbody>
+            <!-- SECTION I: REGISTRATION & JURISDICTION -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">I. Application Registration &amp; Jurisdiction Details</th>
+            </tr>
+            <tr>
+                <td style="width: 5%; text-align: center;">1</td>
+                <td style="width: 35%; font-weight: 600;">Name of Division</td>
+                <td style="width: 60%;">@Model.DivisionName Division</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">2</td>
+                <td style="font-weight: 600;">Arising Application Number &amp; Year</td>
+                <td>@Model.CaseNumber / @Model.CaseYear (@Model.CaseType)</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">3</td>
+                <td style="font-weight: 600;">Court Name &amp; Jurisdiction</td>
+                <td>@Model.CourtName @(!string.IsNullOrEmpty(Model.OtherCourtDetails) ? $"({Model.OtherCourtDetails})" : "")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">4</td>
+                <td style="font-weight: 600;">16-Digit CNR Number &amp; Est Code</td>
+                <td><span class="font-monospace">@(Model.CNRNumber ?? "—")</span> @(!string.IsNullOrEmpty(Model.EstCode) ? $"(Est: {Model.EstCode})" : "")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">5</td>
+                <td style="font-weight: 600;">Nature of Application / Relief Claimed</td>
+                <td>@(Model.NatureOfCase ?? "Arising Application under I.D. Act")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">6</td>
+                <td style="font-weight: 600;">Subject Matter / Gist of Workman's Claim</td>
+                <td><div class="white-space-pre-line">@(Model.ClaimDetails ?? "—")</div></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">7</td>
+                <td style="font-weight: 600;">Claim Filing Date &amp; Delay (if any)</td>
+                <td>Filing Date: @(Model.ClaimFiledOn ?? "—") &nbsp;|&nbsp; Delay: @(Model.DelayInFiling ?? "Nil")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">8</td>
+                <td style="font-weight: 600;">Current Stage &amp; Next Hearing Date</td>
+                <td><strong>Stage:</strong> @(Model.CurrentStage ?? "Initial") &nbsp;|&nbsp; <strong>Next Hearing:</strong> @(Model.NextHearingDate?.ToString("dd-MMM-yyyy") ?? "Not Scheduled")</td>
+            </tr>
+
+            <!-- SECTION II: WORKMAN PROFILE -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">II. Workman Profile &amp; Service Particulars</th>
+            </tr>
+            <tr>
+                <td style="text-align: center;">9</td>
+                <td style="font-weight: 600;">Name of the Workman / Applicant</td>
+                <td><strong>@Model.PetitionerName</strong></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">10</td>
+                <td style="font-weight: 600;">Token / Badge / Employee No. &amp; PF No.</td>
+                <td>Badge / Emp No: <strong>@(Model.EmployeeNo ?? prParent?.EmployeeNo ?? "—")</strong> &nbsp;|&nbsp; PF No: <strong>@(Model.PFNumber ?? prParent?.PFNumber ?? "—")</strong></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">11</td>
+                <td style="font-weight: 600;">Designation &amp; Working Status</td>
+                <td>@(Model.Designation ?? prParent?.Designation ?? "—") &nbsp;|&nbsp; Status: @(Model.WorkingStatus ?? prParent?.WorkingStatus ?? "—")</td>
+            </tr>
+            @if (Model.WorkingStatus == "Death" || prParent?.WorkingStatus == "Death")
+            {
+                <tr>
+                    <td style="text-align: center;">12</td>
+                    <td style="font-weight: 600;">Legal Representative(s)</td>
+                    <td>@(Model.LegalRepresentativeName ?? prParent?.LegalRepresentativeName ?? "—") (Relationship: @(Model.LRRelationship ?? prParent?.LRRelationship ?? "—"))</td>
+                </tr>
+            }
+            <tr>
+                <td style="text-align: center;">13</td>
+                <td style="font-weight: 600;">Whether applicant is Workman under ID Act</td>
+                <td>@(Model.IsWorkman ? "YES" : "NO") @(!string.IsNullOrEmpty(Model.IsWorkmanRemark) ? $"({Model.IsWorkmanRemark})" : "")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">14</td>
+                <td style="font-weight: 600;">Nature of Misconduct / Charges in Parent Case</td>
+                <td><div class="white-space-pre-line">@(Model.NatureOfMisconduct ?? prParent?.NatureOfMisconduct ?? "—")</div></td>
+            </tr>
+
+            <!-- SECTION III: LINKED PRIMARY LABOUR CASE -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">III. Linked Original / Primary Labour Case Details</th>
+            </tr>
+            <tr>
+                <td style="text-align: center;">15</td>
+                <td style="font-weight: 600;">Original Labour Case No. &amp; Year</td>
+                <td><strong>@(Model.Parent_CaseNumber ?? prParent?.CaseNumber ?? "—") / @(Model.Parent_CaseYear?.ToString() ?? prParent?.CaseYear?.ToString() ?? "—")</strong> (@(Model.Parent_CaseType ?? prParent?.CaseType ?? "KID/ID"))</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">16</td>
+                <td style="font-weight: 600;">Original Court Name</td>
+                <td>@(Model.Parent_CourtName ?? prParent?.CourtName ?? "—")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">17</td>
+                <td style="font-weight: 600;">Original Case Outcome &amp; Disposal Date</td>
+                <td>
+                    Status: <strong>@(Model.Parent_CaseStatus ?? prParent?.CaseStatus ?? "—")</strong> 
+                    @if (prParent != null && !string.IsNullOrEmpty(prParent.DisposalResult)) { <span>(@prParent.DisposalResult)</span> }
+                    &nbsp;|&nbsp; Disposal Date: @(prParent?.DisposalDate?.ToString("dd-MMM-yyyy") ?? "—")
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">18</td>
+                <td style="font-weight: 600;">Gist of Original Award in Primary Case</td>
+                <td><div class="white-space-pre-line">@(prParent?.AwardDetails ?? prParent?.FavorRemark ?? "Details available in primary case records.")</div></td>
+            </tr>
+
+            <!-- SECTION IV: LEGAL ENTRUSTMENT & DEPARTMENTAL DEFENCE -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">IV. Legal Representation &amp; Departmental Defence</th>
+            </tr>
+            <tr>
+                <td style="text-align: center;">19</td>
+                <td style="font-weight: 600;">Corporation Panel Advocate Assigned</td>
+                <td><strong>@(Model.AdvocateName ?? "Not Assigned")</strong></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">20</td>
+                <td style="font-weight: 600;">Case Entrustment Outward No. &amp; Date</td>
+                <td>Outward No: @(Model.EntrustmentNo ?? "—") &nbsp;|&nbsp; Date: @(Model.EntrustmentDate?.ToString("dd-MMM-yyyy") ?? "—")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">21</td>
+                <td style="font-weight: 600;">Documents Forwarded to Advocate</td>
+                <td>@(Model.IsDocumentSent ? $"YES — Outward No: {Model.DocumentSent_OutwardNo} (Dt: {Model.DocumentSent_OutwardDate?.ToString("dd-MMM-yyyy") ?? "-"})" : "NO / Pending")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">22</td>
+                <td style="font-weight: 600;">Counter Statement / Objections Filed</td>
+                <td>@(Model.IsObjectionFiled ? $"YES — Outward No: {Model.ObjectionFiled_OutwardNo} (Dt: {Model.ObjectionFiled_OutwardDate?.ToString("dd-MMM-yyyy") ?? "-"})" : "NO / Pending")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">23</td>
+                <td style="font-weight: 600;">Evidence Tendered by Corporation</td>
+                <td>@(Model.IsEvidenceFiled ? "YES" : "NO")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">24</td>
+                <td style="font-weight: 600;">Domestic Enquiry (DE) Order &amp; Documents</td>
+                <td>Order: @(Model.DE_Order ?? prParent?.DE_Order ?? "N.A.") &nbsp;|&nbsp; Documents Marked: @(Model.DE_DocumentsMarked ? "YES" : "NO")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">25</td>
+                <td style="font-weight: 600;">Enquiry Officer &amp; Management Witness</td>
+                <td>EO: @(Model.DE_EO_Name ?? prParent?.DE_EO_Name ?? "—") (@(Model.DE_EO_Designation ?? prParent?.DE_EO_Designation ?? "—")) &nbsp;|&nbsp; Reporter: @(Model.DE_Reporter_Name ?? prParent?.DE_Reporter_Name ?? "—")</td>
+            </tr>
+
+            <!-- SECTION V: DISPOSAL & FINANCIAL SETTLEMENT -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">V. Case Disposal, Award &amp; Financial Accounting</th>
+            </tr>
+            <tr>
+                <td style="text-align: center;">26</td>
+                <td style="font-weight: 600;">Disposal Status &amp; Date</td>
+                <td><strong>@Model.CaseStatus</strong> @(Model.DisposalDate.HasValue ? $"on {Model.DisposalDate.Value.ToString("dd-MMM-yyyy")}" : "")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">27</td>
+                <td style="font-weight: 600;">Disposal Mode &amp; Result</td>
+                <td>Mode: @(Model.DisposalMode ?? "—") &nbsp;|&nbsp; Result: <strong>@(Model.DisposalResult ?? "Pending Result")</strong></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">28</td>
+                <td style="font-weight: 600;">Certified Copy (CC) Timelines</td>
+                <td>Applied: @(Model.CC_AppliedDate?.ToString("dd-MMM-yyyy") ?? "—") &nbsp;|&nbsp; Issued: @(Model.CC_IssuedDate?.ToString("dd-MMM-yyyy") ?? "—") &nbsp;|&nbsp; Received: @(Model.CC_ReceivedDate?.ToString("dd-MMM-yyyy") ?? "—")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">29</td>
+                <td style="font-weight: 600;">Operative Portion / Gist of the Award</td>
+                <td><div class="white-space-pre-line">@(Model.AwardDetails ?? Model.FavorRemark ?? "Matter under adjudication.")</div></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">30</td>
+                <td style="font-weight: 600;">Financial Statement of Award</td>
+                <td>
+                    <table class="table table-sm table-bordered mb-0" style="font-size: 8.5pt;">
+                        <tr style="background-color: #f8fafc;">
+                            <th>Total Award Amount</th>
+                            <th>Total Amount Paid</th>
+                            <th>Balance Payable</th>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">₹ @prAwardAmt.ToString("N2")</td>
+                            <td class="fw-bold text-success">₹ @prTotalPaid.ToString("N2")</td>
+                            <td class="fw-bold @(prBalance > 0 ? "text-danger" : "text-dark")">₹ @prBalance.ToString("N2")</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- PAYMENT BREAKDOWN (IF ANY) -->
+            @if (Model.Payments != null && Model.Payments.Any())
+            {
+                <tr>
+                    <td style="text-align: center;">31</td>
+                    <td style="font-weight: 600;">Itemized Payment Installments</td>
+                    <td>
+                        <table class="table table-sm table-bordered mb-0" style="font-size: 8pt;">
+                            <thead style="background-color: #f1f5f9;">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Date</th>
+                                    <th>Amount (₹)</th>
+                                    <th>Cheque / DD No</th>
+                                    <th>Cheque Date</th>
+                                    <th>Voucher / Remarks</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ int pIdx = 1; }
+                                @foreach (var p in Model.Payments.OrderBy(x => x.PaymentDate))
+                                {
+                                    <tr>
+                                        <td>@(pIdx++)</td>
+                                        <td>@p.PaymentDate.ToString("dd-MMM-yyyy")</td>
+                                        <td class="fw-bold">₹ @p.Amount.ToString("N2")</td>
+                                        <td>@(p.ChequeNumber ?? "—")</td>
+                                        <td>@(p.ChequeDate?.ToString("dd-MMM-yyyy") ?? "—")</td>
+                                        <td>@(p.Remarks ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+            }
+
+            <!-- SECTION VI: EXECUTION PETITIONS -->
+            @if (prConnectedEPs != null && prConnectedEPs.Any())
+            {
+                <tr class="print-section-header">
+                    <th colspan="3" class="text-uppercase py-1">VI. Linked Execution Petition (EP) Details</th>
+                </tr>
+                <tr>
+                    <td style="text-align: center;">32</td>
+                    <td style="font-weight: 600;">Execution Petitions Recorded</td>
+                    <td>
+                        <table class="table table-sm table-bordered mb-0" style="font-size: 8pt;">
+                            <thead style="background-color: #f1f5f9;">
+                                <tr>
+                                    <th>EP No / Year</th>
+                                    <th>Court</th>
+                                    <th>Entrustment</th>
+                                    <th>Status</th>
+                                    <th>Award / Paid</th>
+                                    <th>Next Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var ep in prConnectedEPs)
+                                {
+                                    <tr>
+                                        <td class="fw-bold">@(ep.EPNumber ?? "—") / @(ep.EPYear?.ToString() ?? "—")</td>
+                                        <td>@(ep.EPCourt ?? "Labour Court")</td>
+                                        <td>@(ep.EP_EntrustmentNo ?? "—")</td>
+                                        <td>@(ep.EPStatus ?? "Active")</td>
+                                        <td>₹ @(ep.AwardAmount?.ToString("N2") ?? "0.00") / ₹ @(ep.AmountPaid?.ToString("N2") ?? "0.00")</td>
+                                        <td>@(ep.NextHearingDate?.ToString("dd-MMM-yyyy") ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </td>
+                </tr>
+            }
+
+            <!-- SECTION VII: HIGHER COURTS & APPEALS -->
+            @if (prHasWP || prHasWA || prHasReinstatement || prHasSLP)
+            {
+                <tr class="print-section-header">
+                    <th colspan="3" class="text-uppercase py-1">VII. Higher Court Appeals &amp; Writs (High Court / Supreme Court)</th>
+                </tr>
+                @if (prHasWP)
+                {
+                    <tr>
+                        <td style="text-align: center;">33</td>
+                        <td style="font-weight: 600;">Corporation High Court WP</td>
+                        <td>
+                            WP No: <strong>@(Model.CO_WP_CaseNumber ?? prParent?.CO_WP_CaseNumber ?? "—") / @(Model.CO_WP_Year?.ToString() ?? prParent?.CO_WP_Year?.ToString() ?? "—")</strong> &nbsp;|&nbsp; 
+                            Bench: @(Model.CO_WP_HighCourtBench ?? prParent?.CO_WP_HighCourtBench ?? "High Court of Karnataka") <br/>
+                            Status: @(Model.CO_WP_Status ?? Model.CO_WP_CaseStatus_Option ?? "Active") &nbsp;|&nbsp; 
+                            Stay: @(Model.CO_WP_StayGranted == true ? $"GRANTED ({Model.CO_WP_StayNature ?? "Stay"}) on {Model.CO_WP_StayDate?.ToString("dd-MMM-yyyy")}" : "Not Granted") <br/>
+                            Advocate: @(Model.CO_WP_AdvocateName ?? prParent?.CO_WP_AdvocateName ?? "—") &nbsp;|&nbsp; 
+                            Outcome: @(Model.CO_WP_Outcome ?? "Pending")
+                        </td>
+                    </tr>
+                }
+                @if (prHasWA)
+                {
+                    <tr>
+                        <td style="text-align: center;">34</td>
+                        <td style="font-weight: 600;">Corporation High Court WA</td>
+                        <td>
+                            WA No: <strong>@(Model.CO_WA_CaseNumber ?? prParent?.CO_WA_CaseNumber ?? "—") / @(Model.CO_WA_Year?.ToString() ?? prParent?.CO_WA_Year?.ToString() ?? "—")</strong> &nbsp;|&nbsp; 
+                            Bench: @(Model.CO_WA_HighCourtBench ?? prParent?.CO_WA_HighCourtBench ?? "High Court of Karnataka") <br/>
+                            Status: @(Model.CO_WA_Status ?? Model.CO_WA_CaseStatus_Option ?? "Active") &nbsp;|&nbsp; 
+                            Stay: @(Model.CO_WA_StayGranted == true ? "GRANTED" : "Not Granted") &nbsp;|&nbsp; 
+                            Outcome: @(Model.CO_WA_Outcome ?? "Pending")
+                        </td>
+                    </tr>
+                }
+                @if (prHasReinstatement)
+                {
+                    <tr>
+                        <td style="text-align: center;">35</td>
+                        <td style="font-weight: 600;">Workman Reinstatement</td>
+                        <td>
+                            Reinstated: <strong>@(Model.CO_IsWorkmanReinstated ? "YES" : "PENDING")</strong> &nbsp;|&nbsp; 
+                            Subject to WP: @(Model.CO_ReinstatedSubjectToWP ?? "—") <br/>
+                            Approval No: @(Model.CO_Reinstatement_ApprovalNo ?? "—") @(Model.CO_ReinstatementApprovalDate.HasValue ? $"({Model.CO_ReinstatementApprovalDate.Value.ToString("dd-MMM-yyyy")})" : "")
+                        </td>
+                    </tr>
+                }
+                @if (prHasSLP)
+                {
+                    <tr>
+                        <td style="text-align: center;">36</td>
+                        <td style="font-weight: 600;">Supreme Court / SLP</td>
+                        <td>
+                            SLP / CA No: <strong>@(Model.CO_FurtherAppeal_CaseNumber ?? prParent?.CO_FurtherAppeal_CaseNumber ?? "—") / @(Model.CO_FurtherAppeal_Year?.ToString() ?? prParent?.CO_FurtherAppeal_Year?.ToString() ?? "—")</strong> &nbsp;|&nbsp; 
+                            Status: @(Model.CO_FurtherAppeal_CaseStatus ?? Model.CO_FurtherAppeal_Status_Option ?? prParent?.CO_FurtherAppeal_Status_Option ?? "—") &nbsp;|&nbsp; 
+                            Advocate: @(Model.CO_FurtherAppeal_AdvocateName ?? prParent?.CO_FurtherAppeal_AdvocateName ?? "—")
+                        </td>
+                    </tr>
+                }
+            }
+
+            <!-- SECTION VIII: LEGAL OPINIONS & EXECUTIVE DECISIONS -->
+            <tr class="print-section-header">
+                <th colspan="3" class="text-uppercase py-1">VIII. Multi-Tier Legal Opinions &amp; Administrative Decisions</th>
+            </tr>
+            <tr>
+                <td style="text-align: center;">37</td>
+                <td style="font-weight: 600;">Panel Advocate's Legal Opinion</td>
+                <td><div class="white-space-pre-line">@(Model.Opinion_Advocate ?? "—")</div></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">38</td>
+                <td style="font-weight: 600;">Law Officer (LO) Review</td>
+                <td>
+                    Decision: <strong>@(Model.ActionTaken_LO ?? "Pending")</strong> @(Model.ApprovalDate_LO.HasValue ? $"({Model.ApprovalDate_LO.Value.ToString("dd-MMM-yyyy")})" : "")
+                    <div class="white-space-pre-line mt-1">@(Model.Opinion_LO ?? "—")</div>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">39</td>
+                <td style="font-weight: 600;">Dy. Chief Law Officer (Dy. CLO) Review</td>
+                <td>
+                    Decision: <strong>@(Model.ActionTaken_DyCLO ?? "Pending")</strong> @(Model.ApprovalDate_DyCLO.HasValue ? $"({Model.ApprovalDate_DyCLO.Value.ToString("dd-MMM-yyyy")})" : "")
+                    <div class="white-space-pre-line mt-1">@(Model.Opinion_DyCLO ?? "—")</div>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">40</td>
+                <td style="font-weight: 600;">Chief Law Officer (CLO) Decision</td>
+                <td>
+                    Decision: <strong>@(Model.ActionTaken_CLO ?? Model.CO_Disposal_Decision ?? "Pending")</strong> @((Model.ApprovalDate_CLO ?? Model.CO_ApprovalDate).HasValue ? $"({(Model.ApprovalDate_CLO ?? Model.CO_ApprovalDate).Value.ToString("dd-MMM-yyyy")})" : "")
+                    <div class="white-space-pre-line mt-1">@(Model.Opinion_CLO ?? "—")</div>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">41</td>
+                <td style="font-weight: 600;">Managing Director (MD) Final Orders</td>
+                <td>
+                    Decision: <strong>@(Model.ActionTaken_MD ?? Model.CO_ActionTaken ?? "Pending")</strong> @((Model.ApprovalDate_MD ?? Model.CO_ApprovalDate).HasValue ? $"({(Model.ApprovalDate_MD ?? Model.CO_ApprovalDate).Value.ToString("dd-MMM-yyyy")})" : "")
+                    <div class="white-space-pre-line mt-1">@(Model.Opinion_MD ?? Model.CO_Remarks ?? "—")</div>
+                </td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">42</td>
+                <td style="font-weight: 600;">Divisional Controller (DC) Opinion</td>
+                <td><div class="white-space-pre-line">@(Model.Opinion_DC ?? "—")</div></td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">43</td>
+                <td style="font-weight: 600;">Central Office Dispatch Outward</td>
+                <td>Outward No: @(Model.CO_OutwardNo ?? Model.CO_ApprovalOutwardNo ?? "—") &nbsp;|&nbsp; Date: @((Model.CO_OutwardDate ?? Model.CO_ApprovalDate)?.ToString("dd-MMM-yyyy") ?? "—")</td>
+            </tr>
+            <tr>
+                <td style="text-align: center;">44</td>
+                <td style="font-weight: 600;">General File Remarks / Notings</td>
+                <td><div class="white-space-pre-line">@(Model.Remarks ?? "—")</div></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Official Authentication & Signatures Block -->
+    <div class="print-sig-block mt-4 pt-3 border-top border-dark">
+        <div class="row text-center g-3">
+            <div class="col-4">
+                <div class="print-sig-col">
+                    <p class="fw-bold mb-1">Law Officer / ALO</p>
+                    <p class="small text-muted mb-0">NWKRTC, @(Model.DivisionName ?? "Central Office")</p>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="print-sig-col">
+                    <p class="fw-bold mb-1">Divisional Controller / Dy. CLO</p>
+                    <p class="small text-muted mb-0">NWKRTC, @(Model.DivisionName ?? "Central Office")</p>
+                </div>
+            </div>
+            <div class="col-4">
+                <div class="print-sig-col">
+                    <p class="fw-bold mb-1">Chief Law Officer / MD</p>
+                    <p class="small text-muted mb-0">NWKRTC, Central Office, Hubballi</p>
+                </div>
+            </div>
+        </div>
+        <div class="text-center mt-3 pt-2 border-top text-muted" style="font-size: 7.5pt;">
+            <span>This is an official departmental case record generated from the NWKRTC Law Project Management Information System.</span>
         </div>
     </div>
 </div>
@@ -1271,11 +1702,22 @@
         @@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
         @@media print {
-            .navbar, .sidebar, .d-print-none, footer { display: none !important; }
-            .container-fluid { padding: 0 !important; margin: 0 !important; }
-            .card { border: 1px solid #dee2e6 !important; box-shadow: none !important; margin-bottom: 20px !important; }
-            body { background-color: white !important; }
-            .print-container { display: block !important; padding: 2cm !important; }
+            @@page {
+                size: A4 portrait;
+                margin: 10mm 12mm 10mm 12mm;
+            }
+            .navbar, .sidebar, .d-print-none, footer, .modal, #sidebar, .app-header { display: none !important; }
+            .container-fluid, .container { padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
+            body { background-color: #ffffff !important; font-family: 'Segoe UI', Arial, Helvetica, sans-serif !important; font-size: 8.5pt !important; color: #000000 !important; }
+            .print-container { display: block !important; padding: 0 !important; margin: 0 !important; width: 100% !important; }
+            .print-table { width: 100% !important; border: 1.5px solid #000 !important; border-collapse: collapse !important; font-size: 8.5pt !important; margin-bottom: 8px !important; }
+            .print-table th, .print-table td { border: 1px solid #000 !important; padding: 3px 6px !important; vertical-align: top !important; color: #000 !important; }
+            .print-section-header th { background-color: #f1f5f9 !important; font-weight: 700 !important; font-size: 9pt !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; border-top: 2px solid #000 !important; border-bottom: 1.5px solid #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .white-space-pre-line { white-space: pre-line !important; }
+            tr { page-break-inside: avoid !important; }
+            .print-sig-block { page-break-inside: avoid !important; }
+            .print-sig-col { border-top: 1px solid #000; padding-top: 5px; }
+            .badge { border: 1px solid #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
     </style>
 }
