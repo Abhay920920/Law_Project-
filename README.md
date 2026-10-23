@@ -1,23 +1,26 @@
 # 🏛️ Law Project — Enterprise Legal Case Management & e-Courts Portal
 
 > **Enterprise Legal Management Monorepo**  
-> Streamlining Motor Vehicle Claim (MVC/MACT) tracking, Labour disputes, Service Matters (High Court Writ Petitions), Payment of Gratuity claims, Execution Petitions (EP), and real-time **e-Courts Gateway Integration** across public transport and corporate divisions.
+> Streamlining Motor Vehicle Claim (MVC/MACT) tracking, Labour disputes, Arising Applications, Service Matters (High Court Writs), Payment of Gratuity claims, Other Courts, Execution Petitions (EP), Nyaya Patha AI legal research, and real-time **e-Courts NAPIX Gateway v1.3** integration across public transport and corporate divisions.
 
 ---
 
 ## 📌 Executive Overview
 
-**Law Project** is an enterprise-grade legal management platform built with **ASP.NET Core 9.0 MVC**, **Microsoft SQL Server**, and modern **Bootstrap 5 / Razor** web views. It centralizes and automates legal claim workflows, legal opinion requests (TR-18), advocate entrustment, court fee/petty bill tracking, automated SMS hearing notifications, and real-time status synchronization with official Indian court records via the **NIC e-Courts NAPIX API Gateway**.
+**Law Project** is an enterprise-grade legal management platform built with **ASP.NET Core 9.0 MVC**, **Microsoft SQL Server**, and modern **Bootstrap 5 / Razor** web views. It centralizes and automates legal claim workflows, legal opinion requests, advocate entrustment, court fee/petty bill tracking, automated SMS hearing notifications, AI legal precedent research, and real-time status synchronization with official Indian court records via the **NIC e-Courts NAPIX API Gateway**.
 
 ### Key Monorepo Components
 
 | Component / Subdirectory | Technology | Description |
 | :--- | :--- | :--- |
-| 🏢 **[MVCCaseManagement](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/MVCCaseManagement)** | ASP.NET Core 9.0 MVC, C#, SQL Server | Primary web application containing controllers, domain models, business logic, background workers, and Razor UI views. |
-| 🏛️ **[District Court Status API](file:///c:/Users/adts-/Desktop/Law%20Project/District%20Court%20Case%20Status%20API)** | JSON OpenAPI Specs | 19 official OpenAPI endpoint specifications for ICJS & District Court case lookup, Cause List, and FIR status. |
-| ⚖️ **[High Court Case Status API](file:///c:/Users/adts-/Desktop/Law%20Project/High%20Court%20Case%20Status%20API)** | JSON OpenAPI Specs | 22 official OpenAPI endpoint specifications for High Court case status, bench lists, advocate search, and orders. |
-| 📑 **[docs](file:///c:/Users/adts-/Desktop/Law%20Project/docs/INDEX.md)** | Master Documentation Hub | Centralized documentation hub for all 47 architecture, security, performance, SRS, and operations guides (see [INDEX.md](file:///c:/Users/adts-/Desktop/Law%20Project/docs/INDEX.md)). |
-| 🛠️ **[scripts](file:///c:/Users/adts-/Desktop/Law%20Project/scripts)** | PowerShell & Bash | Repository search, validation scripts, database migration runners, and automated CI/CD checks. |
+| 🏢 **[MVCCaseManagement](Law%20Project/CaseManagement)** | ASP.NET Core 9.0 MVC, C#, SQL Server | Primary web application containing 19 MVC controllers, domain models, 34 AI services, 32 DAL repositories, background workers, and Razor UI views. |
+| 🤖 **[Nyaya Patha AI](docs/NYAYA_PATHA_PRODUCTION_DEPLOYMENT_PLAN.md)** | Ollama / Qwen2.5:7b, RAG, BM25 | On-premises legal research assistant with hybrid search, factuality verification, conflict detection, and petty bill audit. |
+| 🌐 **[NapixEcourtsApi](NapixEcourtsApi)** | ASP.NET Core Web API | Dedicated microservice handling AES-128 / HMAC-SHA256 e-Courts gateway communications. |
+| 🏛️ **[District Court Status API](District%20Court%20Case%20Status%20API)** | JSON OpenAPI Specs | 19 official OpenAPI endpoint specifications for ICJS & District Court case lookup, Cause List, and FIR status. |
+| ⚖️ **[High Court Case Status API](High%20Court%20Case%20Status%20API)** | JSON OpenAPI Specs | 22 official OpenAPI endpoint specifications for High Court case status, bench lists, advocate search, and orders. |
+| 🧪 **[MVCCaseManagement.Tests](Law%20Project/MVCCaseManagement.Tests)** | xUnit, .NET 9.0 | Automated test suite comprising **284 tests across 17 test suites** ensuring 100% passing quality gates. |
+| 📑 **[docs](docs/INDEX.md)** | Master Documentation Hub | Centralized documentation hub for all architecture, security, performance, SRS, database, and operations guides. |
+| 🛠️ **[scripts](scripts)** | PowerShell & C# Scripts | Database schema exporters, maintenance scripts, and publish automation. |
 
 ---
 
@@ -25,34 +28,44 @@
 
 ### 1. 🚘 Motor Vehicle Claims (MVC / MACT)
 - Complete registration lifecycle for Motor Accident Claims Tribunal cases across divisions.
-- PW/RW witness records, claimant details, compensation awards, and driver/vehicle mappings.
+- PW/RW witness records, medical evidence, claimant details, compensation awards, and driver/vehicle mappings.
 - High Court Appeal tracking (MFA - Miscellaneous First Appeal) and Supreme Court SLP integration.
-- Execution Petitions (EP) tracking for recovery & deposit compliance.
-- Inter-division case transfers with audit logs.
+- Execution Petitions (EP) tracking for recovery, attachment notices, and bank deposit compliance.
+- Inter-division case transfers with immutable audit logs.
 
-### 2. ⚖️ Labour Court & Service Matters (Writ Petitions)
+### 2. ⚖️ Labour Court, Service Matters & Arising Applications
 - Industrial Disputes (ID), Labour Court Applications (LCA), and Serial Applications.
 - Service Matters (Direct High Court Writ Petitions - WP) and Writ Appeals (WA).
-- Central Office (CO), Chief Law Officer (CLO), and Managing Director (MD) recommendation workflows.
-- High Court Advocate entrustment and opinion tracking.
-- PDF petition & judgment upload management.
+- **Arising Applications**: Monetary computation claims (Section 33-C(2)) cross-referenced to parent labour disputes (KID/ID), with itemized installment ledgers and balance tracking.
+- **Multi-Tier Legal Review**: Hierarchical scrutiny workflow (Panel Advocate $\to$ Law Officer $\to$ Dy. Chief Law Officer $\to$ Chief Law Officer $\to$ Managing Director $\to$ Divisional Controller).
+- **Official A4 Legal Dossier**: Printable proforma report formatted for official department records with complete letterhead, case telemetry, and 3-tier attestation blocks.
 
 ### 3. 💰 Payment of Gratuity Act & Petty Bills
 - Controlling Authority (CA) & Appellate Authority (AA) claim tracking.
-- Interest calculation engine for delayed gratuity payments.
-- Detailed order tracking and previous payment auditing.
-- Petty bill approval workflow and advocate fee disincentive checks.
+- **Statutory 10% Interest Engine**: Computes statutory interest under the Payment of Gratuity Act for delayed payments automatically.
+- Detailed order tracking, statutory 100% appeal deposits, and previous payment auditing.
+- Petty bill approval workflow with automated deduplication and advocate fee disincentive checks.
 
-### 4. 🌐 Real-Time e-Courts Gateway Integration (NAPIX / NIC)
+### 4. 🏛️ Other Courts Module
+- Tracking of Civil Suits (OS, RFA), Revenue Courts (Tahsildar / Assistant Commissioner / DC), Consumer Forums (DCDRC, SCDRC), and Commercial Arbitration Tribunals.
+
+### 5. 🤖 Nyaya Patha AI Assistant (ನ್ಯಾಯ ಪಥ)
+- Conversational legal research assistant operating on a strict **Search-First RAG Pipeline**.
+- BM25 keyword matching + dense vector embeddings over legal precedents and corporate judgment records.
+- On-premises local inference via **Ollama Qwen2.5:7b-instruct**, preserving complete data sovereignty.
+- Automated duplicate petty bill detection, conflict analysis, and instant global kill-switch.
+
+### 6. 🌐 Real-Time e-Courts Gateway Integration (NAPIX v1.3)
 - **Automatic 16-Digit CNR Discovery**: Automatic resolution of CNR numbers from case type, case number, and registration year.
-- **District & High Court Live Sync**: Synchronize case status, next hearing dates, bench/judge names, and court orders directly from e-Courts.
+- **Court Hall Resolution Engine**: Decodes court hall numbers from daily cause lists and proceedings.
+- **MyCases Paginated Registry**: Server-side SQL pagination with division filtering, search, and real-time status chips (`SYNCED`, `HEARING_SOON`, `DISPOSED`, `STALE`).
 - **Cryptographic Security**: Enterprise OAuth2 bearer tokens, **AES-128-CBC** request payload encryption, and **HMAC-SHA256** parameter signing.
-- **Resilient Dual-Pipeline**: Direct C# NAPIX client with automated token caching & renewal, paired with an XAMPP/PHP fallback proxy (`api.php`).
+- **Hourly Quota Budgeting**: Enforces 1,000 requests/hour limit per module via `tbl_Napix_Api_Quota` to prevent IP rate-limiting.
 
-### 5. 🔔 Automated Background Notifications
+### 7. 🔔 Automated Background Notifications
 - `NotificationBackgroundService` hosted background job running daily.
-- SMS alerts for upcoming hearing dates (1-day, 3-day, 7-day lead times).
-- Stay order expiration warnings and High Court appeal filing deadline notifications.
+- SMS alerts for upcoming hearing dates (1-day, 3-day, 7-day lead times) dispatched via Karnataka Mobile-1 Gateway.
+- Stay order expiration warnings (15-day alert) and High Court limitation window alerts (90-day alert).
 
 ---
 
@@ -68,65 +81,72 @@
                                           v
 +-----------------------------------------------------------------------------------+
 |                             ASP.NET Core 9.0 Middleware                           |
-|  - Cookie Authentication & Claims Authorization (Admin, DivisionID, CO, CLO, MD) |
-|  - Session State & Brotli/Gzip Compression                                        |
-|  - Physical File Provider (/uploads serving PDF judgment files)                   |
+|  - CorrelationIdMiddleware (X-Correlation-ID distributed tracing)                 |
+|  - Cookie Authentication & Claims Authorization (8 RBAC Roles)                    |
+|  - Global AntiForgeryToken Validation on state-changing requests                  |
+|  - DivisionControllerReadOnlyFilter (Divisional boundary isolation)               |
 +-----------------------------------------------------------------------------------+
                                           |
                                           v
 +-----------------------------------------------------------------------------------+
-|                                 MVC Controllers                                   |
-| AccountController | CaseController | LabourController | GratuityController           |
-| ECourtsController | AppealController | ReportController | DashboardController     |
+|                                19 MVC Controllers                                 |
+| Account | Case | Labour | Gratuity | Appeal | EP | LabourEP | ECourts | NyayaPatha|
+| Report | Master | Audit | ActivityLog | ApiDashboard | Judgement | Notification   |
 +-----------------------------------------------------------------------------------+
                                           |
                      +--------------------+--------------------+
                      |                                         |
                      v                                         v
 +------------------------------------------+ +--------------------------------------+
-|            Services & Utils              | |      Hosted Background Service       |
-| - ECourtsNapixService (AES/HMAC NAPIX)   | | - NotificationBackgroundService      |
-| - SMSService & PasswordHelper (PBKDF2)   | |   (Runs daily background SMS job)    |
-+------------------------------------------+ +--------------------------------------+
+|            Services & AI Layer           | |      Hosted Background Services      |
+| - Nyaya Patha AI Engine (34 AI services) | | - NotificationBackgroundService      |
+| - Ollama LLM Provider (Qwen2.5:7b)       | |   (Daily SMS notification batch)     |
+| - ECourtsNapixService (AES/HMAC NAPIX)   | | - NapixBackgroundSyncService         |
+| - NapixQuotaService & SyncEngine         | |   (Hourly active case sync)          |
+| - SMSService (Karnataka Mobile-1)        | +--------------------------------------+
++------------------------------------------+
                      |
                      v
 +-----------------------------------------------------------------------------------+
-|                       Data Access Layer (DAL / Repositories)                      |
-| - DBHelper (SqlConnection Factory)                                                |
-| - DBMigration (Auto Schema Bootstrapper & Dynamic Migration)                      |
-| - CaseRepository / LabourRepository / GratuityRepository / MasterRepository       |
-|   (Dapper & ADO.NET SqlCommand with Parameterized Queries)                        |
+|                       Data Access Layer (32 Repositories)                         |
+| - DBHelper (SqlConnection Factory & Connection Pooling)                           |
+| - DatabaseMigrationRunner & DBMigration (Zero-Downtime Dynamic Migrations)        |
+| - CaseRepo | LabourRepo | GratuityRepo | AppealRepo | ECourtsRepo | MasterRepo    |
 +-----------------------------------------------------------------------------------+
                                           |
                                           v
 +-----------------------------------------------------------------------------------+
-|                                 SQL Server DB                                     |
-| Tables: USERS, MVC_CASES, APPEAL_DETAILS, LABOUR_CASES, LABOUR_SERVICE_MATTERS,   |
-|         GRA_CASES, HIGH_COURT_ADVOCATES, DIVISION_MASTER, MACT_MASTER, etc.       |
+|                           Microsoft SQL Server Database                           |
+| 83 Tables (tbl_MVC_Cases, tbl_Labour_Cases, tbl_Arising_Applications,             |
+|            tbl_Gra_Cases, tbl_ECourts_Cases, tbl_Napix_Api_Quota, tbl_Users, etc.)|
 +-----------------------------------------------------------------------------------+
 ```
 
 - **Runtime Target**: `.NET 9.0` (C# 13)
-- **Web Framework**: ASP.NET Core MVC with Razor engine
-- **Database Engine**: Microsoft SQL Server (LocalDB / Express / Enterprise)
-- **Data Access**: ADO.NET (`SqlCommand`), Dapper, and dynamic runtime schema migrator (`DBMigration.cs`)
-- **API Security**: AES-128-CBC Encryption, HMAC-SHA256 Signature, OAuth2 Token Management
-- **UI & Styling**: Vanilla CSS3, Bootstrap 5, FontAwesome, DataTables, and bilingual English/Kannada layouts
+- **Web Framework**: ASP.NET Core 9.0 MVC with Razor Engine
+- **Database Engine**: Microsoft SQL Server (83 Tables, Stored Procedures, Automated Migrations)
+- **AI Inference**: Local Ollama (`qwen2.5:7b-instruct-q4_K_M`)
+- **Data Access**: ADO.NET (`SqlCommand`), Dapper, Parameterized Queries
+- **Security**: PBKDF2 Password Hashing, Anti-Forgery Tokens, AES-128-CBC / HMAC-SHA256 Gateway Cryptography
+- **Automated Tests**: **284 Passing Tests** in `MVCCaseManagement.Tests`
 
 ---
 
-## 📚 Master Documentation Index
+## 📚 Master Documentation Hub
 
-All detailed guides are organized within the [`docs/`](file:///c:/Law%20Project/docs) directory:
+All comprehensive technical guides are organized within the [`docs/`](docs/INDEX.md) directory:
 
-| Guide | Target Audience | Description |
+| Guide | Primary Audience | Description |
 | :--- | :--- | :--- |
-| 🏗️ **[System Architecture Guide](file:///c:/Law%20Project/docs/SYSTEM_ARCHITECTURE.md)** | Architects & Lead Devs | In-depth tier breakdown, MVC routing, DAL migration, RBAC matrix, and database schemas. |
-| 🌐 **[e-Courts NAPIX Integration Guide](file:///c:/Law%20Project/docs/ECOURTS_INTEGRATION_GUIDE.md)** | Integration Engineers | Technical spec for NAPIX/NIC e-Courts gateway, AES/HMAC cryptography, and 41 OpenAPI JSON specs. |
-| 📑 **[Modules & Features Guide](file:///c:/Law%20Project/docs/MODULES_AND_FEATURES_GUIDE.md)** | Business Analysts & Users | Detailed domain walkthrough for MVC, Labour Court, Service Matters, Gratuity, and Alerts. |
-| 🚀 **[Deployment & Operations Guide](file:///c:/Law%20Project/docs/DEPLOYMENT_AND_OPERATIONS_GUIDE.md)** | DevOps & SysAdmins | Prerequisites, `appsettings.json`, SQL migrations, production publish scripts, and troubleshooting. |
-| 📋 **[Project Rules & Guidelines](file:///c:/Law%20Project/docs/PROJECT_RULES.md)** | All Developers | Coding standards, SQL parameterization rules, error handling, and security guidelines. |
-| 💰 **[Petty Bill & Payment Audit Guide](file:///c:/Law%20Project/docs/PETTY_BILL_PREVIOUS_PAYMENTS_GUIDE.md)** | Finance & Legal | Complete procedure for tracking legal fees, previous payments, and Controlling Authority orders. |
+| 🏗️ **[System Architecture Guide](docs/SYSTEM_ARCHITECTURE.md)** | Architects & Lead Devs | Detailed tier breakdown, middleware, 19 controllers, 34 AI services, 32 DAL repositories, and RBAC matrix. |
+| 📋 **[Project Rules & Guidelines](docs/PROJECT_RULES.md)** | All Developers | Coding standards, C# 13 / .NET 9 guidelines, strict SQL parameterization, CSRF protection, and release rules. |
+| 💾 **[Database Schema & Dictionary](docs/DATABASE_SCHEMA.md)** | DBAs & Backend Devs | Dictionary for all 83 database tables, ERD diagram, stored procedures, and migration runner. |
+| ⚖️ **[Modules & Features Guide](docs/MODULES_AND_FEATURES_GUIDE.md)** | Legal Officers & Analysts | Domain walkthrough for MVC, Labour Court, Arising Applications, Gratuity, Other Courts, and MIS Reports. |
+| 🌐 **[e-Courts NAPIX Integration Guide](docs/ECOURTS_INTEGRATION_GUIDE.md)** | Integration Engineers | Technical spec for NAPIX/NIC e-Courts v1.3 gateway, AES/HMAC crypto, Hall resolution, and MyCases pagination. |
+| 🧠 **[Nyaya Patha AI Operations Guide](docs/NYAYA_PATHA_PRODUCTION_DEPLOYMENT_PLAN.md)** | SysAdmins & AI Engineers | Local Ollama deployment, Search-First RAG pipeline, hardware profiles, and conflict detection. |
+| 💰 **[Petty Bill & Payment Audit Guide](docs/PETTY_BILL_PREVIOUS_PAYMENTS_GUIDE.md)** | Finance & Legal | Complete procedure for tracking advocate fees, certified copy expenses, and previous voucher disbursements. |
+| 🚀 **[Publishing & Deployment Guide](docs/PUBLISHING_GUIDE.md)** | DevOps & SysAdmins | Prerequisites, `publish.ps1` / `publish.bat`, 284 test gates, IIS 10.0 Application Pool setup, and post-deploy checks. |
+| 📑 **[Software Requirements Spec (SRS)](docs/SRS.md)** | Stakeholders & QA | Business requirements, 8 user roles, security boundaries, and statutory compensation workflows. |
 
 ---
 
@@ -135,79 +155,64 @@ All detailed guides are organized within the [`docs/`](file:///c:/Law%20Project/
 ### 1. Prerequisites
 - **.NET 9.0 SDK**: [Download .NET 9.0](https://dotnet.microsoft.com/download/dotnet/9.0)
 - **SQL Server**: SQL Server 2019+ or SQL Server Express / LocalDB
+- **Ollama**: [Download Ollama for Windows](https://ollama.com/download) (Required for Nyaya Patha AI)
 - **Visual Studio 2022** (v17.12+) or **VS Code** with C# Dev Kit
 
 ### 2. Configuration Setup
-Navigate to `Law Project/MVCCaseManagement/` and configure `appsettings.json`:
+Navigate to `Law Project/CaseManagement/` and configure `appsettings.json`:
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=MVCCaseManagementDB;Trusted_Connection=True;MultipleActiveResultSets=true;Encrypt=False"
+    "MVCCaseDB": "Server=localhost;Database=Admin_Law;Trusted_Connection=True;TrustServerCertificate=True;"
   },
   "eCourts": {
-    "ApiKey": "YOUR_NAPIX_CLIENT_ID",
-    "SecretKey": "YOUR_NAPIX_CLIENT_SECRET",
     "DeptId": "clonwkrtc",
-    "HmacKey": "15081947",
-    "AuthKey": "tD7Ju6n0Cdf4vxUo",
-    "IV": "tD7Ju6n0Cdf4vxUo",
-    "GatewayUrl": "https://delhigw.napix.gov.in/nic/ecourts"
+    "AuthKey": "YOUR_AUTH_KEY",
+    "HmacKey": "YOUR_HMAC_KEY",
+    "GatewayUrl": "https://delhigw.napix.gov.in/nic/ecourts",
+    "OAuthTokenUrl": "https://delhigw.napix.gov.in/nic/ecourts/oauth2/token"
+  },
+  "AI": {
+    "Enabled": true,
+    "Provider": "Ollama",
+    "Model": "qwen2.5:7b",
+    "BaseUrl": "http://127.0.0.1:11434"
   }
 }
 ```
 
-### 3. Database Initialisation & Startup
-You have two simple options to set up the database:
+### 3. Database Initialization & Startup
+The database can be initialized in two ways:
 
-#### Option A: Direct SQL Script (Recommended for Full Stack Clones)
-If you are setting up on a new machine or SQL Server instance:
-1. Open SQL Server Management Studio (SSMS) or Azure Data Studio.
-2. Create a new database:
-   ```sql
-   CREATE DATABASE MVCCaseManagementDB;
-   ```
-3. Open and execute the master unified script:
-   👉 **`Law Project/MVCCaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql`**
-4. This instantly sets up:
-   - All 83 tables, primary keys, and foreign keys.
-   - All stored procedures (`sp_SaveAppealFull`, `sp_GetDashboardStats`, NAPIX sync jobs).
-   - Core seed data: Roles (`ROLE_MASTER`), Divisions (`DIVISION_MASTER`), MACT Tribunals (`MACT_MASTER`), and System Users (`USERS`).
+#### Option A: Direct SQL Master Script (Recommended for Fresh Setups)
+Execute the unified master database script in SSMS or Azure Data Studio:
+👉 **`Law Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql`**
+This script sets up:
+- All 83 tables, constraints, foreign keys, and performance indexes.
+- Core seed data: 8 System Roles (`ROLE_MASTER`), Divisions (`DIVISION_MASTER`), MACT Tribunals, and System Users.
 
 #### Option B: Automatic Startup Migration
-The application also automatically creates all required SQL tables, foreign keys, constraints, and non-clustered performance indexes on startup via `DatabaseMigrationRunner.cs` and `DBMigration.EnsureAll()`.
+The application automatically creates missing tables, columns, and indexes on startup via `DatabaseMigrationRunner.cs` and `DBMigration.EnsureAll()`.
 
-Run the application using the dotnet CLI:
-
+Run the application:
 ```bash
-cd "Law Project/MVCCaseManagement"
+cd "Law Project/CaseManagement"
 dotnet run
 ```
+Access the application at `http://localhost:5000` or `https://localhost:5001`.
 
-Access the application in your browser at `http://localhost:5000` or `https://localhost:5001`.
-
-> [!TIP]
-> **Default Admin Credentials**  
-> Username: `admin`  
-> Password: `adminpassword`  
-> *(Ensure password is changed immediately upon first login in production environments).*
-
----
-
-## 🛠️ Validation Scripts & Tools
-
-The [`scripts/`](file:///c:/Law%20Project/scripts) folder contains diagnostic and validation tools:
-
-```powershell
-# Validate all workflows, templates, and skills
-.\scripts\validate-all.ps1
-
-# Run repository search tool
-.\scripts\search_repo.ps1 -Query "ECourtsNapixService"
+### 4. Running Automated Tests (284 Tests)
+```bash
+dotnet test LawProject.sln -c Release
 ```
 
 ---
 
-## 📄 License & Confidentiality
+## 🛠️ Publishing & Production Deployment
 
-This software and related documentation contain proprietary and confidential information of the corporate entity. Unauthorized copying, distribution, or disclosure is strictly prohibited.
+Execute the master PowerShell deployment pipeline:
+```powershell
+.\publish.ps1
+```
+For complete step-by-step Windows Server IIS 10.0 configuration, see the [Publishing & Deployment Guide](docs/PUBLISHING_GUIDE.md).

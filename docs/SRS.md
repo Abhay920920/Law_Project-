@@ -1,176 +1,142 @@
 # Software Requirements Specification (SRS)
-## Law Project - Case Management System
+## Law Project — Enterprise Legal Case Management System
+
+> **Platform Version**: ASP.NET Core 9.0 (C# 13) | **Persistence**: Microsoft SQL Server  
+> **Target Environment**: Windows Server 2022 / IIS 10.0 | **Microservice**: NapixEcourtsApi  
+> **Security Baseline**: PBKDF2 Password Hashing, Role-Based Access Control (8 Roles), CSRF Anti-Forgery Protection
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-The purpose of this document is to specify the software requirements for the comprehensive **Case Management System (Law Project)**. This web-based system is designed to securely record, track, and manage legal cases across multiple domains (MVC/MACT, Gratuity, and Labour) at the Division level, entirely replacing legacy Excel-based registers.
+This document specifies the software requirements for the enterprise **Case Management System (Law Project)**. The platform provides end-to-end legal lifecycle tracking, advocate entrustment, fee auditing, automated SMS notifications, artificial intelligence legal research, and bidirectional court record synchronization via the **NIC e-Courts NAPIX Gateway**.
 
-### 1.2 Document Conventions
+### 1.2 Document Conventions & Definitions
 - **MVC**: Motor Vehicle Claims
 - **MACT**: Motor Accident Claims Tribunal
 - **EP**: Execution Petition
-- **MFA**: Miscellaneous First Appeal
-- **SLP**: Special Leave Petition
-- **UI**: User Interface
-- **DB**: Database
+- **MFA**: Miscellaneous First Appeal (High Court)
+- **WP / WA**: Writ Petition / Writ Appeal (High Court)
+- **SLP**: Special Leave Petition (Supreme Court of India)
+- **CNR**: Case Number Record (16-character unique identifier for Indian court cases)
+- **NAPIX**: National API Exchange Gateway (National Informatics Centre - NIC)
+- **RAG**: Retrieval-Augmented Generation (Nyaya Patha AI Engine)
+- **LO / Dy. CLO / CLO / MD**: Law Officer / Deputy Chief Law Officer / Chief Law Officer / Managing Director
 
 ### 1.3 Intended Audience
-This document is intended for:
-- **Developers & Engineers**: To understand the system architecture, modules, and database structure.
-- **QA & Testers**: For formulating test cases and validating functionality.
-- **Stakeholders & Management**: For verifying that the software aligns with Government-approved tracking directives.
+- **Software Engineers & Architects**: System design, data contracts, and implementation blueprints.
+- **QA & Test Automation Engineers**: Validation of 284 unit and integration test suites.
+- **System Administrators & DevOps**: IIS deployment, Ollama service configuration, and database maintenance.
+- **Corporate Legal Officers**: Verification of compliance with NWKRTC and government legal guidelines.
 
 ### 1.4 Product Scope
-The **Case Management System** digitizes entirely the workflow handling for diverse transport/corporate legal claims. It includes:
-1. **MVC/MACT Claims**: High Court Appeals, Execution Petitions, and Supreme Court tracking.
-2. **Gratuity Cases**: Appellate Authority tracking, Controlling Authority directives, Payments, and Delays.
-3. **Labour Cases**: Writ Petitions, Employee details, Depot-level allocations, and Disciplinary proceedings.
-4. **Master Directories**: Repositories for Division codes, Courts/MACTs, Advocates, Case Statuses, and System Users.
-5. **Role-Based Workflows**: Tailored, isolated views for Admins, Division Users, and the Central/Head Office.
+The system manages:
+1. **Motor Vehicle Accident Claims (MVC/MACT)**: Accident details, witness tracking, compensation awards, High Court MFA appeals, Supreme Court SLPs, and award Execution Petitions.
+2. **Labour Disputes & Service Matters**: Industrial Disputes (ID), Section 33-C(2) LCAs, High Court Writ Petitions, and disciplinary actions.
+3. **Arising Applications**: Monetary computation claims cross-referenced to parent labour disputes, itemized payment installment ledgers, multi-tier legal opinions, and official A4 printable case dossiers.
+4. **Payment of Gratuity Act Claims**: Controlling Authority (CA) and Appellate Authority (AA) tracking, automated 10% statutory delayed interest computations.
+5. **Other Courts**: Civil Suits, Revenue Courts, Consumer Forums, and Commercial Arbitration.
+6. **Petty Bills & Advocate Fees**: Previous payment deduplication, fee disincentives, and multi-tier approval vouchers.
+7. **Real-Time e-Courts Sync**: Bidirectional NAPIX integration with automated 16-digit CNR auto-linking, court hall resolution, and cause list scraping.
+8. **Nyaya Patha AI**: Search-first RAG legal assistant, hybrid BM25 + dense vector search, document OCR extraction, and conflict detection.
 
 ---
 
 ## 2. Overall Description
 
-### 2.1 Product Perspective
-The system operates as a monolithic **ASP.NET Core MVC (net9.0)** application deployed on a centralized server using **SQL Server** as the persistent storage layer. It serves remote corporate divisions through a standard web-browser interface, ensuring concurrent, multi-user accessibility.
+### 2.1 Operating Environment
+- **Web Application**: ASP.NET Core 9.0 MVC running under IIS 10.0 (Windows Server 2019/2022).
+- **Database Server**: Microsoft SQL Server 2019+ (83 tables, stored procedures, dynamic startup migrator).
+- **AI Engine**: Local on-premises **Ollama** running `qwen2.5:7b-instruct-q4_K_M` (`http://127.0.0.1:11434`).
+- **External Gateways**: NIC e-Courts NAPIX Gateway v1.3, Karnataka Mobile-1 SMS Gateway, TR-18 Accident Portal.
 
-### 2.2 Product Functions
-- **Unified Dashboard**: Real-time aggregated statistics categorized by Case Types and Status.
-- **Case Lifecycle Management**: End-to-end registration, hearing scheduling, disposal updating, and appellant tracking.
-- **Bi-lingual Interface**: Complete Kannada/English localizations aligning with regional government standards.
-- **Automated Reporting**: On-the-fly PDF and Excel generation.
-- **Audit Tracking**: Comprehensive and immutable audit logs capturing creation and modification of records.
-
-### 2.3 User Classes and Characteristics
-1. **Admin**: Responsible for creating users, handling Master Data CRUD operations, and performing system-wide audits.
-2. **Division User**: Resource-scoped users tied to a specific `DivisionID`. Only authorized to create/edit cases and track lifecycles for their specific jurisdiction.
-3. **Central Office (Head Office)**: Read-only cross-divisional access with specialized capabilities to process High Court/Supreme Court Appeals without altering baseline division records.
-
-### 2.4 Operating Environment
-- **Platform**: ASP.NET Core 9.0
-- **Database**: Microsoft SQL Server
-- **Client**: Any modern web browser (Edge, Chrome, Firefox, Safari)
-
-### 2.5 System Workflow
+### 2.2 System Architecture & User Roles
 
 ```mermaid
 graph TD
-    Start([User Interaction]) --> Login{Login Screen}
-    Login -- Authentication --> AuthCheck{Check Role}
+    User([User Request]) --> Login{Authentication}
+    Login --> RoleCheck{Check User Role}
     
-    subgraph AdminRoles [Admin Role]
-        AuthCheck -- Admin --> AdminDash[Admin Dashboard]
-        AdminDash --> M_Masters[Manage Masters]
-        M_Masters -->|CRUD| DivM[Division Master]
-        M_Masters -->|CRUD| MACTM[MACT Master]
-        AdminDash --> M_Users[Manage Users]
-        AdminDash --> V_AllCases[View All Division Cases]
+    subgraph Administration [Administrative Roles]
+        RoleCheck -- Admin --> AdminPortal[Admin Dashboard & Master Management]
+        RoleCheck -- CentralOffice --> COPortal[Statewide Analytics & High Court Review]
     end
-
-    subgraph DivRoles [Division User Role]
-        AuthCheck -- Division User --> DivDash[Division Dashboard]
-        DivDash --> Stats[View Statistics]
-        DivDash --> CaseLifecycle[Case Lifecycle]
-        
-        CaseLifecycle --> RegCase[Register New Case]
-        RegCase --> Val[Client/Server Validation]
-        Val --> DAL_Save[(SQL Server - MVC_CASE)]
-        
-        DAL_Save --> ViewList[Paginated Case Registry]
-        ViewList --> EditCase[Edit/Update Details]
-        EditCase --> StatusUpdate{Status?}
-        StatusUpdate -- Disposed --> DisposeCase[Mark Case as Disposed]
-        StatusUpdate -- Pending --> PendCase[Update Hearing Schedule]
+    
+    subgraph LegalReviewHierarchy [Legal Hierarchy Roles]
+        RoleCheck -- LO --> LOReview[Law Officer First-Tier Scrutiny]
+        RoleCheck -- DyCLO --> DyCLOReview[Dy. Chief Law Officer Feasibility Review]
+        RoleCheck -- CLO --> CLOApproval[Chief Law Officer Executive Decision]
+        RoleCheck -- MD --> MDFinal[Managing Director Final Orders]
     end
-
-    subgraph Reporting [Reports & Outputs]
-        DivDash --> Reports[Generate Reports]
-        Reports --> PDF[PDF Export]
-        Reports --> Excel[Excel Export]
-        AdminDash --> GlobalReports[System Audit Reports]
+    
+    subgraph FieldOperations [Divisional & External Roles]
+        RoleCheck -- DivisionUser --> DivCase[Divisional Case Management & Lifecycle]
+        RoleCheck -- Advocate --> AdvPortal[Advocate Case View & Petty Bill Entry]
     end
-
-    DAL_Save -.-> Audit[(Audit Trail)]
-    DisposeCase --> Reports
-    GlobalReports --> PDF
 ```
 
----
+### 2.3 User Classes & Permissions Matrix
 
-## 3. External Interface Requirements
-
-### 3.1 User Interfaces
-- Forms and dashboards shall utilize **HTML5, CSS3, and Bootstrap 5** for responsiveness.
-- The interface shall feature glass-morphism panels, interactive data tables (DataTables plugin), and bilingual labels.
-- Flash messages and modal dialogues shall handle transient state alerts.
-
-### 3.2 Hardware Interfaces
-- The web application executes on a standard Windows Server (IIS) environment. No direct hardware integration (e.g., biometric scanners) is utilized presently.
-
-### 3.3 Software Interfaces
-- **Entity Framework Core / ADO.NET**: For ORM and stored procedure execution bridging logic and SQL Server.
-- **ASP.NET Core Identity**: Managing Claim-based Security and Cookie-based authentication.
+| Role | Scope | Permitted Operations |
+| :--- | :--- | :--- |
+| **Admin** | System-wide | User management, password resets, Master directories CRUD, system-wide audit inspection. |
+| **DivisionUser** | Division-scoped | Case creation, hearing schedule updates, witness tracking, disposal marking for assigned `DivisionID`. |
+| **CentralOffice** | Corporate-wide | Read-only statewide cross-divisional lookup, High Court/Supreme Court appeal processing, MIS reports. |
+| **Advocate** | Entrusted Cases | Read-only view of assigned cases, upcoming hearing dates, petty bill voucher submission. |
+| **Law Officer (LO)** | Division/CO | First-tier legal scrutiny, settlement recommendations, initial opinion recording. |
+| **Dy. Chief Law Officer (Dy. CLO)** | Central Office | Second-tier legal analysis, appeal feasibility review, fee voucher endorsement. |
+| **Chief Law Officer (CLO)** | Central Office | Legal policy enforcement, sanctioning High Court appeals, approval of settlement terms. |
+| **Managing Director (MD)** | Corporate-wide | Final executive authority for high-value back-wages, Supreme Court SLP sanctions. |
 
 ---
 
-## 4. System Features
+## 3. Detailed Functional Requirements
 
-### 4.1 Authentication & Authorization
-**Description:** Ensures that only verified personnel access the system, scoped to their explicit permissions.
-**Functional Requirements:**
-- Secure Cookie-based authentication using `ClaimsPrincipal`.
-- Cryptographic PBKDF2 password hashing.
-- Role-based gating mapping to `Admin`, `Division`, and `CentralOffice` identities.
+### 3.1 Authentication & Security (SEC)
+- **SEC-01**: Passwords must be hashed using cryptographic PBKDF2 with HMAC-SHA256 and unique per-user salts.
+- **SEC-02**: All state-changing endpoints must enforce Anti-Forgery Token (`RequestVerificationToken`) validation.
+- **SEC-03**: Cross-division tampering is prohibited via `DivisionControllerReadOnlyFilter`.
+- **SEC-04**: Direct string interpolation in SQL queries is prohibited; all DAL repositories must use parameterized queries.
+- **SEC-05**: File uploads are restricted to `.pdf`, `.jpg`, `.jpeg`, `.png` under a 50 MB threshold.
 
-### 4.2 MVC / MACT Management
-**Description:** Replaces physical MACT directories with a searchable database.
-**Functional Requirements:**
-- **Registration**: Capture MVC Number, Court MACT ID, Vehicle No, Accident Date, and Claim Amount.
-- **Adverse Details**: File alleged accidents and private hired statuses along with TR18/objection uploads.
-- **Execution Petitions (EP)**: Parallel tracking tied directly to disposed MVC claims.
-- **Appeals**: Extension table recording High Court/Supreme Court (Claimant and Corp) MFA/SLP details with corresponding stay grants or interim compensations.
+### 3.2 Motor Vehicle Claims (MVC)
+- **MVC-01**: Capture complete accident profile, driver token, vehicle registration, and tribunal details.
+- **MVC-02**: Record PW/RW witnesses, adverse depositions, and medical evidence documents.
+- **MVC-03**: Support linking High Court MFA appeals with stay order expiration tracking.
+- **MVC-04**: Support linking award Execution Petitions (EP) with court attachment notice tracking.
 
-### 4.3 Gratuity Case Management
-**Description:** Tracks gratuity-related worker compensation disputes.
-**Functional Requirements:**
-- Record Controlling Authority and Appellate Authority directives.
-- Log deposit sums, compliance statuses, delay remarks, and payment modes.
-- Support file upload capabilities for specific orders.
+### 3.3 Labour Disputes & Arising Applications (LAB)
+- **LAB-01**: Maintain Industrial Disputes (ID) and Section 33-C(2) LCAs linked to depot allocations.
+- **LAB-02**: Enable cross-referencing Arising Applications to primary dispute IDs (e.g. KID/ID records).
+- **LAB-03**: Maintain itemized payment installment ledgers for back-wages and compute remaining balances.
+- **LAB-04**: Enforce multi-tier approval recording (Panel Advocate $\to$ LO $\to$ Dy. CLO $\to$ CLO $\to$ MD $\to$ DC).
+- **LAB-05**: Generate official A4 printable case dossiers with corporation letterhead and 3-tier attestation blocks.
 
-### 4.4 Labour Case Management
-**Description:** Detailed dispute and disciplinary tracking for corporate employees.
-**Functional Requirements:**
-- Form definitions for registering Disciplinary constraints linked natively to `Depot` associations.
-- Handle Execution Petitions tailored explicitly to Labour parameters.
-- Provide contextual hiding logic for 'Pending for Filing' checks to mirror user-dependent workflow progress.
+### 3.4 Payment of Gratuity Act (GRA)
+- **GRA-01**: Record Controlling Authority (CA) claims and calculate statutory delayed interest at 10% per annum.
+- **GRA-02**: Track Appellate Authority (AA) appeals and mandatory 100% pre-appeal statutory deposits.
 
-### 4.5 Data & Audit Management
-**Description:** Retains system integrity and data traceability.
-**Functional Requirements:**
-- **Master Tables**: UI/CRUD tools for dynamic administration of `DIVISION_MASTER`, `DEPOT_MASTER`, `MACT_MASTER`, `ADVOCATE_MASTER`, and `CASE_STATUS_MASTER`.
-- **Audit Logs**: Maintain an untampered sequential history of what was modified, preserving both `OldValue` and `NewValue` mapped to timestamps and `UserID`s.
+### 3.5 e-Courts NAPIX Gateway Integration (ECO)
+- **ECO-01**: Auto-discover 16-digit CNR from case type, case number, and registration year.
+- **ECO-02**: Encrypt query parameters via AES-128-CBC and sign with HMAC-SHA256 request tokens.
+- **ECO-03**: Automatically resolve Court Hall Numbers from business proceeding records.
+- **ECO-04**: Provide server-side paginated `/ECourts/MyCases` with division filters and live status chips.
+- **ECO-05**: Enforce hourly quota budgets of 1,000 calls per module to prevent IP bans.
+
+### 3.6 Nyaya Patha AI Assistant (AI)
+- **AI-01**: Execute Search-First RAG pipeline querying SQL precedent databases before LLM generation.
+- **AI-02**: Run locally on-premises via Ollama Qwen2.5:7b-instruct to maintain absolute data sovereignty.
+- **AI-03**: Provide automated petty bill duplicate detection and legal conflict analysis.
+- **AI-04**: Provide an instant global Kill Switch to disable AI features dynamically without application restart.
+
+### 3.7 Automated Background Services (BKG)
+- **BKG-01**: Daily automated execution of `NotificationBackgroundService` to dispatch SMS hearing reminders (1-day, 3-day, 7-day).
+- **BKG-02**: Hourly background execution of `NapixBackgroundSyncService` for active case synchronization within quota limits.
 
 ---
 
-## 5. Other Nonfunctional Requirements
+## 4. Verification & Quality Assurance
 
-### 5.1 Performance Requirements
-- Server-side Pagination implementation combining `OFFSET` and `FETCH NEXT` to ensure sub-second response times even when directories scale past 50,000 cases.
-- Aggregation workflows heavily lean on optimized database-side Stored Procedures (e.g., `sp_GetDashboardStats`) rather than inefficient application memory calculations.
-
-### 5.2 Security Requirements
-- Parameterized ADO.NET strings and strictly typed EF Core LINQ to prevent SQL Injections.
-- Transport-layer hardening utilizing HSTS and mandatory HTTPS Redirection to thwart Man-in-the-Middle payloads.
-- Environment-sensitive compilation hiding stack traces outside of the isolated `Development` phase.
-
-### 5.3 Reliability & Availability
-- Database design employs absolute Foreign Key (FK) constraints, neutralizing unlinked or orphaned records.
-- Standardized `IsActive` bit fields to simulate logical soft-deletes over destructive hard-deletes.
-
-### 5.4 Maintainability
-- Monolithic layered architecture utilizing strict `Controller` -> `Repository` -> `Database` separation of concerns.
-- Global ViewModel validations `[Required]`, `[StringLength]` directly aligning with physical Data Type definitions in SQL.
+- **Test Suite**: 284 automated unit and integration tests across 17 test suites in [`MVCCaseManagement.Tests`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/MVCCaseManagement.Tests).
+- **Coverage**: Cryptographic signing, token caching, RAG retrieval factuality, 10% interest calculations, and SSRF prevention.
