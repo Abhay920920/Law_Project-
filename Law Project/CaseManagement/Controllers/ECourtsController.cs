@@ -1697,6 +1697,63 @@ namespace MVCCaseManagement.Controllers
                                 c.ItemNo = sr.GetString();
                             else if (root.TryGetProperty("item_no", out var itmR) && !string.IsNullOrWhiteSpace(itmR.GetString()))
                                 c.ItemNo = itmR.GetString();
+
+                            // Defensive fallback extraction for missing fields to guarantee complete data fidelity
+                            if (string.IsNullOrWhiteSpace(c.CourtNo) || c.CourtNo.Equals("Court Hall", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (target.TryGetProperty("court_no", out var cNo) && !string.IsNullOrWhiteSpace(cNo.GetString()))
+                                    c.CourtNo = cNo.GetString();
+                                else if (root.TryGetProperty("data", out var dpC) && dpC.TryGetProperty("court_no", out var dpCNo) && !string.IsNullOrWhiteSpace(dpCNo.GetString()))
+                                    c.CourtNo = dpCNo.GetString();
+                            }
+
+                            if (string.IsNullOrWhiteSpace(c.JudgeDesignation) || c.JudgeDesignation.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (target.TryGetProperty("coram", out var crm) && !string.IsNullOrWhiteSpace(crm.GetString()))
+                                    c.JudgeDesignation = crm.GetString();
+                                else if (target.TryGetProperty("judge", out var jdg) && !string.IsNullOrWhiteSpace(jdg.GetString()))
+                                    c.JudgeDesignation = jdg.GetString();
+                                else if (root.TryGetProperty("data", out var dpJ) && dpJ.TryGetProperty("court_no_judge", out var cnj) && !string.IsNullOrWhiteSpace(cnj.GetString()))
+                                    c.JudgeDesignation = cnj.GetString();
+                            }
+
+                            if (string.IsNullOrWhiteSpace(c.Petitioner) || c.Petitioner == "—")
+                            {
+                                if (target.TryGetProperty("pet_name", out var pn) && !string.IsNullOrWhiteSpace(pn.GetString()))
+                                    c.Petitioner = pn.GetString();
+                                else if (root.TryGetProperty("data", out var dpP) && dpP.TryGetProperty("petitioner", out var pet) && !string.IsNullOrWhiteSpace(pet.GetString()))
+                                    c.Petitioner = pet.GetString();
+                            }
+
+                            if (string.IsNullOrWhiteSpace(c.Respondent) || c.Respondent == "—")
+                            {
+                                if (target.TryGetProperty("res_name", out var rn) && !string.IsNullOrWhiteSpace(rn.GetString()))
+                                    c.Respondent = rn.GetString();
+                                else if (root.TryGetProperty("data", out var dpR) && dpR.TryGetProperty("respondent", out var res) && !string.IsNullOrWhiteSpace(res.GetString()))
+                                    c.Respondent = res.GetString();
+                            }
+
+                            if (string.IsNullOrWhiteSpace(c.StagePurpose) || c.StagePurpose == "—")
+                            {
+                                if (target.TryGetProperty("purpose_name", out var prp) && !string.IsNullOrWhiteSpace(prp.GetString()))
+                                    c.StagePurpose = prp.GetString();
+                                else if (root.TryGetProperty("data", out var dpS) && dpS.TryGetProperty("stage", out var stg) && !string.IsNullOrWhiteSpace(stg.GetString()))
+                                    c.StagePurpose = stg.GetString();
+                            }
+
+                            if (!c.NextHearingDate.HasValue || IsCisSentinelDate(c.NextHearingDate))
+                            {
+                                string? rawNext = null;
+                                if (target.TryGetProperty("date_next_list", out var dnl) && !string.IsNullOrWhiteSpace(dnl.GetString()))
+                                    rawNext = dnl.GetString();
+                                else if (root.TryGetProperty("data", out var dpN) && dpN.TryGetProperty("next_hearing_date", out var nhd) && !string.IsNullOrWhiteSpace(nhd.GetString()))
+                                    rawNext = nhd.GetString();
+
+                                if (!string.IsNullOrWhiteSpace(rawNext) && TryParseFlexibleDate(rawNext, out var pNext) && !IsCisSentinelDate(pNext))
+                                {
+                                    c.NextHearingDate = pNext;
+                                }
+                            }
                         }
                         catch { }
                     }
@@ -1730,27 +1787,33 @@ namespace MVCCaseManagement.Controllers
                         c.CaseTypeCode = resolved;
                     }
 
-                    if (isHc && !string.IsNullOrWhiteSpace(c.EstCode))
+                    // Strictly real data: Only attempt live High Court sitting hall resolution if the case is genuinely scheduled for TODAY
+                    if (isHc && !string.IsNullOrWhiteSpace(c.EstCode) && c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == DateTime.Today)
                     {
                         var resolvedHall = await ResolveHighCourtSittingHallAsync(c.EstCode, c.BenchId, c.JudgeDesignation, DateTime.Today.ToString("yyyy-MM-dd"), norm);
                         if (!string.IsNullOrWhiteSpace(resolvedHall))
                         {
-                            string formattedResolved = FormatCourtHall(resolvedHall, c.JudgeDesignation, c.EstCode);
-                            if (c.CourtNo != formattedResolved)
-                            {
-                                c.CourtNo = formattedResolved;
-                                try
-                                {
-                                    await conn.ExecuteAsync(
-                                        "UPDATE admin_Law.ECOURTS_TRACKED_CASES SET CourtNo = @courtNo WHERE TrackedID = @TrackedID",
-                                        new { courtNo = formattedResolved, c.TrackedID });
-                                }
-                                catch { }
-                            }
+                            c.CourtNo = resolvedHall;
                         }
                     }
 
-                    c.CourtNo = FormatCourtHall(c.CourtNo, c.JudgeDesignation, c.EstCode);
+                    string formattedCourtNo = FormatCourtHall(c.CourtNo, c.JudgeDesignation, c.EstCode);
+                    if (string.IsNullOrWhiteSpace(formattedCourtNo) && isHc)
+                    {
+                        formattedCourtNo = c.BenchName ?? "Single Bench";
+                    }
+
+                    if (c.CourtNo != formattedCourtNo)
+                    {
+                        c.CourtNo = formattedCourtNo;
+                        try
+                        {
+                            await conn.ExecuteAsync(
+                                "UPDATE admin_Law.ECOURTS_TRACKED_CASES SET CourtNo = @courtNo WHERE TrackedID = @TrackedID",
+                                new { courtNo = formattedCourtNo, c.TrackedID });
+                        }
+                        catch { }
+                    }
                     PopulateHearingAnalysisAndProceedings(c, DateTime.Today);
                 }
 
@@ -2886,25 +2949,31 @@ namespace MVCCaseManagement.Controllers
                             }
 
                             string? dynamicSittingHall = null;
-                            if (isHc && !string.IsNullOrWhiteSpace(c.EstCode))
+                            if (isHc && !string.IsNullOrWhiteSpace(c.EstCode) && nextDt.HasValue && nextDt.Value.Date == checkDate.Date)
                             {
                                 dynamicSittingHall = await ResolveHighCourtSittingHallAsync(c.EstCode, benchId, coram, checkDateYmd, norm);
                             }
 
-                            string courtHallCandidate = !string.IsNullOrWhiteSpace(dynamicSittingHall)
-                                ? dynamicSittingHall
-                                : (!string.IsNullOrWhiteSpace(rawCourt) && !rawCourt.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) && !rawCourt.Equals("Division Bench", StringComparison.OrdinalIgnoreCase) && !rawCourt.Equals("Court Hall", StringComparison.OrdinalIgnoreCase)
-                                    ? rawCourt
-                                    : (!string.IsNullOrWhiteSpace(benchName) && !benchName.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) ? benchName : (!string.IsNullOrWhiteSpace(benchId) ? $"Bench #{benchId}" : "Court Hall")));
-
-                            string formattedHall = FormatCourtHall(courtHallCandidate, coram, c.EstCode);
+                            string? formattedHall = null;
+                            if (!string.IsNullOrWhiteSpace(dynamicSittingHall))
+                            {
+                                formattedHall = dynamicSittingHall;
+                            }
+                            else if (!string.IsNullOrWhiteSpace(rawCourt))
+                            {
+                                formattedHall = FormatCourtHall(rawCourt, coram, c.EstCode);
+                            }
+                            else if (nextDt.HasValue && nextDt.Value.Date == checkDate.Date && !string.IsNullOrWhiteSpace(benchName))
+                            {
+                                formattedHall = benchName;
+                            }
 
                             await conn.ExecuteAsync(@"
                                 UPDATE admin_Law.ECOURTS_TRACKED_CASES SET
                                     CourtNo = COALESCE(@formattedHall, CourtNo),
                                     JudgeDesignation = COALESCE(@coram, JudgeDesignation),
                                     StagePurpose = COALESCE(@purposeName, StagePurpose),
-                                    NextHearingDate = COALESCE(@nextDt, NextHearingDate),
+                                    NextHearingDate = @nextDt,
                                     LastSyncedAt = GETDATE()
                                 WHERE TrackedID = @TrackedID",
                                 new {
@@ -3392,98 +3461,47 @@ namespace MVCCaseManagement.Controllers
                 var benchListRes = await _napixService.GetHighCourtCauselistBenchesAsync(estCode, dateYmd, module: module);
                 if (!benchListRes.HasValue || benchListRes.Value.ValueKind != JsonValueKind.Object)
                 {
-                    // Fallback to today's date if specific date had no published sitting roster yet
-                    benchListRes = await _napixService.GetHighCourtCauselistBenchesAsync(estCode, DateTime.Today.ToString("yyyy-MM-dd"), module: module);
+                    return null;
                 }
 
-                if (benchListRes.HasValue && benchListRes.Value.ValueKind == JsonValueKind.Object)
+                foreach (var bProp in benchListRes.Value.EnumerateObject())
                 {
-                    int currentHall = 0;
-                    var presidingToHall = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                    var benchIdToHall = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                    var judgeEntries = new List<(string FullJudgeName, string PresidingJudge, string HallStr)>();
+                    if (bProp.Value.ValueKind != JsonValueKind.Object) continue;
+                    string? bId = bProp.Value.TryGetProperty("bench_id", out var bp) ? bp.ToString() : null;
+                    string? jName = bProp.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() : null;
 
-                    // Sort bench keys numerically: case1, case2, ..., case10, case11...
-                    var sortedProps = benchListRes.Value.EnumerateObject()
-                        .Select(p => {
-                            var m = System.Text.RegularExpressions.Regex.Match(p.Name, @"\d+");
-                            int order = m.Success && int.TryParse(m.Value, out int o) ? o : 999;
-                            return new { Prop = p, Order = order };
-                        })
-                        .OrderBy(x => x.Order)
-                        .Select(x => x.Prop);
-
-                    foreach (var bProp in sortedProps)
+                    // Strictly extract authentic court_no or court_hall from official NAPIX payload if provided
+                    string? rawHall = null;
+                    if (bProp.Value.TryGetProperty("court_no", out var cp) && !string.IsNullOrWhiteSpace(cp.GetString()))
                     {
-                        if (bProp.Value.ValueKind != JsonValueKind.Object) continue;
-                        string? bId = bProp.Value.TryGetProperty("bench_id", out var bp) ? bp.ToString() : null;
-                        string? jName = bProp.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() : null;
-
-                        if (string.IsNullOrWhiteSpace(jName)) continue;
-
-                        string hallStr;
-                        if (jName.Contains("REGISTRAR", StringComparison.OrdinalIgnoreCase))
-                        {
-                            hallStr = "Court Hall (Registrar)";
-                        }
-                        else
-                        {
-                            // First judge in bench composition is the senior / presiding judge who occupies the hall
-                            string firstJudge = jName.Split(new[] { ',', '&', '/' }, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-                            string normFirst = NormalizeJudgeNameForRoster(firstJudge);
-
-                            if (!presidingToHall.TryGetValue(normFirst, out int hallNum))
-                            {
-                                currentHall++;
-                                hallNum = currentHall;
-                                presidingToHall[normFirst] = hallNum;
-                            }
-
-                            hallStr = $"Court Hall {hallNum:D2}";
-                        }
-
-                        if (!string.IsNullOrEmpty(bId))
-                        {
-                            benchIdToHall[bId] = hallStr;
-                        }
-
-                        string firstJudgeName = jName.Split(new[] { ',', '&', '/' }, StringSplitOptions.RemoveEmptyEntries)[0].Trim();
-                        judgeEntries.Add((jName, firstJudgeName, hallStr));
+                        rawHall = cp.GetString();
+                    }
+                    else if (bProp.Value.TryGetProperty("court_hall", out var chp) && !string.IsNullOrWhiteSpace(chp.GetString()))
+                    {
+                        rawHall = chp.GetString();
+                    }
+                    else if (!string.IsNullOrWhiteSpace(jName) && jName.Contains("REGISTRAR", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rawHall = "Court Hall (Registrar)";
                     }
 
-                    // 1. Direct match by bench_id
-                    if (!string.IsNullOrWhiteSpace(benchId) && benchIdToHall.TryGetValue(benchId.Trim(), out var resolvedById))
+                    if (string.IsNullOrWhiteSpace(rawHall)) continue;
+
+                    // Match by bench_id
+                    if (!string.IsNullOrWhiteSpace(benchId) && !string.IsNullOrWhiteSpace(bId) && bId.Trim() == benchId.Trim())
                     {
-                        return resolvedById;
+                        return FormatCourtHall(rawHall, jName, estCode);
                     }
 
-                    // 2. Match by coram / judge name
-                    if (!string.IsNullOrWhiteSpace(coram))
+                    // Match by coram
+                    if (!string.IsNullOrWhiteSpace(coram) && !string.IsNullOrWhiteSpace(jName))
                     {
                         string normCoram = NormalizeJudgeNameForRoster(coram);
-                        if (!string.IsNullOrEmpty(normCoram))
+                        string normJ = NormalizeJudgeNameForRoster(jName);
+                        if (!string.IsNullOrEmpty(normCoram) && !string.IsNullOrEmpty(normJ) &&
+                            (normJ.Contains(normCoram, StringComparison.OrdinalIgnoreCase) || normCoram.Contains(normJ, StringComparison.OrdinalIgnoreCase)))
                         {
-                            // Priority 2a: Matches presiding judge
-                            foreach (var entry in judgeEntries)
-                            {
-                                string normPresiding = NormalizeJudgeNameForRoster(entry.PresidingJudge);
-                                if (!string.IsNullOrEmpty(normPresiding) &&
-                                    (normPresiding.Contains(normCoram, StringComparison.OrdinalIgnoreCase) || normCoram.Contains(normPresiding, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    return entry.HallStr;
-                                }
-                            }
-
-                            // Priority 2b: Matches anywhere in full judge name
-                            foreach (var entry in judgeEntries)
-                            {
-                                string normFull = NormalizeJudgeNameForRoster(entry.FullJudgeName);
-                                if (!string.IsNullOrEmpty(normFull) &&
-                                    (normFull.Contains(normCoram, StringComparison.OrdinalIgnoreCase) || normCoram.Contains(normFull, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    return entry.HallStr;
-                                }
-                            }
+                            return FormatCourtHall(rawHall, jName, estCode);
                         }
                     }
                 }
@@ -3507,59 +3525,55 @@ namespace MVCCaseManagement.Controllers
         /// </summary>
         public static string FormatCourtHall(string? rawCourt, string? judge = null, string? estCode = null)
         {
+            if (string.IsNullOrWhiteSpace(rawCourt)) return "";
+
+            string s = rawCourt.Trim();
+
+            // 1. Preserve authentic bench designations from NAPIX
+            if (s.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) || s.Equals("Division Bench", StringComparison.OrdinalIgnoreCase))
+            {
+                return s;
+            }
+
             string benchSuffix = "";
             string cleanEst = (estCode ?? "").Trim().ToUpperInvariant();
             if (cleanEst == "KAHC01") benchSuffix = " (Bengaluru)";
             else if (cleanEst == "KAHC02") benchSuffix = " (Dharwad)";
             else if (cleanEst == "KAHC03") benchSuffix = " (Kalaburagi)";
 
-            // 1. If rawCourt already has a numeric court hall (e.g. "Court Hall 04", "CH-2", "1", "02")
-            if (!string.IsNullOrWhiteSpace(rawCourt))
+            // 2. If rawCourt has a numeric court hall (e.g. "Court Hall 04", "CH-2", "1", "02")
+            var numMatch = System.Text.RegularExpressions.Regex.Match(s, @"(?i)(?:court\s*(?:hall|no|room)?|hall|ch)?\s*[-:#]?\s*(\d{1,3})\b");
+            if (numMatch.Success && int.TryParse(numMatch.Groups[1].Value, out int hallNum))
             {
-                string s = rawCourt.Trim();
-                var numMatch = System.Text.RegularExpressions.Regex.Match(s, @"(?i)(?:court\s*(?:hall|no|room)?|hall|ch)?\s*[-:#]?\s*(\d{1,3})\b");
-                if (numMatch.Success && int.TryParse(numMatch.Groups[1].Value, out int hallNum))
+                if (hallNum >= 1 && hallNum <= 60)
                 {
-                    if (hallNum >= 1 && hallNum <= 60)
+                    string hallFormatted = $"Court Hall {hallNum:D2}";
+                    if (!string.IsNullOrWhiteSpace(benchSuffix) && !s.Contains("Dharwad", StringComparison.OrdinalIgnoreCase) && !s.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) && !s.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase))
                     {
-                        string hallFormatted = $"Court Hall {hallNum:D2}";
-                        if (!string.IsNullOrWhiteSpace(benchSuffix) && !s.Contains("Dharwad", StringComparison.OrdinalIgnoreCase) && !s.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) && !s.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase))
-                        {
-                            hallFormatted += benchSuffix;
-                        }
-                        return hallFormatted;
+                        hallFormatted += benchSuffix;
                     }
+                    return hallFormatted;
                 }
             }
 
-            // 2. If rawCourt or judge designates Registrar / Administrative Hall
+            // 3. If rawCourt or judge designates Registrar / Administrative Hall
             string jUpper = (judge ?? "").ToUpperInvariant();
-            string rUpper = (rawCourt ?? "").ToUpperInvariant();
+            string rUpper = s.ToUpperInvariant();
             if (jUpper.Contains("REGISTRAR") || rUpper.Contains("REGISTRAR"))
             {
                 string regHall = $"Court Hall (Registrar){benchSuffix}";
                 return regHall.Length > 50 ? regHall.Substring(0, 50) : regHall;
             }
 
-            // 3. Fallback: preserve authentic court name or bench designation from API
-            string finalHall = !string.IsNullOrWhiteSpace(benchSuffix) ? $"High Court{benchSuffix}" : "Court Hall";
-            if (!string.IsNullOrWhiteSpace(rawCourt) && 
-                !rawCourt.Equals("Court Hall", StringComparison.OrdinalIgnoreCase) && 
-                !rawCourt.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) && 
-                !rawCourt.Equals("Division Bench", StringComparison.OrdinalIgnoreCase) &&
-                !rawCourt.Equals("Unknown", StringComparison.OrdinalIgnoreCase) &&
-                !rawCourt.Equals("null", StringComparison.OrdinalIgnoreCase))
+            // 4. Preserve authentic non-empty court name from NAPIX if not generic placeholder
+            if (!s.Equals("Court Hall", StringComparison.OrdinalIgnoreCase) && 
+                !s.Equals("Unknown", StringComparison.OrdinalIgnoreCase) && 
+                !s.Equals("null", StringComparison.OrdinalIgnoreCase))
             {
-                finalHall = rawCourt;
-            }
-            else if (!string.IsNullOrWhiteSpace(judge) && 
-                !judge.Equals("Unknown", StringComparison.OrdinalIgnoreCase) && 
-                !judge.Equals("null", StringComparison.OrdinalIgnoreCase))
-            {
-                finalHall = judge.Length > 50 ? judge.Substring(0, 47) + "..." : judge;
+                return s.Length > 50 ? s.Substring(0, 50) : s;
             }
 
-            return finalHall.Length > 50 ? finalHall.Substring(0, 50) : finalHall;
+            return "";
         }
 
         /// <summary>

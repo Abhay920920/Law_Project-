@@ -16,6 +16,8 @@ dist/
 **/dist/
 **/MVCCaseManagement/publish/
 **/CaseManagement/publish/
+publish/
+**/publish/
 
 ## User-specific files
 *.rsuser

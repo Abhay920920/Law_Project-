@@ -62,6 +62,34 @@
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
+
+    /* Table Pagination Styling */
+    .pagination .page-link {
+        color: #1e293b;
+        border-color: #e2e8f0;
+        font-size: 0.82rem;
+        padding: 0.38rem 0.75rem;
+        cursor: pointer;
+        transition: all 0.15s ease-in-out;
+        background-color: #ffffff;
+    }
+    .pagination .page-link:hover {
+        background-color: #f1f5f9;
+        color: @(isLabour ? "#4338ca" : "#0284c7");
+        border-color: #cbd5e1;
+    }
+    .pagination .page-item.active .page-link {
+        background: @(isLabour ? "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" : "linear-gradient(135deg, #0f172a 0%, #0284c7 100%)");
+        border-color: @(isLabour ? "#4338ca" : "#0284c7");
+        color: #ffffff !important;
+        box-shadow: 0 2px 6px @(isLabour ? "rgba(67, 56, 202, 0.3)" : "rgba(2, 132, 199, 0.3)");
+    }
+    .pagination .page-item.disabled .page-link {
+        color: #94a3b8;
+        background-color: #f8fafc;
+        border-color: #e2e8f0;
+        cursor: not-allowed;
+    }
 </style>
 
 <div class="mycases-page px-3 px-md-4 py-3">
@@ -436,11 +464,31 @@
         </div>
 
         <!-- Table Footer / Pagination Info -->
-        <div class="card-footer bg-white border-top p-3 d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2">
-            <div class="small text-muted" id="tableSummaryText">
-                Showing 0 cases
+        <div class="card-footer bg-white border-top p-3 d-flex flex-column flex-lg-row justify-content-between align-items-center gap-3">
+            <div class="d-flex flex-wrap align-items-center gap-3">
+                <div class="small text-muted" id="tableSummaryText">
+                    Showing 0 cases
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <label for="pageSizeSelect" class="small text-muted mb-0 text-nowrap">Per page:</label>
+                    <select id="pageSizeSelect" class="form-select form-select-sm rounded-pill px-2.5 py-1 text-dark fw-semibold border-secondary-subtle" style="width: auto; min-width: 80px;" onchange="onPageSizeChange(this.value)">
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="all">All</option>
+                    </select>
+                </div>
             </div>
-            <div class="small text-muted">
+
+            <!-- Interactive Pagination Controls -->
+            <nav id="casesPaginationNav" aria-label="My Cases Table Pagination" class="d-none">
+                <ul class="pagination pagination-sm mb-0 gap-1 flex-wrap justify-content-center" id="casesPaginationList">
+                    <!-- Dynamically populated page buttons -->
+                </ul>
+            </nav>
+
+            <div class="small text-muted d-none d-md-block">
                 <i class="bi bi-shield-check text-success me-1"></i> Synced via NAPIX eCourts Official API
             </div>
         </div>
@@ -1203,6 +1251,8 @@
     let allCasesData = [];
     let currentDossierTrackedId = null;
     let currentDossierObject = null;
+    let currentPage = 1;
+    let pageSize = 10; // Default 10 per page
 
     function escapeHtml(str) {
         if (str === null || str === undefined) return "";
@@ -1229,6 +1279,21 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('pageSize')) {
+            const ps = urlParams.get('pageSize');
+            if (ps === 'all' || !isNaN(parseInt(ps, 10))) {
+                pageSize = ps === 'all' ? 'all' : parseInt(ps, 10);
+                const sel = document.getElementById("pageSizeSelect");
+                if (sel) sel.value = ps;
+            }
+        }
+        if (urlParams.has('page')) {
+            const p = parseInt(urlParams.get('page'), 10);
+            if (!isNaN(p) && p > 0) {
+                currentPage = p;
+            }
+        }
         loadTrackedCases();
     });
 
@@ -1720,12 +1785,13 @@
                     <i class="bi bi-building me-1 text-primary"></i>${escapeHtml(c.courtEstName || c.estCode || 'Court')}
                 </div>
                 <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
-                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
-                        <i class="bi bi-bank2 me-1 text-secondary"></i>${escapeHtml(c.courtNo || "—")}
-                    </span>
+                    ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim()))) ? `
+                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold" title="Physical Court Hall">
+                        <i class="bi bi-bank2 me-1 text-secondary"></i>${escapeHtml(c.courtNo)}
+                    </span>` : ''}
                     ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Item #${escapeHtml(c.itemNo)}`}</span>` : ''}
                     ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
-                    ${c.benchName ? `<span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName)}</span>` : ''}
+                    <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                 </div>
                 <div class="extra-small text-muted text-truncate" style="max-width: 220px;" title="${escapeHtml(c.judgeDesignation || "")}">
                     <i class="bi bi-person-lines-fill me-1 text-secondary"></i>${escapeHtml(c.judgeDesignation || "—")}
@@ -1841,8 +1907,41 @@
             return true;
         });
 
+        // Calculate pagination slices
+        const totalCount = filtered.length;
+        let pagedItems = filtered;
+        let totalPages = 1;
+        let startIndex = 0;
+        let endIndex = totalCount;
+
+        if (pageSize !== "all") {
+            const pageSizeNum = parseInt(pageSize, 10) || 10;
+            totalPages = Math.max(1, Math.ceil(totalCount / pageSizeNum));
+            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 1) currentPage = 1;
+
+            startIndex = (currentPage - 1) * pageSizeNum;
+            endIndex = Math.min(startIndex + pageSizeNum, totalCount);
+            pagedItems = filtered.slice(startIndex, endIndex);
+        } else {
+            currentPage = 1;
+            totalPages = 1;
+        }
+
         // Update table summary
-        document.getElementById("tableSummaryText").innerText = `Showing ${filtered.length} of ${allCasesData.length} tracked case(s)`;
+        const summaryEl = document.getElementById("tableSummaryText");
+        if (summaryEl) {
+            if (totalCount === 0) {
+                summaryEl.innerText = "Showing 0 cases";
+            } else if (pageSize === "all") {
+                summaryEl.innerHTML = `Showing all <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}`;
+            } else {
+                summaryEl.innerHTML = `Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}`;
+            }
+        }
+
+        // Render pagination controls
+        renderPagination(totalPages, currentPage);
 
         // Update Case Worker summary badge
         const workerBadge = document.getElementById("workerFilterSummaryBadge");
@@ -1887,14 +1986,14 @@
         // Group by Case Worker Rendering
         if (isGrouped) {
             const workerGroups = {};
-            filtered.forEach(c => {
+            pagedItems.forEach(c => {
                 const w = (c.addedBy || "Central Office").trim();
                 if (!workerGroups[w]) workerGroups[w] = [];
                 workerGroups[w].push(c);
             });
 
             let groupHtml = "";
-            let overallIndex = 0;
+            let overallIndex = startIndex;
             const workerNames = Object.keys(workerGroups).sort((a, b) => a.localeCompare(b));
 
             workerNames.forEach((wName, gIdx) => {
@@ -1950,15 +2049,115 @@
 
         // Standard Flat View Rendering
         let html = "";
-        filtered.forEach((c, index) => {
-            html += renderCaseRowHtml(c, index + 1);
+        pagedItems.forEach((c, index) => {
+            html += renderCaseRowHtml(c, startIndex + index + 1);
         });
 
         tbody.innerHTML = html;
     }
 
     function filterCasesTable() {
+        currentPage = 1;
         renderCasesTable();
+    }
+
+    function onPageSizeChange(val) {
+        pageSize = val === 'all' ? 'all' : (parseInt(val, 10) || 10);
+        currentPage = 1;
+        renderCasesTable();
+    }
+
+    function goToPage(page) {
+        currentPage = page;
+        renderCasesTable();
+        const tableCard = document.getElementById("myCasesTable");
+        if (tableCard) {
+            tableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function renderPagination(totalPages, page) {
+        const nav = document.getElementById("casesPaginationNav");
+        const ul = document.getElementById("casesPaginationList");
+        if (!nav || !ul) return;
+
+        if (totalPages <= 1) {
+            nav.classList.add("d-none");
+            ul.innerHTML = "";
+            return;
+        }
+
+        nav.classList.remove("d-none");
+
+        let html = "";
+
+        // First button
+        html += `<li class="page-item ${page <= 1 ? 'disabled' : ''}">
+            <button class="page-link rounded-start shadow-none" type="button" onclick="goToPage(1)" title="First Page" ${page <= 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>
+                <i class="bi bi-chevron-double-left"></i>
+            </button>
+        </li>`;
+
+        // Previous button
+        html += `<li class="page-item ${page <= 1 ? 'disabled' : ''}">
+            <button class="page-link shadow-none" type="button" onclick="goToPage(${page - 1})" title="Previous Page" ${page <= 1 ? 'tabindex="-1" aria-disabled="true"' : ''}>
+                <i class="bi bi-chevron-left"></i>
+            </button>
+        </li>`;
+
+        // Smart page windowing (window of +/- 2 around active page)
+        const windowSize = 2;
+        let startPage = Math.max(1, page - windowSize);
+        let endPage = Math.min(totalPages, page + windowSize);
+
+        if (endPage - startPage < windowSize * 2) {
+            if (startPage === 1) {
+                endPage = Math.min(totalPages, startPage + windowSize * 2);
+            } else if (endPage === totalPages) {
+                startPage = Math.max(1, endPage - windowSize * 2);
+            }
+        }
+
+        if (startPage > 1) {
+            html += `<li class="page-item">
+                <button class="page-link shadow-none" type="button" onclick="goToPage(1)">1</button>
+            </li>`;
+            if (startPage > 2) {
+                html += `<li class="page-item disabled"><span class="page-link border-0 text-muted px-2">...</span></li>`;
+            }
+        }
+
+        for (let p = startPage; p <= endPage; p++) {
+            const isActive = (p === page);
+            html += `<li class="page-item ${isActive ? 'active' : ''}">
+                <button class="page-link shadow-none ${isActive ? 'fw-bold' : ''}" type="button" onclick="goToPage(${p})">${p}</button>
+            </li>`;
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                html += `<li class="page-item disabled"><span class="page-link border-0 text-muted px-2">...</span></li>`;
+            }
+            html += `<li class="page-item">
+                <button class="page-link shadow-none" type="button" onclick="goToPage(${totalPages})">${totalPages}</button>
+            </li>`;
+        }
+
+        // Next button
+        html += `<li class="page-item ${page >= totalPages ? 'disabled' : ''}">
+            <button class="page-link shadow-none" type="button" onclick="goToPage(${page + 1})" title="Next Page" ${page >= totalPages ? 'tabindex="-1" aria-disabled="true"' : ''}>
+                <i class="bi bi-chevron-right"></i>
+            </button>
+        </li>`;
+
+        // Last button
+        html += `<li class="page-item ${page >= totalPages ? 'disabled' : ''}">
+            <button class="page-link rounded-end shadow-none" type="button" onclick="goToPage(${totalPages})" title="Last Page" ${page >= totalPages ? 'tabindex="-1" aria-disabled="true"' : ''}>
+                <i class="bi bi-chevron-double-right"></i>
+            </button>
+        </li>`;
+
+        ul.innerHTML = html;
     }
 
     // ==========================================
@@ -3347,11 +3546,12 @@
                                 <i class="bi bi-building me-1 text-primary"></i>${d.courtName || res.courtName}
                             </div>` : ''}
                             <div class="mt-2 d-flex align-items-center gap-1.5 flex-wrap">
-                                <span class="badge bg-warning-subtle text-dark border border-warning fs-6 px-3 py-2 font-monospace fw-bold shadow-sm d-inline-flex align-items-center">
-                                    <i class="bi bi-bank2 me-2 text-secondary fs-5"></i>${d.courtHall || 'Court Hall'}
-                                </span>
+                                ${(d.courtHall && (d.courtHall.toLowerCase().includes("court hall") || /^\d+$/.test(d.courtHall.trim()))) ? `
+                                <span class="badge bg-warning-subtle text-dark border border-warning fs-6 px-3 py-2 font-monospace fw-bold shadow-sm d-inline-flex align-items-center" title="Physical Court Hall">
+                                    <i class="bi bi-bank2 me-2 text-secondary fs-5"></i>${d.courtHall}
+                                </span>` : ''}
                                 ${(d.benchId || res.benchId) ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${d.benchId || res.benchId}</span>` : ''}
-                                ${(d.benchName || res.benchName) ? `<span class="badge bg-white text-dark border extra-small">${d.benchName || res.benchName}</span>` : ''}
+                                <span class="badge bg-white text-dark border extra-small">${d.benchName || res.benchName || (!d.courtHall?.toLowerCase().includes("court hall") ? d.courtHall : '') || 'Single Bench'}</span>
                             </div>
                             <div class="extra-small text-muted mt-2">Coram / Hon'ble Bench:</div>
                             <div class="small fw-bold text-dark mt-0.5">${d.judgeName || 'Hon\'ble High Court Bench'}</div>
@@ -4200,7 +4400,16 @@
         const data = dossier.data || {};
         const raw = dossier.raw || {};
         const cnr = dossier.cnr || data.cnr_number || "—";
-        const history = dossier.history || [];
+        const rawHistory = dossier.history || raw.history || [];
+        const history = Array.isArray(rawHistory) ? rawHistory : (typeof rawHistory === 'object' && rawHistory !== null ? Object.values(rawHistory) : []);
+
+        // Multi-source extraction for Orders in Print
+        let printRawOrders = dossier.orders;
+        if (!printRawOrders || (Array.isArray(printRawOrders) && printRawOrders.length === 0)) {
+            printRawOrders = raw.orders || raw.order_details || raw.order || raw.case_orders || raw.interim_orders || [];
+        }
+        const orders = Array.isArray(printRawOrders) ? printRawOrders : (typeof printRawOrders === 'object' && printRawOrders !== null ? Object.values(printRawOrders) : []);
+
         // Multi-source extraction for IA and Processes in Print
         let printRawIa = dossier.ia_filings;
         if (!printRawIa || (Array.isArray(printRawIa) && printRawIa.length === 0)) {
@@ -4213,7 +4422,9 @@
             printRawProc = raw.processes || raw.case_processes || raw.process || raw.process_details || raw.notice_details || raw.notices || raw.notice || raw.process_issued || [];
         }
         const processes = Array.isArray(printRawProc) ? printRawProc : (typeof printRawProc === 'object' && printRawProc !== null ? Object.values(printRawProc) : []);
-        const acts = dossier.acts || [];
+
+        const rawActs = dossier.acts || raw.acts || [];
+        const acts = Array.isArray(rawActs) ? rawActs : (typeof rawActs === 'object' && rawActs !== null ? Object.values(rawActs) : []);
 
         const isDisposed = (data.case_status || "").toLowerCase().includes("dispos");
         const statusBadge = isDisposed

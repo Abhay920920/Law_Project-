@@ -413,5 +413,12 @@ namespace MVCCaseManagement.Controllers
                 return RedirectToAction("OtherCourtsCaseList", new { activeCourt = model.CaseType, litigantType = model.LitigantType });
             }
         }
+
+        [AllowAnonymous]
+        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        public IActionResult Error()
+        {
+            return View();
+        }
     }
 }
