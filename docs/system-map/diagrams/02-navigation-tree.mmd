@@ -1,0 +1,76 @@
+graph TD
+    Root["NWKRTC Law Management System Portal"]
+
+    %% Top Level Hubs
+    Root --> Auth["Authentication & Session"]
+    Root --> HubHome["Central Portal Home (/Home/Index)"]
+    Root --> ModMVC["MVC / MACT Claims Module"]
+    Root --> ModLabour["Labour Disputes Module"]
+    Root --> ModGratuity["Gratuity Claims Module"]
+    Root --> ModOther["Other Courts Gateway Module"]
+    Root --> ModReports["Reports & Monthly Statements"]
+    Root --> ModAI["Nyaya Patha AI Assistant (/NyayaPatha)"]
+    Root --> ModAdmin["Administration & Tools"]
+
+    %% Authentication
+    Auth --> A1["Login (/Account/Login)"]
+    Auth --> A2["Sign Out (/Account/Logout)"]
+    Auth --> A3["Change Password (/Account/ChangePassword)"]
+    Auth --> A4["Forgot Password OTP (/Account/ForgotPassword)"]
+
+    %% MVC Module
+    ModMVC --> M1["Dashboard (/Dashboard)"]
+    ModMVC --> M2["New Registration (/Case/Create) *Div Only*"]
+    ModMVC --> M3["Third Party Cases (/Case/ThirdPartyList) *Div Only*"]
+    ModMVC --> M4["MVC Case List (/Case/Index)"]
+    ModMVC --> M5["HC Cause List (/ECourts/HighCourtCauseList) *CO Only*"]
+    ModMVC --> M6["My Cases (/ECourts/MyCases?module=MVC) *CO Only*"]
+    ModMVC --> M7["Claimant Appeals (/Appeal/Register) *CO Only*"]
+    ModMVC --> M8["SLP Registration (/Appeal/SLPRegistration) *CO Only*"]
+    ModMVC --> M9["Audit Registry (/Audit)"]
+    ModMVC --> M10["EP Execution Petitions (/EP)"]
+    ModMVC --> M11["Petty Bill (/pettybill) *Div Only*"]
+    ModMVC --> M12["MVC Remand Back Case (/Case/RemindBack) *Div Only*"]
+    ModMVC --> M13["Judgements & Circulars (/Judgement)"]
+
+    %% Labour Module
+    ModLabour --> L1["Labour Dashboard (/Labour/Index)"]
+    ModLabour --> L2["Live HC Cause List (/Labour/HighCourtCauseList)"]
+    ModLabour --> L3["My Cases (/ECourts/MyCases?module=Labour)"]
+    ModLabour --> L4["New Registration (/Labour/Create) *Div Only*"]
+    ModLabour --> L5["Labour Case List (/Labour/CaseList)"]
+    ModLabour --> L6["Arising Applications (/Labour/ArisingApplication) *Div Only*"]
+    ModLabour --> L7["Case Transfer (/Labour/Transfer)"]
+    ModLabour --> L8["Labour EP Petitions (/LabourEP) *Div Only*"]
+    ModLabour --> L9["Service Matters (/Labour/ServiceMatters) *CO Only*"]
+    ModLabour --> L10["Claimant Writ Petition (/Labour/ClaimantAppeals) *CO Only*"]
+    ModLabour --> L11["CCC Cases (/Labour/CCCCases) *CO Only*"]
+    ModLabour --> L12["Review Petition Filing (/Labour/ReviewPetitions) *CO Only*"]
+    ModLabour --> L13["Claimant Writ Appeal (/Labour/ClaimantWritAppeals) *CO Only*"]
+    ModLabour --> L14["Claimant SLP (/Labour/ClaimantSLPs) *CO Only*"]
+
+    %% Gratuity Module
+    ModGratuity --> G1["Gratuity Dashboard (/Gratuity)"]
+    ModGratuity --> G2["New Registration (/Gratuity/Create) *Div Only*"]
+    ModGratuity --> G3["Gratuity Case List (/Gratuity/CaseList)"]
+    ModGratuity --> G4["Audit Calculation 10% Interest (/Gratuity/AuditCalculation)"]
+    ModGratuity --> G5["Claimant PGA/APPL/CR (/Gratuity/ClaimantAppeals)"]
+
+    %% Other Courts Module
+    ModOther --> O1["Other Courts Gateway (/Home/OtherCourts)"]
+    ModOther --> O2["Original Suit Corporation (/Home/OSCorporation)"]
+    ModOther --> O3["Original Suit Claimant (/Home/OSClaimant)"]
+    ModOther --> O4["Employees Comp Act ECA (/Home/ECA)"]
+    ModOther --> O5["Other Courts Case List (/Home/OtherCourtsCaseList)"]
+
+    %% Reports Module
+    ModReports --> R1["MVC Monthly Statement (/Report/CentralOffice?module=MVC)"]
+    ModReports --> R2["Labour Monthly Statement (/Report/CentralOffice?module=Labour)"]
+    ModReports --> R3["Gratuity Monthly Statement (/Report/CentralOffice?module=Gratuity)"]
+    ModReports --> R4["Other Courts Statement (/Report/CentralOffice?module=Others)"]
+    ModReports --> R5["MMR-ST2 Particulars (/Report/CentralOffice?module=MMR-ST2)"]
+
+    %% Admin Module
+    ModAdmin --> AD1["Systems Setup (/Master) *Admin Only*"]
+    ModAdmin --> AD2["API Dashboard (/ApiDashboard) *Admin/CO/CLO/MD/LO*"]
+    ModAdmin --> AD3["Notification Center (/Notification/Index)"]

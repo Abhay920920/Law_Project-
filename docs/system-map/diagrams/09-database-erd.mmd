@@ -1,0 +1,115 @@
+erDiagram
+    USERS ||--o{ MVC_CASES : creates
+    USERS ||--o{ LABOUR_CASES : creates
+    USERS ||--o{ GRA_CASES : creates
+    USERS ||--o{ OTHER_CASES : creates
+    DIVISIONS ||--o{ USERS : assigns
+    DIVISIONS ||--o{ MVC_CASES : owns
+    DIVISIONS ||--o{ LABOUR_CASES : owns
+
+    MVC_CASES ||--o{ MVC_PETITIONER_DETAILS : has
+    MVC_CASES ||--o{ MVC_CASE_HEARING_DETAILS : tracks
+    MVC_CASES ||--o{ MVC_CASE_ADVERSE_DETAILS : awards
+    MVC_CASES ||--o{ APPEAL_DETAILS : appeals
+    MVC_CASES ||--o{ EP_DETAILS : executes
+    MVC_CASES ||--o{ PETTY_BILL_PAYMENTS : incurs
+    MVC_CASES ||--o{ tbl_Case_Activity_Logs : audits
+
+    LABOUR_CASES ||--o{ LABOUR_PETITIONER_DETAILS : has
+    LABOUR_CASES ||--o{ LABOUR_HEARINGS : tracks
+    LABOUR_CASES ||--o{ LABOUR_CASE_NOTINGS : reviews
+    LABOUR_CASES ||--o{ LABOUR_ARISING_APPLICATIONS : arises
+    LABOUR_CASES ||--o{ LABOUR_EP_DETAILS : executes
+
+    GRA_CASES ||--o{ tbl_Gratuity_Interest : calculates
+    GRA_CASES ||--o{ tbl_Gratuity_Payments : pays
+
+    NAPIX_SYNC_QUEUE ||--o{ NAPIX_API_CALLS : records
+
+    MVC_CASES {
+        int CaseID PK
+        string CaseNumber
+        string CNRNumber
+        int DivisionID FK
+        int CourtID FK
+        datetime AccidentDate
+        string VehicleNumber
+        string CaseStatus
+        datetime NextHearingDate
+    }
+
+    MVC_CASE_ADVERSE_DETAILS {
+        int AdverseID PK
+        int CaseID FK
+        decimal TotalCompensation
+        decimal CorpLiabilityPercent
+        decimal InterestRate
+        string InitialActionPath1
+    }
+
+    APPEAL_DETAILS {
+        int AppealID PK
+        int CaseID FK
+        string AppealNumber
+        string AppealType
+        string HighCourtBench
+        string AppealStatus
+    }
+
+    EP_DETAILS {
+        int EPID PK
+        int CaseID FK
+        string EPNumber
+        decimal ClaimAmount
+        decimal DepositedAmount
+        string EPStatus
+    }
+
+    LABOUR_CASES {
+        int LabourCaseID PK
+        string DisputeNumber
+        string CaseType
+        int DivisionID FK
+        string WorkmanName
+        string CurrentStage
+        string ReviewStatus
+    }
+
+    LABOUR_ARISING_APPLICATIONS {
+        int ArisingAppID PK
+        int LabourCaseID FK
+        string ApplicationNumber
+        decimal ClaimAmount
+        int DivisionID FK
+        string Status
+    }
+
+    GRA_CASES {
+        int GratuityID PK
+        string ClaimNumber
+        int DivisionID FK
+        string EmployeeName
+        decimal PrincipalAmount
+        decimal InterestAmount
+        decimal NetPayable
+    }
+
+    PETTY_BILL_PAYMENTS {
+        int PaymentID PK
+        int CaseID FK
+        string BillNumber
+        decimal GrossAmount
+        decimal PreviousDeduction
+        decimal NetPayable
+        datetime CreatedDate
+    }
+
+    NAPIX_SYNC_QUEUE {
+        int QueueID PK
+        string Module
+        int CaseID
+        string CNRNumber
+        int Priority
+        string Status
+        datetime NextAttempt
+    }

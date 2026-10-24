@@ -1,0 +1,31 @@
+flowchart TD
+    Start([Gratuity Claim Filed before Controlling Authority]) --> RegClaim[Register Gratuity Claim<br/>POST /Gratuity/Create -> GRA_CASES]
+    
+    RegClaim --> CAHearing[Controlling Authority Proceedings & Calculations]
+    CAHearing --> CAAward[Controlling Authority Passes Award]
+
+    CAAward --> EnterParams[Enter Audit Calculation Parameters<br/>Principal Gratuity Amount, Due Date, Deposit Date, Deductions]
+
+    EnterParams --> GratuityCalcSvc[Invoke GratuityCalculator Service]
+
+    subgraph InterestFormula ["Statutory 10% Simple Interest Formula (Gratuity Act 1972)"]
+        DaysCalc["Calculate Elapsed Days:<br/>Days = (DepositDate - DueDate).Days"]
+        Formula["Interest = (Principal * 10 * Days) / (365 * 100)"]
+        Deductions["Net Payable = (Principal + Interest) - StatutoryDeductions - PreviousDisbursements"]
+        DaysCalc --> Formula
+        Formula --> Deductions
+    end
+
+    GratuityCalcSvc --> DaysCalc
+
+    Deductions --> SaveAudit[Save Computation Audit Record<br/>POST /Gratuity/AuditCalculation -> tbl_Gratuity_Interest]
+    
+    SaveAudit --> CorporationAppealCheck{Does Corporation Appeal to Appellate Authority?}
+    
+    CorporationAppealCheck -- Yes --> FileAppellate[Deposit 100% with Appellate Authority<br/>POST /Gratuity/ClaimantAppeals -> Track PGA / Appeal]
+    FileAppellate --> AppellateOrder[Appellate Authority Confirms / Modifies Award]
+
+    CorporationAppealCheck -- No --> DisburseClaimant[Disburse Gratuity & Statutory Interest to Employee]
+    AppellateOrder --> DisburseClaimant
+
+    DisburseClaimant --> End([Gratuity Case Closed & Audited])

@@ -1,0 +1,33 @@
+flowchart TD
+    DivUser([Division Legal Officer]) --> RegLabour[Register Industrial Dispute ID/KID<br/>POST /Labour/Create -> Status: 'Pending']
+    
+    RegLabour --> AdverseAward[Labour Court Award Pronounced]
+    AdverseAward --> RecordAward[Enter Award Details & Feasibility<br/>POST /Labour/SaveAwardDetails]
+
+    RecordAward --> ForwardCO[Forward Case Dossier to Central Office<br/>Status: 'Sent_To_CO']
+
+    ForwardCO --> LOReview[Tier 1: Law Officer - LO<br/>GET/POST /Labour/LOAction<br/>Examines Findings & Records Legal Opinion]
+    
+    LOReview --> LODecision{LO Recommendation}
+    LODecision -- Re-examine --> ReturnDiv[Return to Division for Clarifications]
+    ReturnDiv --> ForwardCO
+    LODecision -- Forward --> DyCLOReview[Tier 2: Deputy Chief Law Officer - Dy CLO<br/>GET/POST /Labour/DyCLOAction<br/>Reviews Precedents & Legal Scrutiny]
+
+    DyCLOReview --> DyCLODecision{Dy CLO Concurrence}
+    DyCLODecision -- Query --> LOReview
+    DyCLODecision -- Endorse --> CLOReview[Tier 3: Chief Law Officer - CLO<br/>GET/POST /Labour/CLOAction<br/>High-Level Legal Policy & Merits Review]
+
+    CLOReview --> CLODecision{CLO Recommendation}
+    CLODecision -- Disagree --> DyCLOReview
+    CLODecision -- Recommend --> MDReview[Tier 4: Managing Director - MD<br/>GET/POST /Labour/MDAction<br/>Executive Authority Final Decision]
+
+    MDReview --> MDDecision{Managing Director Order}
+    MDDecision -- Accept Award --> ImplementAward[Implement Reinstatement / Backwages<br/>Status: 'Award_Implemented']
+    MDDecision -- Challenge Award --> FileWP[Instruct Filing High Court Writ Petition<br/>POST /Labour/SaveWritPetition -> Status: 'WP_Filed']
+
+    ImplementAward --> ArisingAppCheck{Does Workman File 33-C(2)?}
+    ArisingAppCheck -- Yes --> ArisingApp[Register Labour Arising Application<br/>POST /Labour/SaveArisingApplication<br/>Track Installment Computations & Ledger]
+    ArisingAppCheck -- No --> LabourCaseClosed([Labour Dispute Formally Closed])
+    
+    FileWP --> TrackHC[Track High Court Writ Petition & Contempt CCC Cases]
+    TrackHC --> LabourCaseClosed

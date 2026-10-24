@@ -1,0 +1,35 @@
+flowchart TD
+    User([Authenticated Legal Officer]) --> InputQuery[Submit Legal Query or Draft Petition Prompt<br/>POST /NyayaPatha/Ask]
+
+    InputQuery --> SecurityGuard{Prompt Injection & Boundary Check}
+    SecurityGuard -- Hostile Payload --> RejectThreat[Flag Untrusted Input & Return Safe Rejection]
+    SecurityGuard -- Safe Query --> ExtractContext[Extract Authenticated User Division & Module Context]
+
+    ExtractContext --> RAGPipeline[Invoke Nyaya Patha RAG Pipeline]
+
+    subgraph RetrievalEngine ["Dual-Stage Context Retrieval (Air-Gapped & Local)"]
+        DivScope["Enforce Division Boundary:<br/>Only retrieve cases where DivisionID = userDiv or CentralOffice"]
+        PrecedentSearch["Local Precedents Vector Store Search<br/>Cosine Similarity / BM25 Ranking on Karnataka HC Judgments"]
+        SQLSearch["SQL Allowlist Table Ingestion:<br/>Fetch Active Case Facts, Notings & Adverse Orders"]
+        TokenBudget["Token Budget Allocator:<br/>Prune context to maximum 4,096 prompt tokens"]
+        
+        DivScope --> PrecedentSearch
+        DivScope --> SQLSearch
+        PrecedentSearch --> TokenBudget
+        SQLSearch --> TokenBudget
+    end
+
+    RAGPipeline --> DivScope
+
+    TokenBudget --> SystemPrompt[Construct System Instructions & Grounding Context:<br/>'You are Nyaya Patha, an AI Legal Assistant for NWKRTC...']
+
+    SystemPrompt --> OllamaCall[Send HTTP POST to Local Ollama Daemon<br/>http://localhost:11434/api/generate<br/>Model: Qwen2.5:7b-instruct]
+
+    subgraph LLMExecution ["Local Air-Gapped Inference"]
+        OllamaRun["Ollama Qwen2.5:7b Generates Tokens<br/>Zero Cloud Data Exfiltration"]
+    end
+
+    OllamaCall --> OllamaRun
+    OllamaRun --> CitationVerify[Post-Generation Citation Factuality Verification]
+    CitationVerify --> StreamUI[Stream Formatted Markdown Answer & Relevant Citations to Browser]
+    StreamUI --> Complete([Officer Reviews Legal Draft or Case Precedent])

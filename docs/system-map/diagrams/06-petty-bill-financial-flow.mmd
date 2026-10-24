@@ -1,0 +1,35 @@
+flowchart TD
+    Officer([Division Legal Officer]) --> OpenPortal[Open Petty Bill Management Portal<br/>GET /pettybill]
+
+    OpenPortal --> SelectCase[Select Case Number or Petition ID]
+    SelectCase --> LoadHistory[Fetch Historical Disbursements for Case<br/>SELECT * FROM PETTY_BILL_PAYMENTS WHERE CaseID = @caseId]
+
+    LoadHistory --> InputFees[Enter Line Items:<br/>Advocate Fee, Typing, Court Fees, Process Charges, Miscellaneous]
+
+    InputFees --> AutoAudit[Invoke NyayaPathaPettyBillRAG Engine<br/>Detect Potential Duplicate Claims / Overlapping Dates]
+
+    AutoAudit --> DuplicateCheck{Duplicate Detected?}
+    DuplicateCheck -- Yes --> AlertOfficer[Display High-Risk Warning & Prior Bill References]
+    AlertOfficer --> OfficerOverride{Officer Explains / Modifies?}
+    OfficerOverride -- Abort --> Cancel[Bill Submission Cancelled]
+    OfficerOverride -- Clarify --> ComputeNet
+
+    DuplicateCheck -- No --> ComputeNet[Calculate Gross & Net Payable]
+
+    subgraph CalculationEngine ["Financial Ledger Deduction Formula"]
+        Gross["Gross Amount = Sum(Fee Line Items)"]
+        PrevDisb["Previous Deductions = Sum(Prior Payment Receipts)"]
+        TDS["Statutory TDS = If Applicable (TDS % * Advocate Fee)"]
+        NetFormula["Net Payable = Gross - Previous Deductions - TDS"]
+        Gross --> PrevDisb --> TDS --> NetFormula
+    end
+
+    ComputeNet --> SubmitBill[POST /Report/SavePettyBill]
+    SubmitBill --> CSRFCheck{Valid Anti-Forgery Token?}
+    CSRFCheck -- No --> Reject400[HTTP 400 Bad Request]
+    CSRFCheck -- Yes --> DivCheck{User Division Owns Case?}
+    DivCheck -- No --> Forbid403[HTTP 403 Forbidden]
+    DivCheck -- Yes --> AtomicCommit[Begin SqlTransaction<br/>INSERT INTO PETTY_BILL_PAYMENTS<br/>Commit Transaction]
+
+    AtomicCommit --> PrintView[Generate Form & Print Bill Advice<br/>GET /Report/PrintBill/{id}]
+    PrintView --> End([Voucher Dispatched to Accounts Section])

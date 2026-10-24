@@ -1,0 +1,43 @@
+flowchart TD
+    Start([Division Legal Officer Registers Case]) --> CheckAuth{Is Authenticated & Div User?}
+    CheckAuth -- No --> Deny[Return HTTP 403 / Redirect Login]
+    CheckAuth -- Yes --> InputForm[Fill MVC Registration Form<br/>Case No, Court, Accident Date, Vehicle No, Depot]
+
+    InputForm --> Validate[Server-side Model Validation]
+    Validate -- Invalid --> ReturnForm[Re-render with Validation Summary]
+    Validate -- Valid --> InsertCase[Insert into MVC_CASES & MVC_PETITIONER_DETAILS<br/>Status = 'Pending']
+
+    InsertCase --> CaseActive{Case Active in MACT Tribunal}
+    
+    CaseActive --> RecordHearing[Post Hearing Proceedings / Next Date<br/>POST /Case/SaveHearing -> Insert MVC_CASE_HEARING_DETAILS]
+    RecordHearing --> CaseActive
+
+    CaseActive --> NAPIXSync[Trigger e-Courts NAPIX Sync<br/>POST /ECourts/QueueCaseSync<br/>Priority 1 Queue Entry]
+    NAPIXSync --> FetchOrders[Fetch Next Hearing & Interim Orders via NIC Gateway]
+    FetchOrders --> CaseActive
+
+    CaseActive --> FinalAward[MACT Tribunal Issues Final Award]
+    FinalAward --> RecordAward[POST /Case/SaveAdverseDetails<br/>Award Amount, Liability %, Interest Rate, Feasibility]
+
+    RecordAward --> FeasibilityCheck{Is Corporation Appeal Feasible?}
+    FeasibilityCheck -- Yes --> FileMFA[File High Court Appeal / MFA<br/>POST /Appeal/Save -> Insert APPEAL_DETAILS]
+    FileMFA --> HCProceedings[Track High Court Hearing & Stay Orders]
+    HCProceedings --> HCAward[High Court Modifies / Dismisses Award]
+
+    FeasibilityCheck -- No --> SettleAward[Accept Tribunal Award Liability]
+
+    SettleAward --> EPFiled{Does Claimant File EP?}
+    HCAward --> EPFiled
+    
+    EPFiled -- Yes --> HandleEP[Register Execution Petition<br/>POST /EP/Create -> Insert EP_DETAILS<br/>Track Court Deposits & Attachment Warrants]
+    HandleEP --> EPDisburse[Disburse Claimants via Court Challans]
+    
+    EPFiled -- No --> DirectPayment[Direct Compensation Disbursement]
+
+    DirectPayment --> FinancialBilling[Submit Advocate Fees & Expenses<br/>POST /Report/SavePettyBill -> Insert PETTY_BILL_PAYMENTS]
+    EPDisburse --> FinancialBilling
+
+    FinancialBilling --> AuditCheck[Automatic Duplicate Bill Detection<br/>NyayaPathaPettyBillRAG & Previous Payment Checks]
+    AuditCheck --> PrintBill[Generate Official Form & Payment Advice<br/>GET /Report/PrintBill/{id}]
+
+    PrintBill --> CaseClosed([Case Status Marked 'Disposed' / Closed in MVC_CASES])

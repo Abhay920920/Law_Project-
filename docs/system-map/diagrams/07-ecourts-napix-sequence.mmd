@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    actor Officer as Legal Officer / Background Worker
+    participant ECourtsCtrl as ECourtsController
+    participant SyncEngine as NapixSyncEngine
+    participant QuotaSvc as NapixQuotaService
+    participant CircuitBrk as CircuitBreaker
+    participant CryptoSvc as ECourtsNapixService (AES-128-CBC)
+    participant NICGateway as NIC NAPIX e-Courts Gateway (v1.3)
+    participant Database as SQL Server (Admin_Law)
+
+    Officer->>ECourtsCtrl: POST /ECourts/QueueCaseSync (CaseID, CNR)
+    ECourtsCtrl->>SyncEngine: EnqueueCaseAsync(Module, CaseID, CNR, Priority=1)
+    SyncEngine->>Database: INSERT INTO NAPIX_SYNC_QUEUE (Status='PENDING', Priority=1)
+    Database-->>SyncEngine: Return QueueID
+    SyncEngine-->>ECourtsCtrl: Queued: Success
+    ECourtsCtrl-->>Officer: JSON { success: true, message: "Queued for sync" }
+
+    Note over SyncEngine,NICGateway: Background Processor Dequeues Priority 1 Item
+
+    SyncEngine->>QuotaSvc: CheckHourlyQuotaAsync()
+    QuotaSvc-->>SyncEngine: Quota OK (Used < 1000/hr, Rate < 20/min)
+
+    SyncEngine->>CircuitBrk: ExecuteAsync(CallNICGateway)
+    CircuitBrk->>CryptoSvc: BuildEncryptedPayload(CNRNumber, ClientID)
+    Note over CryptoSvc: NIC Spec: AES-128-CBC with Static IV + HMAC-SHA256 Sig
+
+    CryptoSvc->>NICGateway: POST /api/v1/cases/cnr (Encrypted Payload + Bearer Token)
+    
+    alt NIC Gateway Timeout / 5xx Error
+        NICGateway-->>CryptoSvc: HTTP 504 Gateway Timeout
+        CryptoSvc-->>CircuitBrk: Exception / Failure
+        CircuitBrk->>SyncEngine: Increment AttemptCount (Max 3)
+        SyncEngine->>Database: UPDATE NAPIX_SYNC_QUEUE SET Status='RETRY', NextAttempt=Now+Backoff
+    else NIC Gateway Success (200 OK)
+        NICGateway-->>CryptoSvc: HTTP 200 OK (Encrypted JSON Response)
+        CryptoSvc->>CryptoSvc: Decrypt AES-128-CBC Payload & Verify HMAC
+        CryptoSvc-->>SyncEngine: Parsed Court Data (Petitioner, Respondent, Next Date, Orders)
+        SyncEngine->>Database: UPDATE MVC_CASES SET NextHearingDate, CaseStatus, LastSynced=NOW
+        SyncEngine->>Database: INSERT INTO CAUSE_LIST_DETAILS / MVC_CASE_HEARING_DETAILS
+        SyncEngine->>Database: UPDATE NAPIX_SYNC_QUEUE SET Status='COMPLETED'
+        SyncEngine->>Database: INSERT INTO NAPIX_API_CALLS (Status=200, LatencyMs)
+    end

@@ -1,0 +1,47 @@
+flowchart TD
+    ClientReq([Incoming Inbound HTTP Request]) --> AuthLayer{Is Request Authenticated?}
+    
+    AuthLayer -- No --> AnonymousAllowed{Action Marked [AllowAnonymous]?}
+    AnonymousAllowed -- No --> RedirectLogin[Redirect to /Account/Login]
+    AnonymousAllowed -- Yes --> ExecuteAnonymous[Execute Login / OTP Flow]
+
+    AuthLayer -- Yes --> ParseClaims[Hydrate User Claims:<br/>UserId, Role, FullName, DivisionID]
+
+    ParseClaims --> CSRFValidation{Is Mutating Request (POST/PUT/DELETE)?}
+    CSRFValidation -- Yes --> TokenCheck{Valid Anti-Forgery Token?}
+    TokenCheck -- Missing / Invalid --> Reject400[Reject with HTTP 400 Anti-Forgery Validation Failed]
+    TokenCheck -- Valid --> RouteDispatch
+    CSRFValidation -- No --> RouteDispatch[Dispatch Request to Controller Action]
+
+    RouteDispatch --> TargetType{Operation Category}
+
+    %% Category 1: Physical File Download
+    TargetType -- Physical Document Download --> UploadCheck[UploadsController.Download(fileName)]
+    UploadCheck --> MultiDomainSQL[Query Unified 6-Domain UNION ALL Database Check:<br/>MVC_CASE_ADVERSE_DETAILS, APPEAL_DETAILS, LABOUR_CASES,<br/>LABOUR_ARISING_APPLICATIONS, GRA_CASES, OTHER_CASES]
+    MultiDomainSQL --> OwnerMatch{Is Central Office OR attachedDivision == userDiv?}
+    OwnerMatch -- No --> ForbidDownload[Return HTTP 403 Forbidden - IDOR Prevented]
+    OwnerMatch -- Yes --> StreamFile[Return PhysicalFileStream(filePath)]
+
+    %% Category 2: Entity Mutation (EP, Labour, Case)
+    TargetType -- Case / EP / Bill Modification --> LoadExisting[Load Existing DB Record by ID]
+    LoadExisting --> CheckRecordOwner{Is Central Office OR existing.DivisionID == userDiv?}
+    CheckRecordOwner -- No --> ForbidMutation[Return HTTP 403 Forbidden - Multi-Tenant Isolation]
+    CheckRecordOwner -- Yes --> LockModelDivision[Force Override model.DivisionID = existing.DivisionID]
+    LockModelDivision --> SQLIdentifierCheck{Does Query Use Dynamic Identifiers?}
+    
+    SQLIdentifierCheck -- Yes --> AllowlistCheck{Are Column & Table in Strict Whitelist?}
+    AllowlistCheck -- No --> ThrowArgEx[Throw ArgumentException - SQL Injection Blocked]
+    AllowlistCheck -- Yes --> ParameterizedSQL[Execute Fully Parameterized ADO.NET Command]
+    SQLIdentifierCheck -- No --> ParameterizedSQL
+
+    ParameterizedSQL --> AuditLog[Write Audit Log to tbl_Case_Activity_Logs]
+    
+    subgraph ForensicAttribution ["Network Layer-2 Attribution"]
+        SendARP["Kernel SendARP Call -> Resolves Physical LAN MAC Address"]
+        WANHeader["WAN Proxies -> Tagged as '(Header: ...)' Unverified Claim"]
+        SendARP --> WriteLogEntry["Persist Actor, True IP, True MAC, Action, Timestamp"]
+        WANHeader --> WriteLogEntry
+    end
+
+    AuditLog --> SendARP
+    WriteLogEntry --> SuccessResponse([Return View / JSON Success])

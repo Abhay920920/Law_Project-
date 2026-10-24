@@ -1,0 +1,74 @@
+graph TB
+    subgraph ClientLayer ["Client Layer (Browser & Hybrid)"]
+        UI["Bootstrap 5 + Razor UI<br/>(143 Views, Responsive Layout)"]
+        AJAX["jQuery / Fetch Client<br/>(Auto RequestVerificationToken)"]
+    end
+
+    subgraph AppLayer ["ASP.NET Core 9.0 MVC Application (MVCCaseManagement)"]
+        AuthMiddleware["Cookie Authentication & Claims Hydration<br/>(Role, DivisionID, FullName)"]
+        GlobalCSRF["Global AutoValidateAntiforgeryToken"]
+        
+        subgraph Controllers ["Controllers (19 Active Controllers, 338 Actions)"]
+            AccountCtrl["AccountController<br/>(Auth, OTP, Password)"]
+            HomeCtrl["HomeController<br/>(Central Hub, Other Courts)"]
+            CaseCtrl["CaseController<br/>(MVC Claims Lifecycle)"]
+            AppealCtrl["AppealController<br/>(High Court Appeals, MFA, SLP)"]
+            LabourCtrl["LabourController<br/>(Labour Disputes & Arising Apps)"]
+            LabourEPCtrl["LabourEPController<br/>(Labour Execution Petitions)"]
+            GratuityCtrl["GratuityController<br/>(Gratuity & 10% Interest)"]
+            EPCtrl["EPController<br/>(MVC Execution Petitions)"]
+            ReportCtrl["ReportController<br/>(Petty Bills, MIS Statements)"]
+            ECourtsCtrl["ECourtsController<br/>(NAPIX Sync, Cause Lists)"]
+            NyayaPathaCtrl["NyayaPathaController<br/>(Local AI & Legal RAG)"]
+            UploadsCtrl["UploadsController<br/>(Zero-Trust File Streaming)"]
+            MasterCtrl["MasterController<br/>(System Admin & Setup)"]
+            AuditCtrl["AuditController & ActivityLogController<br/>(Audit Trails)"]
+        end
+
+        subgraph BusinessServices ["Services & Domain Utilities"]
+            GratuityCalc["GratuityCalculator<br/>(10% Statutory Simple Interest)"]
+            PettyBillSvc["PettyBillRepository<br/>(Deduplication & TDS Deductions)"]
+            NetHelper["NetworkDeviceHelper<br/>(SendARP Layer-2 IP/MAC)"]
+            NapixSyncEng["NapixSyncEngine<br/>(Priority 1 In-Memory & Persistent Queue)"]
+            CircuitBrk["CircuitBreaker<br/>(NAPIX Failure Isolation)"]
+            RateLimit["NapixQuotaService<br/>(20 Req/Min, Sliding Token Cache)"]
+            AIContext["CaseContextBuilder & VectorSearch<br/>(Division-Scoped RAG)"]
+        end
+
+        subgraph BackgroundWorkers ["IHostedService Background Threads"]
+            WorkerSMS["NotificationBackgroundService<br/>(Daily 07:00 SMS Reminders)"]
+            WorkerNAPIX["NapixBackgroundSyncService<br/>(Hourly e-Courts Fetch)"]
+        end
+    end
+
+    subgraph DataLayer ["Data Access & Storage Layer"]
+        DBHelper["DBHelper & ADO.NET Repositories<br/>(Parameterized Queries, Dapper)"]
+        SQLServer[("SQL Server (Admin_Law)<br/>83 Tables, Foreign Keys, Stored Procs")]
+        FileSystem[("Encrypted File Storage<br/>wwwroot/uploads (71 Active PDFs)")]
+    end
+
+    subgraph ExternalGateways ["External Government Integrations"]
+        NAPIXGateway["NIC e-Courts NAPIX Gateway<br/>(AES-128-CBC, HMAC-SHA256, Static IV)"]
+        SMSGateway["Karnataka Mobile-1 Gateway<br/>(Secure OTP & Case Alert Delivery)"]
+        OllamaEngine["Local Ollama Daemon<br/>(Qwen2.5:7b-instruct, Localhost 11434)"]
+    end
+
+    UI --> AuthMiddleware
+    AuthMiddleware --> GlobalCSRF
+    GlobalCSRF --> Controllers
+    
+    Controllers --> BusinessServices
+    BusinessServices --> DBHelper
+    DBHelper --> SQLServer
+    UploadsCtrl --> FileSystem
+    
+    ECourtsCtrl --> NapixSyncEng
+    NapixSyncEng --> CircuitBrk
+    CircuitBrk --> RateLimit
+    RateLimit --> NAPIXGateway
+
+    WorkerSMS --> SMSGateway
+    WorkerNAPIX --> NapixSyncEng
+
+    NyayaPathaCtrl --> AIContext
+    AIContext --> OllamaEngine
