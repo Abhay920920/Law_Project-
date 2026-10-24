@@ -96,9 +96,17 @@ namespace MVCCaseManagement.Controllers
             var ep = _epRepo.GetEPById(id);
             if (ep == null) return NotFound();
 
+            // Division ownership authorization guard (IDOR prevention)
+            int userDiv = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
+            bool isCO = userDiv == 0 || userDiv == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD");
+            if (!isCO && ep.DivisionID != userDiv)
+            {
+                return Forbid();
+            }
+
             var divisions = _masterRepo.GetAllDivisions();
-            var userDiv = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
-            ep.DivisionName = userDiv?.DivisionNameEnglish ?? "Unknown";
+            var userDivEntity = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
+            ep.DivisionName = userDivEntity?.DivisionNameEnglish ?? "Unknown";
 
             ArisingApplication? arisingApp = null;
             LabourCase? primaryCase = null;
@@ -184,9 +192,17 @@ namespace MVCCaseManagement.Controllers
             var ep = _epRepo.GetEPById(id);
             if (ep == null) return NotFound();
 
+            // Division ownership authorization guard (IDOR prevention)
+            int userDiv = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
+            bool isCO = userDiv == 0 || userDiv == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD");
+            if (!isCO && ep.DivisionID != userDiv)
+            {
+                return Forbid();
+            }
+
             var divisions = _masterRepo.GetAllDivisions();
-            var userDiv = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
-            ep.DivisionName = userDiv?.DivisionNameEnglish ?? "Unknown";
+            var userDivEntity = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
+            ep.DivisionName = userDivEntity?.DivisionNameEnglish ?? "Unknown";
             
             ViewBag.LabourCourts = _masterRepo.GetAllLabourCourts();
             ViewBag.MACTs = _masterRepo.GetAllMACTs();
@@ -198,6 +214,20 @@ namespace MVCCaseManagement.Controllers
         [ValidateAntiForgeryToken]
         public IActionResult Edit(LabourEPViewModel model)
         {
+            var existing = _epRepo.GetEPById(model.EPID);
+            if (existing == null) return NotFound();
+
+            // Division ownership authorization guard (IDOR prevention)
+            int userDiv = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
+            bool isCO = userDiv == 0 || userDiv == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD");
+            if (!isCO && existing.DivisionID != userDiv)
+            {
+                return Forbid();
+            }
+
+            // Invariant: DivisionID cannot be altered via submitted model payload
+            model.DivisionID = existing.DivisionID;
+
             // Auto-link to parent Labour Case if CaseID is not yet set
             if (model.CaseID <= 0 && !string.IsNullOrWhiteSpace(model.ArisingFromCaseNo) && model.ArisingFromCaseYear.HasValue)
             {

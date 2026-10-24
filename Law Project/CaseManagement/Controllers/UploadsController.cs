@@ -60,7 +60,131 @@ namespace MVCCaseManagement.Controllers
             string canonicalContentUploads = Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "uploads"));
             string canonicalWebUploads = Path.GetFullPath(Path.Combine(_environment.WebRootPath, "uploads"));
 
-            // Check potential physical storage paths on disk with canonical boundary validation
+            // 1. Enforce Division Ownership and Cross-Tenant Access Control (IDOR Prevention)
+            var divIdString = User.FindFirstValue("DivisionID");
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentral = string.IsNullOrEmpty(divIdString) || userDivId == 0 || userDivId == 5 
+                             || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("MD");
+
+            int attachedCaseId = 0;
+            int attachedCaseDivId = 0;
+            string attachedMvcNo = "";
+            int attachedMvcYr = 0;
+
+            try
+            {
+                string connStr = _configuration.GetConnectionString("MVCCaseDB") ?? "";
+                if (!string.IsNullOrEmpty(connStr))
+                {
+                    using (var conn = new SqlConnection(connStr))
+                    {
+                        conn.Open();
+                        string sql = @"
+                            SELECT TOP 1 DivisionID FROM (
+                                -- 1. MVC Case Adverse Details
+                                SELECT a.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID
+                                FROM MVC_CASE_ADVERSE_DETAILS a
+                                INNER JOIN MVC_CASES m ON a.CaseID = m.CaseID
+                                WHERE a.GovIDProofUploadPath LIKE '%' + @fileName + '%'
+                                   OR a.TR18UploadPath LIKE '%' + @fileName + '%'
+                                   OR a.PunishmentOrderUploadPath LIKE '%' + @fileName + '%'
+                                   OR a.SecurityUploadPath LIKE '%' + @fileName + '%'
+                                   OR a.AdverseJudgmentUploadPath LIKE '%' + @fileName + '%'
+                                   OR a.DelayApplicationPath LIKE '%' + @fileName + '%'
+                                   OR a.DelayCondonedOrderPath LIKE '%' + @fileName + '%'
+                                   OR a.AgeProofUploadPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 2. MVC High Court Appeals
+                                SELECT ap.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID
+                                FROM APPEAL_DETAILS ap
+                                INNER JOIN MVC_CASES m ON ap.CaseID = m.CaseID
+                                WHERE ap.ApprovalCopyPath LIKE '%' + @fileName + '%'
+                                   OR ap.InitialActionPath1 LIKE '%' + @fileName + '%'
+                                   OR ap.InitialActionPath2 LIKE '%' + @fileName + '%'
+                                   OR ap.StayOrderPath1 LIKE '%' + @fileName + '%'
+                                   OR ap.StayOrderPath2 LIKE '%' + @fileName + '%'
+                                   OR ap.MFAJudgmentCopyPath LIKE '%' + @fileName + '%'
+                                   OR ap.ComplianceLetterPath LIKE '%' + @fileName + '%'
+                                   OR ap.CorpMFAActionTakenPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 3. Labour Court Cases
+                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                FROM LABOUR_CASES
+                                WHERE Against_PunishmentCopyPath LIKE '%' + @fileName + '%'
+                                   OR ClaimPetitionPath LIKE '%' + @fileName + '%'
+                                   OR JudgmentCopyPath2 LIKE '%' + @fileName + '%'
+                                   OR LokAdalatDocumentPath LIKE '%' + @fileName + '%'
+                                   OR CO_WP_JudgmentCopyPath LIKE '%' + @fileName + '%'
+                                   OR CO_WA_StayOrderPath LIKE '%' + @fileName + '%'
+                                   OR CO_StayComplianceFilePath LIKE '%' + @fileName + '%'
+                                   OR CO_ClosedDocumentPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 4. Labour Arising Applications (Section 33-C(2))
+                                SELECT ArisingID AS CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                FROM LABOUR_ARISING_APPLICATIONS
+                                WHERE JudgmentCopyPath LIKE '%' + @fileName + '%'
+                                   OR LokAdalatDocumentPath LIKE '%' + @fileName + '%'
+                                   OR CO_WP_JudgmentCopyPath LIKE '%' + @fileName + '%'
+                                   OR ClaimPetitionPath LIKE '%' + @fileName + '%'
+                                   OR DE_HistorySheetPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 5. Gratuity Claims (CA / AA)
+                                SELECT CaseID, ISNULL(DivisionCode, 0) AS DivisionID
+                                FROM GRA_CASES
+                                WHERE AdverseJudgmentPath LIKE '%' + @fileName + '%'
+                                   OR AppealJudgmentPath LIKE '%' + @fileName + '%'
+                                   OR InitialActionPath1 LIKE '%' + @fileName + '%'
+                                   OR InitialActionPath2 LIKE '%' + @fileName + '%'
+                                   OR StayOrderPath1 LIKE '%' + @fileName + '%'
+                                   OR StayOrderPath2 LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 6. Other Courts
+                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                FROM OTHER_CASES
+                                WHERE PetitionCopyPath LIKE '%' + @fileName + '%'
+                                   OR OrderCopyPath LIKE '%' + @fileName + '%'
+                            ) AS AllAttachments";
+
+                        using (var cmd = new SqlCommand(sql, conn))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@fileName", System.Data.SqlDbType.NVarChar, 255) { Value = fileName });
+                            using (var r = cmd.ExecuteReader())
+                            {
+                                if (r.Read())
+                                {
+                                    attachedCaseDivId = r.IsDBNull(0) ? 0 : Convert.ToInt32(r.GetValue(0));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error checking DB for upload file division ownership for {FileName}", fileName);
+            }
+
+            // Zero-trust enforcement: Non-central office users can only download documents verified to belong to their assigned division
+            if (!isCentral)
+            {
+                if (attachedCaseDivId <= 0 || attachedCaseDivId != userDivId)
+                {
+                    _logger.LogWarning("Cross-tenant download forbidden: User Division {UserDiv} tried accessing document {FileName} (Resolved Division: {CaseDiv})", userDivId, fileName, attachedCaseDivId);
+                    return Forbid();
+                }
+            }
+
+            // 2. Locate and stream physical file from allowed canonical boundaries
             var candidatePaths = new[]
             {
                 Path.Combine(_environment.ContentRootPath, "uploads", decodedPath),
@@ -106,65 +230,10 @@ namespace MVCCaseManagement.Controllers
 
             _logger.LogWarning("Requested upload file not found on disk: {FilePath}", filePath);
 
-            // Query DB to see if this file was attached to a specific case
             ViewBag.FileName = fileName;
             ViewBag.RequestedPath = filePath;
-            ViewBag.CaseInfo = null;
-            ViewBag.CaseID = null;
-
-            try
-            {
-                string connStr = _configuration.GetConnectionString("MVCCaseDB") ?? "";
-                if (!string.IsNullOrEmpty(connStr))
-                {
-                    using (var conn = new SqlConnection(connStr))
-                    {
-                        conn.Open();
-                        string sql = @"
-                            SELECT TOP 1 a.CaseID, m.MVCNo, m.MVCYear, m.DivisionID 
-                            FROM MVC_CASE_ADVERSE_DETAILS a
-                            LEFT JOIN MVC_CASES m ON a.CaseID = m.CaseID
-                            WHERE a.GovIDProofUploadPath LIKE '%' + @fileName + '%'
-                               OR a.TR18UploadPath LIKE '%' + @fileName + '%'
-                               OR a.PunishmentOrderUploadPath LIKE '%' + @fileName + '%'
-                               OR a.SecurityUploadPath LIKE '%' + @fileName + '%'
-                               OR a.AdverseJudgmentUploadPath LIKE '%' + @fileName + '%'
-                               OR a.DelayApplicationPath LIKE '%' + @fileName + '%'
-                               OR a.DelayCondonedOrderPath LIKE '%' + @fileName + '%'
-                               OR a.AgeProofUploadPath LIKE '%' + @fileName + '%'";
-
-                        using (var cmd = new SqlCommand(sql, conn))
-                        {
-                            cmd.Parameters.Add(new SqlParameter("@fileName", System.Data.SqlDbType.NVarChar, 255) { Value = fileName });
-                            using (var r = cmd.ExecuteReader())
-                            {
-                                if (r.Read())
-                                {
-                                    int cId = r.GetInt32(0);
-                                    string mvcNo = r.IsDBNull(1) ? "" : r.GetString(1);
-                                    int mvcYr = r.IsDBNull(2) ? 0 : r.GetInt32(2);
-                                    int caseDivId = r.IsDBNull(3) ? 0 : r.GetInt32(3);
-
-                                    // Division ownership check
-                                    var divIdString = User.FindFirstValue("DivisionID");
-                                    int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
-                                    bool isCentral = userDivId == 0 || userDivId == 5 || User.IsInRole("Admin");
-
-                                    if (isCentral || caseDivId == userDivId)
-                                    {
-                                        ViewBag.CaseID = cId;
-                                        ViewBag.CaseInfo = $"MVC No. {mvcNo}/{mvcYr} (Case ID: {cId})";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking DB for missing upload file info.");
-            }
+            ViewBag.CaseInfo = attachedCaseId > 0 ? $"MVC No. {attachedMvcNo}/{attachedMvcYr} (Case ID: {attachedCaseId})" : null;
+            ViewBag.CaseID = attachedCaseId > 0 ? (int?)attachedCaseId : null;
 
             return View("~/Views/Shared/FileNotFound.cshtml");
         }

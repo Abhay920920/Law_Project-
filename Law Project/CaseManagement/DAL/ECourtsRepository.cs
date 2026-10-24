@@ -101,15 +101,25 @@ namespace MVCCaseManagement.DAL
 
         public async Task<bool> UpdateCaseCnrLinkAsync(string table, string primaryKeyCol, int id, string cnrNumber)
         {
-            // Allowed table whitelist to prevent SQL injection in table name
+            // Allowed table and column allowlists to prevent SQL injection in dynamic identifier clauses
             var allowedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "MVC_CASES", "LABOUR_CASES", "LABOUR_SERVICE_MATTERS", "APPEAL_DETAILS"
             };
 
+            var allowedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "CaseID", "AppealID", "ServiceMatterID", "LabourCaseID"
+            };
+
             if (!allowedTables.Contains(table))
             {
                 throw new ArgumentException("Invalid table name specified for CNR linking.", nameof(table));
+            }
+
+            if (!allowedColumns.Contains(primaryKeyCol))
+            {
+                throw new ArgumentException("Invalid primary key column specified for CNR linking.", nameof(primaryKeyCol));
             }
 
             using var conn = _db.GetConnection();

@@ -375,7 +375,52 @@
         </main>
     </div>
 
+    <div style="display:none;" id="globalAntiforgeryTokenContainerOther">
+        @Html.AntiForgeryToken()
+    </div>
     <script src="~/js/jquery.min.js"></script>
+    <script>
+        (function() {
+            var getCsrfToken = function() {
+                var el = document.querySelector('#globalAntiforgeryTokenContainerOther input[name="__RequestVerificationToken"]') 
+                      || document.querySelector('input[name="__RequestVerificationToken"]');
+                return el ? el.value : '';
+            };
+
+            if (window.fetch) {
+                var origFetch = window.fetch;
+                window.fetch = function(resource, init) {
+                    init = init || {};
+                    var method = (init.method || 'GET').toUpperCase();
+                    if (['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(method) !== -1) {
+                        var token = getCsrfToken();
+                        if (token) {
+                            if (init.headers instanceof Headers) {
+                                if (!init.headers.has('RequestVerificationToken')) init.headers.append('RequestVerificationToken', token);
+                            } else if (Array.isArray(init.headers)) {
+                                init.headers.push(['RequestVerificationToken', token]);
+                            } else {
+                                init.headers = init.headers || {};
+                                if (!init.headers['RequestVerificationToken']) init.headers['RequestVerificationToken'] = token;
+                            }
+                        }
+                    }
+                    return origFetch.call(this, resource, init);
+                };
+            }
+
+            if (window.jQuery && window.jQuery.ajaxSetup) {
+                window.jQuery.ajaxSetup({
+                    beforeSend: function(xhr, settings) {
+                        if (settings && settings.type && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(settings.type.toUpperCase()) !== -1) {
+                            var token = getCsrfToken();
+                            if (token) xhr.setRequestHeader('RequestVerificationToken', token);
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
     <script src="~/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     

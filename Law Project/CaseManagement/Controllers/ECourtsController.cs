@@ -45,7 +45,6 @@ namespace MVCCaseManagement.Controllers
 
         // POST / GET: /ECourts/QueueCaseSync
         [HttpPost, HttpGet]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> QueueCaseSync(int caseId = 0, string? cnrNumber = null, string module = "MVC")
         {
             if (caseId <= 0 && string.IsNullOrWhiteSpace(cnrNumber))
@@ -143,7 +142,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/HighCourtCauseList
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> HighCourtCauseList(string? bench = null, string? division = null, string? appealType = null, string? q = null, DateTime? date = null)
         {
             var rawItems = await _ecourtsRepo.GetHighCourtCauseListAsync();
@@ -220,7 +218,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetLiveHighCourtPartyCases?estCode=KAHC02&partyName=NWKRTC&regYear=2024&pendDisp=P&multiAlias=false&hearingDate=...&todayOnly=false
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetLiveHighCourtPartyCases(
             string estCode = "KAHC02", 
             string partyName = "NWKRTC", 
@@ -365,7 +362,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtCauselistBenches?estCode=KAHC01&causelistDate=13-08-2026
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtCauselistBenches(string estCode = "KAHC01", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -376,7 +372,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtCauselistDetails?estCode=KAHC01&benchId=...&causelistDate=13-08-2026
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtCauselistDetails(string estCode = "KAHC01", string benchId = "", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -387,7 +382,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtShowCauselist?estCode=KAHC01&benchId=...&causelistId=...&causelistDate=13-08-2026
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtShowCauselist(string estCode = "KAHC01", string benchId = "", string causelistId = "", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -398,7 +392,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCaseBusiness?cnrNumber=...&date=...&isHighCourt=false
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCaseBusiness(string cnrNumber, string date, bool isHighCourt = false)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber))
@@ -436,7 +429,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetStates
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetStates(bool isHighCourt = false)
         {
             try
@@ -457,7 +449,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetDistricts?stateCode=...
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetDistricts(string stateCode, bool isHighCourt = false)
         {
             if (string.IsNullOrWhiteSpace(stateCode))
@@ -483,7 +474,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCourtComplexes?stateCode=...&distCode=...
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCourtComplexes(string stateCode, string distCode)
         {
             if (string.IsNullOrWhiteSpace(stateCode)) stateCode = "29";
@@ -507,7 +497,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtBenches?stateCode=...
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtBenches(string stateCode)
         {
             if (string.IsNullOrWhiteSpace(stateCode)) stateCode = "29";
@@ -654,7 +643,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> DebugApiTypes(string estCode)
         {
             var types = await _napixService.GetCaseTypesAsync(estCode, true, null, null, "all");
@@ -664,7 +652,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCaseTypes?estCode=...&stateCode=...&distCode=...
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCaseTypes(string? estCode, string? stateCode = null, string? distCode = null, bool isHighCourt = false)
         {
             try
@@ -1107,7 +1094,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCnrDetails?cnrNumber=...&caseId=...&appealId=...&module=...
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCnrDetails(string cnrNumber, int? caseId = null, bool isHighCourt = false, string? appealId = null, string? module = null)
         {
             if (string.IsNullOrWhiteSpace(module))
@@ -1572,7 +1558,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCnrRaw?cnrNumber=...&isHighCourt=...&module=... — returns the raw NAPIX response
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCnrRaw(string cnrNumber, bool isHighCourt = false, string? module = null)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber))
@@ -1623,7 +1608,6 @@ namespace MVCCaseManagement.Controllers
         // ==========================================
 
         [HttpGet]
-        [AllowAnonymous]
         public IActionResult MyCases(string module = "MVC")
         {
             string norm = NapixQuotaService.NormalizeModule(module);
@@ -1633,7 +1617,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetMyTrackedCases(string module = "MVC")
         {
             string norm = NapixQuotaService.NormalizeModule(module);
@@ -1834,8 +1817,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> AddTrackedCnrs([FromBody] AddTrackedCnrsRequest req)
         {
             if (req == null || string.IsNullOrWhiteSpace(req.CnrNumbers))
@@ -1906,8 +1887,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> ReassignCaseWorker([FromBody] ReassignCaseWorkerRequest req)
         {
             if (req == null || req.TrackedId <= 0)
@@ -1938,8 +1917,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> BulkReassignCaseWorker([FromBody] BulkReassignCaseWorkerRequest req)
         {
             if (req == null || req.TrackedIds == null || req.TrackedIds.Count == 0)
@@ -1966,7 +1943,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCaseWorkers(string module = "MVC")
         {
             string norm = NapixQuotaService.NormalizeModule(module);
@@ -2011,7 +1987,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetTrackedCaseDossier(int trackedId)
         {
             if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
@@ -2064,8 +2039,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet, HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> RefreshTrackedCnr(int trackedId)
         {
             if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
@@ -2111,8 +2084,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet, HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> DeleteTrackedCnr(int trackedId)
         {
             if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
@@ -2134,7 +2105,6 @@ namespace MVCCaseManagement.Controllers
         // ==========================================
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCaseProceedings(int trackedId)
         {
             if (trackedId <= 0) return Json(new { success = false, message = "Invalid Tracked ID" });
@@ -2184,7 +2154,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> FetchLiveHearingProceeding(string cnrNumber, string hearingDate, bool isHighCourt = false, string module = "MVC")
         {
             if (string.IsNullOrWhiteSpace(cnrNumber) || string.IsNullOrWhiteSpace(hearingDate))
@@ -2225,8 +2194,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SyncAllTrackedProceedings([FromBody] AddTrackedCnrsRequest? req)
         {
             string mod = req?.Module ?? "MVC";
@@ -2452,7 +2419,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> GetCaseCauseListDetails(int trackedId = 0, string? cnrNumber = null, string? targetDate = null, string module = "MVC")
         {
             string norm = NapixQuotaService.NormalizeModule(module);
@@ -2894,8 +2860,6 @@ namespace MVCCaseManagement.Controllers
         /// and Kalaburagi benches for all tracked cases in the module and updates their Court Hall and Coram.
         /// </summary>
         [HttpGet, HttpPost]
-        [AllowAnonymous]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SyncCauseListForTrackedCases(string module = "MVC", string? causelistDate = null)
         {
             string norm = NapixQuotaService.NormalizeModule(module);
@@ -4906,7 +4870,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         // GET: /ECourts/GetOrders?cnrNumber=...&caseId=...&isHighCourt=...&module=...
-        [AllowAnonymous]
         [HttpGet]
         public async Task<IActionResult> GetOrders(string? cnrNumber = null, int? caseId = null, bool isHighCourt = false, string? module = null)
         {
@@ -5123,7 +5086,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         // GET: /ECourts/ViewOrderPdf?url=...&cnr=...&title=...&date=...&caseId=...&orderNo=...&module=...
-        [AllowAnonymous]
         [HttpGet]
         public async Task<IActionResult> ViewOrderPdf(string? url = null, string? cnr = null, string? title = null, string? date = null, int? caseId = null, string? orderNo = null, string? module = null)
         {
@@ -5818,7 +5780,13 @@ namespace MVCCaseManagement.Controllers
             {
                 try
                 {
-                    using var njdgHandler = new System.Net.Http.HttpClientHandler { AllowAutoRedirect = true, ServerCertificateCustomValidationCallback = (_, _, _, _) => true };
+                    using var njdgHandler = new System.Net.Http.HttpClientHandler 
+                    { 
+                        AllowAutoRedirect = true, 
+                        ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => 
+                            errs == System.Net.Security.SslPolicyErrors.None || 
+                            (msg.RequestUri?.Host?.EndsWith("ecourts.gov.in", StringComparison.OrdinalIgnoreCase) == true)
+                    };
                     using var njdgClient = new System.Net.Http.HttpClient(njdgHandler);
                     njdgClient.Timeout = TimeSpan.FromMilliseconds(6000);
                     njdgClient.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
@@ -5966,7 +5934,9 @@ namespace MVCCaseManagement.Controllers
                         using var handler = new System.Net.Http.HttpClientHandler
                         {
                             AllowAutoRedirect = true,
-                            ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+                            ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => 
+                                errs == System.Net.Security.SslPolicyErrors.None || 
+                                (msg.RequestUri?.Host?.EndsWith("ecourts.gov.in", StringComparison.OrdinalIgnoreCase) == true)
                         };
                         using var client = new System.Net.Http.HttpClient(handler);
                         client.Timeout = TimeSpan.FromSeconds(8);
@@ -6310,7 +6280,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public async Task<IActionResult> DownloadOrderPdf(string? pdfPath = null, string? cnr = null, bool isHc = false, string? orderNo = null, string? date = null, string? module = null, int? caseId = null, string? title = null)
         {
             if (string.IsNullOrWhiteSpace(module))
@@ -6469,7 +6438,9 @@ namespace MVCCaseManagement.Controllers
                 using var handler = new System.Net.Http.HttpClientHandler
                 {
                     AllowAutoRedirect = true,
-                    ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+                    ServerCertificateCustomValidationCallback = (msg, cert, chain, errs) => 
+                        errs == System.Net.Security.SslPolicyErrors.None || 
+                        (msg.RequestUri?.Host?.EndsWith("ecourts.gov.in", StringComparison.OrdinalIgnoreCase) == true)
                 };
                 using var client = new System.Net.Http.HttpClient(handler);
                 client.Timeout = TimeSpan.FromSeconds(20);
@@ -6561,7 +6532,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/LiveOrders?cnr=KAHC020060752019&module=MVC
         // Returns all orders, judgments, IA filings from NAPIX as JSON — used by the front-end to render real court documents
-        [AllowAnonymous]
         [HttpGet]
         public async Task<IActionResult> LiveOrders(string cnr, string? module = null, int? caseId = null, bool refresh = false)
         {
@@ -6629,7 +6599,6 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetNapixCaseJson?cnr=...&module=MVC
         // Returns raw decrypted NAPIX JSON for the CNR — useful for debugging and full data inspection
-        [AllowAnonymous]
         [HttpGet]
         public async Task<IActionResult> GetNapixCaseJson(string cnr, string? module = null)
         {

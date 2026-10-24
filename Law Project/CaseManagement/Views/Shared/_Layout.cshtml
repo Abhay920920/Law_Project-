@@ -506,7 +506,54 @@
         </main>
     </div>
 
+    <div style="display:none;" id="globalAntiforgeryTokenContainer">
+        @Html.AntiForgeryToken()
+    </div>
     <script src="~/js/jquery.min.js"></script>
+    <script>
+        (function() {
+            var getCsrfToken = function() {
+                var el = document.querySelector('#globalAntiforgeryTokenContainer input[name="__RequestVerificationToken"]') 
+                      || document.querySelector('input[name="__RequestVerificationToken"]');
+                return el ? el.value : '';
+            };
+
+            // 1. Hook native fetch to include RequestVerificationToken on all mutating requests
+            if (window.fetch) {
+                var origFetch = window.fetch;
+                window.fetch = function(resource, init) {
+                    init = init || {};
+                    var method = (init.method || 'GET').toUpperCase();
+                    if (['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(method) !== -1) {
+                        var token = getCsrfToken();
+                        if (token) {
+                            if (init.headers instanceof Headers) {
+                                if (!init.headers.has('RequestVerificationToken')) init.headers.append('RequestVerificationToken', token);
+                            } else if (Array.isArray(init.headers)) {
+                                init.headers.push(['RequestVerificationToken', token]);
+                            } else {
+                                init.headers = init.headers || {};
+                                if (!init.headers['RequestVerificationToken']) init.headers['RequestVerificationToken'] = token;
+                            }
+                        }
+                    }
+                    return origFetch.call(this, resource, init);
+                };
+            }
+
+            // 2. Configure jQuery AJAX setup immediately before any child view scripts execute
+            if (window.jQuery && window.jQuery.ajaxSetup) {
+                window.jQuery.ajaxSetup({
+                    beforeSend: function(xhr, settings) {
+                        if (settings && settings.type && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(settings.type.toUpperCase()) !== -1) {
+                            var token = getCsrfToken();
+                            if (token) xhr.setRequestHeader('RequestVerificationToken', token);
+                        }
+                    }
+                });
+            }
+        })();
+    </script>
     <script src="~/js/bootstrap.bundle.min.js"></script>
     <!-- Select2 Searchable Dropdown JS -->
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -760,8 +807,8 @@
                     // Keep in cookie for every server request / form post
                     document.cookie = "NWKRTC_DEVICE_MAC=" + encodeURIComponent(devMac) + "; path=/; max-age=31536000; SameSite=Lax";
 
-                    // Attach to jQuery AJAX if present
-                    if (window.jQuery && window.jQuery.ajaxSetup) {
+                    // Attach Client-MAC to all jQuery AJAX calls
+                    if (devMac && window.jQuery && window.jQuery.ajaxSetup) {
                         window.jQuery.ajaxSetup({
                             headers: { 'X-Client-MAC': devMac }
                         });

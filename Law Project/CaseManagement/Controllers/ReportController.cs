@@ -1336,6 +1336,21 @@ namespace MVCCaseManagement.Controllers
         {
             var model = _pettyBillRepo.GetPettyBillById(id);
             if (model == null) return NotFound();
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || userDivId == 0 || userDivId == 5 
+                                   || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("MD");
+
+            if (!isCentralOffice && model.CaseID.HasValue && model.CaseID.Value > 0)
+            {
+                var parentCase = _caseRepo.GetCaseById(model.CaseID.Value);
+                if (parentCase != null && parentCase.DivisionID != userDivId)
+                {
+                    return Forbid();
+                }
+            }
+
             return View("PrintBill", model);
         }
 
@@ -1362,13 +1377,46 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public JsonResult SaveBill([FromBody] PettyBillViewModel? model)
         {
             if (model == null)
             {
                 _logger.LogWarning("SaveBill invoked with null model payload.");
                 return Json(new { success = false, message = "Invalid bill data received. Please refresh and try again." });
+            }
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || userDivId == 0 || userDivId == 5 
+                                   || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("MD");
+
+            // Division boundary check for bill updates
+            if (model.BillID > 0)
+            {
+                var existingBill = _pettyBillRepo.GetPettyBillById(model.BillID);
+                if (existingBill == null)
+                {
+                    return Json(new { success = false, message = "Bill record not found." });
+                }
+
+                if (!isCentralOffice && existingBill.CaseID.HasValue && existingBill.CaseID.Value > 0)
+                {
+                    var parentCase = _caseRepo.GetCaseById(existingBill.CaseID.Value);
+                    if (parentCase != null && parentCase.DivisionID != userDivId)
+                    {
+                        _logger.LogWarning("Cross-division SaveBill forbidden: User {User} (Div {UserDiv}) attempted updating Bill {BillID} owned by Div {CaseDiv}", User.Identity?.Name, userDivId, model.BillID, parentCase.DivisionID);
+                        return Json(new { success = false, message = "Access Denied: You cannot modify bills from another division." });
+                    }
+                }
+            }
+            else if (model.CaseID.HasValue && model.CaseID.Value > 0 && !isCentralOffice)
+            {
+                var parentCase = _caseRepo.GetCaseById(model.CaseID.Value);
+                if (parentCase != null && parentCase.DivisionID != userDivId)
+                {
+                    _logger.LogWarning("Cross-division SaveBill forbidden: User {User} (Div {UserDiv}) attempted creating Bill for Case {CaseID} owned by Div {CaseDiv}", User.Identity?.Name, userDivId, model.CaseID.Value, parentCase.DivisionID);
+                    return Json(new { success = false, message = "Access Denied: You cannot create bills for another division." });
+                }
             }
 
             try
@@ -1447,9 +1495,34 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public JsonResult DeleteBill(int billId)
         {
+            if (billId <= 0)
+            {
+                return Json(new { success = false, message = "Invalid bill ID." });
+            }
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || userDivId == 0 || userDivId == 5 
+                                   || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("MD");
+
+            var existing = _pettyBillRepo.GetPettyBillById(billId);
+            if (existing == null)
+            {
+                return Json(new { success = false, message = "Bill not found" });
+            }
+
+            if (!isCentralOffice && existing.CaseID.HasValue && existing.CaseID.Value > 0)
+            {
+                var parentCase = _caseRepo.GetCaseById(existing.CaseID.Value);
+                if (parentCase != null && parentCase.DivisionID != userDivId)
+                {
+                    _logger.LogWarning("Cross-division DeleteBill forbidden: User {User} (Div {UserDiv}) attempted deleting Bill {BillID} owned by Div {CaseDiv}", User.Identity?.Name, userDivId, billId, parentCase.DivisionID);
+                    return Json(new { success = false, message = "Access Denied: You cannot delete bills from another division." });
+                }
+            }
+
             try
             {
                 bool success = _pettyBillRepo.DeletePettyBill(billId);
@@ -1471,7 +1544,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public JsonResult DeletePaymentRow(int paymentId)
         {
             try
@@ -1480,6 +1552,16 @@ namespace MVCCaseManagement.Controllers
                 if (paymentId <= 0)
                 {
                     return Json(new { success = false, message = "Only manual Petty Bill entries can be deleted from database here." });
+                }
+
+                var divIdString = User.FindFirst("DivisionID")?.Value;
+                int userDivId = int.TryParse(divIdString, out int pId) ? pId : 0;
+                bool isCentralOffice = string.IsNullOrEmpty(divIdString) || userDivId == 0 || userDivId == 5 
+                                       || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("MD");
+
+                if (!isCentralOffice && !User.IsInRole("Admin"))
+                {
+                    return Json(new { success = false, message = "Access Denied: Only Central Office / Admin may delete raw payment records." });
                 }
 
                 bool success = _pettyBillRepo.DeletePettyBillPayment(paymentId);

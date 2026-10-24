@@ -970,7 +970,7 @@
                 var isCentralJS = @(isCentral ? "true" : "false");
 
                 if (isCentralJS && action === "Appeal") {
-                    var existingFile = "@Model.InitialActionPath1";
+                    var existingFile = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.InitialActionPath1 ?? ""));
                     var newFile = $("#InitialActionFile1").val();
                     
                     // Only auto-switch to Tab 2 if a file is already present OR just selected

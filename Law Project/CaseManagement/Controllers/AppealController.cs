@@ -106,6 +106,15 @@ namespace MVCCaseManagement.Controllers
             var caseDetails = _caseRepo.GetCaseById(id);
             if (caseDetails == null) return NotFound();
 
+            // Division ownership authorization guard (IDOR prevention)
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int userDivisionId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentralOffice = userDivisionId == 0 || userDivisionId == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("CO");
+            if (!isCentralOffice && caseDetails.DivisionID != userDivisionId)
+            {
+                return Forbid();
+            }
+
             // Try Fetch existing Appeal Details
             var model = _appealRepo.GetAppealByCaseId(id);
 
@@ -189,6 +198,18 @@ namespace MVCCaseManagement.Controllers
         [ValidateAntiForgeryToken]
         public IActionResult Save(AppealViewModel model)
         {
+            var caseDetails = _caseRepo.GetCaseById(model.CaseID);
+            if (caseDetails == null) return NotFound();
+
+            // Division ownership authorization guard (IDOR prevention)
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int userDivisionId = int.TryParse(divIdString, out int pId) ? pId : 0;
+            bool isCentralOffice = userDivisionId == 0 || userDivisionId == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("CO");
+            if (!isCentralOffice && caseDetails.DivisionID != userDivisionId)
+            {
+                return Forbid();
+            }
+
             if(ModelState.IsValid)
             {
                 if (model.StayOrderFile1 != null) model.StayOrderPath1 = SaveFile(model.StayOrderFile1, "appeals/stay");

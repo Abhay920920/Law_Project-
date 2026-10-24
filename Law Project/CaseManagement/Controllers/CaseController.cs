@@ -56,7 +56,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public IActionResult MyCases()
         {
             return RedirectToAction("MyCases", "ECourts", new { module = "MVC" });
@@ -766,7 +765,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public IActionResult AddCaseNoting([FromBody] AddCaseNotingDto dto)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -821,7 +819,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public IActionResult DeleteCaseNoting([FromBody] DeleteCaseNotingDto dto)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -1223,7 +1220,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         [Route("/Case/DismissTransferNotification")]
         public IActionResult DismissTransferNotification(int caseId)
         {
@@ -1519,7 +1515,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> UpdateCnr(int caseId, string? cnrNumber)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;

@@ -141,7 +141,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> Chat([FromBody] NyayaPathaChatRequest request, CancellationToken cancellationToken)
         {
             try
@@ -306,7 +305,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> RenameConversation(int id, string title, CancellationToken cancellationToken)
         {
             if (id <= 0 || string.IsNullOrWhiteSpace(title))
@@ -318,7 +316,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> DeleteConversation(int id, CancellationToken cancellationToken)
         {
             if (id <= 0)
@@ -330,7 +327,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> ClearAllConversations(CancellationToken cancellationToken)
         {
             int userId = GetCurrentUserId();
@@ -339,7 +335,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SubmitFeedback([FromBody] AIMessageFeedbackDto feedback, CancellationToken cancellationToken)
         {
             if (feedback == null || feedback.MessageId <= 0)
@@ -351,7 +346,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> CheckECourts(string caseType, int caseId, CancellationToken cancellationToken)
         {
             if (caseId <= 0) return BadRequest(new { message = "Invalid case ID." });
@@ -363,7 +357,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SearchSimilarCases(string caseType, int caseId, string? q, CancellationToken cancellationToken)
         {
             var similar = await _similarCaseService.FindSimilarCasesAsync(caseType, caseId, q, 6, cancellationToken);
@@ -371,7 +364,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SearchLatestJudgments(string query, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(query)) return Json(new List<ExternalLegalSourceDto>());

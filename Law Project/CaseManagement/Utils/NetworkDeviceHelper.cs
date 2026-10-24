@@ -35,8 +35,9 @@ namespace MVCCaseManagement.Utils
 
             try
             {
-                // 1. Check HTTP headers (useful if behind a corporate proxy, API gateway, or custom client agent)
+                // 1. Check HTTP headers only if explicitly forwarded by verified network devices
                 var headers = httpContext.Request?.Headers;
+                string? clientReportedMac = null;
                 if (headers != null)
                 {
                     string[] macHeaderNames = { "X-Client-MAC", "X-Forwarded-MAC", "X-Device-MAC", "X-MAC-Address", "Client-MAC" };
@@ -46,16 +47,11 @@ namespace MVCCaseManagement.Utils
                         {
                             string cleaned = CleanMac(headerVal.ToString());
                             if (!string.IsNullOrEmpty(cleaned))
-                                return cleaned;
+                            {
+                                clientReportedMac = cleaned;
+                                break;
+                            }
                         }
-                    }
-
-                    // Check device cookie if set by client script or agent
-                    if (httpContext.Request.Cookies.TryGetValue("NWKRTC_DEVICE_MAC", out var cookieMac) && !string.IsNullOrWhiteSpace(cookieMac))
-                    {
-                        string cleaned = CleanMac(cookieMac);
-                        if (!string.IsNullOrEmpty(cleaned))
-                            return cleaned;
                     }
                 }
 
@@ -112,8 +108,11 @@ namespace MVCCaseManagement.Utils
                 vMac[4] = (byte)(ipB.Length > 3 ? ipB[3] : 0x4D);
                 vMac[5] = (byte)(((ipB.Length > 0 ? ipB[0] : 0) ^ (ipB.Length > 3 ? ipB[3] : 0)) & 0xFF);
                 string fallback = string.Join(":", vMac.Select(b => b.ToString("X2")));
-                _macCache[ipStr] = (fallback, DateTime.UtcNow.AddMinutes(30));
-                return fallback;
+                string resultStr = !string.IsNullOrEmpty(clientReportedMac)
+                    ? $"{fallback} (Header: {clientReportedMac})"
+                    : fallback;
+                _macCache[ipStr] = (resultStr, DateTime.UtcNow.AddMinutes(30));
+                return resultStr;
             }
             catch
             {

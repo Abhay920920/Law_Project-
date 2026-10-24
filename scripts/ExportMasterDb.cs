@@ -12,7 +12,12 @@ namespace LawProject.Tools
         static void Main(string[] args)
         {
             string connStr = Environment.GetEnvironmentVariable("ADMIN_LAW_CONN_STR") 
-                ?? (args.Length > 1 ? args[1] : "Data Source=198.38.89.31;Initial Catalog=Admin_Law;User ID=admin_Law;Password=4c4H_0l8q;Connection Timeout=60;Encrypt=True;TrustServerCertificate=True;");
+                ?? (args.Length > 1 ? args[1] : null);
+            if (string.IsNullOrWhiteSpace(connStr))
+            {
+                Console.Error.WriteLine("Error: Connection string must be supplied via ADMIN_LAW_CONN_STR environment variable or as the second command-line argument.");
+                return;
+            }
             string outputPath = args.Length > 0 ? args[0] : @"c:\Users\adts-\Desktop\Law Project\Law Project\CaseManagement\SQL\00_Master_Full_Database_Schema_And_Seed.sql";
 
             Console.WriteLine("Starting full database export from Admin_Law...");

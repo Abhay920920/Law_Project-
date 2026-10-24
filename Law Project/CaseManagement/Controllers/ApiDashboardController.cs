@@ -164,7 +164,6 @@ namespace MVCCaseManagement.Controllers
 
         // POST /ApiDashboard/QueueBatch
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> QueueBatch([FromForm] string mode)
         {
             // Modes: Pilot10, Staged100, Full

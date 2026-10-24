@@ -157,9 +157,17 @@ namespace MVCCaseManagement.Controllers
             var ep = _epRepo.GetEPById(id);
             if (ep == null) return NotFound();
 
+            // Division ownership authorization guard (IDOR prevention)
+            int userDiv = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
+            bool isCO = userDiv == 0 || userDiv == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD");
+            if (!isCO && ep.DivisionID != userDiv)
+            {
+                return Forbid();
+            }
+
             var divisions = _masterRepo.GetAllDivisions();
-            var userDiv = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
-            ep.DivisionName = userDiv?.DivisionNameEnglish ?? "Unknown";
+            var userDivEntity = divisions.FirstOrDefault(d => d.DivisionID == ep.DivisionID);
+            ep.DivisionName = userDivEntity?.DivisionNameEnglish ?? "Unknown";
             
             ViewBag.MACTs = _masterRepo.GetAllMACTs();
             ViewBag.Advocates = _masterRepo.GetAllLabourAdvocates();
@@ -170,6 +178,20 @@ namespace MVCCaseManagement.Controllers
         [ValidateAntiForgeryToken]
         public IActionResult Edit(EPViewModel model)
         {
+            var existing = _epRepo.GetEPById(model.EPID);
+            if (existing == null) return NotFound();
+
+            // Division ownership authorization guard (IDOR prevention)
+            int userDiv = int.Parse(User.FindFirstValue("DivisionID") ?? "0");
+            bool isCO = userDiv == 0 || userDiv == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD");
+            if (!isCO && existing.DivisionID != userDiv)
+            {
+                return Forbid();
+            }
+
+            // Invariant: DivisionID cannot be altered via submitted model payload
+            model.DivisionID = existing.DivisionID;
+
             if (ModelState.IsValid)
             {
                 try

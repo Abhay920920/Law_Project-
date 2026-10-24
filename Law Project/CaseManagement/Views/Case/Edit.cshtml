@@ -1752,14 +1752,14 @@
         });
 
         $(document).ready(function () {
-            const existingCnr = '@(Model.CNRNumber ?? "")';
+            const existingCnr = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.CNRNumber ?? ""));
             if (existingCnr.length === 16) {
                 const statusElem = document.getElementById('cnr-status-badge');
                 if (statusElem) statusElem.innerHTML = `<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Linked Live CNR: ${existingCnr}</span>`;
             }
 
             // 2. Load Division Advocates via AJAX
-            const currentAdvName = '@Html.Raw(Model.AdvocateName ?? "")';
+            const currentAdvName = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.AdvocateName ?? ""));
             const userDivId = $('#DivisionID').val();
 
             if (userDivId) {
@@ -1790,7 +1790,7 @@
             }
 
             // 3. Petition Filed For "Others" Initialization
-            const initialPFF = '@Html.Raw(Model.PetitionFiledFor ?? "")';
+            const initialPFF = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.PetitionFiledFor ?? ""));
             if (initialPFF) {
                 if (["SECTION 163(A)", "SECTION 164", "SECTION 166"].includes(initialPFF)) {
                     $('#PetitionFiledForSelect').val(initialPFF);

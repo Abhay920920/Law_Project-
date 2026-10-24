@@ -107,14 +107,12 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
         public IActionResult MyCases()
         {
             return RedirectToAction("MyCases", "ECourts", new { module = "Labour" });
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> SaveLiveHearingDate(int caseId, string? cnrNumber, string? hearingDate, string? stage, string? courtHall)
         {
             if (caseId <= 0)
@@ -918,8 +916,16 @@ namespace MVCCaseManagement.Controllers
             var model = _arisingRepo.GetById(id);
             if (model == null) return NotFound();
 
-            int divisionId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1;
-            bool isCO = (divisionId == 0 || divisionId == 5);
+            var divClaim = User.FindFirst("DivisionID")?.Value;
+            int divisionId = int.TryParse(divClaim, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1);
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCO = (divisionId == 0 || divisionId == 5 || roleUpper.Contains("ADMIN") || roleUpper.Contains("CLO") || roleUpper.Contains("MD"));
+
+            if (!isCO && model.DivisionID != divisionId)
+            {
+                TempData["ErrorMessage"] = "Access Denied: You can only edit Arising Applications belonging to your division.";
+                return Forbid();
+            }
 
             if (!isCO && model.SentToCO == true)
             {
@@ -938,15 +944,28 @@ namespace MVCCaseManagement.Controllers
         [ValidateAntiForgeryToken]
         public IActionResult EditArisingApplication(ArisingApplication model)
         {
-            int divisionId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1;
-            bool isCO = (divisionId == 0 || divisionId == 5);
+            var divClaim = User.FindFirst("DivisionID")?.Value;
+            int divisionId = int.TryParse(divClaim, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1);
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCO = (divisionId == 0 || divisionId == 5 || roleUpper.Contains("ADMIN") || roleUpper.Contains("CLO") || roleUpper.Contains("MD"));
 
             var existing = _arisingRepo.GetById(model.ArisingID);
-            if (!isCO && existing != null && existing.SentToCO == true)
+            if (existing == null) return NotFound();
+
+            if (!isCO && existing.DivisionID != divisionId)
+            {
+                TempData["ErrorMessage"] = "Access Denied: You can only edit Arising Applications belonging to your division.";
+                return Forbid();
+            }
+
+            if (!isCO && existing.SentToCO == true)
             {
                 TempData["ErrorMessage"] = "This Arising Application has been forwarded to Central Office and cannot be edited by Division users.";
                 return RedirectToAction("DetailsArisingApplication", new { id = model.ArisingID });
             }
+
+            // Invariant: DivisionID cannot be altered via submitted model payload
+            model.DivisionID = existing.DivisionID;
             int userId = HttpContext.Session.GetInt32(SessionKeys.UserID) ?? 0;
             model.ModifiedBy = userId;
 
@@ -1144,11 +1163,27 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public IActionResult DeleteArisingApplication(int id)
         {
             var app = _arisingRepo.GetById(id);
+            if (app == null) return NotFound();
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int sessDivId = int.TryParse(divIdString, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1);
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCO = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" 
+                        || sessDivId == 0 || sessDivId == 5 
+                        || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("ADMIN");
+
+            if (!isCO && app.DivisionID != sessDivId)
+            {
+                TempData["ErrorMessage"] = "Access Denied: You cannot delete Arising Applications from other divisions.";
+                return Forbid();
+            }
+
             _arisingRepo.DeleteArisingApplication(id);
-            _ = _activityLogger.LogCaseDeletedAsync("Arising", id, app?.CaseNumber ?? $"Arising-{id}", null, $"Deleted Arising Application {app?.CaseNumber}");
+            _ = _activityLogger.LogCaseDeletedAsync("Arising", id, app.CaseNumber ?? $"Arising-{id}", null, $"Deleted Arising Application {app.CaseNumber}");
             TempData["SuccessMessage"] = "Arising Application deleted successfully.";
             return RedirectToAction("ArisingApplication");
         }
@@ -1160,12 +1195,18 @@ namespace MVCCaseManagement.Controllers
             if (model == null) return NotFound();
 
             var divIdString = User.FindFirst("DivisionID")?.Value;
-            int sessDivId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1;
+            int sessDivId = int.TryParse(divIdString, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? -1);
             var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
             bool isCO = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" 
                         || sessDivId == 0 || sessDivId == 5 
                         || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO") 
                         || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+
+            if (!isCO && model.DivisionID != sessDivId)
+            {
+                TempData["ErrorMessage"] = "Access Denied: You cannot view Arising Applications from other divisions.";
+                return Forbid();
+            }
 
             ViewBag.IsCentralOffice = isCO;
 
@@ -1263,7 +1304,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public IActionResult AddCaseNoting([FromBody] AddCaseNotingDto dto)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -1318,7 +1358,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public IActionResult DeleteCaseNoting([FromBody] DeleteCaseNotingDto dto)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -1362,7 +1401,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> UpdateCnr(int caseId, string? cnrNumber)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -1434,7 +1472,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> UpdateAppealCnr(int caseId, string appealType, string? cnrNumber)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -2948,7 +2985,6 @@ namespace MVCCaseManagement.Controllers
             }
         }
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         [Route("Labour/DismissTransferNotification")]
         public IActionResult DismissTransferNotification(int caseId)
         {
@@ -2964,7 +3000,6 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
-        [IgnoreAntiforgeryToken]
         [Route("Labour/DismissReinstatementNotification")]
         public IActionResult DismissReinstatementNotification(int caseId)
         {

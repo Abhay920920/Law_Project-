@@ -3210,10 +3210,10 @@
         function fetchLiveECourtsDetails() {
             let cnr = window.currentActiveCnr;
             if (!cnr || cnr.trim() === '') {
-                cnr = '@(Model.CNRNumber ?? "")';
+                cnr = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.CNRNumber ?? ""));
             }
             if (!cnr || cnr.trim() === '') {
-                cnr = '@Html.Raw(!string.IsNullOrWhiteSpace(Model.CO_WP_CNRNumber) ? Model.CO_WP_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_WA_CNRNumber) ? Model.CO_WA_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_Claimant_CNRNumber) ? Model.CO_Claimant_CNRNumber : "")';
+                cnr = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(!string.IsNullOrWhiteSpace(Model.CO_WP_CNRNumber) ? Model.CO_WP_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_WA_CNRNumber) ? Model.CO_WA_CNRNumber : !string.IsNullOrWhiteSpace(Model.CO_Claimant_CNRNumber) ? Model.CO_Claimant_CNRNumber : ""));
             }
             queueManualLabourSync(cnr, @Model.CaseID);
         }
