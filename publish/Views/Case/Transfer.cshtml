@@ -1,0 +1,138 @@
+@model MVCCaseManagement.Models.TransferViewModel
+@{
+    ViewData["Title"] = "MVC Case Transfer";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="row justify-content-center">
+    <div class="col-xl-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white d-flex align-items-center">
+                <i class="bi bi-arrow-left-right me-2"></i>
+                <h5 class="mb-0 fw-bold">Transfer MVC Case</h5>
+            </div>
+            <div class="card-body p-4">
+                <div class="alert alert-info border-0 bg-info bg-opacity-10">
+                    <i class="bi bi-info-circle me-2"></i> Use this form to transfer an MVC case from your division to another division.
+                </div>
+
+                <!-- Search Section -->
+                <div class="card bg-light border-0 mb-4">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3 text-secondary">Step 1: Search Case</h6>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label small fw-bold text-muted">MVC Number</label>
+                                <input type="text" id="searchMVCNo" class="form-control" placeholder="e.g. 123" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small fw-bold text-muted">Year</label>
+                                <input type="number" id="searchYear" class="form-control" value="@DateTime.Now.Year" />
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label small fw-bold text-muted">MACT Court</label>
+                                <select id="searchMACT" class="form-select" asp-items="@(new SelectList(ViewBag.MACTs, "MACTID", "MACTName"))">
+                                    <option value="">-- Select MACT --</option>
+                                </select>
+                            </div>
+                            <div class="col-12 text-end">
+                                <button type="button" id="btnSearch" class="btn btn-primary px-4">
+                                    <i class="bi bi-search me-2"></i> Find Case
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result & Transfer Form -->
+                <div id="transferSection" style="display:none;">
+                    <form asp-action="ProcessTransfer" asp-controller="Case" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" asp-for="CaseID" id="hdnCaseID" />
+                        <input type="hidden" asp-for="FromDivisionID" />
+
+                        <div class="card mb-4 border-success border-opacity-25">
+                            <div class="card-body">
+                                <h6 class="fw-bold text-success mb-3"><i class="bi bi-check-circle me-2"></i>Case Found</h6>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <small class="text-muted d-block fw-bold text-uppercase">Petitioner Name</small>
+                                        <span id="lblPetitioner" class="fs-5 fw-bold text-dark">-</span>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <small class="text-muted d-block fw-bold text-uppercase">Current Division</small>
+                                        <span id="lblCurrentDiv" class="badge bg-primary">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="ToDivisionID" class="form-label fw-bold">Transfer To Division <span class="text-danger">*</span></label>
+                            <select asp-for="ToDivisionID" class="form-select form-select-lg" asp-items="@(new SelectList(ViewBag.Divisions, "DivisionID", "DivisionNameEnglish"))">
+                                <option value="">-- Select Target Division --</option>
+                            </select>
+                            <span asp-validation-for="ToDivisionID" class="text-danger"></span>
+                        </div>
+
+                        <div class="mb-4">
+                            <label asp-for="TransferRemarks" class="form-label fw-bold">Remarks / Reason</label>
+                            <textarea asp-for="TransferRemarks" class="form-control" rows="3" placeholder="Enter reason for transfer..."></textarea>
+                        </div>
+
+                        <div class="d-flex justify-content-end gap-2">
+                             <a href="@Url.Action("Index", "Case")" class="btn btn-outline-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-success px-4">
+                                <i class="bi bi-send me-2"></i> Confirm Transfer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="noResult" class="alert alert-warning mt-3" style="display:none;">
+                    <i class="bi bi-exclamation-triangle me-2"></i> No case found with the provided details.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        $(document).ready(function() {
+            $('#btnSearch').click(function() {
+                var mvcNo = $('#searchMVCNo').val();
+                var year = $('#searchYear').val();
+                var mactId = $('#searchMACT').val();
+
+                if (!mvcNo || !year || !mactId) {
+                    alert('Please enter all search criteria.');
+                    return;
+                }
+
+                var btn = $(this);
+                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span> Searching...');
+
+                $.get('@Url.Action("SearchTransferCase", "Case")', { mvcNo: mvcNo, year: year, mactId: mactId }, function(res) {
+                    btn.prop('disabled', false).html('<i class="bi bi-search me-2"></i> Find Case');
+                    
+                    if (res.success) {
+                        $('#hdnCaseID').val(res.caseId);
+                        $('#lblPetitioner').text(res.petitionerName);
+                        $('#lblCurrentDiv').text(res.divisionName);
+                        
+                        $('#transferSection').slideDown();
+                        $('#noResult').hide();
+                    } else {
+                        $('#transferSection').hide();
+                        $('#noResult').show();
+                    }
+                }).fail(function() {
+                    btn.prop('disabled', false).html('<i class="bi bi-search me-2"></i> Find Case');
+                    alert('Error searching for case.');
+                });
+            });
+        });
+    </script>
+}

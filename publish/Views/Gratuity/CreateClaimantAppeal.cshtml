@@ -1,0 +1,145 @@
+@model MVCCaseManagement.Models.GratuityViewModel
+
+@{
+    ViewData["Title"] = "New Claimant Appeal (Gratuity)";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-gratuity mb-0">New Claimant Appeal Registration</h2>
+            <p class="text-muted">Register a new appeal filed by a claimant / petitioner (Gratuity)</p>
+        </div>
+        <a asp-action="ClaimantAppeals" class="btn btn-outline-secondary">Back to Registry</a>
+    </div>
+
+    <form asp-action="CreateClaimantAppeal" method="post" id="registrationForm" class="needs-validation" novalidate>
+        @Html.AntiForgeryToken()
+
+        <!-- Section 1: Reference Details -->
+        <div class="card shadow border-0 mb-4 bg-light">
+            <div class="card-header bg-gratuity text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="bi bi-card-list me-2"></i>Section 1: Appeal Reference Details</h6>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantWPNumber" class="form-label fw-bold text-gratuity">PGA/Appeal / CR Number</label>
+                        <input asp-for="ClaimantWPNumber" class="form-control form-control-lg border-2 shadow-sm" placeholder="e.g. PGA-12345" />
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantWPYear" class="form-label fw-bold text-gratuity">Appeal Year</label>
+                        <input asp-for="ClaimantWPYear" class="form-control form-control-lg border-2 shadow-sm" placeholder="YYYY" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Case Context -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-info">
+            <div class="card-body p-4">
+                <h6 class="fw-bold text-info mb-4 text-uppercase small ls-1"><i class="bi bi-search me-2"></i>Section 2: Case Context</h6>
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <label asp-for="ClaimantArisingWPNumber" class="form-label fw-bold">Arising Out of PGA/CR No</label>
+                        <input asp-for="ClaimantArisingWPNumber" class="form-control form-control-lg border-2 shadow-sm" placeholder="e.g. 987/2023" />
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="AppealCourt" class="form-label fw-bold">Court / Authority</label>
+                        <select asp-for="AppealCourt" asp-items="Model.GratuityCourtList" class="form-select form-select-lg border-2 shadow-sm">
+                            <option value="">Select Court...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: Filing Details -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3 border-bottom">
+                <h6 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-text me-2"></i>Section 3: Appeal Filing Details</h6>
+            </div>
+            <div class="card-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantHighCourtBench" class="form-label fw-bold small">ALC Court</label>
+                        <select asp-for="ClaimantHighCourtBench" class="form-select shadow-sm" id="highCourtBenchSelect">
+                            <option value="">Select Bench...</option>
+                            <option value="Bengaluru">Principal Bench (Bengaluru)</option>
+                            <option value="Dharwad">Dharwad Bench</option>
+                            <option value="Kalaburagi">Kalaburagi Bench</option>
+                            <option value="Division Bench">Division Bench</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPEntrustmentNo" class="form-label fw-bold small">Entrustment Number</label>
+                        <input asp-for="ClaimantWPEntrustmentNo" class="form-control shadow-sm" />
+                    </div>
+                    <div class="col-md-4">
+                        <label asp-for="ClaimantWPEntrustmentDate" class="form-label fw-bold small">Entrustment Date</label>
+                        <input asp-for="ClaimantWPEntrustmentDate" type="date" class="form-control shadow-sm" />
+                    </div>
+                    <div class="col-md-12">
+                        <label asp-for="ClaimantWPAdvocate" class="form-label fw-bold small">Advocate Name</label>
+                        <select asp-for="ClaimantWPAdvocate" asp-items="Model.GratuityAdvocateList" class="form-select shadow-sm">
+                            <option value="">Select Advocate...</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="mt-4 mb-5 text-end">
+            <button type="submit" class="btn btn-gratuity btn-lg px-5 shadow fw-bold">
+                <i class="bi bi-save2 me-2"></i> Register Claimant Appeal
+            </button>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            console.log("Single-page registration form initialized.");
+        });
+    </script>
+}
+
+@section Styles {
+    <style>
+        :root {
+            --gratuity-color: #C2185B;
+        }
+        body, .content-area {
+            background-color: #d5d8db !important;
+        }
+        .bg-gratuity { background-color: var(--gratuity-color) !important; }
+        .text-gratuity { color: var(--gratuity-color) !important; }
+        .btn-gratuity { 
+            background-color: var(--gratuity-color); 
+            color: white !important; 
+            border: none;
+        }
+        .btn-gratuity:hover { 
+            background-color: #880E4F !important; 
+            color: white !important;
+        }
+        .ls-1 { letter-spacing: 1px; }
+        .form-label {
+            margin-bottom: 0.3rem;
+            color: #444;
+        }
+        .card {
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .card-header {
+            border-bottom: none;
+        }
+    </style>
+}

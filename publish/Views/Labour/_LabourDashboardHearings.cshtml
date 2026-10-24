@@ -1,0 +1,99 @@
+@model IEnumerable<MVCCaseManagement.Models.LabourCase>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+        <thead class="bg-light">
+            <tr>
+                <th class="ps-4">Case No</th>
+                <th>Petitioner</th>
+                <th>Case Type</th>
+                <th>Court</th>
+                <th>Status</th>
+                <th>Next Hearing</th>
+                <th class="text-end pe-4">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (Model != null && Model.Any())
+            {
+                foreach (var item in Model)
+                {
+                    <tr>
+                        <td class="ps-4 fw-bold text-dark">@item.CaseNumber / @item.CaseYear</td>
+                        <td>
+                            <div class="d-flex flex-column">
+                                <span class="fw-medium">@item.PetitionerName</span>
+                                <small class="text-muted">@item.Designation</small>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">@item.CaseType</span>
+                        </td>
+                        <td>@item.CourtName</td>
+                        <td>
+                            @if (item.CaseStatus == "Pending")
+                            {
+                                <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
+                            }
+                            else if (item.CaseStatus == "Disposed")
+                            {
+                                <span class="badge bg-success-subtle text-success-emphasis">Disposed</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis">@item.CaseStatus</span>
+                            }
+                        </td>
+                        <td>
+                            @if (item.NextHearingDate.HasValue)
+                            {
+                                <small class="d-block text-primary fw-bold">@item.NextHearingDate.Value.ToShortDateString()</small>
+                            }
+                            else
+                            {
+                                <small class="text-muted">-</small>
+                            }
+                        </td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group">
+                                @if (item.IsArisingApplication)
+                                {
+                                    <a href="@Url.Action("DetailsArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </a>
+                                    @if (!(ViewBag.IsCentralOffice ?? false))
+                                    {
+                                        <a href="@Url.Action("EditArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </a>
+                                    }
+                                }
+                                else
+                                {
+                                    <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </a>
+                                    @if (!(ViewBag.IsCentralOffice ?? false))
+                                    {
+                                        <a href="@Url.Action("Edit", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </a>
+                                    }
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-muted">
+                        <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
+                        No scheduled hearings found for this date.
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

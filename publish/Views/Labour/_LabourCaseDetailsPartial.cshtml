@@ -1,0 +1,959 @@
+@model MVCCaseManagement.Models.LabourCase
+@using Microsoft.AspNetCore.Html
+@functions {
+    // Renders a single field row — label on left, value on right
+    // Returns null if value is empty so callers can skip empty entries
+    string? Row(string label, string? val)
+    {
+        if (string.IsNullOrWhiteSpace(val) || val == "-") return null;
+        // Long values get their own full-width block
+        if (val.Length > 60)
+        {
+            return $@"<div class='lcp-row lcp-row--full'>
+                <span class='lcp-label'>{label}</span>
+                <div class='lcp-value lcp-value--block white-space-pre-line'>{val}</div>
+            </div>";
+        }
+        return $@"<div class='lcp-row'>
+            <span class='lcp-label'>{label}</span>
+            <span class='lcp-value'>{val}</span>
+        </div>";
+    }
+
+    IHtmlContent Card(string title, string icon, IEnumerable<string?> rows, string colClass = "col-lg-6 col-md-12 mb-3")
+    {
+        var validRows = rows.Where(r => !string.IsNullOrEmpty(r)).ToList();
+        if (!validRows.Any()) return HtmlString.Empty;
+        var content = string.Join("", validRows);
+        return new HtmlString($@"<div class='{colClass}'>
+            <div class='lcp-card h-100'>
+                <div class='lcp-card-header'>
+                    <span class='lcp-card-icon'><i class='bi bi-{icon}'></i></span>
+                    <span class='lcp-card-title'>{title}</span>
+                </div>
+                <div class='lcp-card-body'>
+                    {content}
+                </div>
+            </div>
+        </div>");
+    }
+
+    string? D(string? v) => string.IsNullOrWhiteSpace(v) ? null : v;
+    string? DB(bool? v) => v == true ? "Yes" : (v == false ? "No" : null);
+    string? DD(DateTime? d) => d.HasValue ? d.Value.ToString("dd MMM yyyy") : null;
+    bool HasD(params string?[] values) => values.Any(v => !string.IsNullOrWhiteSpace(v));
+}
+
+@{
+    bool isServiceMatter = ViewBag.IsServiceMatter == true 
+        || string.Equals(Model.CaseType, "Service Matter", StringComparison.OrdinalIgnoreCase) 
+        || string.Equals(Model.CaseType, "Service/Commercial Matters", StringComparison.OrdinalIgnoreCase)
+        || (Context.Request.Path.Value != null && Context.Request.Path.Value.Contains("ServiceMatterDetails", StringComparison.OrdinalIgnoreCase));
+
+    bool showDE = !isServiceMatter && HasD(
+        DB(Model.DE_HistorySheet), DB(Model.DE_ObjectionsFiled), D(Model.DE_ObjectionsRemark),
+        DB(Model.DE_DocumentsMarked), D(Model.DE_DocumentsRemark), D(Model.DE_Order),
+        D(Model.DE_EO_Name), D(Model.DE_EO_Designation),
+        D(Model.DisposalMode), DD(Model.DisposalDate), D(Model.DisposalResult),
+        D(Model.Against_CaseCategory), D(Model.Against_PunishmentImposed),
+        DD(Model.CC_ReceivedDate), D(Model.Opinion_Advocate), D(Model.Opinion_LO)
+    );
+    bool showCO = !isServiceMatter && HasD(
+        D(Model.CO_ApprovalOutwardNo), D(Model.CO_Disposal_Nature),
+        D(Model.CO_WP_CaseNumber), D(Model.CO_WA_CaseNumber),
+        D(Model.CO_FurtherAppeal_CaseNumber), DB(Model.CO_IsWorkmanReinstated)
+    );
+    bool showClaimant = !isServiceMatter && HasD(
+        D(Model.CO_Claimant_CaseNumber), D(Model.CO_Claimant_DivisionName),
+        D(Model.ClaimantSCNumber), D(Model.ClaimantSCDiaryNumber), DB(Model.IsClaimantSCPending)
+    );
+    bool showService = HasD(
+        D(Model.CO_Service_WPNumber), D(Model.CO_Service_PetitionerName),
+        D(Model.CO_Service_Status), D(Model.CO_Service_AppealType)
+    );
+    bool showEP = !isServiceMatter && Model.ConnectedEPs != null && Model.ConnectedEPs.Any();
+
+    // Build tab list dynamically
+    var tabs = new List<(string Id, string Label, string Icon)> {
+        ("tab-basic", "Overview", "info-circle-fill")
+    };
+    if (showDE) tabs.Add(("tab-de", "DE / Award", "journal-text"));
+    if (showCO) tabs.Add(("tab-co", "CO Action", "building-check"));
+    if (showClaimant) tabs.Add(("tab-claimant", "Claimant", "person-exclamation"));
+    if (showService) tabs.Add(("tab-service", "Service Matter", "file-earmark-ruled"));
+    if (showEP) tabs.Add(("tab-ep", "Exec. Petitions", "hammer"));
+    tabs.Add(("tab-opinions", "Legal Opinions & Decisions", "chat-square-quote-fill"));
+}
+
+<style>
+    /* ===== Labour Case Details Partial — Premium Styles ===== */
+    .lcp-wrapper {
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        background: #f8fafd;
+        min-height: 60vh;
+    }
+
+    /* ---------- Tab Nav ---------- */
+    .lcp-tabs {
+        display: flex;
+        gap: 4px;
+        padding: 12px 16px 0;
+        background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+        border-radius: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+    .lcp-tabs::-webkit-scrollbar { height: 3px; }
+    .lcp-tabs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); border-radius: 3px; }
+
+    .lcp-tab-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 18px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: rgba(255,255,255,0.75);
+        background: rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-bottom: none;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        white-space: nowrap;
+        letter-spacing: 0.02em;
+    }
+    .lcp-tab-btn:hover {
+        background: rgba(255,255,255,0.2);
+        color: #ffffff;
+    }
+    .lcp-tab-btn.active {
+        background: #f8fafd;
+        color: #1e3a8a;
+        border-color: #e2e8f0;
+        border-bottom-color: #f8fafd;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+    }
+
+    /* ---------- Tab Content ---------- */
+    .lcp-content {
+        padding: 20px 16px;
+        background: #f8fafd;
+    }
+    .lcp-pane { display: none; }
+    .lcp-pane.active { display: block; animation: lcpFadeIn 0.2s ease; }
+    @@keyframes lcpFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ---------- Cards ---------- */
+    .lcp-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        transition: box-shadow 0.18s ease;
+    }
+    .lcp-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+
+    .lcp-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: linear-gradient(90deg, #f0f4ff, #f8fafd);
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .lcp-card-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px; height: 26px;
+        border-radius: 6px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    .lcp-card-title {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1e3a8a;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .lcp-card-body {
+        padding: 4px 0;
+    }
+
+    /* ---------- Rows ---------- */
+    .lcp-row {
+        display: grid;
+        grid-template-columns: 42% 1fr;
+        align-items: baseline;
+        gap: 6px;
+        padding: 7px 14px;
+        border-bottom: 1px solid #f1f5f9;
+        transition: background 0.12s;
+    }
+    .lcp-row:last-child { border-bottom: none; }
+    .lcp-row:hover { background: #f8fafd; }
+
+    .lcp-row--full {
+        grid-template-columns: 1fr;
+        gap: 4px;
+        background: #f8fafd;
+        padding: 8px 14px;
+    }
+
+    .lcp-label {
+        font-size: 0.73rem;
+        color: #64748b;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+    }
+    .lcp-value {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #1e293b;
+        word-break: break-word;
+    }
+    .lcp-value--block {
+        font-size: 0.8rem;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 8px 10px;
+        color: #374151;
+        font-weight: 500;
+    }
+    .white-space-pre-line { white-space: pre-line; }
+
+    /* ---------- EP Cards ---------- */
+    .lcp-ep-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .lcp-ep-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 14px;
+        background: linear-gradient(90deg, #eff6ff, #f8fafd);
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .lcp-ep-body { padding: 12px 14px; }
+    .lcp-ep-stat { margin-bottom: 10px; }
+    .lcp-ep-stat-label { font-size: 0.65rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 2px; }
+    .lcp-ep-stat-val { font-size: 0.88rem; font-weight: 700; color: #1e293b; }
+
+    /* ---------- Section Heading ---------- */
+    .lcp-section-heading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+    .lcp-section-heading i { color: #1d4ed8; font-size: 1rem; }
+    .lcp-section-heading span { font-size: 0.85rem; font-weight: 700; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* ---------- Connected Case Chip ---------- */
+    .lcp-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        background: #dbeafe;
+        color: #1e40af;
+        border: 1px solid #bfdbfe;
+        margin: 2px;
+    }
+
+    .lcp-pdf-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 14px;
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.15s;
+    }
+    .lcp-pdf-btn:hover { background: #dc2626; color: #fff; }
+</style>
+
+<div class="lcp-wrapper">
+
+    <!-- ===== Tab Bar ===== -->
+    <div class="lcp-tabs" role="tablist">
+        @foreach (var (id, label, icon) in tabs)
+        {
+            <button class="lcp-tab-btn @(id == "tab-basic" ? "active" : "")"
+                    data-lcp-tab="@id" role="tab" aria-selected="@(id == "tab-basic" ? "true" : "false")">
+                <i class="bi bi-@icon"></i> @label
+            </button>
+        }
+    </div>
+
+    <!-- ===== Tab Content ===== -->
+    <div class="lcp-content">
+
+        <!-- ── Overview Tab ── -->
+        <div class="lcp-pane active" id="tab-basic">
+            <div class="row g-3">
+                @Card("Employee & Technical Details", "person-fill", new[] {
+                    Row("Badge No.", D(Model.EmployeeNo)),
+                    Row("PF Number", D(Model.PFNumber)),
+                    Row("Designation", D(Model.Designation)),
+                    Row("Working Status", D(Model.WorkingStatus)),
+                    Model.WorkingStatus == "Death" ? Row("LRs / Petitioner Name", D(Model.LegalRepresentativeName)) : null,
+                    Row("Is Workman", DB(Model.IsWorkman)),
+                    Row("Workman Remark", D(Model.IsWorkmanRemark)),
+                    Row("Nature of Case", D(Model.NatureOfCase)),
+                    Row("Nature of Misconduct", D(Model.NatureOfMisconduct))
+                })
+                @Card("Case Filing Details", "gavel", new[] {
+                    Row("Entrustment Date", DD(Model.EntrustmentDate)),
+                    Row("Double Claim", DB(Model.IsDoubleClaim)),
+                    Model.IsDoubleClaim ? Row("Double Claim Remark", D(Model.DoubleClaimRemarks)) : null,
+                    Row("Claim Filed On", D(Model.ClaimFiledOn)),
+                    Row("Delay In Filing", D(Model.DelayInFiling))
+                })
+                @Card("Limitation", "hourglass-split", new[] {
+                    Row("Filed within Limitation", DB(Model.IsFiledWithinLimitation)),
+                    Row("Limitation Remark", D(Model.LimitationRemark)),
+                    Row("Delay Condoned", DB(Model.IsDelayCondoned)),
+                    Row("Condonation Remark", D(Model.DelayCondonationRemark))
+                })
+                @Card("CO Communication", "send", new[] {
+                    Row("Sent to CO", DB(Model.SentToCO)),
+                    Row("CO Outward No.", D(Model.CO_OutwardNo)),
+                    Row("CO Outward Date", DD(Model.CO_OutwardDate)),
+                    Row("CO Remarks", D(Model.CO_Remarks)),
+                    Row("Approval Required", DB(Model.IsCOApprovalRequired)),
+                    Row("Approval Outward No.", D(Model.COApproval_OutwardNo)),
+                    Row("Approval Date", DD(Model.COApproval_OutwardDate))
+                })
+                @if (!string.IsNullOrWhiteSpace(Model.SerialApp_CaseNumber))
+                {
+                    @Card("Serial Application", "arrow-90deg-right", new[] {
+                        Row("Serial Case Number", D(Model.SerialApp_CaseNumber)),
+                        Row("Serial Current Stage", D(Model.SerialApp_CurrentStage))
+                    })
+                }
+
+                @if (Model.ConnectedCases != null && Model.ConnectedCases.Any())
+                {
+                    <div class="col-12">
+                        <div class="lcp-card">
+                            <div class="lcp-card-header">
+                                <span class="lcp-card-icon"><i class="bi bi-link-45deg"></i></span>
+                                <span class="lcp-card-title">Connected Cases</span>
+                            </div>
+                            <div class="lcp-card-body p-3">
+                                <div class="row g-2">
+                                    @foreach (var cc in Model.ConnectedCases)
+                                    {
+                                        <div class="col-md-4 col-6">
+                                            <div class="p-2 rounded-3 border" style="background:#f0f4ff;">
+                                                <div class="fw-bold text-primary small">@cc.CaseDetails</div>
+                                                <div class="text-muted" style="font-size:0.7rem;">Filed by: @(cc.FiledBy ?? "-")</div>
+                                                <span class="lcp-chip mt-1">@(cc.CurrentStatus ?? "-")</span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <!-- ── DE / Award Tab ── -->
+        @if (showDE)
+        {
+            <div class="lcp-pane" id="tab-de">
+                <div class="row g-3">
+                    @Card("Departmental Enquiry", "journal-text", new[] {
+                        Row("History Sheet Prepared", DB(Model.DE_HistorySheet)),
+                        Row("Terminal Benefits Paid", D(Model.TerminalBenefitsPaid)),
+                        Row("Serial Application Details", D(Model.SerialApplicationDetails)),
+                        Row("Repeat Dismissal", Model.IsRepeatDismissal ? "YES: " + D(Model.RepeatDismissalRemark) : "NO"),
+                        Row("Appeal Details (Appellate)", Model.HasAppealDetails ? "YES: " + D(Model.AppealDetailsRemark) : "NO"),
+                        Row("Objections Filed", DB(Model.DE_ObjectionsFiled)),
+                        Row("Objections Remark", D(Model.DE_ObjectionsRemark)),
+                        Row("Documents Marked", DB(Model.DE_DocumentsMarked)),
+                        Row("Documents Remark", D(Model.DE_DocumentsRemark)),
+                        Row("DE Order", D(Model.DE_Order)),
+                        Row("Charges Status", D(Model.ChargesStatus))
+                    })
+                    @Card("Witness Details", "people-fill", new[] {
+                        Row("Enquiry Officer", D(Model.DE_EO_Name) != null ? (D(Model.DE_EO_Name) + " — " + (D(Model.DE_EO_Designation) ?? "")) : null),
+                        Row("EO Based on Docs", D(Model.DE_EO_BasedOnDocsRemark)),
+                        Row("Reporter Witness", D(Model.DE_Reporter_Name) != null ? (D(Model.DE_Reporter_Name) + " — " + (D(Model.DE_Reporter_Designation) ?? "")) : null),
+                        Row("Reporter Docs Remark", D(Model.DE_Reporter_BasedOnDocsRemark)),
+                        Row("Other Witness", D(Model.DE_Other_Name) != null ? (D(Model.DE_Other_Name) + " — " + (D(Model.DE_Other_Designation) ?? "")) : null),
+                        Row("Other Witness Docs", D(Model.DE_Other_BasedOnDocsRemark))
+                    })
+                    @Card("Disposal / Award", "award", new[] {
+                        Row("Disposal Mode", D(Model.DisposalMode)),
+                        Row("Disposal Date", DD(Model.DisposalDate)),
+                        Row("Disposal Result", D(Model.DisposalResult)),
+                        Row("Favor Remark", D(Model.FavorRemark)),
+                        Row("Award Details", D(Model.AwardDetails)),
+                        Row("Against Category", D(Model.Against_CaseCategory)),
+                        Row("Punishment Imposed", D(Model.Against_PunishmentImposed)),
+                        Row("Punishment No.", D(Model.Against_PunishmentNo)),
+                        Row("Punishment Date", DD(Model.Against_PunishmentDate))
+                    })
+                    @Card("Certified Copy", "file-earmark-check", new[] {
+                        Row("Case Disposed Date", DD(Model.CC_CaseDisposedDate)),
+                        Row("Date of Publication", DD(Model.CC_PublicationDate)),
+                        Row("Applied Date", DD(Model.CC_AppliedDate)),
+                        Row("Issued Date", DD(Model.CC_IssuedDate)),
+                        Row("Delivered Date", DD(Model.CC_DeliveredDate)),
+                        Row("Received Date", DD(Model.CC_ReceivedDate)),
+                        Row("Remarks", D(Model.CC_Remarks))
+                    })
+                    @Card("Opinions", "chat-text", new[] {
+                        Row("Advocate", D(Model.Opinion_Advocate)),
+                        Row("Law Officer", D(Model.Opinion_LO)),
+                        Row("Divisional Controller", D(Model.Opinion_DC)),
+                        Row("CLO", D(Model.Opinion_CLO))
+                    })
+                    @Card("Lok Adalat", "person-handshake", new[] {
+                        Row("CO Approval Required", DB(Model.LokAdalat_COApprovalRequired)),
+                        Row("Outward No.", D(Model.LokAdalat_OutwardNo)),
+                        Row("Date", DD(Model.LokAdalat_Date))
+                    })
+                </div>
+            </div>
+        }
+
+        <!-- ── CO Action Tab ── -->
+        @if (showCO)
+        {
+            <div class="lcp-pane" id="tab-co">
+                <div class="row g-3">
+                    @Card("Central Office Legal Directives & Role-Based Actions", "diagram-3-fill", new[] {
+                        Row("Law Officer (LO) Action", D(Model.ActionTaken_LO)),
+                        Row("LO Approval Date", DD(Model.ApprovalDate_LO)),
+                        Row("LO Opinion", D(Model.Opinion_LO)),
+                        Row("Dy. Chief Law Officer Action", D(Model.ActionTaken_DyCLO)),
+                        Row("Dy. CLO Approval Date", DD(Model.ApprovalDate_DyCLO)),
+                        Row("Dy. CLO Opinion", D(Model.Opinion_DyCLO)),
+                        Row("Chief Law Officer (CLO) Action", D(Model.ActionTaken_CLO ?? Model.CO_Disposal_Decision)),
+                        Row("CLO Approval Date", DD(Model.ApprovalDate_CLO ?? Model.CO_ApprovalDate)),
+                        Row("CLO Opinion", D(Model.Opinion_CLO)),
+                        Row("Managing Director (MD) Action", D(Model.ActionTaken_MD ?? Model.CO_ActionTaken)),
+                        Row("MD Approval Date", DD(Model.ApprovalDate_MD ?? Model.CO_ApprovalDate)),
+                        Row("MD Opinion / Remarks", D(Model.Opinion_MD ?? Model.CO_Remarks)),
+                        Row("Approval Outward No.", D(Model.CO_ApprovalOutwardNo)),
+                        Row("Feasibility Received", DB(Model.CO_FeasibilityReceived)),
+                        Row("Feasibility Date", DD(Model.CO_FeasibilityDate))
+                    }, "col-12 mb-3")
+
+                    @Card("Feasibility & Initial Action", "building-check", new[] {
+                        Row("Approval Outward No.", D(Model.CO_ApprovalOutwardNo)),
+                        Row("Approval Date", DD(Model.CO_ApprovalDate))
+                    })
+                    @Card("Disposal Communication", "x-octagon", new[] {
+                        Row("Disposal Nature", D(Model.CO_Disposal_Nature)),
+                        Row("Comm. to Division", DB(Model.CO_Disposal_CommSentToDivision)),
+                        Row("Outward No.", D(Model.CO_Disposal_OutwardNo)),
+                        Row("Date", DD(Model.CO_Disposal_Date)),
+                        Row("Decision Approval No.", D(Model.CO_Disposal_ApprovalOutwardNo)),
+                        Row("Approval Date", DD(Model.CO_Disposal_ApprovalDate))
+                    })
+                    @{
+                        var pArisingApps = ViewBag.LinkedArisingApplications as List<ArisingApplication>;
+                        var wpRows = new List<string?> {
+                            Row("WP Status Option", D(Model.CO_WP_CaseStatus_Option)),
+                            Row("WP No. / Year", D(Model.CO_WP_CaseNumber) != null ? D(Model.CO_WP_CaseNumber) + " / " + (Model.CO_WP_Year?.ToString() ?? "-") : null),
+                            Row("High Court Bench", D(Model.CO_WP_HighCourtBench)),
+                            Row("Entrustment No.", D(Model.CO_WP_EntrustmentNo)),
+                            Row("Entrustment Date", DD(Model.CO_WP_EntrustmentDate)),
+                            Row("Advocate", D(Model.CO_WP_AdvocateName)),
+                            Row("Stay Granted", DB(Model.CO_WP_StayGranted)),
+                            Row("Stay Approval No.", D(Model.CO_WP_StayApprovalNo)),
+                            Row("Stay Nature", D(Model.CO_WP_StayNature)),
+                            Row("Stay Date", DD(Model.CO_WP_StayDate)),
+                            Row("Stay Remark", D(Model.CO_WP_StayRemark)),
+                            Row("WP Status", D(Model.CO_WP_Status)),
+                            Row("WP Outcome", D(Model.CO_WP_Outcome)),
+                            Row("Outcome Remark", D(Model.CO_WP_OutcomeRemark)),
+                            Row("Outcome Outward No.", D(Model.CO_WP_OutcomeOutwardNo)),
+                            Row("Outcome Outward Date", DD(Model.CO_WP_OutcomeOutwardDate))
+                        };
+                        if (pArisingApps != null && pArisingApps.Any(a => !string.IsNullOrWhiteSpace(a.CO_WP_CaseNumber)))
+                        {
+                            foreach (var aWp in pArisingApps.Where(a => !string.IsNullOrWhiteSpace(a.CO_WP_CaseNumber)))
+                            {
+                                wpRows.Add(Row($"Arising App {aWp.CaseNumber}/{aWp.CaseYear}", $"WP {aWp.CO_WP_CaseNumber}/{aWp.CO_WP_Year} | {aWp.CO_WP_HighCourtBench ?? "HC"} | {aWp.CO_WP_AdvocateName ?? "NA"} | {aWp.CO_WP_Status ?? "Active"}"));
+                            }
+                        }
+                    }
+                    @Card("Writ Petition (WP)", "building", wpRows)
+                    @{
+                        var waRows = new List<string?> {
+                            Row("WA Status Option", D(Model.CO_WA_CaseStatus_Option)),
+                            Row("WA No. / Year", D(Model.CO_WA_CaseNumber) != null ? D(Model.CO_WA_CaseNumber) + " / " + (Model.CO_WA_Year?.ToString() ?? "-") : null),
+                            Row("High Court Bench", D(Model.CO_WA_HighCourtBench)),
+                            Row("Entrustment No.", D(Model.CO_WA_EntrustmentNo)),
+                            Row("Entrustment Date", DD(Model.CO_WA_EntrustmentDate)),
+                            Row("Advocate", D(Model.CO_WA_AdvocateName)),
+                            Row("Stay Granted", DB(Model.CO_WA_StayGranted)),
+                            Row("Stay Approval No.", D(Model.CO_WA_StayApprovalNo)),
+                            Row("Stay Nature", D(Model.CO_WA_StayNature)),
+                            Row("Stay Date", DD(Model.CO_WA_StayDate)),
+                            Row("Stay Remark", D(Model.CO_WA_StayRemark)),
+                            Row("WA Status", D(Model.CO_WA_Status)),
+                            Row("WA Outcome", D(Model.CO_WA_Outcome)),
+                            Row("Outcome Remark", D(Model.CO_WA_OutcomeRemark)),
+                            Row("Outcome Outward No.", D(Model.CO_WA_OutcomeOutwardNo)),
+                            Row("Outcome Outward Date", DD(Model.CO_WA_OutcomeOutwardDate))
+                        };
+                        if (pArisingApps != null && pArisingApps.Any(a => !string.IsNullOrWhiteSpace(a.CO_WA_CaseNumber)))
+                        {
+                            foreach (var aWa in pArisingApps.Where(a => !string.IsNullOrWhiteSpace(a.CO_WA_CaseNumber)))
+                            {
+                                waRows.Add(Row($"Arising App {aWa.CaseNumber}/{aWa.CaseYear}", $"WA {aWa.CO_WA_CaseNumber}/{aWa.CO_WA_Year} | {aWa.CO_WA_HighCourtBench ?? "HC"} | {aWa.CO_WA_AdvocateName ?? "NA"} | {aWa.CO_WA_Status ?? "Active"}"));
+                            }
+                        }
+                    }
+                    @Card("Writ Appeal (WA)", "arrow-repeat", waRows)
+                    @Card("Reinstatement", "person-arms-up", new[] {
+                        Row("Workman Reinstated", DB(Model.CO_IsWorkmanReinstated)),
+                        Row("Subject to WP", D(Model.CO_ReinstatedSubjectToWP)),
+                        Row("Reinstatement Stay", DB(Model.CO_Reinstatement_StayGranted)),
+                        Row("Approval Issued", DB(Model.CO_ReinstatementApprovalIssued)),
+                        Row("Approval Date", DD(Model.CO_ReinstatementApprovalDate))
+                    })
+                    @Card("Further Appeal (SC / SLP)", "fast-forward", new[] {
+                        Row("Status", D(Model.CO_FurtherAppeal_Status_Option)),
+                        Row("Case No. / Year", D(Model.CO_FurtherAppeal_CaseNumber) != null ? D(Model.CO_FurtherAppeal_CaseNumber) + " / " + (Model.CO_FurtherAppeal_Year?.ToString() ?? "-") : null),
+                        Row("Entrustment No.", D(Model.CO_FurtherAppeal_EntrustmentNo)),
+                        Row("Entrustment Date", DD(Model.CO_FurtherAppeal_EntrustmentDate)),
+                        Row("Advocate", D(Model.CO_FurtherAppeal_AdvocateName)),
+                        Row("Case Status", D(Model.CO_FurtherAppeal_CaseStatus)),
+                        Row("Disposal Outward No.", D(Model.CO_FurtherAppeal_DisposalOutwardNo)),
+                        Row("Disposal Date", DD(Model.CO_FurtherAppeal_DisposalDate))
+                    })
+                </div>
+            </div>
+        }
+
+        <!-- ── Claimant Tab ── -->
+        @if (showClaimant)
+        {
+            <div class="lcp-pane" id="tab-claimant">
+                <div class="row g-3">
+                    @{
+                        var claimantRows = new List<string?> {
+                            Row("Division", D(Model.CO_Claimant_DivisionName)),
+                            Row("Arising Out Of", D(Model.CO_Claimant_ArisingOutOf)),
+                            Row("Court", D(Model.CO_Claimant_Court)),
+                            Row("Case No. / Year", D(Model.CO_Claimant_CaseNumber) != null ? D(Model.CO_Claimant_CaseNumber) + " / " + (Model.CO_Claimant_CaseYear?.ToString() ?? "-") : null),
+                            Row("High Court Bench", D(Model.CO_Claimant_HighCourtBench)),
+                            Row("Original Case Status", D(Model.CO_Claimant_OriginalCaseStatus)),
+                            Row("Is Connected", DB(Model.CO_Claimant_IsConnected)),
+                            Row("Entrustment No.", D(Model.CO_Claimant_EntrustmentNo)),
+                            Row("Advocate", D(Model.CO_Claimant_AdvocateName)),
+                            Row("Case Status", D(Model.CO_Claimant_CaseStatus))
+                        };
+                        if (!string.IsNullOrEmpty(Model.CO_Claimant_PetitionCopyPath))
+                        {
+                            claimantRows.Add($@"<div class='lcp-row lcp-row--full'>
+                                <a href='{Model.CO_Claimant_PetitionCopyPath}' target='_blank' class='lcp-pdf-btn'>
+                                    <i class='bi bi-file-earmark-pdf'></i> View Petition Copy (PDF)
+                                </a>
+                            </div>");
+                        }
+                    }
+                    @Card("Claimant WP Details", "person-exclamation", claimantRows)
+
+                    @{
+                        var scRows = new List<string?> {
+                            Row("Claimant SC Pending", DB(Model.IsClaimantSCPending)),
+                            Row("SC Diary Number", D(Model.ClaimantSCDiaryNumber)),
+                            Row("SC Number", D(Model.ClaimantSCNumber)),
+                            Row("SC Year", D(Model.ClaimantSCYear?.ToString())),
+                            Row("SLP Year", D(Model.ClaimantSLPYear?.ToString())),
+                            Row("SC Advocate", D(Model.ClaimantSCAdvocate)),
+                            Row("SC Status", D(Model.ClaimantSCStatus))
+                        };
+                        if (Model.ClaimantConnectedCases != null && Model.ClaimantConnectedCases.Any())
+                        {
+                            var ccHtml = new System.Text.StringBuilder();
+                            ccHtml.Append("<div class='lcp-row lcp-row--full'><span class='lcp-label'>Connected Cases:</span><div class='mt-1 d-flex flex-wrap'>");
+                            foreach (var cc in Model.ClaimantConnectedCases)
+                            {
+                                ccHtml.Append($"<span class='lcp-chip'><i class='bi bi-link-45deg'></i>{cc.CaseDetails} — {cc.CurrentStatus}</span>");
+                            }
+                            ccHtml.Append("</div></div>");
+                            scRows.Add(ccHtml.ToString());
+                        }
+                    }
+                    @Card("Supreme Court Appeal", "bank", scRows)
+                </div>
+            </div>
+        }
+
+        <!-- ── Service Matter Tab ── -->
+        @if (showService)
+        {
+            <div class="lcp-pane" id="tab-service">
+                <div class="row g-3">
+                    @{
+                        var serviceRows = new List<string?> {
+                            Row("Division", D(Model.CO_Service_Division)),
+                            Row("WP No. / Year", D(Model.CO_Service_WPNumber) != null ? D(Model.CO_Service_WPNumber) + " / " + (Model.CO_Service_WPYear?.ToString() ?? "-") : null),
+                            Row("Petitioner Name", D(Model.CO_Service_PetitionerName)),
+                            Row("Case Nature", D(Model.CO_Service_CaseNature)),
+                            Row("Is Employee", DB(Model.CO_Service_IsEmployee)),
+                            Row("Stay Granted", DB(Model.CO_Service_StayGranted)),
+                            Row("Stay Vacate Filed", DB(Model.CO_Service_StayVacateFiled)),
+                            Row("Stay Compliance", DB(Model.CO_Service_StayCompliance)),
+                            Row("Status", D(Model.CO_Service_Status)),
+                            Row("Disposal Date", DD(Model.CO_Service_DisposalDate)),
+                            Row("Action Taken", D(Model.CO_Service_ActionTaken))
+                        };
+                        if (!string.IsNullOrEmpty(Model.CO_Service_PetitionCopyPath))
+                        {
+                            serviceRows.Add($@"<div class='lcp-row lcp-row--full'>
+                                <a href='{Model.CO_Service_PetitionCopyPath}' target='_blank' class='lcp-pdf-btn'>
+                                    <i class='bi bi-file-earmark-pdf'></i> View Petition Copy (PDF)
+                                </a>
+                            </div>");
+                        }
+                        if (!string.IsNullOrEmpty(Model.CO_Service_Prayer))
+                        {
+                            serviceRows.Add($@"<div class='lcp-row lcp-row--full'>
+                                <span class='lcp-label'>Prayer / Subject Matter:</span>
+                                <div class='lcp-value lcp-value--block white-space-pre-line'>{Model.CO_Service_Prayer}</div>
+                            </div>");
+                        }
+                    }
+                    @Card("Service/Commercial Matter", "file-earmark-ruled", serviceRows)
+                    @Card("Approval & Outward", "envelope-open", new[] {
+                        Row("Approval Outward No.", D(Model.CO_Service_ApprovalOutwardNo)),
+                        Row("Approval Date", DD(Model.CO_Service_ApprovalDate)),
+                        Row("Approval Sent Details", D(Model.CO_Service_ApprovalSentDetails)),
+                        Row("Outward No.", D(Model.CO_Service_OutwardNo)),
+                        Row("Outward Date", DD(Model.CO_Service_OutwardDate)),
+                        Row("Entrustment No.", D(Model.CO_Service_EntrustmentNo)),
+                        Row("Entrustment Date", DD(Model.CO_Service_EntrustmentDate))
+                    })
+                    @Card("Appeal Details", "arrow-right-circle", new[] {
+                        Row("Appeal Filed Before", D(Model.CO_Service_AppealFiledBefore)),
+                        Row("Appeal Type", D(Model.CO_Service_AppealType)),
+                        Row("Appeal Entrustment Date", DD(Model.CO_Service_AppealEntrustmentDate)),
+                        Row("Appeal Advocate", D(Model.CO_Service_AppealAdvocate)),
+                        Row("Appeal Status", D(Model.CO_Service_AppealStatus))
+                    })
+                </div>
+            </div>
+        }
+
+        <!-- ── Execution Petitions Tab ── -->
+        @if (showEP)
+        {
+            <div class="lcp-pane" id="tab-ep">
+                <div class="lcp-section-heading">
+                    <i class="bi bi-hammer"></i>
+                    <span>Connected Execution Petitions</span>
+                </div>
+                <div class="row g-3">
+                    @foreach (var ep in Model.ConnectedEPs!)
+                    {
+                        <div class="col-md-6 col-12">
+                            <div class="lcp-ep-card">
+                                <div class="lcp-ep-header">
+                                    <span class="fw-bold text-primary" style="font-size:0.88rem;">
+                                        <i class="bi bi-hash"></i> @(ep.EPNumber ?? "-") / @(ep.EPYear?.ToString() ?? "-")
+                                    </span>
+                                    <span class="badge @(ep.EPStatus == "Compliance Done" ? "bg-success" : "bg-warning text-dark") rounded-pill px-3" style="font-size:0.72rem;">
+                                        @(ep.EPStatus ?? "-")
+                                    </span>
+                                </div>
+                                <div class="lcp-ep-body">
+                                    <div class="row g-2">
+                                        <div class="col-6 lcp-ep-stat">
+                                            <span class="lcp-ep-stat-label">EP Court</span>
+                                            <span class="lcp-ep-stat-val">@(ep.EPCourt ?? "-")</span>
+                                        </div>
+                                        <div class="col-6 lcp-ep-stat">
+                                            <span class="lcp-ep-stat-label">Next Hearing</span>
+                                            <span class="lcp-ep-stat-val text-danger">@(ep.NextHearingDate.HasValue ? ep.NextHearingDate.Value.ToString("dd-MMM-yyyy") : "-")</span>
+                                        </div>
+                                        <div class="col-6 lcp-ep-stat">
+                                            <span class="lcp-ep-stat-label">Award Amount</span>
+                                            <span class="lcp-ep-stat-val">₹ @(ep.AwardAmount?.ToString("N2") ?? "0.00")</span>
+                                        </div>
+                                        <div class="col-6 lcp-ep-stat">
+                                            <span class="lcp-ep-stat-label">Amount Paid</span>
+                                            <span class="lcp-ep-stat-val text-success">₹ @(ep.AmountPaid?.ToString("N2") ?? "0.00")</span>
+                                        </div>
+                                        <div class="col-12 border-top pt-2">
+                                            <span class="lcp-ep-stat-label">Compliance Status</span>
+                                            <div class="text-muted fst-italic" style="font-size:0.8rem;">
+                                                @(ep.ComplianceStatus ?? "-")
+                                                @(ep.DateOfCompliance.HasValue ? " on " + ep.DateOfCompliance.Value.ToString("dd-MMM-yyyy") : "")
+                                            </div>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(ep.Remarks))
+                                        {
+                                            <div class="col-12 border-top pt-2">
+                                                <small class="text-muted"><i class="bi bi-info-circle me-1"></i>@ep.Remarks</small>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- ── Legal Opinions & Decisions Tab ── -->
+        <div class="lcp-pane" id="tab-opinions">
+            <div class="p-2">
+                <!-- PART 1: DIVISION LEVEL OPINIONS -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden border-start border-4 border-info">
+                    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold text-dark mb-0"><i class="bi bi-geo-alt text-info me-2"></i>Division Level Legal Opinions</h6>
+                        <span class="badge bg-light text-muted border rounded-pill">Division Recommendation</span>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            <!-- Advocate Opinion -->
+                            <div class="col-md-4">
+                                <div class="p-3 rounded-3 border-start border-4 border-primary bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-primary extra-small text-uppercase">
+                                            <i class="bi bi-person-fill me-1"></i> Advocate Opinion
+                                        </span>
+                                    </div>
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_Advocate) ? "— No Advocate Opinion Recorded —" : Model.Opinion_Advocate)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Law Officer Opinion -->
+                            <div class="col-md-4">
+                                <div class="p-3 rounded-3 border-start border-4 border-info bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-info extra-small text-uppercase">
+                                            <i class="bi bi-person-badge me-1"></i> Law Officer (Division)
+                                        </span>
+                                    </div>
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_LO) ? "— No Law Officer Opinion Recorded —" : Model.Opinion_LO)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- DC Opinion -->
+                            <div class="col-md-4">
+                                <div class="p-3 rounded-3 border-start border-4 border-warning bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-warning-emphasis extra-small text-uppercase">
+                                            <i class="bi bi-building me-1"></i> Divisional Controller (DC)
+                                        </span>
+                                    </div>
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_DC) ? "— No DC Opinion Recorded —" : Model.Opinion_DC)
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PART 2: CENTRAL OFFICE PER-ROLE ACTIONS & OPINIONS -->
+                <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden border-start border-4 border-primary">
+                    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold text-dark mb-0"><i class="bi bi-building text-primary me-2"></i>Central Office Role-Based Actions &amp; Legal Opinions</h6>
+                        <span class="badge bg-light text-muted border rounded-pill">Central Office Legal Review</span>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            <!-- Law Officer (LO) -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 border-start border-4 border-info bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-info extra-small text-uppercase">
+                                            <i class="bi bi-person-badge me-1"></i> Law Officer (LO)
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(Model.ActionTaken_LO))
+                                        {
+                                            <span class="badge @(Model.ActionTaken_LO == "Approved" ? "bg-success" : "bg-danger")">@Model.ActionTaken_LO</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">Pending</span>
+                                        }
+                                    </div>
+                                    @if (Model.ApprovalDate_LO.HasValue)
+                                    {
+                                        <div class="small text-muted mb-2"><i class="bi bi-calendar-check me-1"></i>Date: <strong>@(Model.ApprovalDate_LO?.ToString("dd-MM-yyyy"))</strong></div>
+                                    }
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_LO) ? "— Pending LO Legal Review —" : Model.Opinion_LO)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Dy CLO -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 border-start border-4 border-secondary bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-secondary extra-small text-uppercase">
+                                            <i class="bi bi-person-check me-1"></i> Dy. Chief Law Officer (Dy CLO)
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(Model.ActionTaken_DyCLO))
+                                        {
+                                            <span class="badge @(Model.ActionTaken_DyCLO == "Approved" ? "bg-success" : "bg-danger")">@Model.ActionTaken_DyCLO</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">Pending</span>
+                                        }
+                                    </div>
+                                    @if (Model.ApprovalDate_DyCLO.HasValue)
+                                    {
+                                        <div class="small text-muted mb-2"><i class="bi bi-calendar-check me-1"></i>Date: <strong>@(Model.ApprovalDate_DyCLO?.ToString("dd-MM-yyyy"))</strong></div>
+                                    }
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_DyCLO) ? "— Pending Dy CLO Legal Review —" : Model.Opinion_DyCLO)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- CLO -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 border-start border-4 border-primary bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-primary extra-small text-uppercase">
+                                            <i class="bi bi-award-fill me-1"></i> Chief Law Officer (CLO)
+                                        </span>
+                                        @{
+                                            var cloVal = Model.ActionTaken_CLO ?? Model.CO_Disposal_Decision;
+                                            var cloDate = Model.ApprovalDate_CLO ?? Model.CO_ApprovalDate;
+                                        }
+                                        @if (!string.IsNullOrEmpty(cloVal))
+                                        {
+                                            <span class="badge @(cloVal == "Approved" ? "bg-success" : (cloVal == "Rejected" ? "bg-danger" : "bg-primary"))">@cloVal</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">Pending</span>
+                                        }
+                                    </div>
+                                    @if (cloDate.HasValue)
+                                    {
+                                        <div class="small text-muted mb-2"><i class="bi bi-calendar-check me-1"></i>Date: <strong>@(cloDate?.ToString("dd-MM-yyyy"))</strong></div>
+                                    }
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(Model.Opinion_CLO) ? "— Pending CLO Legal Review —" : Model.Opinion_CLO)
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- MD -->
+                            <div class="col-md-6">
+                                <div class="p-3 rounded-3 border-start border-4 border-success bg-light h-100 shadow-sm">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <span class="fw-bold text-success extra-small text-uppercase">
+                                            <i class="bi bi-check-circle-fill me-1"></i> Managing Director (MD)
+                                        </span>
+                                        @{
+                                            var mdVal = Model.ActionTaken_MD ?? Model.CO_ActionTaken;
+                                            var mdDate = Model.ApprovalDate_MD ?? Model.CO_ApprovalDate;
+                                            var mdOpinion = Model.Opinion_MD ?? Model.CO_Remarks;
+                                        }
+                                        @if (!string.IsNullOrEmpty(mdVal))
+                                        {
+                                            <span class="badge @(mdVal == "Approved" ? "bg-success" : (mdVal == "Rejected" ? "bg-danger" : "bg-primary"))">@mdVal</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">Pending</span>
+                                        }
+                                    </div>
+                                    @if (mdDate.HasValue)
+                                    {
+                                        <div class="small text-muted mb-2"><i class="bi bi-calendar-check me-1"></i>Date: <strong>@(mdDate?.ToString("dd-MM-yyyy"))</strong></div>
+                                    }
+                                    <div class="text-dark small white-space-pre-line">
+                                        @(string.IsNullOrWhiteSpace(mdOpinion) ? "— Pending MD Legal Review —" : mdOpinion)
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(Model.CO_ClosedDocumentPath) || !string.IsNullOrEmpty(Model.CO_Service_ApprovalCopyPath))
+                        {
+                            <div class="mt-3 pt-3 border-top d-flex align-items-center gap-2">
+                                <i class="bi bi-file-earmark-pdf text-danger fs-5"></i>
+                                <span class="small fw-bold text-dark">Sanction / Approval Order:</span>
+                                @if (!string.IsNullOrEmpty(Model.CO_ClosedDocumentPath))
+                                {
+                                    <a href="@Model.CO_ClosedDocumentPath" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                                        <i class="bi bi-eye me-1"></i>View Sanction Order
+                                    </a>
+                                }
+                                @if (!string.IsNullOrEmpty(Model.CO_Service_ApprovalCopyPath))
+                                {
+                                    <a href="@Model.CO_Service_ApprovalCopyPath" target="_blank" class="btn btn-sm btn-outline-info rounded-pill px-3">
+                                        <i class="bi bi-eye me-1"></i>View Service Approval Copy
+                                    </a>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div><!-- /.lcp-content -->
+</div><!-- /.lcp-wrapper -->
+
+<script>
+(function () {
+    // Simple tab switcher — isolated to this partial
+    document.querySelectorAll('.lcp-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var targetId = btn.getAttribute('data-lcp-tab');
+            // deactivate all tabs + panes in this wrapper
+            var wrapper = btn.closest('.lcp-wrapper');
+            wrapper.querySelectorAll('.lcp-tab-btn').forEach(function (b) {
+                b.classList.remove('active');
+                b.setAttribute('aria-selected', 'false');
+            });
+            wrapper.querySelectorAll('.lcp-pane').forEach(function (p) {
+                p.classList.remove('active');
+            });
+            // activate the clicked tab
+            btn.classList.add('active');
+            btn.setAttribute('aria-selected', 'true');
+            var pane = wrapper.querySelector('#' + targetId);
+            if (pane) pane.classList.add('active');
+        });
+    });
+})();
+</script>

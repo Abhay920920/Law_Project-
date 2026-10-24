@@ -1,0 +1,359 @@
+@model IEnumerable<MVCCaseManagement.Models.OtherCourtsCase>
+@{
+    Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
+    var litigantType = ViewBag.LitigantType as string ?? "Corporation";
+    var activeCourt = ViewBag.ActiveCourt as string ?? "OS";
+    
+    string courtDisplayTitle = activeCourt switch {
+        "OS" => (litigantType == "Corporation" ? "O.S (Corporation Filed)" : "O.S (Claimant Filed)"),
+        "PSC" => "P & SC Cases",
+        "CC" => "Criminal Cases (CC)",
+        "Consumer" => "Consumer Disputes",
+        "LAC" => "Land Acquisition Cases",
+        "ECA" => "Employees' Compensation Act",
+        _ => activeCourt
+    };
+
+    ViewData["Title"] = $"{courtDisplayTitle} Registry";
+}
+
+<div class="container-fluid fade-in">
+    <!-- Header Banner -->
+    <div class="glass-header shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <h4 class="fw-bold text-dark mb-1">
+                    <i class="bi bi-stack text-primary me-2"></i>@courtDisplayTitle Case Registry
+                </h4>
+                <p class="text-secondary mb-0 small">Comprehensive digital dossier and hearing tracker for @User.FindFirst("DivisionName")?.Value</p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @{
+                    string newFormAction = activeCourt switch {
+                        "OS" => (litigantType == "Corporation" ? "OSCorporationForm" : "OSClaimantForm"),
+                        "ECA" => "ECA",
+                        _ => activeCourt + "Form"
+                    };
+                }
+                <a href="@Url.Action(newFormAction, "Home")" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm">
+                    <i class="bi bi-plus-circle me-1"></i> New Registration
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Official Glass Filter Ribbon (Matching MVC & Labour) -->
+    <div class="glass-filter-card mb-4 shadow-sm">
+        <div class="row g-3 align-items-center mb-3">
+            <div class="col-12 col-md-6 col-lg-5">
+                <div class="input-group">
+                    <span class="input-group-text border-end-0 ps-3 text-primary bg-light border-2" style="border-radius: 6px 0 0 6px;">
+                        <i class="bi bi-search"></i>
+                    </span>
+                    <input type="text" id="caseTableSearch" class="form-control border-start-0 ps-2 py-2" style="border-radius: 0 6px 6px 0;" placeholder="Search Case No, Court, Petitioner, Respondent...">
+                    <button class="btn btn-outline-secondary ms-2 px-3 d-none" id="btnClearSearch" type="button">
+                        <i class="bi bi-x-circle"></i> Clear
+                    </button>
+                </div>
+            </div>
+            <div class="col-12 col-md-6 col-lg-7 d-flex justify-content-md-end flex-wrap gap-2">
+                <!-- Court Quick Switch Dropdown Pill -->
+                <div class="dropdown">
+                    <button class="btn btn-outline-primary btn-sm rounded-pill px-3 dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-bank2 me-1"></i> Switch Court: @activeCourt
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3">
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "OS", litigantType = "Corporation" })">O.S (Corporation)</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "OS", litigantType = "Claimant" })">O.S (Claimant)</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "ECA", litigantType = "Claimant" })">ECA Cases</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "PSC", litigantType = "Claimant" })">P &amp; SC</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "CC", litigantType = "Claimant" })">Criminal Cases (CC)</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "Consumer", litigantType = "Claimant" })">Consumer Complaints</a></li>
+                        <li><a class="dropdown-item" href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = "LAC", litigantType = "Claimant" })">Land Acquisition (LAC)</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Ribbon: Status Filters -->
+        <div class="d-flex flex-wrap align-items-center gap-2 pt-3 border-top" style="border-color: #e2e8f0 !important;">
+            <span class="text-secondary small fw-bold text-uppercase d-flex align-items-center me-2" style="letter-spacing: 0.04em;">
+                <i class="bi bi-filter-circle me-1 text-primary fs-6"></i> Status:
+            </span>
+            <button type="button" class="filter-btn active" data-status="all">All</button>
+            <button type="button" class="filter-btn" data-status="pending">Pending</button>
+            <button type="button" class="filter-btn" data-status="disposed">Disposed / Settled</button>
+            <button type="button" class="filter-btn" data-status="dnp">DNP</button>
+            <button type="button" class="filter-btn" data-status="ex-parte">Ex-Parte</button>
+        </div>
+    </div>
+
+    <!-- Case Registry Table Card -->
+    <div class="table-card mb-4">
+        <div class="table-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="title">
+                <i class="bi bi-folder2-open me-1"></i> @activeCourt Digital Case Registry
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <span class="badge bg-light text-dark border fw-bold" id="recordCountBadge">
+                    Records: @Model.Count()
+                </span>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle mb-0" id="otherCourtsTable">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4" style="width: 20%; min-width: 150px;">Case No &amp; Year</th>
+                            <th style="width: 20%; min-width: 150px;">Court Name</th>
+                            <th style="width: 20%; min-width: 150px;">Litigants (Parties)</th>
+                            <th style="width: 15%; min-width: 120px;">Status / Stage</th>
+                            <th style="width: 15%; min-width: 120px;">Next Hearing</th>
+                            <th class="text-end pe-4" style="width: 10%; min-width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!Model.Any())
+                        {
+                            <tr id="noCasesRow">
+                                <td colspan="6" class="text-center py-5 text-muted">
+                                    <div class="bg-light rounded-circle d-inline-flex p-3 mb-3">
+                                        <i class="bi bi-inbox fs-1 text-secondary opacity-50"></i>
+                                    </div>
+                                    <h6 class="fw-bold text-dark">No cases found in this registry</h6>
+                                    <p class="small text-muted mb-0">Use the "New Registration" button above to add case records.</p>
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            foreach (var item in Model)
+                            {
+                                var statusNorm = (item.DisposalStatus ?? item.CaseStage ?? "Pending").ToLower();
+                                <tr class="case-row" data-status="@statusNorm">
+                                    <td class="ps-4">
+                                        <div class="fw-bold text-dark fs-6">
+                                            @(string.IsNullOrEmpty(item.CaseNumber) ? "NOT FILED" : $"{item.CaseNumber} / {item.CaseYear}")
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(item.CNRNumber))
+                                        {
+                                            <div class="mt-1 d-inline-flex align-items-center gap-1">
+                                                <span class="badge bg-dark-subtle text-dark border border-secondary-subtle" style="font-family: monospace; font-size: 0.68rem;" title="e-Courts 16-character CNR Number">
+                                                    <i class="bi bi-shield-check text-success me-1"></i>@item.CNRNumber
+                                                </span>
+                                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 border-0 sync-btn" data-caseid="@item.CaseID" data-cnr="@item.CNRNumber" title="Sync Live e-Courts Status" style="font-size: 0.72rem;">
+                                                    <i class="bi bi-arrow-repeat"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(item.CaseNature))
+                                        {
+                                            <div><span class="badge bg-light text-primary border border-primary-subtle xsmall mt-1">@item.CaseNature</span></div>
+                                        }
+                                        <div class="text-muted" style="font-size: 0.72rem;">ID: #@item.CaseID</div>
+                                    </td>
+                                    <td>
+                                        <div class="small fw-semibold text-dark">@item.Court</div>
+                                        <div class="text-muted" style="font-size: 0.72rem;">Division: @item.DivisionName</div>
+                                    </td>
+                                    <td>
+                                        @{
+                                            string pDisplay = !string.IsNullOrWhiteSpace(item.PetitionerName) 
+                                                ? item.PetitionerName 
+                                                : (item.LitigantType == "Corporation" ? "NWKRTC / Corporation" : "Claimant");
+                                            string rDisplay = !string.IsNullOrWhiteSpace(item.RespondentName) 
+                                                ? item.RespondentName 
+                                                : (item.LitigantType == "Claimant" ? "NWKRTC / Corporation" : "Opposite Party");
+                                        }
+                                        <div class="small text-dark fw-bold text-truncate" style="max-width: 220px;" title="@pDisplay">
+                                            <span class="text-primary me-1">P:</span>@pDisplay
+                                        </div>
+                                        <div class="small text-secondary text-truncate" style="max-width: 220px;" title="@rDisplay">
+                                            <span class="text-danger me-1">R:</span>@rDisplay
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @{
+                                            var isDisposed = statusNorm.Contains("disposed") || statusNorm.Contains("decreed") || statusNorm.Contains("dnp");
+                                            var badgeClass = isDisposed ? "bg-success-subtle text-success border border-success" : "bg-warning-subtle text-warning border border-warning";
+                                        }
+                                        <span class="badge @badgeClass rounded-pill px-3 py-1 fw-bold" style="font-size: 0.75rem;">
+                                            @(string.IsNullOrEmpty(item.DisposalStatus) ? "PENDING" : item.DisposalStatus)
+                                        </span>
+                                        @if (!string.IsNullOrEmpty(item.CaseStage))
+                                        {
+                                            <div class="text-muted mt-1 small" style="font-size: 0.72rem;">Stage: @item.CaseStage</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (item.NextDateOfHearing.HasValue)
+                                        {
+                                            <div class="fw-bold small text-dark">@item.NextDateOfHearing.Value.ToString("dd-MM-yyyy")</div>
+                                            @if (item.NextDateOfHearing.Value.Date == DateTime.Today)
+                                            {
+                                                <span class="badge bg-danger text-white rounded-pill px-2 py-0 mt-1" style="font-size: 0.65rem;">TODAY</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted small">Not Scheduled</span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(item.ECourtsStage))
+                                        {
+                                            <div class="text-muted mt-1 text-truncate" style="font-size: 0.7rem; max-width: 130px;" title="eCourts: @item.ECourtsStage">
+                                                <i class="bi bi-bank text-info me-1"></i>@item.ECourtsStage
+                                            </div>
+                                        }
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="btn-group btn-group-sm shadow-sm rounded-pill overflow-hidden">
+                                            @if (!string.IsNullOrEmpty(item.CNRNumber))
+                                            {
+                                                <button type="button" class="btn btn-light text-success border sync-btn" data-caseid="@item.CaseID" data-cnr="@item.CNRNumber" title="Sync Live e-Courts Status">
+                                                    <i class="bi bi-arrow-repeat"></i>
+                                                </button>
+                                            }
+                                            <a href="@Url.Action("OtherCourtsCaseDetails", "Home", new { id = item.CaseID })" class="btn btn-light text-primary border" title="View Dossier">
+                                                <i class="bi bi-eye"></i>
+                                            </a>
+                                            <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = item.CaseID })" class="btn btn-light text-warning border" title="Edit Case">
+                                                <i class="bi bi-pencil-square"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            var currentStatusFilter = 'all';
+
+            // Filter logic
+            function filterRows() {
+                var query = $('#caseTableSearch').val().toLowerCase().trim();
+                var visibleCount = 0;
+
+                $('.case-row').each(function() {
+                    var $row = $(this);
+                    var text = $row.text().toLowerCase();
+                    var rowStatus = ($row.attr('data-status') || '').toLowerCase();
+
+                    var matchesSearch = query === '' || text.indexOf(query) !== -1;
+                    var matchesStatus = true;
+
+                    if (currentStatusFilter !== 'all') {
+                        matchesStatus = rowStatus.indexOf(currentStatusFilter) !== -1;
+                    }
+
+                    if (matchesSearch && matchesStatus) {
+                        $row.show();
+                        visibleCount++;
+                    } else {
+                        $row.hide();
+                    }
+                });
+
+                $('#recordCountBadge').text('Records: ' + visibleCount);
+            }
+
+            // Search input
+            $('#caseTableSearch').on('keyup', function() {
+                var val = $(this).val();
+                if (val.length > 0) {
+                    $('#btnClearSearch').removeClass('d-none');
+                } else {
+                    $('#btnClearSearch').addClass('d-none');
+                }
+                filterRows();
+            });
+
+            $('#btnClearSearch').on('click', function() {
+                $('#caseTableSearch').val('');
+                $(this).addClass('d-none');
+                filterRows();
+            });
+
+            // Status filter buttons
+            $('.filter-btn').on('click', function(e) {
+                e.preventDefault();
+                $('.filter-btn').removeClass('active');
+                $(this).addClass('active');
+                currentStatusFilter = $(this).attr('data-status');
+                filterRows();
+            });
+
+            // e-Courts Live Sync Button
+            $(document).on('click', '.sync-btn', function(e) {
+                e.preventDefault();
+                var $btn = $(this);
+                var caseId = $btn.data('caseid');
+                var cnr = $btn.data('cnr');
+                if (!cnr) return;
+
+                var origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status"></span>');
+
+                var formData = new FormData();
+                formData.append('caseId', caseId);
+                formData.append('cnrNumber', cnr);
+                formData.append('module', 'OtherCourts');
+
+                fetch('/ECourts/QueueCaseSync', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) {
+                        alert(data.message || 'Sync failed to queue');
+                        $btn.prop('disabled', false).html(origHtml);
+                        return;
+                    }
+
+                    var queueId = data.queueId;
+                    var pollCount = 0;
+                    var timer = setInterval(function() {
+                        pollCount++;
+                        if (pollCount > 25) {
+                            clearInterval(timer);
+                            $btn.prop('disabled', false).html(origHtml);
+                            return;
+                        }
+
+                        fetch('/ECourts/GetQueueStatus?queueId=' + queueId + '&caseId=' + caseId + '&module=OtherCourts')
+                        .then(res => res.json())
+                        .then(statusData => {
+                            if (statusData.status === 'Success') {
+                                clearInterval(timer);
+                                $btn.html('<i class="bi bi-check-circle-fill text-success"></i>');
+                                setTimeout(function() { location.reload(); }, 600);
+                            } else if (statusData.status === 'Failed') {
+                                clearInterval(timer);
+                                alert('e-Courts sync failed: ' + (statusData.error || 'Unknown error'));
+                                $btn.prop('disabled', false).html(origHtml);
+                            }
+                        })
+                        .catch(() => {
+                            clearInterval(timer);
+                            $btn.prop('disabled', false).html(origHtml);
+                        });
+                    }, 1200);
+                })
+                .catch(err => {
+                    alert('Error connecting to e-Courts Gateway: ' + err);
+                    $btn.prop('disabled', false).html(origHtml);
+                });
+            });
+        });
+    </script>
+}

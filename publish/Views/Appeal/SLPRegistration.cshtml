@@ -1,0 +1,304 @@
+@model MVCCaseManagement.Models.AppealViewModel
+
+@{
+    ViewData["Title"] = "New SLP Registration";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-primary mb-0">New SLP Registration</h2>
+            <p class="text-muted">Register a new Special Leave Petition (SLP) / Supreme Court Appeal</p>
+        </div>
+        <a asp-action="ClaimantList" class="btn btn-outline-secondary">Back to Registry</a>
+    </div>
+
+    <form asp-action="SaveClaimant" method="post" enctype="multipart/form-data" id="registrationForm">
+        <input type="hidden" asp-for="CaseID" id="hfCaseID" />
+        <input type="hidden" asp-for="MVCNo" id="hfMVCNo" />
+        <input type="hidden" asp-for="DivisionName" id="hfDivisionName" />
+
+        <!-- 1. SUPREME COURT APPEAL IDENTIFICATION -->
+        <div class="card shadow border-0 mb-4 bg-light">
+            <div class="card-header bg-dark text-white py-3">
+                <h6 class="mb-0 fw-bold"><i class="bi bi-card-list me-2"></i>Step 1: Supreme Court (SLP) / Diary Identification</h6>
+            </div>
+            <div class="card-body p-4">
+                <input type="hidden" asp-for="IsClaimantSCAppeal" value="true" />
+                
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small">Diary Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCDiaryNumber" placeholder="Diary No" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small">Diary Year</label>
+                        <input type="number" class="form-control" asp-for="ClaimantSCYear" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small">SLP[C] Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCNumber" placeholder="SLP No" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold small">SLP[C] Year</label>
+                        <input type="number" class="form-control" asp-for="ClaimantSLPYear" placeholder="YYYY" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. ARISING MFA DETAILS -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-primary">
+            <div class="card-body p-4">
+                <h6 class="fw-bold text-primary mb-4 text-uppercase small ls-1"><i class="bi bi-hash me-2"></i>Step 2: Arising MFA Details</h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Arising MFA Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantMFANumber" id="txtMFANo" placeholder="e.g., 123" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Arising MFA Year</label>
+                        <input type="number" class="form-control" asp-for="ClaimantMFAYear" id="txtMFAYear" placeholder="YYYY" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Link to MFA Record (Optional)</label>
+                        <button type="button" class="btn btn-outline-primary d-block w-100 fw-bold" id="btnSearchMFA">
+                            <i class="bi bi-link-45deg me-1"></i> FETCH MFA DETAILS
+                        </button>
+                    </div>
+                    
+                    <div class="col-12 mt-2">
+                        <div id="mvcStatusAlert" class="alert alert-soft-secondary py-2 mb-0 d-none d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-info-circle-fill me-2"></i>
+                                <span id="mvcStatusText">Linked Case Details: N/A</span>
+                            </div>
+                            <a href="#" id="linkViewFullDetails" target="_blank" class="btn btn-sm btn-link text-decoration-none fw-bold p-0 d-none">
+                                <i class="bi bi-box-arrow-up-right me-1"></i> View Case Info
+                            </a>
+                        </div>
+                        <input type="hidden" asp-for="ClaimantMVCCurrentStatus" id="hfMVCStatus" />
+                        <input type="hidden" asp-for="ClaimantDivisionID" id="hfClaimantDivisionID" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. SLP FILING DETAILS -->
+        <div class="card shadow-sm border-0 mb-4 border-start border-4 border-warning">
+            <div class="card-body p-4">
+                <h6 class="fw-bold text-warning mb-4 text-uppercase small ls-1"><i class="bi bi-file-earmark-text me-2"></i>Step 3: SLP Filing Details</h6>
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Entrustment Number</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCEntrustmentNo" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Entrustment Date</label>
+                        <input type="date" class="form-control" asp-for="ClaimantSCEntrustmentDate" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Advocate Name</label>
+                        <input type="text" class="form-control" asp-for="ClaimantSCAdvocate" placeholder="SC Advocate Name" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">SLP Status</label>
+                        <select class="form-select" asp-for="ClaimantSCStatus" id="claimantSCStatus">
+                            <option>Pending</option>
+                            <option>Disposed</option>
+                        </select>
+                    </div>
+
+                    <!-- SC Outcome Section -->
+                    <div class="col-12" id="scOutcomeSection" style="display:none;">
+                        <hr class="my-3" />
+                        <div class="bg-light p-3 rounded shadow-sm border">
+                            <label class="fw-bold mb-3 d-block">Supreme Court Outcome:</label>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Outcome</label>
+                                    <select class="form-select" asp-for="ClaimantSCOutcome">
+                                        <option value="">Select...</option>
+                                        <option>In Favour of Corporation</option>
+                                        <option>Against Corporation</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Decision Taken / Action</label>
+                                    <select class="form-select" asp-for="ClaimantSCActionTaken" id="claimantSCActionTaken">
+                                         <option value="">Select...</option>
+                                         <option>Pending for Decision</option>
+                                         <option>Pending before Competent Authority</option>
+                                         <option>Appeal</option>
+                                         <option>Close</option>
+                                     </select>
+                                 </div>
+                                 <div class="col-md-4">
+                                     <label class="form-label">SC Judgment Copy</label>
+                                     <div class="input-group input-group-sm">
+                                         <input type="file" class="form-control" asp-for="ClaimantSCJudgmentFile" />
+                                         @if (!string.IsNullOrEmpty(Model.ClaimantSCJudgmentPath))
+                                         {
+                                             <a href="@Model.ClaimantSCJudgmentPath" target="_blank" class="btn btn-outline-danger" id="linkSCJudgment">
+                                                 <i class="bi bi-file-earmark-pdf"></i>
+                                             </a>
+                                         }
+                                         <a href="#" target="_blank" class="btn btn-outline-danger d-none" id="btnViewSCJudgment">
+                                             <i class="bi bi-file-earmark-pdf"></i>
+                                         </a>
+                                     </div>
+                                 </div>
+                                <div class="col-md-12" id="scClosureSection" style="display:none;">
+                                    <div class="p-2 border rounded bg-white shadow-sm">
+                                        <label class="fw-bold small d-block mb-1">Closure Details</label>
+                                        <div class="row g-2">
+                                            <div class="col-6">
+                                                <input type="text" class="form-control form-control-sm" asp-for="ClaimantSCClosureNo" placeholder="Order No" />
+                                            </div>
+                                            <div class="col-6">
+                                                <input type="date" class="form-control form-control-sm" asp-for="ClaimantSCClosureDate" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="mt-5 mb-5 text-end">
+            <button type="submit" class="btn btn-primary btn-lg px-5 shadow fw-bold"><i class="bi bi-save2 me-2"></i> Register SLP Details</button>
+        </div>
+    </form>
+</div>
+
+<style>
+    .alert-soft-secondary { background-color: #f8f9fa; border: 1px solid #dee2e6; color: #6c757d; }
+    .ls-1 { letter-spacing: 0.5px; }
+</style>
+
+@section Scripts {
+    <script>
+        $(document).ready(function() {
+            function populateForm(data) {
+                // Populate hidden fields
+                $("#hfCaseID").val(data.caseID);
+                var status = data.disposalResult || data.currentStage || "Pending";
+                $("#hfMVCStatus").val(status);
+                
+                // Show status alert
+                $("#mvcStatusText").text("Linked Case: MVC " + (data.mvcNo || "N/A") + " | MFA " + (data.claimantMFANumber || "N/A") + " | Status: " + status);
+                $("#mvcStatusAlert").removeClass("d-none").addClass("alert-success").removeClass("alert-soft-secondary text-muted");
+                
+                // Show "View Info" link
+                $("#linkViewFullDetails").attr("href", "/Case/Details/" + data.caseID).removeClass("d-none");
+
+
+                // AUTO-POPULATE APPEAL DETAILS IF EXISTS
+                if (data.linkedAppeal) {
+                    const app = data.linkedAppeal;
+                    
+
+
+                    // SC Details
+
+                        
+                    const fields = {
+                        'ClaimantSCDiaryNumber': app.claimantSCDiaryNumber,
+                        'ClaimantSCYear': app.claimantSCYear,
+                        'ClaimantSCNumber': app.claimantSCNumber,
+                        'ClaimantSLPYear': app.claimantSLPYear,
+                        'ClaimantSCEntrustmentNo': app.claimantSCEntrustmentNo,
+                        'ClaimantSCAdvocate': app.claimantSCAdvocate,
+                        'ClaimantSCOutcome': app.claimantSCOutcome,
+                        'ClaimantSCClosureNo': app.claimantSCClosureNo
+                    };
+
+                    Object.keys(fields).forEach(key => {
+                        if (fields[key]) $(`[name='${key}']`).val(fields[key]);
+                    });
+
+                    const dateFields = {
+                        'ClaimantSCEntrustmentDate': app.claimantSCEntrustmentDate,
+                        'ClaimantSCClosureDate': app.claimantSCClosureDate
+                    };
+
+                    Object.keys(dateFields).forEach(key => {
+                        if (dateFields[key]) {
+                            const d = new Date(dateFields[key]);
+                            if (!isNaN(d.getTime())) $(`[name='${key}']`).val(d.toISOString().split('T')[0]);
+                        }
+                    });
+                        
+                    // SC Judgment Path
+                    if (app.claimantSCJudgmentPath) {
+                        $("#btnViewSCJudgment").attr("href", app.claimantSCJudgmentPath).removeClass("d-none");
+                        $("#linkSCJudgment").addClass("d-none"); 
+                    } else {
+                        $("#btnViewSCJudgment").addClass("d-none");
+                    }
+
+                    if (app.claimantSCStatus) $("#claimantSCStatus").val(app.claimantSCStatus).trigger('change');
+                    if (app.claimantSCActionTaken) $("#claimantSCActionTaken").val(app.claimantSCActionTaken).trigger('change');
+                }
+            }
+
+            $("#btnSearchMFA").click(function() {
+                var mfaNo = $("#txtMFANo").val();
+                var mfaYear = $("#txtMFAYear").val();
+
+                if (!mfaNo || !mfaYear) {
+                    alert("Please enter MFA Number and Year.");
+                    return;
+                }
+
+                $.get("/Appeal/GetByMFADetails", { mfaNo: mfaNo, mfaYear: mfaYear }, function(data) {
+                    populateForm(data);
+                }).fail(function() {
+                    alert("No appeal record found with these MFA details.");
+                });
+            });
+
+
+
+
+
+
+
+            function toggleSCOutcome() {
+                const status = $("#claimantSCStatus").val();
+                if (status === "Disposed") {
+                    $("#scOutcomeSection").slideDown(200);
+                } else {
+                    $("#scOutcomeSection").slideUp(200);
+                }
+            }
+
+            function toggleSCClosure() {
+                const action = $("#claimantSCActionTaken").val();
+                if (action === "Close") {
+                    $("#scClosureSection").slideDown(200);
+                } else {
+                    $("#scClosureSection").slideUp(200);
+                }
+            }
+
+
+
+
+
+            $("#claimantSCStatus").change(toggleSCOutcome);
+            $("#claimantSCActionTaken").change(toggleSCClosure);
+
+
+
+            // Initial states
+            toggleSCOutcome();
+            toggleSCClosure();
+        });
+    </script>
+}

@@ -1,0 +1,345 @@
+@model IEnumerable<MVCCaseManagement.Models.JudgementViewModel>
+
+@{
+    ViewData["Title"] = "Judgement & Circulars";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid py-4">
+
+    <!-- Header & Filter Card -->
+    <div class="glass-filter-card mb-4 p-4">
+        <div class="row g-3 align-items-center">
+            <div class="col-md-5">
+                <div class="registry-title fs-4 mb-1"><i class="bi bi-journal-bookmark-fill me-2 bg-text-judgement"></i>Judgements & Circulars</div>
+                <p class="text-muted small mb-0 fw-medium">Centralized repository for uploading and accessing judgements and official circulars.</p>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="input-group shadow-sm" style="border-radius: 6px;">
+                    <span class="input-group-text border-end-0 bg-white ps-3"><i class="bi bi-filter-circle text-judgement"></i></span>
+                    <select id="categoryFilter" class="form-select border-start-0 ps-2 py-2 search-input focus-judgement" style="border-radius: 0 6px 6px 0; border-left: none;">
+                        <option value="all">All Categories</option>
+                        <option value="Judgement">Judgements Only</option>
+                        <option value="Circular">Circulars Only</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="col-md-4 text-end">
+                @if (User.FindFirst("DivisionID")?.Value == "5" || User.FindFirst("DivisionID")?.Value == "0")
+                {
+                    <a href="/Judgement/Create" class="btn btn-judgement shadow-sm fw-bold px-4">
+                        <i class="bi bi-plus-circle me-2"></i>Upload Record
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Card -->
+    <div class="table-card mb-4">
+        <div class="table-card-header">
+            <div class="registry-title"><i class="bi bi-folder2-open"></i> Repository Records</div>
+            <div class="text-secondary small fw-bold">Records Found: @Model.Count()</div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0" id="judgementTable">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Title & Details</th>
+                            <th>Category</th>
+                            <th>Authority / Date</th>
+                            <th>Uploaded By</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (Model.Any())
+                        {
+                            foreach (var item in Model)
+                            {
+                                <tr class="judgement-row" data-category="@item.Category">
+                                    <td class="ps-4" style="max-width: 300px;">
+                                        <div class="fw-bold text-dark mb-1 text-truncate" title="@item.Title">@item.Title</div>
+                                        <div class="smaller text-muted text-truncate" title="@item.Remarks">
+                                            <i class="bi bi-chat-left-text me-1"></i>@(string.IsNullOrEmpty(item.Remarks) ? "No remarks" : item.Remarks)
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (item.Category == "Circular")
+                                        {
+                                            <span class="badge bg-circular-soft"><i class="bi bi-info-circle-fill me-1"></i>Circular</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-judgement-soft"><i class="bi bi-journal-text me-1"></i>Judgement</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div class="fw-bold text-dark mb-0">@item.Court</div>
+                                        <div class="smaller text-muted mt-1"><i class="bi bi-calendar3 me-1"></i>@(item.JudgementDate?.ToString("dd-MMM-yyyy") ?? "--")</div>
+                                    </td>
+                                    <td>
+                                        <div class="fw-medium text-dark small">@item.UploadedBy</div>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <div class="d-flex justify-content-end gap-2">
+                                            @if (!string.IsNullOrEmpty(item.FilePath))
+                                            {
+                                                <a href="@item.FilePath" target="_blank" class="btn-action btn-view" title="View Document">
+                                                    <i class="bi bi-file-earmark-pdf-fill"></i>
+                                                </a>
+                                            }
+
+                                            @if (User.FindFirst("DivisionID")?.Value == "5" || User.FindFirst("DivisionID")?.Value == "0")
+                                            {
+                                                <a href="/Judgement/Edit/@item.JudgementID" class="btn-action btn-edit" title="Edit Record & Uploaded File">
+                                                    <i class="bi bi-pencil-fill"></i>
+                                                </a>
+                                                <form asp-action="Delete" method="post" style="display:inline;" onsubmit="return confirm('Are you sure you want to delete this record?');">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="id" value="@item.JudgementID" />
+                                                    <button type="submit" class="btn-action btn-delete" title="Delete Record">
+                                                        <i class="bi bi-trash-fill"></i>
+                                                    </button>
+                                                </form>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center py-5 text-muted">
+                                    <div class="py-4">
+                                        <i class="bi bi-inbox fs-1 d-block mb-3 opacity-25"></i>
+                                        <p class="mb-0 fw-medium">No judgements or circulars found.</p>
+                                        <small>Upload new records to see them displayed here.</small>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            $('#categoryFilter').on('change', function () {
+                var selectedCategory = $(this).val();
+                
+                if (selectedCategory === 'all') {
+                    $('.judgement-row').fadeIn(200);
+                } else {
+                    $('.judgement-row').each(function () {
+                        var rowCategory = $(this).data('category');
+                        if (rowCategory === selectedCategory) {
+                            $(this).fadeIn(200);
+                        } else {
+                            $(this).hide();
+                        }
+                    });
+                }
+
+                // Show "No Results" message if all rows are hidden
+                setTimeout(function() {
+                    var totalRows = $('.judgement-row').length;
+                    if (totalRows > 0) {
+                        var visibleRows = $('.judgement-row:visible').length;
+                        if (visibleRows === 0) {
+                            if ($('#noResultsMessage').length === 0) {
+                                $('tbody').append('<tr id="noResultsMessage"><td colspan="5" class="text-center py-5 text-muted"><div class="py-4"><i class="bi bi-search fs-1 d-block mb-3 opacity-25"></i><p class="mb-0 fw-medium">No records found for the selected category.</p></div></td></tr>');
+                            }
+                        } else {
+                            $('#noResultsMessage').remove();
+                        }
+                    }
+                }, 250);
+            });
+        });
+    </script>
+}
+
+@section Styles {
+    <style>
+        :root {
+            --judgement-color: #2563eb;    /* Royal Blue */
+            --judgement-dark: #1d4ed8;
+            --circular-color: #0d9488;     /* Teal */
+        }
+        
+        body, .content-area {
+            background-color: #d5d8db !important;
+        }
+
+        .text-judgement { color: var(--judgement-color) !important; }
+        .bg-text-judgement { color: var(--judgement-color) !important; }
+
+        .btn-judgement {
+            background-color: var(--judgement-color);
+            color: #ffffff;
+            border-radius: 6px;
+            border: none;
+            transition: all 0.2s ease;
+        }
+        .btn-judgement:hover {
+            background-color: var(--judgement-dark);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(37, 99, 235, 0.25) !important;
+        }
+
+        /* Filter Card - Professional/Clean */
+        .glass-filter-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+        }
+
+        /* Inputs & Controls */
+        .search-input {
+            border: 1px solid #cbd5e1;
+            font-size: 0.875rem;
+            color: #1e293b;
+            font-weight: 500;
+        }
+        
+        .input-group-text {
+            border: 1px solid #cbd5e1;
+            color: #64748b;
+        }
+
+        .input-group:focus-within .input-group-text,
+        .search-input:focus {
+            border-color: var(--judgement-color);
+            box-shadow: none;
+            outline: none;
+        }
+        
+        .input-group:focus-within {
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+            border-radius: 6px;
+        }
+
+        /* Main Table Card - Official Registry Style */
+        .table-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            overflow: hidden;
+        }
+
+        .table-card-header {
+            background-color: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .registry-title {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: 0.02em;
+            display: flex;
+            align-items: center;
+        }
+        
+        .registry-title i {
+            color: var(--judgement-color);
+            margin-right: 0.5rem;
+        }
+
+        /* DATA TABLE - The Core Registry View */
+        .table-responsive {
+            scrollbar-width: thin;
+        }
+
+        .table {
+            margin-bottom: 0;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table thead th {
+            background-color: #f8fafc;
+            color: #475569;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.875rem 1rem;
+            border-bottom: 2px solid #e2e8f0;
+            white-space: nowrap;
+        }
+
+        .table tbody td {
+            padding: 1rem;
+            vertical-align: middle;
+            color: #334155;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: #fcfcfd;
+        }
+
+        .table tbody tr:hover {
+            background-color: #f0f9ff !important;
+        }
+
+        /* Status Badges */
+        .badge {
+            padding: 0.4rem 0.75rem;
+            font-weight: 600;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            letter-spacing: 0.02em;
+        }
+
+        .bg-judgement-soft { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .bg-circular-soft { background-color: #f0fdfa; color: #0f766e; border: 1px solid #ccfbf1; }
+
+        /* Action Buttons */
+        .btn-action {
+            width: 32px;
+            height: 32px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            color: #64748b;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+        }
+
+        .btn-action.btn-view:hover { color: #ffffff; background-color: #10b981; border-color: #10b981; }
+        .btn-action.btn-edit:hover { color: #ffffff; background-color: #2563eb; border-color: #2563eb; }
+        .btn-action.btn-delete:hover { color: #ffffff; background-color: #ef4444; border-color: #ef4444; }
+        
+        .smaller { font-size: 0.75rem; }
+    </style>
+}

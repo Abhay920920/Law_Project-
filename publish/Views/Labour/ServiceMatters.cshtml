@@ -1,0 +1,225 @@
+@model IEnumerable<MVCCaseManagement.Models.LabourCase>
+
+@{
+    ViewData["Title"] = "Service/Commercial Matters / Direct Writ Petitions";
+    ViewData["HidePageHeader"] = true;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    var allItems = Model?.ToList() ?? new List<MVCCaseManagement.Models.LabourCase>();
+    int totalCount = allItems.Count;
+    
+    var knownCategories = new[] { "LIGHT DUTY", "LEAVE ENCASHMENT", "PROMOTION", "COMPASSIONATE APPOINTMENT", "COMMERCIAL" };
+
+    int lightDutyCount = allItems.Count(x => string.Equals(x.CO_Service_CaseNature?.Trim(), "LIGHT DUTY", StringComparison.OrdinalIgnoreCase));
+    int leaveEncashmentCount = allItems.Count(x => string.Equals(x.CO_Service_CaseNature?.Trim(), "LEAVE ENCASHMENT", StringComparison.OrdinalIgnoreCase));
+    int promotionCount = allItems.Count(x => string.Equals(x.CO_Service_CaseNature?.Trim(), "PROMOTION", StringComparison.OrdinalIgnoreCase));
+    int compassionateCount = allItems.Count(x => string.Equals(x.CO_Service_CaseNature?.Trim(), "COMPASSIONATE APPOINTMENT", StringComparison.OrdinalIgnoreCase));
+    int commercialCount = allItems.Count(x => string.Equals(x.CO_Service_CaseNature?.Trim(), "COMMERCIAL", StringComparison.OrdinalIgnoreCase));
+    int othersCount = allItems.Count(x => !string.IsNullOrWhiteSpace(x.CO_Service_CaseNature) && !knownCategories.Any(k => string.Equals(k, x.CO_Service_CaseNature.Trim(), StringComparison.OrdinalIgnoreCase)));
+}
+
+<div class="container-fluid fade-in py-3">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0 text-gray-800">
+                <i class="bi bi-file-earmark-text text-primary me-2"></i>Service/Commercial Matters
+            </h1>
+            <p class="text-muted small mb-0">Manage Direct Writ Petitions and Service/Commercial Matters</p>
+        </div>
+        <div>
+            <a href="@Url.Action("ManageServiceMatter", "Labour")" class="btn btn-primary rounded-pill shadow-sm">
+                <i class="bi bi-plus-lg me-2"></i>Register New Matter
+            </a>
+        </div>
+    </div>
+
+    <!-- Case Nature Stats -->
+    <div class="card border-0 shadow-sm mb-4" style="background: #ffffff !important; border-bottom: 3px solid #3b82f6 !important;">
+        <div class="card-body p-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-bar-chart-fill text-primary me-2"></i>Case Nature Overview</h6>
+                <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">Total: @totalCount</span>
+            </div>
+            <div class="row g-3">
+                <!-- Light Duty -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-person-workspace svc-icon"></i>
+                        <div class="svc-label">Light Duty</div>
+                        <div class="svc-value">@lightDutyCount</div>
+                    </div>
+                </div>
+                <!-- Leave Encashment -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-cash-coin svc-icon"></i>
+                        <div class="svc-label">Leave Encashment</div>
+                        <div class="svc-value">@leaveEncashmentCount</div>
+                    </div>
+                </div>
+                <!-- Promotion -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-arrow-up-circle svc-icon"></i>
+                        <div class="svc-label">Promotion</div>
+                        <div class="svc-value">@promotionCount</div>
+                    </div>
+                </div>
+                <!-- Compassionate Appointment -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-heart-pulse svc-icon"></i>
+                        <div class="svc-label">Compassionate Appt.</div>
+                        <div class="svc-value">@compassionateCount</div>
+                    </div>
+                </div>
+                <!-- Commercial -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-briefcase svc-icon"></i>
+                        <div class="svc-label">Commercial</div>
+                        <div class="svc-value">@commercialCount</div>
+                    </div>
+                </div>
+                <!-- Others -->
+                <div class="col-6 col-md-4 col-lg-2">
+                    <div class="svc-stat-card" style="background: linear-gradient(135deg, #475569 0%, #1e293b 100%);">
+                        <div class="svc-bg-shape"></div>
+                        <i class="bi bi-three-dots svc-icon"></i>
+                        <div class="svc-label">Others</div>
+                        <div class="svc-value">@othersCount</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="bg-light">
+                        <tr>
+                            <th class="ps-4">WP Number</th>
+                            <th>Petitioner Name</th>
+                            <th>Case Nature</th>
+                            <th>Status</th>
+                            <th>Action Taken</th>
+                            <th class="text-end pe-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (allItems.Any())
+                        {
+                            foreach (var item in allItems)
+                            {
+                                <tr>
+                                    <td class="ps-4 fw-bold text-dark">
+                                        @item.CO_Service_WPNumber
+                                        @if (item.CO_Service_WPYear.HasValue)
+                                        {
+                                            <span class="text-muted fw-normal">/ @item.CO_Service_WPYear</span>
+                                        }
+                                    </td>
+                                    <td>@item.CO_Service_PetitionerName</td>
+                                    <td><span class="badge bg-light text-dark border">@item.CO_Service_CaseNature</span></td>
+                                    <td>
+                                        @if (item.CO_Service_Status == "PENDING")
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-success-subtle text-success-emphasis">@item.CO_Service_Status</span>
+                                        }
+                                    </td>
+                                    <td>@item.CO_Service_ActionTaken</td>
+                                    <td class="text-end pe-4">
+                                        <a href="@Url.Action("ServiceMatterDetails", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
+                                                <i class="bi bi-eye-fill"></i>
+                                            </a>
+                                            <a href="@Url.Action("ManageServiceMatter", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
+                                            <i class="bi bi-pencil-fill"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="6" class="text-center py-5 text-muted">
+                                    <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                                    No Service/Commercial Matters found.
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .svc-stat-card {
+        border-radius: 0.75rem;
+        padding: 1rem;
+        color: white;
+        position: relative;
+        overflow: hidden;
+        text-align: center;
+        min-height: 110px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+    }
+
+    .svc-stat-card:hover {
+        transform: translateY(-5px) scale(1.03);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    .svc-stat-card .svc-icon {
+        font-size: 1.5rem;
+        opacity: 0.85;
+        margin-bottom: 0.35rem;
+    }
+
+    .svc-stat-card .svc-label {
+        font-size: 0.65rem;
+        font-weight: 700;
+        opacity: 0.85;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        line-height: 1.2;
+        margin-bottom: 0.25rem;
+    }
+
+    .svc-stat-card .svc-value {
+        font-size: 1.75rem;
+        font-weight: 800;
+        line-height: 1;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .svc-stat-card .svc-bg-shape {
+        position: absolute;
+        bottom: -15px;
+        right: -10px;
+        width: 70px;
+        height: 70px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+        border-radius: 50%;
+        z-index: 0;
+    }
+</style>

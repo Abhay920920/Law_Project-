@@ -16,8 +16,7 @@ dist/
 **/dist/
 **/MVCCaseManagement/publish/
 **/CaseManagement/publish/
-publish/
-**/publish/
+# publish/  (Allowed for direct IIS git-pull deployment)
 
 ## User-specific files
 *.rsuser

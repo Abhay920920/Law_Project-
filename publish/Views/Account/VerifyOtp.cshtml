@@ -1,0 +1,90 @@
+@model MVCCaseManagement.Models.VerifyOtpViewModel
+@{
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="kn-IN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Verify OTP - Legal Desk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="~/css/cdn.css" rel="stylesheet" />
+    <link href="~/css/bootstrap-icons.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="login-body">
+    <div class="login-portal">
+        <div class="portal-header">
+            <div class="mb-3">
+                <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo" asp-append-version="true" />
+            </div>
+            <div class="portal-branding">
+                <h2 class="mb-0">Verify OTP</h2>
+                <p class="text-muted small mt-2">Enter the OTP sent to your mobile</p>
+            </div>
+        </div>
+        
+        <div class="portal-body">
+            @if (TempData["SuccessMessage"] != null)
+            {
+                <div class="alert alert-success py-2 small mb-4 border-start border-4 border-success">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    @TempData["SuccessMessage"]
+                </div>
+            }
+
+            @if (!ViewData.ModelState.IsValid)
+            {
+                <div class="alert alert-danger py-2 small mb-4 border-start border-4 border-danger">
+                    <i class="bi bi-exclamation-octagon-fill me-2"></i>
+                    @Html.ValidationSummary(true, "")
+                </div>
+            }
+
+            <form asp-action="VerifyOtp" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="Username" />
+                
+                <div class="mb-3">
+                    <label asp-for="OTP" class="form-label fw-bold mb-1">Enter OTP</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-shield-lock-fill"></i></span>
+                        <input asp-for="OTP" class="form-control border-start-0 py-2 text-center ls-lg fw-bold" 
+                               placeholder="******" maxlength="6" required autofocus />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="NewPassword" class="form-label fw-bold mb-1">New Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-key-fill"></i></span>
+                        <input asp-for="NewPassword" type="password" class="form-control border-start-0 py-2" placeholder="••••••••" required />
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label asp-for="ConfirmPassword" class="form-label fw-bold mb-1">Confirm Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-check2-all"></i></span>
+                        <input asp-for="ConfirmPassword" type="password" class="form-control border-start-0 py-2" placeholder="••••••••" required />
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-gov w-100 py-2 fs-6 shadow-sm">
+                    Reset Password / ಪಾಸ್‌ವರ್ಡ್ ಮರುಹೊಂದಿಸಿ
+                </button>
+            </form>
+            
+            <div class="mt-4 text-center">
+                <a asp-action="ForgotPassword" class="small text-decoration-none fw-bold text-primary">
+                    Resend OTP
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
