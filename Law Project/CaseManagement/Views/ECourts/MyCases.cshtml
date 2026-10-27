@@ -91,7 +91,7 @@
         cursor: not-allowed;
     }
 
-    @@media (max-width: 767.98px) {
+    @@media (max-width: 991.98px) {
         .mycases-page {
             padding: 8px 4px !important;
         }
@@ -100,17 +100,17 @@
             border-radius: 1rem !important;
         }
         .mycases-header-gradient h3 {
-            font-size: 1.2rem !important;
+            font-size: 1.15rem !important;
         }
         .kpi-card-clean {
-            border-radius: 1rem !important;
-            margin-bottom: 0.5rem;
+            border-radius: 0.75rem !important;
+            margin-bottom: 0.25rem;
         }
         .kpi-card-clean .card-body {
-            padding: 0.85rem !important;
+            padding: 0.75rem !important;
         }
         .kpi-card-clean h2 {
-            font-size: 1.5rem !important;
+            font-size: 1.35rem !important;
         }
         .status-filter-group {
             width: 100%;
@@ -118,19 +118,15 @@
             white-space: nowrap;
             padding-bottom: 4px;
         }
-        .modal-dialog {
-            max-width: 96% !important;
-            margin: 0.5rem auto !important;
-        }
     }
 </style>
 
-<div class="mycases-page px-3 px-md-4 py-3">
+<div class="mycases-page px-2 px-md-4 py-3">
 
     <!-- Header Banner -->
-    <div class="mycases-header-gradient p-4 mb-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div class="mycases-header-gradient p-3 p-md-4 mb-3 mb-md-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2.5">
         <div>
-            <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="d-flex align-items-center gap-2 mb-1.5 flex-wrap">
                 <span class="badge @(isLabour ? "bg-purple text-white" : "bg-primary text-white") font-monospace fw-bold px-2.5 py-1">
                     <i class="bi @(isLabour ? "bi-briefcase-fill" : "bi-truck-front-fill") me-1"></i>@(isLabour ? "LABOUR DISPUTES" : "MVC / MACT CLAIMS")
                 </span>
@@ -139,32 +135,34 @@
                 </span>
             </div>
             <h3 class="fw-bold mb-1 text-white d-flex align-items-center gap-2">
-                <i class="bi bi-folder-check text-warning"></i> My Cases & Live CNR Tracker
+                <i class="bi bi-folder-check text-warning"></i> My Cases &amp; Live CNR Tracker
             </h3>
-            <p class="text-light text-opacity-75 small mb-0">Central Office Registry — High-fidelity live CNR monitoring, automated proceedings sync, orders & judgements.</p>
+            <p class="text-light text-opacity-75 small mb-0 d-none d-sm-block">Central Office Registry — High-fidelity live CNR monitoring, automated proceedings sync, orders & judgements.</p>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
-            <button type="button" class="btn btn-warning btn-sm fw-bold shadow-sm px-3 py-2 d-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addCnrModal">
+        <div class="d-flex flex-wrap align-items-center gap-2 w-100 w-lg-auto justify-content-start justify-content-lg-end">
+            <button type="button" class="btn btn-warning btn-sm fw-bold shadow-sm px-3 py-2 d-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0 justify-content-center" data-bs-toggle="modal" data-bs-target="#addCnrModal">
                 <i class="bi bi-plus-circle-fill"></i>
                 <span>Add CNR Cases</span>
             </button>
-            <button type="button" class="btn btn-info btn-sm shadow-sm px-3 py-2 d-flex align-items-center gap-2 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
+            <button type="button" class="btn btn-info btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
                 <i class="bi bi-journal-check"></i>
-                <span class="d-none d-sm-inline">Sync All Proceedings</span>
+                <span class="d-none d-md-inline">Sync All Proceedings</span>
+                <span class="d-inline d-md-none">Sync All</span>
             </button>
-            <button type="button" class="btn btn-danger btn-sm shadow-sm px-3 py-2 d-flex align-items-center gap-2 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
+            <button type="button" class="btn btn-danger btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
                 <i class="bi bi-broadcast"></i>
-                <span class="d-none d-sm-inline">Check Live Cause Lists</span>
+                <span class="d-none d-md-inline">Check Live Cause Lists</span>
+                <span class="d-inline d-md-none">Cause List</span>
             </button>
-            <button type="button" class="btn btn-outline-light btn-sm px-3 py-2 d-flex align-items-center gap-2" onclick="printCasesReport('filtered')" title="Print judicial report of current cases">
+            <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5" onclick="printCasesReport('filtered')" title="Print judicial report of current cases">
                 <i class="bi bi-printer-fill"></i>
-                <span class="d-none d-sm-inline">Print Report</span>
+                <span class="d-none d-sm-inline">Print</span>
             </button>
             <!-- Export Excel / CSV Split Button -->
             <div class="btn-group shadow-sm">
-                <button type="button" class="btn btn-success btn-sm px-3 py-2 d-flex align-items-center gap-2 fw-semibold" onclick="exportToExcel('filtered')" title="Export filtered cases to Microsoft Excel (.xls)">
+                <button type="button" class="btn btn-success btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 fw-semibold" onclick="exportToExcel('filtered')" title="Export filtered cases to Microsoft Excel (.xls)">
                     <i class="bi bi-file-earmark-excel-fill"></i>
-                    <span class="d-none d-sm-inline">Export Excel</span>
+                    <span class="d-none d-sm-inline">Export</span>
                 </button>
                 <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split px-2" data-bs-toggle="dropdown" aria-expanded="false" title="More Export Options">
                     <span class="visually-hidden">Toggle Dropdown</span>
@@ -209,25 +207,25 @@
                     </li>
                 </ul>
             </div>
-            <button type="button" class="btn btn-outline-light btn-sm px-3 py-2 d-flex align-items-center gap-2" onclick="loadTrackedCases(true)" title="Refresh table data">
+            <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5" onclick="loadTrackedCases(true)" title="Refresh table data">
                 <i class="bi bi-arrow-clockwise" id="refreshBtnIcon"></i>
                 <span class="d-none d-sm-inline">Refresh</span>
             </button>
         </div>
     </div>
 
-    <!-- KPI Summary Cards -->
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+    <!-- KPI Summary Cards: 2x2 Grid on Mobile (<576px), 4 Columns on xl -->
+    <div class="row row-cols-2 row-cols-sm-2 row-cols-xl-4 g-2 g-md-3 mb-3 mb-md-4">
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('all')" title="Filter: All Cases">
             <div class="card border-0 shadow-sm border-start border-4 border-primary bg-white kpi-card-clean h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2.5 p-sm-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <span class="text-muted extra-small text-uppercase fw-bold">Tracked Cases</span>
-                            <h2 class="fw-bold text-primary mb-0 mt-1" id="statTotalCases">0</h2>
+                            <h2 class="fw-bold text-primary mb-0 mt-0.5 fs-4 fs-sm-2" id="statTotalCases">0</h2>
                         </div>
-                        <div class="bg-primary-subtle p-3 rounded-3 text-primary">
-                            <i class="bi bi-folder-check fs-3"></i>
+                        <div class="bg-primary-subtle p-2 p-sm-3 rounded-3 text-primary">
+                            <i class="bi bi-folder-check fs-4 fs-sm-3"></i>
                         </div>
                     </div>
                 </div>
@@ -236,14 +234,14 @@
 
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('upcoming')" title="Filter: Upcoming Hearings">
             <div class="card border-0 shadow-sm border-start border-4 border-warning bg-white kpi-card-clean h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2.5 p-sm-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Upcoming Hearings</span>
-                            <h2 class="fw-bold text-warning mb-0 mt-1" id="statUpcomingHearings">0</h2>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Upcoming</span>
+                            <h2 class="fw-bold text-warning mb-0 mt-0.5 fs-4 fs-sm-2" id="statUpcomingHearings">0</h2>
                         </div>
-                        <div class="bg-warning-subtle p-3 rounded-3 text-warning">
-                            <i class="bi bi-calendar-event fs-3"></i>
+                        <div class="bg-warning-subtle p-2 p-sm-3 rounded-3 text-warning">
+                            <i class="bi bi-calendar-event fs-4 fs-sm-3"></i>
                         </div>
                     </div>
                 </div>
@@ -252,14 +250,14 @@
 
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('pending')" title="Filter: Active / Pending Cases">
             <div class="card border-0 shadow-sm border-start border-4 border-info bg-white kpi-card-clean h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2.5 p-sm-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Active / Pending</span>
-                            <h2 class="fw-bold text-info mb-0 mt-1" id="statPendingCases">0</h2>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Pending</span>
+                            <h2 class="fw-bold text-info mb-0 mt-0.5 fs-4 fs-sm-2" id="statPendingCases">0</h2>
                         </div>
-                        <div class="bg-info-subtle p-3 rounded-3 text-info">
-                            <i class="bi bi-hourglass-split fs-3"></i>
+                        <div class="bg-info-subtle p-2 p-sm-3 rounded-3 text-info">
+                            <i class="bi bi-hourglass-split fs-4 fs-sm-3"></i>
                         </div>
                     </div>
                 </div>
@@ -268,14 +266,14 @@
 
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('disposed')" title="Filter: Disposed Cases">
             <div class="card border-0 shadow-sm border-start border-4 border-success bg-white kpi-card-clean h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2.5 p-sm-3">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Disposed Cases</span>
-                            <h2 class="fw-bold text-success mb-0 mt-1" id="statDisposedCases">0</h2>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Disposed</span>
+                            <h2 class="fw-bold text-success mb-0 mt-0.5 fs-4 fs-sm-2" id="statDisposedCases">0</h2>
                         </div>
-                        <div class="bg-success-subtle p-3 rounded-3 text-success">
-                            <i class="bi bi-check-circle fs-3"></i>
+                        <div class="bg-success-subtle p-2 p-sm-3 rounded-3 text-success">
+                            <i class="bi bi-check-circle fs-4 fs-sm-3"></i>
                         </div>
                     </div>
                 </div>
@@ -286,198 +284,217 @@
     <!-- Main Content Card -->
     <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
         <!-- Filter and Search Header -->
-        <div class="card-header bg-white border-bottom p-3 p-md-4">
-            <!-- Row 1: Search & Status Pills -->
-            <div class="row g-3 align-items-center justify-content-between mb-3">
+        <div class="card-header bg-white border-bottom p-2.5 p-md-4">
+            <!-- Row 1: Search Bar & Status Filter Ribbon -->
+            <div class="row g-2 align-items-center justify-content-between mb-2 mb-md-3">
                 <div class="col-12 col-lg-5">
-                    <div class="input-group shadow-sm rounded-pill overflow-hidden border">
-                        <span class="input-group-text bg-light border-0 text-muted ps-3">
+                    <div class="input-group shadow-sm rounded-pill overflow-hidden border bg-light">
+                        <span class="input-group-text bg-light border-0 text-muted ps-3 pe-2">
                             <i class="bi bi-search"></i>
                         </span>
                         <input type="text" id="caseSearchInput" class="form-control bg-light border-0 py-2" 
-                               placeholder="Search by CNR, Case No, Petitioner, Respondent, Judge..." oninput="filterCasesTable()" />
+                               placeholder="Search CNR, Case No, Party, Judge..." oninput="onSearchInputChanged()" />
+                        <button class="btn btn-link text-muted border-0 pe-3 d-none" type="button" id="clearSearchBtn" onclick="clearSearchInput()" title="Clear search">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </button>
                     </div>
                 </div>
 
-                <div class="col-12 col-lg-7 d-flex flex-wrap align-items-center justify-content-lg-end gap-2">
-                    <!-- Status Filter Pills -->
-                    <div class="btn-group p-1 bg-light rounded-pill border status-filter-group" role="group">
+                <div class="col-12 col-lg-7 d-flex flex-wrap align-items-center justify-content-between justify-content-lg-end gap-2">
+                    <!-- Status Filter Pills Ribbon (Horizontal Touch-Scroll on Mobile) -->
+                    <div class="btn-group p-1 bg-light rounded-pill border status-filter-ribbon flex-grow-1 flex-sm-grow-0" role="group">
                         <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked onchange="filterCasesTable()">
-                        <label class="btn btn-sm rounded-pill px-3 py-1.5" for="filterAll">All (<span id="countPillAll">0</span>)</label>
+                        <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterAll">All (<span id="countPillAll">0</span>)</label>
 
                         <input type="radio" class="btn-check" name="statusFilter" id="filterUpcoming" value="upcoming" onchange="filterCasesTable()">
-                        <label class="btn btn-sm rounded-pill px-3 py-1.5" for="filterUpcoming">Listed / Future (<span id="countPillUpcoming">0</span>)</label>
+                        <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterUpcoming">Listed (<span id="countPillUpcoming">0</span>)</label>
 
                         <input type="radio" class="btn-check" name="statusFilter" id="filterPending" value="pending" onchange="filterCasesTable()">
-                        <label class="btn btn-sm rounded-pill px-3 py-1.5" for="filterPending">Pending (<span id="countPillPending">0</span>)</label>
+                        <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterPending">Pending (<span id="countPillPending">0</span>)</label>
 
                         <input type="radio" class="btn-check" name="statusFilter" id="filterDisposed" value="disposed" onchange="filterCasesTable()">
-                        <label class="btn btn-sm rounded-pill px-3 py-1.5" for="filterDisposed">Disposed (<span id="countPillDisposed">0</span>)</label>
+                        <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterDisposed">Disposed (<span id="countPillDisposed">0</span>)</label>
                     </div>
 
-                    <!-- Print Dropdown Button -->
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-3 py-1.5 shadow-sm dropdown-toggle d-flex align-items-center gap-1.5" data-bs-toggle="dropdown" aria-expanded="false" title="Print Judicial Cases Report">
-                            <i class="bi bi-printer-fill text-primary"></i>
-                            <span>Print Report</span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 230px;">
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printCasesReport('filtered')">
-                                    <i class="bi bi-funnel-fill text-primary fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Print Current View</div>
-                                        <div class="extra-small text-muted">Filtered cases matching current filters</div>
-                                    </div>
-                                </a>
-                            </li>
-                            <li><hr class="dropdown-divider my-1"></li>
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printCasesReport('all')">
-                                    <i class="bi bi-collection-fill text-success fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Print All Cases</div>
-                                        <div class="extra-small text-muted">Complete master tracking register</div>
-                                    </div>
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
+                    <div class="d-flex align-items-center gap-1.5">
+                        <!-- Print Dropdown Button -->
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-2.5 px-sm-3 py-1.5 shadow-sm dropdown-toggle d-flex align-items-center gap-1" data-bs-toggle="dropdown" aria-expanded="false" title="Print Judicial Cases Report">
+                                <i class="bi bi-printer-fill text-primary"></i>
+                                <span class="d-none d-sm-inline">Print</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 230px;">
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printCasesReport('filtered')">
+                                        <i class="bi bi-funnel-fill text-primary fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Print Current View</div>
+                                            <div class="extra-small text-muted">Filtered cases matching current filters</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printCasesReport('all')">
+                                        <i class="bi bi-collection-fill text-success fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Print All Cases</div>
+                                            <div class="extra-small text-muted">Complete master tracking register</div>
+                                        </div>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
 
-                    <!-- Export to Excel / CSV Dropdown Button -->
-                    <div class="btn-group">
-                        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1.5 shadow-sm dropdown-toggle d-flex align-items-center gap-1.5" data-bs-toggle="dropdown" aria-expanded="false" title="Export cases to Microsoft Excel or CSV">
-                            <i class="bi bi-file-earmark-excel-fill text-success"></i>
-                            <span>Export Excel</span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
-                                    <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Export Current View (.xls)</div>
-                                        <div class="extra-small text-muted">Filtered cases with styling & columns</div>
-                                    </div>
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
-                                    <i class="bi bi-collection-fill text-primary fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Export All Cases (.xls)</div>
-                                        <div class="extra-small text-muted">Complete master tracking workbook</div>
-                                    </div>
-                                </a>
-                            </li>
-                            <li><hr class="dropdown-divider my-1"></li>
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
-                                    <i class="bi bi-filetype-csv text-secondary fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Export Current View to CSV</div>
-                                        <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
-                                    </div>
-                                </a>
-                            </li>
-                            <li>
-                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
-                                    <i class="bi bi-filetype-csv text-secondary fs-6"></i>
-                                    <div>
-                                        <div class="fw-bold">Export All Cases to CSV</div>
-                                        <div class="extra-small text-muted">All cases in UTF-8 CSV</div>
-                                    </div>
-                                </a>
-                            </li>
-                        </ul>
+                        <!-- Export to Excel / CSV Dropdown Button -->
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-2.5 px-sm-3 py-1.5 shadow-sm dropdown-toggle d-flex align-items-center gap-1" data-bs-toggle="dropdown" aria-expanded="false" title="Export cases to Microsoft Excel or CSV">
+                                <i class="bi bi-file-earmark-excel-fill text-success"></i>
+                                <span class="d-none d-sm-inline">Export</span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
+                                        <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Export Current View (.xls)</div>
+                                            <div class="extra-small text-muted">Filtered cases with styling & columns</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
+                                        <i class="bi bi-collection-fill text-primary fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Export All Cases (.xls)</div>
+                                            <div class="extra-small text-muted">Complete master tracking workbook</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
+                                        <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Export Current View to CSV</div>
+                                            <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
+                                        </div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
+                                        <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                                        <div>
+                                            <div class="fw-bold">Export All Cases to CSV</div>
+                                            <div class="extra-small text-muted">All cases in UTF-8 CSV</div>
+                                        </div>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Row 2: Hearing Date Filter Toolbar -->
-            <div class="bg-light bg-opacity-75 p-2.5 px-3 rounded-3 border">
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2.5">
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="small fw-bold text-dark d-flex align-items-center gap-1.5 text-nowrap">
-                            <i class="bi bi-calendar-event-fill text-primary fs-6"></i>
-                            <span>Hearing Date:</span>
-                        </span>
+            <!-- Mobile Advanced Filters Toggle Button -->
+            <div class="d-lg-none mb-2">
+                <button class="btn btn-sm btn-outline-primary w-100 d-flex justify-content-between align-items-center py-2 px-3 rounded-pill shadow-xs" type="button" data-bs-toggle="collapse" data-bs-target="#advancedFiltersCollapse" aria-expanded="false" aria-controls="advancedFiltersCollapse">
+                    <span class="d-flex align-items-center gap-2 fw-semibold">
+                        <i class="bi bi-funnel-fill text-primary"></i>
+                        <span>Hearing Date &amp; Worker Filters</span>
+                    </span>
+                    <span class="badge bg-primary text-white rounded-pill px-2 py-1" id="mobileFilterSummaryBadge">Filter Options</span>
+                </button>
+            </div>
 
-                        <!-- Quick Preset Select -->
-                        <select id="hearingDatePreset" class="form-select form-select-sm rounded-pill border-secondary-subtle px-3 py-1 fw-semibold text-dark shadow-sm" style="width: auto; min-width: 175px;" onchange="onHearingPresetChange()">
-                            <option value="all">All Hearing Dates</option>
-                            <option value="today">📅 Listed Today</option>
-                            <option value="tomorrow">📅 Listed Tomorrow</option>
-                            <option value="this_week">🗓 Next 7 Days</option>
-                            <option value="this_month">🗓 Next 30 Days</option>
-                            <option value="overdue">⚠️ Past / Overdue</option>
-                            <option value="unscheduled">⏳ Date Pending</option>
-                            <option value="custom">🔍 Custom Date Range...</option>
-                        </select>
+            <!-- Collapsible Advanced Filters Section (Always visible on lg+, collapsible on mobile) -->
+            <div class="collapse d-lg-block" id="advancedFiltersCollapse">
+                <!-- Row 2: Hearing Date Filter Toolbar -->
+                <div class="bg-light bg-opacity-75 p-2.5 px-3 rounded-3 border">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2.5">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small fw-bold text-dark d-flex align-items-center gap-1.5 text-nowrap">
+                                <i class="bi bi-calendar-event-fill text-primary fs-6"></i>
+                                <span>Hearing Date:</span>
+                            </span>
 
-                        <!-- From & To Date Pickers -->
-                        <div class="d-flex align-items-center gap-1.5" id="customDateRangeInputs">
-                            <span class="extra-small text-muted text-uppercase fw-semibold">From:</span>
-                            <input type="date" id="hearingDateFrom" class="form-control form-control-sm rounded-pill px-2.5 py-1 text-dark bg-white border" style="width: 135px;" onchange="onCustomDateInputChanged()" title="From hearing date" />
-                            
-                            <span class="extra-small text-muted text-uppercase fw-semibold ms-1">To:</span>
-                            <input type="date" id="hearingDateTo" class="form-control form-control-sm rounded-pill px-2.5 py-1 text-dark bg-white border" style="width: 135px;" onchange="onCustomDateInputChanged()" title="To hearing date" />
+                            <!-- Quick Preset Select -->
+                            <select id="hearingDatePreset" class="form-select form-select-sm rounded-pill border-secondary-subtle px-3 py-1 fw-semibold text-dark shadow-sm" style="width: auto; min-width: 175px;" onchange="onHearingPresetChange()">
+                                <option value="all">All Hearing Dates</option>
+                                <option value="today">📅 Listed Today</option>
+                                <option value="tomorrow">📅 Listed Tomorrow</option>
+                                <option value="this_week">🗓 Next 7 Days</option>
+                                <option value="this_month">🗓 Next 30 Days</option>
+                                <option value="overdue">⚠️ Past / Overdue</option>
+                                <option value="unscheduled">⏳ Date Pending</option>
+                                <option value="custom">🔍 Custom Date Range...</option>
+                            </select>
+
+                            <!-- From & To Date Pickers -->
+                            <div class="d-flex align-items-center gap-1.5 flex-wrap flex-sm-nowrap" id="customDateRangeInputs">
+                                <span class="extra-small text-muted text-uppercase fw-semibold">From:</span>
+                                <input type="date" id="hearingDateFrom" class="form-control form-control-sm rounded-pill px-2.5 py-1 text-dark bg-white border" style="width: 135px;" onchange="onCustomDateInputChanged()" title="From hearing date" />
+                                
+                                <span class="extra-small text-muted text-uppercase fw-semibold ms-1">To:</span>
+                                <input type="date" id="hearingDateTo" class="form-control form-control-sm rounded-pill px-2.5 py-1 text-dark bg-white border" style="width: 135px;" onchange="onCustomDateInputChanged()" title="To hearing date" />
+                            </div>
+
+                            <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1 text-decoration-none extra-small" onclick="clearHearingDateFilter()" title="Reset date filters">
+                                <i class="bi bi-x-circle me-1"></i>Reset Date
+                            </button>
                         </div>
 
-                        <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1 text-decoration-none extra-small" onclick="clearHearingDateFilter()" title="Reset date filters">
-                            <i class="bi bi-x-circle me-1"></i>Reset Date
-                        </button>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-white text-secondary border shadow-sm small py-1.5 px-2.5" id="hearingFilterSummaryBadge">
+                                Showing all dates
+                            </span>
+                        </div>
                     </div>
 
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="badge bg-white text-secondary border shadow-sm small py-1.5 px-2.5" id="hearingFilterSummaryBadge">
-                            Showing all dates
-                        </span>
-                    </div>
-                </div>
+                    <!-- Case Worker Selection & Grouping Toolbar (For Central Office & Multi-Worker Desks) -->
+                    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2.5 mt-2.5 pt-2 border-top border-secondary-subtle">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <span class="small fw-bold text-dark d-flex align-items-center gap-1.5 text-nowrap">
+                                <i class="bi bi-person-badge-fill text-primary fs-6"></i>
+                                <span>Case Worker:</span>
+                            </span>
 
-                <!-- Case Worker Selection & Grouping Toolbar (For Central Office & Multi-Worker Desks) -->
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2.5 mt-2.5 pt-2 border-top border-secondary-subtle">
-                    <div class="d-flex flex-wrap align-items-center gap-2">
-                        <span class="small fw-bold text-dark d-flex align-items-center gap-1.5 text-nowrap">
-                            <i class="bi bi-person-badge-fill text-primary fs-6"></i>
-                            <span>Case Worker:</span>
-                        </span>
+                            <select id="caseWorkerFilter" class="form-select form-select-sm rounded-pill border-secondary-subtle px-3 py-1 fw-semibold text-dark shadow-sm" style="width: auto; min-width: 230px;" onchange="filterCasesTable()" title="Filter by assigned case worker">
+                                <option value="all">👥 All Case Workers (Consolidated)</option>
+                            </select>
 
-                        <select id="caseWorkerFilter" class="form-select form-select-sm rounded-pill border-secondary-subtle px-3 py-1 fw-semibold text-dark shadow-sm" style="width: auto; min-width: 230px;" onchange="filterCasesTable()" title="Filter by assigned case worker">
-                            <option value="all">👥 All Case Workers (Consolidated)</option>
-                        </select>
-
-                        <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1 text-decoration-none extra-small" onclick="clearCaseWorkerFilter()" title="Show cases for all workers">
-                            <i class="bi bi-x-circle me-1"></i>All Workers
-                        </button>
-                    </div>
-
-                    <div class="d-flex align-items-center gap-2.5 flex-wrap">
-                        <!-- Group by Case Worker Toggle -->
-                        <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm">
-                            <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByWorkerToggle" onchange="renderCasesTable()" style="cursor: pointer;">
-                            <label class="form-check-label small fw-bold text-dark user-select-none" for="groupByWorkerToggle" style="cursor: pointer;">
-                                <i class="bi bi-diagram-3-fill text-primary me-1"></i>Group by Case Worker
-                            </label>
+                            <button type="button" class="btn btn-sm btn-link text-muted p-0 ms-1 text-decoration-none extra-small" onclick="clearCaseWorkerFilter()" title="Show cases for all workers">
+                                <i class="bi bi-x-circle me-1"></i>All Workers
+                            </button>
                         </div>
 
-                        <span class="badge bg-white text-secondary border shadow-sm small py-1.5 px-2.5" id="workerFilterSummaryBadge">
-                            All workers
-                        </span>
+                        <div class="d-flex align-items-center gap-2.5 flex-wrap">
+                            <!-- Group by Case Worker Toggle -->
+                            <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm">
+                                <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByWorkerToggle" onchange="renderCasesTable()" style="cursor: pointer;">
+                                <label class="form-check-label small fw-bold text-dark user-select-none" for="groupByWorkerToggle" style="cursor: pointer;">
+                                    <i class="bi bi-diagram-3-fill text-primary me-1"></i>Group by Case Worker
+                                </label>
+                            </div>
+
+                            <span class="badge bg-white text-secondary border shadow-sm small py-1.5 px-2.5" id="workerFilterSummaryBadge">
+                                All workers
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Cases Table -->
-        <div class="table-responsive" style="min-height: 380px;">
+        <!-- Cases Desktop Table (Visible on lg and up) -->
+        <div class="table-responsive d-none d-lg-block" style="min-height: 380px;">
             <table class="table table-hover align-middle mb-0 table-cases" id="myCasesTable">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
                         <th style="width: 50px;" class="ps-4">#</th>
                         <th style="min-width: 170px;">CNR Number</th>
-                        <th style="min-width: 150px;">Case No & Type</th>
-                        <th style="min-width: 190px;">Court Hall & Bench</th>
+                        <th style="min-width: 150px;">Case No &amp; Type</th>
+                        <th style="min-width: 190px;">Court Hall &amp; Bench</th>
                         <th style="min-width: 220px; max-width: 280px;">Parties (Petitioner vs Respondent)</th>
                         <th style="min-width: 160px;">Next Hearing / Stage</th>
                         <th style="min-width: 110px;">Status</th>
@@ -494,6 +511,14 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- Cases Mobile Cards Container (Visible on mobile & tablets < 992px) -->
+        <div class="d-lg-none p-2 p-sm-3 bg-light bg-opacity-50" id="myCasesCardsContainer" style="min-height: 300px;">
+            <div class="text-center py-5 text-muted" id="mobileCardsLoader">
+                <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
+                <span>Loading your tracked cases from database...</span>
+            </div>
         </div>
 
         <!-- Table Footer / Pagination Info -->
@@ -532,7 +557,7 @@
 <!-- MODAL: Add CNR Numbers (Supports Bulk Paste)              -->
 <!-- ======================================================== -->
 <div class="modal fade" id="addCnrModal" tabindex="-1" aria-labelledby="addCnrModalLabel" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-lg-down">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <div class="modal-header text-white p-3 px-4" 
                  style="background: @(isLabour ? "linear-gradient(135deg, #1e1b4b 0%, #4338ca 100%)" : "linear-gradient(135deg, #0f172a 0%, #0284c7 100%)");">
@@ -660,7 +685,7 @@
 <!-- MODAL: Full Case Dossier Viewer (100% Data Integrity)     -->
 <!-- ======================================================== -->
 <div class="modal fade" id="myCaseDossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <!-- Modal Header -->
             <div class="modal-header text-white p-3 px-4" 
@@ -692,9 +717,9 @@
                 </div>
             </div>
 
-            <!-- Nav Tabs -->
-            <div class="bg-light border-bottom px-3 pt-2">
-                <ul class="nav nav-tabs border-0" id="dossierTabList" role="tablist">
+            <!-- Nav Tabs (Horizontal scroll on mobile) -->
+            <div class="bg-light border-bottom px-2 px-md-3 pt-2">
+                <ul class="nav nav-tabs border-0 flex-nowrap overflow-x-auto" id="dossierTabList" role="tablist" style="-webkit-overflow-scrolling: touch; scrollbar-width: none;">
                     <li class="nav-item">
                         <button class="nav-link active fw-semibold small" id="tab-overview" data-bs-toggle="tab" data-bs-target="#pane-overview" type="button" role="tab">
                             <i class="bi bi-info-circle me-1"></i> Overview & Status
@@ -1007,7 +1032,7 @@
 
 <!-- Quick Live Cause List Modal -->
 <div class="modal fade" id="quickCauseListModal" tabindex="-1" aria-labelledby="quickCauseListModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-lg-down">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <div class="modal-header bg-danger text-white py-3 px-4 d-flex justify-content-between align-items-center">
                 <div class="d-flex align-items-center gap-2">
@@ -1019,7 +1044,7 @@
                         <div class="extra-small text-white-50 font-monospace" id="quickCauseListModalSubtitle">High Court of Karnataka</div>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap justify-content-end">
                     <div class="input-group input-group-sm" style="width: 175px;">
                         <input type="date" class="form-control form-control-sm" id="quickCauseListDateInput" onchange="recheckQuickCauseListCustomDate()" title="Change cause list inspection date" />
                     </div>
@@ -1049,7 +1074,7 @@
 
 <!-- Reassign Case Worker Modal -->
 <div class="modal fade" id="reassignWorkerModal" tabindex="-1" aria-labelledby="reassignWorkerModalLabel" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered" style="max-width: 520px;">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down" style="max-width: 520px;">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <div class="modal-header bg-primary text-white py-3 px-4">
                 <div class="d-flex align-items-center gap-2.5">
@@ -1134,7 +1159,7 @@
 <!-- MODAL: Daily Proceedings & Hearing Date Analysis         -->
 <!-- ======================================================== -->
 <div class="modal fade" id="dailyProceedingsModal" tabindex="-1" aria-labelledby="dailyProceedingsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-fullscreen-lg-down modal-dialog-scrollable">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
             <!-- Modal Header -->
             <div class="modal-header bg-dark text-white p-3 p-md-4 d-flex justify-content-between align-items-center">
@@ -1364,6 +1389,13 @@
                     <i class="bi bi-exclamation-octagon fs-3 d-block mb-2"></i>
                     ${json.message || "Failed to load tracked cases."}
                 </td></tr>`;
+                const cardsContainer = document.getElementById("myCasesCardsContainer");
+                if (cardsContainer) {
+                    cardsContainer.innerHTML = `<div class="p-4 text-center text-danger bg-white rounded-3 border my-3">
+                        <i class="bi bi-exclamation-octagon fs-3 d-block mb-2"></i>
+                        ${json.message || "Failed to load tracked cases."}
+                    </div>`;
+                }
             }
         } catch (err) {
             console.error("Error loading tracked cases:", err);
@@ -1371,6 +1403,13 @@
                 <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
                 Connection error while retrieving tracked cases.
             </td></tr>`;
+            const cardsContainer = document.getElementById("myCasesCardsContainer");
+            if (cardsContainer) {
+                cardsContainer.innerHTML = `<div class="p-4 text-center text-danger bg-white rounded-3 border my-3">
+                    <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
+                    Connection error while retrieving tracked cases.
+                </div>`;
+            }
         } finally {
             if (refreshIcon) refreshIcon.classList.remove("spin-animation");
         }
@@ -2051,6 +2090,299 @@
     }
 
     // ==========================================
+    // Toggle Mobile In-Card Hearing Drawer
+    // ==========================================
+    function toggleMobileCardDrawer(trackedId) {
+        const drawer = document.getElementById(`mobile_drawer_${trackedId}`);
+        const icon = document.getElementById(`mobile_drawer_icon_${trackedId}`);
+        if (!drawer) return;
+        if (drawer.classList.contains("d-none")) {
+            drawer.classList.remove("d-none");
+            if (icon) icon.className = "bi bi-chevron-up extra-small text-primary";
+        } else {
+            drawer.classList.add("d-none");
+            if (icon) icon.className = "bi bi-chevron-down extra-small text-muted";
+        }
+    }
+
+    // ==========================================
+    // Render Mobile Case Card HTML Helper (Zero Data Loss)
+    // ==========================================
+    function renderCaseMobileCardHtml(c, index) {
+        const isHc = (c.cnrNumber || "").startsWith("HC") || (c.cnrNumber && c.cnrNumber.length >= 4 && c.cnrNumber.substring(2, 4).toUpperCase() === "HC");
+        const courtTierBadge = isHc 
+            ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small">High Court</span>` 
+            : `<span class="badge bg-secondary-subtle text-dark border extra-small">District / Lower</span>`;
+
+        const st = (c.caseStatus || "").toLowerCase();
+        const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
+        const statusBadge = isDisposed
+            ? `<span class="badge bg-success text-white extra-small"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`
+            : `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${escapeHtml(c.caseStatus || "—")}</span>`;
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        // Urgency Analysis formatting & border accent
+        let urgencyBadge = "";
+        let urgencyBorderClass = "border-urgency-default";
+        if (c.hearingUrgency === "TODAY") {
+            urgencyBadge = `<span class="badge bg-danger text-white extra-small px-1.5 py-0.5"><i class="bi bi-fire me-0.5"></i>TODAY</span>`;
+            urgencyBorderClass = "border-urgency-today";
+        } else if (c.hearingUrgency === "TOMORROW") {
+            urgencyBadge = `<span class="badge bg-warning text-dark extra-small px-1.5 py-0.5"><i class="bi bi-lightning-fill me-0.5"></i>TOMORROW</span>`;
+            urgencyBorderClass = "border-urgency-tomorrow";
+        } else if (c.hearingUrgency === "THIS_WEEK") {
+            urgencyBadge = `<span class="badge bg-primary-subtle text-primary border border-primary extra-small px-1.5 py-0.5">${c.daysToNextHearing}d left</span>`;
+            urgencyBorderClass = "border-urgency-upcoming";
+        } else if (c.hearingUrgency === "OVERDUE") {
+            urgencyBadge = `<span class="badge bg-danger-subtle text-danger border border-danger extra-small px-1.5 py-0.5">${Math.abs(c.daysToNextHearing)}d overdue</span>`;
+            urgencyBorderClass = "border-urgency-overdue";
+        } else if (isDisposed) {
+            urgencyBorderClass = "border-urgency-disposed";
+        }
+
+        let hearingDisplay = "";
+        if (c.nextHearingDate) {
+            const dt = new Date(c.nextHearingDate);
+            const yr = dt.getFullYear();
+            if (yr > 1990 && yr < 2090) {
+                const dtFormatted = dt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short', year: 'numeric' });
+                const isUpcoming = dt.toISOString().split('T')[0] >= todayStr;
+                hearingDisplay = `
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                        <span class="fw-bold ${isUpcoming ? "text-primary" : "text-danger"} fs-6">
+                            <i class="bi bi-calendar-event me-1"></i>${dtFormatted}
+                        </span>
+                        ${urgencyBadge}
+                    </div>
+                    <div class="extra-small text-dark fw-semibold mt-1">
+                        <i class="bi bi-bookmark-star text-secondary me-1"></i>Stage: ${escapeHtml(c.stagePurpose || "—")}
+                    </div>`;
+            }
+        }
+        if (!hearingDisplay) {
+            hearingDisplay = `
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+                    <span class="fw-semibold text-secondary"><i class="bi bi-hourglass-split me-1"></i>Date Awaited</span>
+                </div>
+                <div class="extra-small text-muted mt-1">
+                    <i class="bi bi-bookmark-star me-1"></i>Stage: ${escapeHtml(c.stagePurpose || "—")}
+                </div>`;
+        }
+
+        // Last synced formatting
+        let syncedStr = "—";
+        if (c.lastSyncedAt) {
+            const sDt = new Date(c.lastSyncedAt);
+            syncedStr = sDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + sDt.toLocaleDateString("en-GB", { day: '2-digit', month: 'short' });
+        }
+
+        const workerName = c.addedBy || "Central Office";
+        const lastBiz = (c.lastProceeding || "").trim();
+
+        // Build recent hearings snippet
+        let recentHearingsSnippet = "";
+        if (c.proceedingsHistory && Array.isArray(c.proceedingsHistory) && c.proceedingsHistory.length > 0) {
+            const recent = c.proceedingsHistory.slice(0, 3);
+            recentHearingsSnippet = `<div class="d-flex flex-column gap-1.5 mt-1">` + recent.map(rh => {
+                const rDt = rh.hearing_date || rh.business_date || rh.next_date || "—";
+                const rPurp = rh.purpose_of_listing || rh.purpose || rh.next_purpose || rh.stage || "Listing";
+                const rBiz = (rh.business || rh.roznama || rh.proceeding || "").trim();
+                return `
+                <div class="extra-small p-2 bg-white rounded border d-flex justify-content-between align-items-center gap-1.5">
+                    <span class="font-monospace fw-bold text-primary">${escapeHtml(rDt)}</span>
+                    <span class="text-truncate text-dark fw-semibold" style="max-width: 140px;" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
+                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
+                </div>`;
+            }).join("") + `</div>`;
+        } else {
+            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
+        }
+
+        return `
+        <div class="mobile-case-card mb-3 shadow-sm ${urgencyBorderClass}" id="mcard_${c.trackedID}">
+            <!-- Card Header: Index, Case Type & Number, Status -->
+            <div class="mobile-card-header d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                    <span class="badge bg-secondary text-white rounded-pill extra-small">#${index}</span>
+                    <span class="badge bg-primary font-monospace fw-bold">${escapeHtml(getDisplayCaseType(c))}</span>
+                    <span class="fw-bold text-dark font-monospace">${escapeHtml(c.caseNumber || "")}${c.caseYear ? "/" + c.caseYear : ""}</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    ${courtTierBadge}
+                    ${statusBadge}
+                </div>
+            </div>
+
+            <!-- Card Body: CNR, Court Hall, Parties, Hearing, Worker -->
+            <div class="mobile-card-body">
+                <!-- CNR with 1-touch copy -->
+                <div class="d-flex align-items-center justify-content-between bg-light p-2 rounded-3 border mb-2">
+                    <div class="d-flex align-items-center gap-1.5">
+                        <i class="bi bi-hash text-muted"></i>
+                        <span class="font-monospace fw-bold text-dark fs-6">${escapeHtml(c.cnrNumber)}</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary py-1 px-2.5 rounded-pill extra-small d-flex align-items-center gap-1" onclick="copyToClipboard('${c.cnrNumber}')" title="Copy CNR">
+                        <i class="bi bi-clipboard"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+
+                <!-- Court Hall, Bench & Judge -->
+                <div class="mb-2">
+                    <div class="fw-bold text-dark small d-flex align-items-center gap-1 text-truncate">
+                        <i class="bi bi-building text-primary"></i>
+                        <span>${escapeHtml(c.courtEstName || c.estCode || 'Court')}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
+                        ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim()))) ? `
+                        <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
+                            <i class="bi bi-bank2 me-1"></i>${escapeHtml(c.courtNo)}
+                        </span>` : ''}
+                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Item #${escapeHtml(c.itemNo)}`}</span>` : ''}
+                        ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
+                        <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
+                    </div>
+                    <div class="extra-small text-muted text-truncate">
+                        <i class="bi bi-person-lines-fill me-1"></i>Coram: ${escapeHtml(c.judgeDesignation || "—")}
+                    </div>
+                </div>
+
+                <!-- Parties: Petitioner vs Respondent -->
+                <div class="p-2.5 rounded-3 bg-light border mb-2">
+                    <div class="fw-bold text-dark small text-truncate" title="${escapeHtml(c.petitioner || '')}">
+                        <span class="text-primary me-1 fw-bold">P:</span>${escapeHtml(c.petitioner || "—")}
+                    </div>
+                    <div class="text-muted extra-small text-truncate mt-1" title="${escapeHtml(c.respondent || '')}">
+                        <span class="text-danger me-1 fw-bold">R:</span>vs ${escapeHtml(c.respondent || "—")}
+                    </div>
+                </div>
+
+                <!-- Next Hearing Date & Stage -->
+                <div class="p-2.5 rounded-3 border bg-white mb-2 shadow-xs">
+                    ${hearingDisplay}
+                </div>
+
+                <!-- Case Worker & Sync Metadata -->
+                <div class="d-flex justify-content-between align-items-center extra-small text-muted pt-1 border-top">
+                    <span class="badge bg-light text-dark border py-1 px-2" title="Assigned Case Worker">
+                        <i class="bi bi-person-fill text-primary me-1"></i>${escapeHtml(workerName)}
+                    </span>
+                    <span><i class="bi bi-arrow-repeat me-1"></i>${syncedStr}</span>
+                </div>
+
+                <!-- In-Card Hearing Drawer Toggle -->
+                <button type="button" class="btn btn-sm btn-link text-decoration-none text-secondary p-0 extra-small mt-2 d-flex align-items-center justify-content-between w-100" onclick="toggleMobileCardDrawer(${c.trackedID})">
+                    <span class="fw-semibold"><i class="bi bi-journal-text text-primary me-1"></i>Roznama Preview &amp; History (${c.totalHearings || 0})</span>
+                    <i class="bi bi-chevron-down extra-small" id="mobile_drawer_icon_${c.trackedID}"></i>
+                </button>
+
+                <!-- In-Card Expandable Roznama Drawer -->
+                <div class="mobile-card-drawer d-none mt-2" id="mobile_drawer_${c.trackedID}">
+                    <div class="extra-small text-uppercase fw-bold text-primary mb-1">
+                        <i class="bi bi-broadcast me-1"></i>Latest Roznama / Order
+                    </div>
+                    <div class="p-2 bg-white rounded border text-dark font-monospace extra-small mb-2" style="max-height: 90px; overflow-y: auto; line-height: 1.4;">
+                        ${lastBiz ? escapeHtml(lastBiz) : '<span class="text-muted fst-italic">No offline roznama text stored. Click below to query live from eCourts.</span>'}
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1 extra-small"
+                                onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(c.lastHearingDate || '')}', ${isHc}, null)">
+                            <i class="bi bi-broadcast me-1"></i>Fetch Live
+                        </button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2.5 py-1 extra-small"
+                                onclick="openDailyProceedingsModal(${c.trackedID})">
+                            All ${c.totalHearings || 0} Proceedings &raquo;
+                        </button>
+                    </div>
+                    <div class="extra-small fw-bold text-muted text-uppercase mb-1">Recent Hearings:</div>
+                    ${recentHearingsSnippet}
+                </div>
+            </div>
+
+            <!-- Card Footer: Mobile Touch Actions (>= 44px tap area) -->
+            <div class="mobile-card-footer">
+                <div class="d-flex align-items-center gap-1.5">
+                    <button type="button" class="btn btn-sm btn-info text-white mobile-action-btn shadow-xs" onclick="openDailyProceedingsModal(${c.trackedID})" title="Daily Proceedings &amp; Roznama Timeline">
+                        <i class="bi bi-journal-text me-1"></i>Roznamas
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary mobile-action-btn shadow-xs" onclick="openCaseDossier(${c.trackedID})" title="View Full Case Dossier">
+                        <i class="bi bi-file-earmark-medical me-1"></i>Dossier
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger mobile-action-btn shadow-xs" id="mbtnCl_${c.trackedID}" onclick="checkLiveCauseList(${c.trackedID}, '${c.cnrNumber}')" title="Check Live High Court Cause List">
+                        <i class="bi bi-broadcast me-1"></i>Cause List
+                    </button>
+                    <!-- 3-Dots More Options Menu -->
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary mobile-action-btn px-2.5 dropdown-toggle dropdown-toggle-split" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="More Case Actions">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 220px;">
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="syncCaseLive(${c.trackedID})">
+                                    <i class="bi bi-arrow-clockwise text-primary fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Sync Live from eCourts</div>
+                                        <div class="extra-small text-muted">Refresh proceedings and status</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')">
+                                    <i class="bi bi-person-gear text-info fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Reassign Case Worker</div>
+                                        <div class="extra-small text-muted">Change desk assignment</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printSingleCase(${c.trackedID})">
+                                    <i class="bi bi-printer text-dark fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Print Case Dossier</div>
+                                        <div class="extra-small text-muted">Judicial printable report</div>
+                                    </div>
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider my-1"></li>
+                            <li>
+                                <a class="dropdown-item small py-2 d-flex align-items-center gap-2 text-danger" href="javascript:void(0)" onclick="removeCase(${c.trackedID}, '${c.cnrNumber}')">
+                                    <i class="bi bi-trash fs-6"></i>
+                                    <div>
+                                        <div class="fw-bold">Remove from My Cases</div>
+                                        <div class="extra-small text-danger text-opacity-75">Stop live tracking</div>
+                                    </div>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function onSearchInputChanged() {
+        const val = document.getElementById("caseSearchInput")?.value || "";
+        const btn = document.getElementById("clearSearchBtn");
+        if (btn) {
+            if (val.trim()) btn.classList.remove("d-none");
+            else btn.classList.add("d-none");
+        }
+        filterCasesTable();
+    }
+
+    function clearSearchInput() {
+        const inp = document.getElementById("caseSearchInput");
+        const btn = document.getElementById("clearSearchBtn");
+        if (inp) {
+            inp.value = "";
+        }
+        if (btn) btn.classList.add("d-none");
+        filterCasesTable();
+    }
+
+    // ==========================================
     // Render Cases Table with search, worker & hearing date filters
     // ==========================================
     function renderCasesTable() {
@@ -2187,6 +2519,12 @@
                 <i class="bi bi-inbox fs-2 text-secondary d-block mb-2"></i>
                 No cases match the selected filter criteria.
             </td></tr>`;
+            if (cardsContainer) {
+                cardsContainer.innerHTML = `<div class="p-4 text-center text-muted bg-white rounded-3 border my-2">
+                    <i class="bi bi-inbox fs-2 text-secondary d-block mb-2"></i>
+                    No cases match the selected filter criteria.
+                </div>`;
+            }
             return;
         }
 
@@ -2200,6 +2538,7 @@
             });
 
             let groupHtml = "";
+            let groupCardsHtml = "";
             let overallIndex = startIndex;
             const workerNames = Object.keys(workerGroups).sort((a, b) => a.localeCompare(b));
 
@@ -2244,23 +2583,44 @@
                     </td>
                 </tr>`;
 
+                // Mobile grouped cards wrapper
+                groupCardsHtml += `
+                <div class="card border-primary-subtle shadow-sm mb-3 rounded-3 overflow-hidden">
+                    <div class="card-header bg-primary text-white py-2 px-3 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="badge bg-white text-primary rounded-pill px-2.5 py-1 fw-bold fs-6">
+                                <i class="bi bi-person-badge-fill me-1"></i>${escapeHtml(wName)}
+                            </span>
+                            <span class="badge bg-white bg-opacity-25 text-white extra-small">${wCases.length} Cases</span>
+                        </div>
+                        <button type="button" class="btn btn-xs btn-outline-light rounded-pill extra-small px-2 py-0.5" onclick="filterByWorkerOnly('${escapeJs(wName)}')">Focus</button>
+                    </div>
+                    <div class="card-body p-2 bg-light">`;
+
                 wCases.forEach(c => {
                     overallIndex++;
                     groupHtml += renderCaseRowHtml(c, overallIndex, gId);
+                    groupCardsHtml += renderCaseMobileCardHtml(c, overallIndex);
                 });
+
+                groupCardsHtml += `</div></div>`;
             });
 
             tbody.innerHTML = groupHtml;
+            if (cardsContainer) cardsContainer.innerHTML = groupCardsHtml;
             return;
         }
 
         // Standard Flat View Rendering
         let html = "";
+        let cardsHtml = "";
         pagedItems.forEach((c, index) => {
             html += renderCaseRowHtml(c, startIndex + index + 1);
+            cardsHtml += renderCaseMobileCardHtml(c, startIndex + index + 1);
         });
 
         tbody.innerHTML = html;
+        if (cardsContainer) cardsContainer.innerHTML = cardsHtml;
     }
 
     function filterCasesTable() {
@@ -2278,7 +2638,10 @@
         currentPage = page;
         renderCasesTable();
         const tableCard = document.getElementById("myCasesTable");
-        if (tableCard) {
+        const mobileContainer = document.getElementById("myCasesCardsContainer");
+        if (window.innerWidth < 992 && mobileContainer) {
+            mobileContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else if (tableCard) {
             tableCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     }
