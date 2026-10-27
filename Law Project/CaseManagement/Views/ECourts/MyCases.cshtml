@@ -214,6 +214,35 @@
         </div>
     </div>
 
+    <!-- High Court Cause List Live Alert Banner (NWKRTC) -->
+    <div id="nwkrtcCauseListAlertBanner" class="alert alert-danger border-0 shadow-sm rounded-4 p-3 mb-3 d-none animate__animated animate__fadeIn" role="alert">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2.5">
+                <div class="bg-danger text-white rounded-circle p-2 d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 40px; height: 40px;">
+                    <i class="bi bi-broadcast fs-5 animate-pulse"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <strong class="text-danger fw-bold fs-6">High Court Cause List Live Alert</strong>
+                        <span class="badge bg-danger text-white font-monospace fw-bold" id="alertBannerDateBadge">Today</span>
+                        <span class="badge bg-white text-danger border border-danger font-monospace fw-bold" id="alertBannerCountBadge">0 Listed</span>
+                        <span class="badge bg-warning text-dark font-monospace fw-bold d-none" id="alertBannerUntrackedBadge">0 Untracked</span>
+                    </div>
+                    <div class="extra-small text-dark mt-0.5" id="alertBannerMessageText">
+                        Checking official High Court daily rosters for NWKRTC cases...
+                    </div>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 ms-auto ms-sm-0">
+                <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm d-flex align-items-center gap-1.5 rounded-pill" onclick="openNwkrtcDailyAlertsModal()">
+                    <i class="bi bi-list-check"></i>
+                    <span>Inspect Listed Cases (<span id="alertBtnBadge">0</span>)</span>
+                </button>
+                <button type="button" class="btn-close" onclick="dismissCauseListAlertBanner()" aria-label="Dismiss"></button>
+            </div>
+        </div>
+    </div>
+
     <!-- KPI Summary Cards: 2x2 Grid on Mobile (<576px), 4 Columns on xl -->
     <div class="row row-cols-2 row-cols-sm-2 row-cols-xl-4 g-2 g-md-3 mb-3 mb-md-4">
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('all')" title="Filter: All Cases">
@@ -554,7 +583,7 @@
 </div>
 
 <!-- ======================================================== -->
-<!-- MODAL: Add CNR Numbers (Supports Bulk Paste)              -->
+<!-- MODAL: Add Cases (CNR Bulk Entry & High Court Party Search) -->
 <!-- ======================================================== -->
 <div class="modal fade" id="addCnrModal" tabindex="-1" aria-labelledby="addCnrModalLabel" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-fullscreen-lg-down">
@@ -566,7 +595,7 @@
                         <i class="bi bi-plus-lg text-warning fs-5"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0" id="addCnrModalLabel">Add CNR Numbers to Track</h5>
+                        <h5 class="modal-title fw-bold mb-0" id="addCnrModalLabel">Add Cases to Track</h5>
                         <div class="small text-white-50" style="font-size: 0.75rem;">
                             Target Module: <strong>@module</strong> — Live eCourts NAPIX synchronization
                         </div>
@@ -575,16 +604,8 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
 
-            <div class="modal-body p-4">
-                <div class="alert alert-info border-0 rounded-3 d-flex align-items-start gap-2 mb-3 py-2.5 px-3">
-                    <i class="bi bi-info-circle-fill text-primary fs-5 mt-0.5"></i>
-                    <div class="small text-dark">
-                        <strong>Bulk Entry Supported:</strong> Paste one or multiple 16-character CNR numbers separated by lines, commas, or spaces (e.g. <code>KAHC020060752019</code>). 
-                        The system will automatically query the live NAPIX eCourts Gateway, retrieve complete case history, orders, parties, and status, and store the dossier with zero data loss.
-                    </div>
-                </div>
-
-                <!-- Assigned Case Worker / Desk Selector -->
+            <div class="modal-body p-3 p-md-4">
+                <!-- Assigned Case Worker / Desk Selector (Shared) -->
                 <div class="mb-3 p-3 bg-light rounded-3 border">
                     <label for="assignedCaseWorkerSelect" class="form-label fw-bold text-dark small mb-1.5 d-flex align-items-center justify-content-between">
                         <span class="d-flex align-items-center gap-1.5">
@@ -625,57 +646,199 @@
                                    placeholder="Type custom Case Worker name or desk..." />
                         </div>
                     </div>
-                    <div class="extra-small text-muted mt-1.5 d-flex align-items-center justify-content-between">
-                        <span><i class="bi bi-info-circle me-1"></i>Select designated case worker or assign to a custom desk.</span>
-                    </div>
                 </div>
 
-                <div class="mb-3">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <label for="bulkCnrTextarea" class="form-label fw-bold text-dark small mb-0">
-                            Enter / Paste CNR Numbers:
-                        </label>
-                        <span class="badge bg-secondary-subtle text-dark border small" id="detectedCnrsBadge">
-                            0 valid CNR(s) detected
-                        </span>
-                    </div>
-                    <textarea class="form-control font-monospace border-2" id="bulkCnrTextarea" rows="6" 
-                              placeholder="e.g.&#10;KAHC020060752019&#10;KAHC010045232021&#10;KADW200035292024"
-                              style="font-size: 0.9rem;" oninput="onCnrInputChanged()"></textarea>
-                </div>
+                <!-- Navigation Tabs: Bulk CNR vs Search by Party Name -->
+                <ul class="nav nav-pills nav-fill mb-3 gap-2 bg-light p-1.5 rounded-3 border" id="addCaseModalNavTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active small fw-bold py-2" id="pills-bulk-cnr-tab" data-bs-toggle="pill" data-bs-target="#pills-bulk-cnr" type="button" role="tab" aria-selected="true">
+                            <i class="bi bi-hash me-1"></i>By CNR Number (Bulk)
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link small fw-bold py-2" id="pills-party-search-tab" data-bs-toggle="pill" data-bs-target="#pills-party-search" type="button" role="tab" aria-selected="false">
+                            <i class="bi bi-person-bounding-box me-1"></i>Search High Court by Party Name
+                        </button>
+                    </li>
+                </ul>
 
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <button type="button" class="btn btn-link text-decoration-none p-0 extra-small text-muted" onclick="insertSampleCnr()">
-                        <i class="bi bi-magic me-1 text-primary"></i> Paste sample High Court CNR (KAHC020060752019)
-                    </button>
-                    <button type="button" class="btn btn-link text-decoration-none p-0 extra-small text-danger" onclick="clearCnrInput()">
-                        <i class="bi bi-trash me-1"></i> Clear Input
-                    </button>
-                </div>
+                <div class="tab-content" id="addCaseModalTabContent">
+                    <!-- TAB 1: By CNR Number -->
+                    <div class="tab-pane fade show active" id="pills-bulk-cnr" role="tabpanel" aria-labelledby="pills-bulk-cnr-tab">
+                        <div class="alert alert-info border-0 rounded-3 d-flex align-items-start gap-2 mb-3 py-2 px-3 extra-small">
+                            <i class="bi bi-info-circle-fill text-primary fs-6 mt-0.5"></i>
+                            <div class="text-dark">
+                                <strong>Bulk Entry:</strong> Paste one or multiple 16-character CNR numbers separated by lines, commas, or spaces (e.g. <code>KAHC020060752019</code>). 
+                                The system connects directly to the live NAPIX eCourts Gateway.
+                            </div>
+                        </div>
 
-                <!-- Live Progress indicator -->
-                <div id="addCnrProgressContainer" class="d-none mt-3 p-3 bg-light rounded-3 border">
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <span class="small fw-bold text-dark" id="addCnrProgressLabel">Connecting to eCourts NAPIX Gateway...</span>
-                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label for="bulkCnrTextarea" class="form-label fw-bold text-dark small mb-0">
+                                    Enter / Paste CNR Numbers:
+                                </label>
+                                <span class="badge bg-secondary-subtle text-dark border small" id="detectedCnrsBadge">
+                                    0 valid CNR(s) detected
+                                </span>
+                            </div>
+                            <textarea class="form-control font-monospace border-2" id="bulkCnrTextarea" rows="5" 
+                                      placeholder="e.g.&#10;KAHC020060752019&#10;KAHC010045232021&#10;KADW200035292024"
+                                      style="font-size: 0.9rem;" oninput="onCnrInputChanged()"></textarea>
+                        </div>
+
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <button type="button" class="btn btn-link text-decoration-none p-0 extra-small text-muted" onclick="insertSampleCnr()">
+                                <i class="bi bi-magic me-1 text-primary"></i> Paste sample High Court CNR (KAHC020060752019)
+                            </button>
+                            <button type="button" class="btn btn-link text-decoration-none p-0 extra-small text-danger" onclick="clearCnrInput()">
+                                <i class="bi bi-trash me-1"></i> Clear Input
+                            </button>
+                        </div>
+
+                        <!-- Live Progress indicator -->
+                        <div id="addCnrProgressContainer" class="d-none mt-3 p-3 bg-light rounded-3 border">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <span class="small fw-bold text-dark" id="addCnrProgressLabel">Connecting to eCourts NAPIX Gateway...</span>
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            </div>
+                            <div class="progress" style="height: 6px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="addCnrProgressBar" style="width: 100%;"></div>
+                            </div>
+                            <div class="small text-muted mt-2" id="addCnrProgressDetails" style="font-size: 0.75rem;">
+                                Fetching details from <code>/nic/ecourts/hc-cnr-api/CNR</code> with token authentication...
+                            </div>
+                        </div>
+
+                        <!-- Result Message Alert -->
+                        <div id="addCnrResultAlert" class="d-none mt-3 alert mb-0" role="alert"></div>
+
+                        <div class="d-flex justify-content-end gap-2 mt-3 pt-3 border-top">
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" id="btnSubmitAddCnrs" onclick="submitAddCnrs()">
+                                <i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch & Save Cases
+                            </button>
+                        </div>
                     </div>
-                    <div class="progress" style="height: 6px;">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="addCnrProgressBar" style="width: 100%;"></div>
-                    </div>
-                    <div class="small text-muted mt-2" id="addCnrProgressDetails" style="font-size: 0.75rem;">
-                        Fetching details from <code>/nic/ecourts/hc-cnr-api/CNR</code> with token authentication...
+
+                    <!-- TAB 2: Search by Party Name -->
+                    <div class="tab-pane fade" id="pills-party-search" role="tabpanel" aria-labelledby="pills-party-search-tab">
+                        <div class="p-3 bg-light rounded-3 border mb-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label small fw-bold text-dark mb-1">
+                                        <i class="bi bi-bank2 text-primary me-1"></i>High Court Bench:
+                                    </label>
+                                    <select id="partySearchBenchSelect" class="form-select form-select-sm fw-semibold">
+                                        <option value="KAHC02" selected>Dharwad Bench (KAHC02 — NWKRTC Hub)</option>
+                                        <option value="KAHC01">Principal Bench Bengaluru (KAHC01)</option>
+                                        <option value="KAHC03">Kalaburagi Bench (KAHC03)</option>
+                                        <option value="ALL">All High Court Benches (Simultaneous Scan)</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <label class="form-label small fw-bold text-dark mb-1">
+                                        <i class="bi bi-calendar-event text-primary me-1"></i>Year:
+                                    </label>
+                                    <select id="partySearchYearSelect" class="form-select form-select-sm fw-semibold">
+                                        <option value="ALL" selected>Recent (Last 3 Years)</option>
+                                        <option value="2026">2026</option>
+                                        <option value="2025">2025</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2022">2022</option>
+                                    </select>
+                                </div>
+                                <div class="col-12 col-md-3">
+                                    <label class="form-label small fw-bold text-dark mb-1">
+                                        <i class="bi bi-filter-circle text-primary me-1"></i>Status:
+                                    </label>
+                                    <select id="partySearchStatusSelect" class="form-select form-select-sm fw-semibold">
+                                        <option value="P" selected>Pending Cases</option>
+                                        <option value="D">Disposed Cases</option>
+                                        <option value="ALL">All Statuses</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label small fw-bold text-dark mb-1 d-flex justify-content-between align-items-center">
+                                        <span><i class="bi bi-person-badge text-primary me-1"></i>Litigant / Party Name:</span>
+                                        <span class="extra-small text-muted">Petitioner or Respondent</span>
+                                    </label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" id="partySearchInput" class="form-control fw-bold" 
+                                               value="NWKRTC" placeholder="Enter party name (e.g. NWKRTC, Managing Director, Suresh Patil)..." 
+                                               onkeyup="if(event.key==='Enter') executeHighCourtPartySearch()" />
+                                        <button class="btn btn-primary px-3 fw-bold" type="button" id="btnExecutePartySearch" onclick="executeHighCourtPartySearch()">
+                                            <i class="bi bi-search me-1"></i>Search Cases
+                                        </button>
+                                    </div>
+                                    <!-- Quick Litigant Preset Tags -->
+                                    <div class="mt-2 d-flex flex-wrap align-items-center gap-1 extra-small">
+                                        <span class="text-muted fw-bold me-1">Presets:</span>
+                                        <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('NWKRTC')">NWKRTC</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('MANAGING DIRECTOR')">Managing Director</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('DEPOT MANAGER')">Depot Manager</button>
+                                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('')">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live Search Results Container -->
+                        <div id="partySearchResultsContainer" style="max-height: 380px; overflow-y: auto;">
+                            <div class="text-center py-4 text-muted small">
+                                <i class="bi bi-search fs-3 text-secondary d-block mb-2"></i>
+                                Enter a party name and click <strong>Search Cases</strong> to discover High Court matters via NAPIX Gateway.
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-3 pt-3 border-top">
+                            <span class="extra-small text-muted" id="partySearchResultsSummary">0 cases found</span>
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                        </div>
                     </div>
                 </div>
-
-                <!-- Result Message Alert -->
-                <div id="addCnrResultAlert" class="d-none mt-3 alert mb-0" role="alert"></div>
             </div>
+        </div>
+    </div>
+</div>
 
-            <div class="modal-footer bg-light p-3">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold" id="btnSubmitAddCnrs" onclick="submitAddCnrs()">
-                    <i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch & Save Cases
-                </button>
+<!-- ======================================================== -->
+<!-- MODAL: High Court Daily Cause List Alerts Inspector       -->
+<!-- ======================================================== -->
+<div class="modal fade" id="nwkrtcDailyAlertsModal" tabindex="-1" aria-labelledby="nwkrtcDailyAlertsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-danger text-white p-3 px-4 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2.5">
+                    <div class="bg-white bg-opacity-25 p-2 rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 38px; height: 38px;">
+                        <i class="bi bi-broadcast fs-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0" id="nwkrtcDailyAlertsModalLabel">High Court Cause List — NWKRTC Cases Listed Today</h5>
+                        <div class="extra-small text-white-50" id="nwkrtcDailyAlertsSubtitle">Official High Court Gateway Rosters (Dharwad, Bengaluru, Kalaburagi)</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3 p-md-4" id="nwkrtcDailyAlertsModalBody">
+                <div class="text-center py-5 text-muted">
+                    <div class="spinner-border text-danger mb-2" role="status"></div>
+                    <p class="fw-bold mb-0">Connecting to High Court Gateway...</p>
+                </div>
+            </div>
+            <div class="modal-footer bg-light p-3 d-flex justify-content-between align-items-center">
+                <div class="extra-small text-muted">
+                    <i class="bi bi-shield-check text-success me-1"></i> Real-time match via eCourts NAPIX Gateway
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary btn-sm px-3 fw-bold shadow-sm" id="btnTrackAllAlerts" onclick="trackAllUntrackedAlerts()">
+                        <i class="bi bi-cloud-arrow-down-fill me-1"></i> Track All Untracked Cases
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1359,6 +1522,7 @@
             }
         }
         loadTrackedCases();
+        checkNwkrtcDailyCauseListAlerts();
     });
 
     // ==========================================
@@ -5648,6 +5812,396 @@
         const toast = new bootstrap.Toast(el, { delay: 3500 });
         toast.show();
         el.addEventListener("hidden.bs.toast", () => el.remove());
+    }
+
+    // ==========================================
+    // High Court Cause List Live Alerts & Scanner
+    // ==========================================
+    let latestNwkrtcAlertsData = null;
+
+    async function checkNwkrtcDailyCauseListAlerts() {
+        const banner = document.getElementById("nwkrtcCauseListAlertBanner");
+        if (!banner) return;
+
+        try {
+            const res = await fetch(`/ECourts/GetTodayNwkrtcCauseListAlerts?module=${encodeURIComponent(currentModule)}`);
+            const data = await res.json();
+
+            if (data && data.success && data.hasAlerts) {
+                latestNwkrtcAlertsData = data;
+                banner.classList.remove("d-none");
+                
+                const dateBadge = document.getElementById("alertBannerDateBadge");
+                if (dateBadge) dateBadge.innerText = data.causelistDate || "Today";
+
+                const countBadge = document.getElementById("alertBannerCountBadge");
+                if (countBadge) countBadge.innerText = `${data.totalListed} Case${data.totalListed > 1 ? 's' : ''} Listed`;
+
+                const untrackedBadge = document.getElementById("alertBannerUntrackedBadge");
+                if (untrackedBadge) {
+                    if (data.untrackedCount > 0) {
+                        untrackedBadge.classList.remove("d-none");
+                        untrackedBadge.innerHTML = `<i class="bi bi-exclamation-triangle-fill me-1"></i>${data.untrackedCount} Untracked / New!`;
+                    } else {
+                        untrackedBadge.classList.add("d-none");
+                    }
+                }
+
+                const msgText = document.getElementById("alertBannerMessageText");
+                if (msgText) {
+                    let benchText = (data.byBench && data.byBench.length > 0) 
+                        ? data.byBench.map(b => `${b.bench} (${b.count})`).join(", ") 
+                        : "High Court Benches";
+                    msgText.innerHTML = `<strong>${data.totalListed} NWKRTC matter(s)</strong> detected across: <em>${escapeHtml(benchText)}</em>. ${data.untrackedCount > 0 ? `<strong>${data.untrackedCount} untracked case(s)</strong> require appearance/advocate allocation.` : 'All cases are currently tracked in registry.'}`;
+                }
+
+                const btnBadge = document.getElementById("alertBtnBadge");
+                if (btnBadge) btnBadge.innerText = data.totalListed;
+            } else {
+                banner.classList.add("d-none");
+            }
+        } catch (err) {
+            console.warn("Could not check daily cause list alerts:", err);
+            if (banner) banner.classList.add("d-none");
+        }
+    }
+
+    function dismissCauseListAlertBanner() {
+        const banner = document.getElementById("nwkrtcCauseListAlertBanner");
+        if (banner) banner.classList.add("d-none");
+    }
+
+    function openNwkrtcDailyAlertsModal() {
+        const modalEl = document.getElementById("nwkrtcDailyAlertsModal");
+        if (!modalEl) return;
+
+        renderNwkrtcDailyAlertsContent();
+        const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        bsModal.show();
+    }
+
+    function renderNwkrtcDailyAlertsContent() {
+        const container = document.getElementById("nwkrtcDailyAlertsModalBody");
+        if (!container) return;
+
+        if (!latestNwkrtcAlertsData || !latestNwkrtcAlertsData.alerts || latestNwkrtcAlertsData.alerts.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-calendar-check fs-1 text-success d-block mb-2"></i>
+                    <h5 class="fw-bold text-dark">No NWKRTC Cases Listed Today</h5>
+                    <p class="small mb-0">High Court rosters for today have no listed hearings under NWKRTC or its designations.</p>
+                </div>`;
+            return;
+        }
+
+        const alerts = latestNwkrtcAlertsData.alerts;
+        const total = latestNwkrtcAlertsData.totalListed;
+        const untracked = latestNwkrtcAlertsData.untrackedCount;
+        const tracked = latestNwkrtcAlertsData.trackedCount;
+        const cDate = latestNwkrtcAlertsData.causelistDate;
+
+        let html = `
+            <div class="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger-subtle mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                    <span class="badge bg-danger text-white font-monospace fw-bold px-2 py-1 me-2">Date: ${cDate}</span>
+                    <strong class="text-danger">${total} Total Listings Detected</strong>
+                    <span class="text-secondary small ms-2">(${tracked} Tracked in System, <strong class="text-danger">${untracked} Untracked</strong>)</span>
+                </div>
+                ${untracked > 0 ? `<button class="btn btn-danger btn-sm fw-bold px-3 shadow-sm rounded-pill" onclick="trackAllUntrackedAlerts()"><i class="bi bi-cloud-arrow-down-fill me-1"></i>Track All ${untracked} Untracked</button>` : ''}
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0 border">
+                    <thead class="bg-light extra-small text-uppercase text-secondary">
+                        <tr>
+                            <th style="width: 35px;" class="text-center">#</th>
+                            <th style="min-width: 140px;">Case Number & Year</th>
+                            <th style="min-width: 150px;">High Court Bench & Court Hall</th>
+                            <th style="min-width: 160px;">CNR Number</th>
+                            <th style="min-width: 220px;">Petitioner vs Respondent</th>
+                            <th style="min-width: 130px;">Corporation Role</th>
+                            <th style="min-width: 120px;" class="text-center">Registry Status</th>
+                            <th style="min-width: 130px;" class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        alerts.forEach((c, idx) => {
+            const isTrk = c.isTrackedInMyCases || c.isLocalMatch;
+            const cnr = c.cnrNumber || "—";
+            const roleBadge = c.nwkrtcRole === "With NWKRTC"
+                ? `<span class="badge bg-primary text-white"><i class="bi bi-shield-check me-1"></i>With NWKRTC</span>`
+                : `<span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-shield-exclamation text-danger me-1"></i>Against NWKRTC</span>`;
+
+            html += `
+                <tr class="${!isTrk ? 'table-warning' : ''}">
+                    <td class="text-center fw-bold text-muted">${idx + 1}</td>
+                    <td>
+                        <strong class="text-primary font-monospace">${escapeHtml(c.caseType || 'MFA')} ${escapeHtml(c.regNumber || '')}/${escapeHtml(c.regYear || '')}</strong>
+                        <div class="extra-small text-muted">${escapeHtml(c.caseStage || 'Listed Today')}</div>
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-dark border fw-bold d-block mb-1 text-truncate" style="max-width: 180px;">${escapeHtml(c.highCourtBench || 'Dharwad Bench')}</span>
+                        <span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-bank2 me-1"></i>${escapeHtml(c.courtHall || 'Court Hall Scheduled')}</span>
+                    </td>
+                    <td>
+                        <span class="font-monospace fw-bold text-dark d-block">${escapeHtml(cnr)}</span>
+                        ${cnr && cnr !== '—' ? `<button class="btn btn-link btn-sm p-0 text-decoration-none extra-small text-muted" onclick="copyTextToClipboard('${cnr}')"><i class="bi bi-clipboard me-1"></i>Copy CNR</button>` : ''}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-dark text-truncate" style="max-width: 220px;" title="${escapeHtml(c.petitionerName || '—')}">${escapeHtml(c.petitionerName || '—')}</div>
+                        <div class="extra-small text-muted text-truncate" style="max-width: 220px;" title="${escapeHtml(c.respondentName || '—')}">vs ${escapeHtml(c.respondentName || '—')}</div>
+                    </td>
+                    <td>
+                        ${roleBadge}
+                        ${c.matchedDesignation ? `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person-badge me-0.5"></i>${escapeHtml(c.matchedDesignation)}</div>` : ''}
+                    </td>
+                    <td class="text-center">
+                        ${isTrk 
+                            ? `<span class="badge bg-success-subtle text-success border border-success extra-small"><i class="bi bi-check-circle-fill me-1"></i>Tracked</span><div class="extra-small text-muted">${escapeHtml(c.assignedWorker || 'Central Office')}</div>`
+                            : `<span class="badge bg-danger text-white extra-small"><i class="bi bi-exclamation-circle-fill me-1"></i>Untracked</span>`
+                        }
+                    </td>
+                    <td class="text-end">
+                        ${isTrk
+                            ? `<button class="btn btn-outline-info btn-sm py-1 px-2.5 extra-small" onclick="viewTrackedCaseDossier('${cnr}')"><i class="bi bi-journal-text me-1"></i>Dossier</button>`
+                            : `<button class="btn btn-primary btn-sm py-1 px-2.5 extra-small fw-bold shadow-sm rounded-pill" id="btnTrackAlert_${idx}" onclick="trackSingleDiscoveredCnr('${cnr}', 'btnTrackAlert_${idx}')"><i class="bi bi-plus-circle me-1"></i>Track</button>`
+                        }
+                    </td>
+                </tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
+
+    async function trackAllUntrackedAlerts() {
+        if (!latestNwkrtcAlertsData || !latestNwkrtcAlertsData.alerts) return;
+
+        const untracked = latestNwkrtcAlertsData.alerts.filter(x => !x.isTrackedInMyCases && !x.isLocalMatch && x.cnrNumber && x.cnrNumber.length === 16);
+        if (untracked.length === 0) {
+            showToast("No Untracked Cases", "All listed cases are already tracked in the registry.", true);
+            return;
+        }
+
+        const cnrs = untracked.map(x => x.cnrNumber);
+        const btn = document.getElementById("btnTrackAllAlerts");
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch("/ECourts/AddTrackedCnrs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    cnrNumbers: cnrs.join("\n"),
+                    module: currentModule,
+                    caseWorker: "Central Office"
+                })
+            });
+
+            const json = await res.json();
+            if (json.success) {
+                showToast("Tracking Started", `Successfully added ${json.added || untracked.length} untracked case(s) from High Court Cause List.`, true);
+                loadTrackedCases();
+                checkNwkrtcDailyCauseListAlerts();
+                setTimeout(() => {
+                    const modalEl = document.getElementById("nwkrtcDailyAlertsModal");
+                    const bsModal = bootstrap.Modal.getInstance(modalEl);
+                    if (bsModal) bsModal.hide();
+                }, 1200);
+            } else {
+                showToast("Error Tracking Cases", json.message || "Failed to add cases.", false);
+            }
+        } catch (err) {
+            showToast("Error", "Network error while saving cases.", false);
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    // ==========================================
+    // High Court Search by Party Name Methods
+    // ==========================================
+    function setPartySearchPreset(val) {
+        const inp = document.getElementById("partySearchInput");
+        if (inp) {
+            inp.value = val;
+            if (val) executeHighCourtPartySearch();
+        }
+    }
+
+    async function executeHighCourtPartySearch() {
+        const bench = document.getElementById("partySearchBenchSelect")?.value || "KAHC02";
+        const partyName = (document.getElementById("partySearchInput")?.value || "").trim();
+        const year = document.getElementById("partySearchYearSelect")?.value || "ALL";
+        const status = document.getElementById("partySearchStatusSelect")?.value || "P";
+        const container = document.getElementById("partySearchResultsContainer");
+        const summary = document.getElementById("partySearchResultsSummary");
+        const btn = document.getElementById("btnExecutePartySearch");
+
+        if (!partyName) {
+            showToast("Party Name Required", "Please enter a litigant party name to search (e.g. NWKRTC, Suresh Patil).", false);
+            return;
+        }
+
+        if (btn) btn.disabled = true;
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
+                    <p class="small fw-bold text-dark mb-0">Querying live High Court e-Courts Gateway for '${escapeHtml(partyName)}'...</p>
+                    <div class="extra-small text-muted mt-1">Checking bench records, party rosters, and case registration indices...</div>
+                </div>`;
+        }
+
+        try {
+            const isMulti = (partyName.toUpperCase() === "NWKRTC");
+            const url = `/ECourts/SearchHighCourtByPartyName?estCode=${encodeURIComponent(bench)}&partyName=${encodeURIComponent(partyName)}&regYear=${encodeURIComponent(year)}&pendDisp=${encodeURIComponent(status)}&multiAlias=${isMulti}`;
+            
+            const res = await fetch(url);
+            const json = await res.json();
+
+            if (json && json.success && Array.isArray(json.data) && json.data.length > 0) {
+                renderPartySearchResults(json.data);
+                if (summary) summary.innerText = `${json.data.length} case(s) found via Gateway`;
+            } else {
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-5 text-muted small">
+                            <i class="bi bi-folder-x fs-2 text-secondary d-block mb-2"></i>
+                            <h6 class="fw-bold text-dark">No Cases Found</h6>
+                            <p class="mb-0">No High Court matters matched '<strong>${escapeHtml(partyName)}</strong>' in ${bench === 'ALL' ? 'all benches' : bench} for the selected criteria.</p>
+                            <div class="extra-small text-muted mt-1">Try selecting 'All High Court Benches' or changing the registration year.</div>
+                        </div>`;
+                }
+                if (summary) summary.innerText = "0 cases found";
+            }
+        } catch (err) {
+            console.error("Party search error:", err);
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center py-4 text-danger small">
+                        <i class="bi bi-exclamation-triangle-fill fs-2 d-block mb-2"></i>
+                        Failed to connect to High Court Gateway. Please check connectivity or try again.
+                    </div>`;
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    function renderPartySearchResults(items) {
+        const container = document.getElementById("partySearchResultsContainer");
+        if (!container) return;
+
+        let html = `
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0 border">
+                    <thead class="bg-light extra-small text-uppercase text-secondary">
+                        <tr>
+                            <th style="width: 30px;" class="text-center">#</th>
+                            <th style="min-width: 140px;">Case No / Year</th>
+                            <th style="min-width: 130px;">Bench & Court Hall</th>
+                            <th style="min-width: 160px;">CNR Number</th>
+                            <th style="min-width: 200px;">Parties</th>
+                            <th style="min-width: 130px;">Next Hearing</th>
+                            <th style="min-width: 120px;" class="text-end">Track Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        items.forEach((item, idx) => {
+            const isTrk = item.isTrackedInMyCases || item.isLocalMatch;
+            const cnr = item.cnrNumber || "—";
+            const dtStr = item.nextHearingDate ? formatDateDisplay(item.nextHearingDate) : "Date Pending";
+
+            html += `
+                <tr class="${item.isListedToday ? 'table-warning' : ''}">
+                    <td class="text-center fw-bold text-muted">${idx + 1}</td>
+                    <td>
+                        <strong class="text-primary font-monospace">${escapeHtml(item.caseType || 'MFA')} ${escapeHtml(item.regNumber || '')}/${escapeHtml(item.regYear || '')}</strong>
+                        <div class="extra-small text-muted">${escapeHtml(item.caseStage || 'Active')}</div>
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-dark border extra-small d-block mb-1 text-truncate" style="max-width: 150px;">${escapeHtml(item.highCourtBench || 'High Court')}</span>
+                        <span class="badge bg-warning-subtle text-dark border border-warning extra-small">${escapeHtml(item.courtHall || 'Court Hall Scheduled')}</span>
+                    </td>
+                    <td>
+                        <span class="font-monospace fw-bold text-dark d-block">${escapeHtml(cnr)}</span>
+                        ${cnr && cnr !== '—' ? `<button class="btn btn-link btn-sm p-0 text-decoration-none extra-small text-muted" onclick="copyTextToClipboard('${cnr}')"><i class="bi bi-clipboard me-1"></i>Copy CNR</button>` : ''}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-dark text-truncate" style="max-width: 200px;" title="${escapeHtml(item.petitionerName || '—')}">${escapeHtml(item.petitionerName || '—')}</div>
+                        <div class="extra-small text-muted text-truncate" style="max-width: 200px;" title="${escapeHtml(item.respondentName || '—')}">vs ${escapeHtml(item.respondentName || '—')}</div>
+                    </td>
+                    <td>
+                        <strong class="text-danger font-monospace extra-small d-block">${escapeHtml(dtStr)}</strong>
+                        ${item.isListedToday ? '<span class="badge bg-danger text-white extra-small"><i class="bi bi-broadcast me-1"></i>Listed Today</span>' : ''}
+                    </td>
+                    <td class="text-end">
+                        ${isTrk
+                            ? `<span class="badge bg-success-subtle text-success border border-success extra-small"><i class="bi bi-check2-circle me-1"></i>Already Tracked</span>`
+                            : `<button class="btn btn-primary btn-sm py-1 px-3 extra-small fw-bold rounded-pill shadow-sm" id="btnTrackParty_${idx}" onclick="trackSingleDiscoveredCnr('${cnr}', 'btnTrackParty_${idx}')"><i class="bi bi-plus-circle me-1"></i>Track Case</button>`
+                        }
+                    </td>
+                </tr>`;
+        });
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
+
+    async function trackSingleDiscoveredCnr(cnrNumber, btnId = null) {
+        if (!cnrNumber || cnrNumber.length !== 16 || cnrNumber === '—') {
+            showToast("Invalid CNR", "A valid 16-character CNR number is required to track.", false);
+            return;
+        }
+
+        const btn = btnId ? document.getElementById(btnId) : null;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving...`;
+        }
+
+        let assignedWorker = (document.getElementById("assignedCaseWorkerSelect")?.value || "").trim();
+        if (assignedWorker === "__custom__") {
+            assignedWorker = (document.getElementById("assignedCaseWorkerInput")?.value || "").trim();
+        }
+        if (!assignedWorker) assignedWorker = "Central Office";
+
+        try {
+            const res = await fetch("/ECourts/AddTrackedCnrs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    cnrNumbers: cnrNumber,
+                    module: currentModule,
+                    caseWorker: assignedWorker
+                })
+            });
+
+            const json = await res.json();
+            if (json.success) {
+                showToast("Case Tracked", `Now tracking CNR ${cnrNumber} with 100% data integrity.`, true);
+                if (btn) {
+                    btn.className = "badge bg-success-subtle text-success border border-success extra-small";
+                    btn.innerHTML = `<i class="bi bi-check2-circle me-1"></i>Tracked`;
+                }
+                loadTrackedCases();
+            } else {
+                showToast("Tracking Error", json.message || "Failed to add case.", false);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = `<i class="bi bi-plus-circle me-1"></i>Track Case`;
+                }
+            }
+        } catch (err) {
+            showToast("Network Error", "Failed to connect to server.", false);
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-plus-circle me-1"></i>Track Case`;
+            }
+        }
     }
 </script>
 

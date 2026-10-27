@@ -89,6 +89,12 @@ namespace MVCCaseManagement.Models
         public int? LocalAppealId { get; set; }
         public string? LocalModule { get; set; }
         public bool IsListedToday { get; set; }
+        public bool IsTrackedInMyCases { get; set; }
+        public int? TrackedId { get; set; }
+        public string? AssignedWorker { get; set; }
+        public string? CauseListType { get; set; }
+        public string? CauseListItemNo { get; set; }
+        public string? JudgeName { get; set; }
 
         public string ListingStatus
         {

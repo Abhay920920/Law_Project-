@@ -307,28 +307,53 @@ namespace MVCCaseManagement.Controllers
                     .GroupBy(c => c.MFANumber!.Trim().ToUpperInvariant())
                     .ToDictionary(g => g.Key, g => g.First());
 
-                foreach (var item in list)
+                // Also check against tracked cases in ECOURTS_TRACKED_CASES
+                try
                 {
-                    MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
-                    if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
-                    {
-                    }
-                    else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
-                    {
-                    }
+                    using var dbConn = _db.GetConnection();
+                    var trackedCases = (await dbConn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, CaseTypeCode, CaseNumber, CaseYear, RelatedModule, AddedBy
+                        FROM admin_Law.ECOURTS_TRACKED_CASES")).ToList();
 
-                    if (matched != null)
-                    {
-                        item.IsLocalMatch = true;
-                        item.LocalCaseId = matched.CaseID;
-                        item.LocalAppealId = matched.AppealID;
-                        item.LocalModule = matched.ModuleSource;
-                    }
+                    var trackedCnrMap = trackedCases
+                        .Where(tc => !string.IsNullOrEmpty(tc.CNRNumber))
+                        .GroupBy(tc => tc.CNRNumber!.Trim().ToUpperInvariant())
+                        .ToDictionary(g => g.Key, g => g.First());
 
-                    if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
+                    foreach (var item in list)
                     {
-                        item.IsListedToday = true;
+                        MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
+                        if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
+                        {
+                        }
+                        else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
+                        {
+                        }
+
+                        if (matched != null)
+                        {
+                            item.IsLocalMatch = true;
+                            item.LocalCaseId = matched.CaseID;
+                            item.LocalAppealId = matched.AppealID;
+                            item.LocalModule = matched.ModuleSource;
+                        }
+
+                        if (!string.IsNullOrEmpty(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
+                        {
+                            item.IsTrackedInMyCases = true;
+                            item.TrackedId = tc.TrackedID;
+                            item.AssignedWorker = tc.AddedBy;
+                        }
+
+                        if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
+                        {
+                            item.IsListedToday = true;
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[GetLiveHighCourtPartyCases] Error mapping local/tracked cases.");
                 }
 
                 if (todayOnly)
@@ -339,6 +364,7 @@ namespace MVCCaseManagement.Controllers
 
             // Sort: Listed today cases first, then local matches, then by year desc
             list = list.OrderByDescending(x => x.IsListedToday)
+                       .ThenByDescending(x => x.IsTrackedInMyCases)
                        .ThenByDescending(x => x.IsLocalMatch)
                        .ThenByDescending(x => x.RegYear)
                        .ThenBy(x => x.RegNumber)
@@ -346,6 +372,8 @@ namespace MVCCaseManagement.Controllers
 
             int totalCount = list.Count;
             int todayCount = list.Count(x => x.IsListedToday);
+            int trackedCount = list.Count(x => x.IsTrackedInMyCases || x.IsLocalMatch);
+            int untrackedCount = list.Count(x => !x.IsTrackedInMyCases && !x.IsLocalMatch);
             int withCount = list.Count(x => x.NwkrtcRole == "With NWKRTC");
             int againstCount = list.Count(x => x.NwkrtcRole == "Against NWKRTC");
 
@@ -353,10 +381,80 @@ namespace MVCCaseManagement.Controllers
                 success = true, 
                 count = totalCount, 
                 todayCount = todayCount,
+                trackedCount = trackedCount,
+                untrackedCount = untrackedCount,
                 withCount = withCount,
                 againstCount = againstCount,
                 targetHearingDate = targetDate.ToString("dd-MM-yyyy"),
                 data = list
+            });
+        }
+
+        // GET: /ECourts/SearchHighCourtByPartyName?estCode=ALL&partyName=NWKRTC&regYear=2024&pendDisp=P&multiAlias=false
+        [HttpGet]
+        public async Task<IActionResult> SearchHighCourtByPartyName(
+            string estCode = "ALL", 
+            string partyName = "NWKRTC", 
+            string? regYear = null, 
+            string pendDisp = "P", 
+            bool multiAlias = false)
+        {
+            return await GetLiveHighCourtPartyCases(estCode, partyName, regYear, pendDisp, multiAlias, hearingDate: null, todayOnly: false);
+        }
+
+        // GET: /ECourts/GetTodayNwkrtcCauseListAlerts?causelistDate=dd-MM-yyyy&module=MVC
+        [HttpGet]
+        public async Task<IActionResult> GetTodayNwkrtcCauseListAlerts(string? causelistDate = null, string module = "MVC")
+        {
+            string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate.Trim();
+            
+            // Execute multi-alias live scan for NWKRTC across all High Court benches for today's date
+            var res = await GetLiveHighCourtPartyCases(
+                estCode: "ALL", 
+                partyName: "NWKRTC", 
+                regYear: "ALL", 
+                pendDisp: "P", 
+                multiAlias: true, 
+                hearingDate: dateStr, 
+                todayOnly: true);
+
+            if (res is JsonResult jr && jr.Value != null)
+            {
+                var valType = jr.Value.GetType();
+                var dataProp = valType.GetProperty("data")?.GetValue(jr.Value) as List<MVCCaseManagement.Models.PartyCaseSearchResultItem> ?? new();
+                
+                int totalListed = dataProp.Count;
+                int trackedCount = dataProp.Count(x => x.IsTrackedInMyCases || x.IsLocalMatch);
+                int untrackedCount = dataProp.Count(x => !x.IsTrackedInMyCases && !x.IsLocalMatch);
+
+                // Group alerts by bench
+                var byBench = dataProp.GroupBy(x => !string.IsNullOrEmpty(x.HighCourtBench) ? x.HighCourtBench : "High Court of Karnataka")
+                    .Select(g => new {
+                        bench = g.Key,
+                        count = g.Count(),
+                        cases = g.ToList()
+                    }).ToList();
+
+                return Json(new {
+                    success = true,
+                    causelistDate = dateStr,
+                    totalListed = totalListed,
+                    trackedCount = trackedCount,
+                    untrackedCount = untrackedCount,
+                    hasAlerts = totalListed > 0,
+                    byBench = byBench,
+                    alerts = dataProp
+                });
+            }
+
+            return Json(new {
+                success = true,
+                causelistDate = dateStr,
+                totalListed = 0,
+                trackedCount = 0,
+                untrackedCount = 0,
+                hasAlerts = false,
+                alerts = new List<object>()
             });
         }
 
