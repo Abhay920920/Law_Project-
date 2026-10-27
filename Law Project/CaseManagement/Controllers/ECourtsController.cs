@@ -293,73 +293,180 @@ namespace MVCCaseManagement.Controllers
             }
 
             // Pure dynamic NAPIX Party API cases only - no hardcoded injection and no local DB insertion
-            if (list.Count > 0)
+            // 1. Cross-reference with local database (reference only)
+            var localCases = (await _ecourtsRepo.GetHighCourtCauseListAsync()).ToList();
+            var cnrMap = localCases
+                .Where(c => !string.IsNullOrEmpty(c.CNRNumber))
+                .GroupBy(c => c.CNRNumber!.Trim().ToUpperInvariant())
+                .ToDictionary(g => g.Key, g => g.First());
+
+            var regMap = localCases
+                .Where(c => !string.IsNullOrEmpty(c.MFANumber))
+                .GroupBy(c => c.MFANumber!.Trim().ToUpperInvariant())
+                .ToDictionary(g => g.Key, g => g.First());
+
+            // 2. Cross-reference with tracked cases in ECOURTS_TRACKED_CASES
+            List<MVCCaseManagement.Models.TrackedCaseModel> trackedCases = new();
+            try
             {
-                // Optionally tag whether discovered API case exists in local database (reference only)
-                var localCases = (await _ecourtsRepo.GetHighCourtCauseListAsync()).ToList();
-                var cnrMap = localCases
-                    .Where(c => !string.IsNullOrEmpty(c.CNRNumber))
-                    .GroupBy(c => c.CNRNumber!.Trim().ToUpperInvariant())
-                    .ToDictionary(g => g.Key, g => g.First());
+                using var dbConn = _db.GetConnection();
+                trackedCases = (await dbConn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, AddedBy, NextHearingDate, CourtNo, StagePurpose, 
+                           JudgeDesignation, Petitioner, Respondent
+                    FROM admin_Law.ECOURTS_TRACKED_CASES")).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[GetLiveHighCourtPartyCases] Error querying ECOURTS_TRACKED_CASES.");
+            }
 
-                var regMap = localCases
-                    .Where(c => !string.IsNullOrEmpty(c.MFANumber))
-                    .GroupBy(c => c.MFANumber!.Trim().ToUpperInvariant())
-                    .ToDictionary(g => g.Key, g => g.First());
+            var trackedCnrMap = trackedCases
+                .Where(tc => !string.IsNullOrEmpty(tc.CNRNumber))
+                .GroupBy(tc => tc.CNRNumber!.Trim().ToUpperInvariant())
+                .ToDictionary(g => g.Key, g => g.First());
 
-                // Also check against tracked cases in ECOURTS_TRACKED_CASES
-                try
+            // 3. Enrich existing API cases with local & tracked data, hearing dates, and court halls
+            foreach (var item in list)
+            {
+                MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
+                if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
                 {
-                    using var dbConn = _db.GetConnection();
-                    var trackedCases = (await dbConn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
-                        SELECT TrackedID, CNRNumber, CaseTypeCode, CaseNumber, CaseYear, RelatedModule, AddedBy
-                        FROM admin_Law.ECOURTS_TRACKED_CASES")).ToList();
+                }
+                else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
+                {
+                }
 
-                    var trackedCnrMap = trackedCases
-                        .Where(tc => !string.IsNullOrEmpty(tc.CNRNumber))
-                        .GroupBy(tc => tc.CNRNumber!.Trim().ToUpperInvariant())
-                        .ToDictionary(g => g.Key, g => g.First());
-
-                    foreach (var item in list)
+                if (matched != null)
+                {
+                    item.IsLocalMatch = true;
+                    item.LocalCaseId = matched.CaseID;
+                    item.LocalAppealId = matched.AppealID;
+                    item.LocalModule = matched.ModuleSource;
+                    if (!item.NextHearingDate.HasValue && matched.NextHearingDate.HasValue)
                     {
-                        MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
-                        if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
-                        {
-                        }
-                        else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
-                        {
-                        }
-
-                        if (matched != null)
-                        {
-                            item.IsLocalMatch = true;
-                            item.LocalCaseId = matched.CaseID;
-                            item.LocalAppealId = matched.AppealID;
-                            item.LocalModule = matched.ModuleSource;
-                        }
-
-                        if (!string.IsNullOrEmpty(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
-                        {
-                            item.IsTrackedInMyCases = true;
-                            item.TrackedId = tc.TrackedID;
-                            item.AssignedWorker = tc.AddedBy;
-                        }
-
-                        if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
-                        {
-                            item.IsListedToday = true;
-                        }
+                        item.NextHearingDate = matched.NextHearingDate;
+                    }
+                    if (string.IsNullOrEmpty(item.CourtHall) && !string.IsNullOrEmpty(matched.CourtHall))
+                    {
+                        item.CourtHall = matched.CourtHall;
+                    }
+                    if (string.IsNullOrEmpty(item.CaseStage) && !string.IsNullOrEmpty(matched.CaseStage))
+                    {
+                        item.CaseStage = matched.CaseStage;
                     }
                 }
-                catch (Exception ex)
+
+                if (!string.IsNullOrEmpty(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
                 {
-                    _logger.LogWarning(ex, "[GetLiveHighCourtPartyCases] Error mapping local/tracked cases.");
+                    item.IsTrackedInMyCases = true;
+                    item.TrackedId = tc.TrackedID;
+                    item.AssignedWorker = tc.AddedBy;
+                    if (!item.NextHearingDate.HasValue && tc.NextHearingDate.HasValue)
+                    {
+                        item.NextHearingDate = tc.NextHearingDate;
+                    }
+                    if (string.IsNullOrEmpty(item.CourtHall) && !string.IsNullOrEmpty(tc.CourtNo))
+                    {
+                        item.CourtHall = tc.CourtNo;
+                    }
+                    if (string.IsNullOrEmpty(item.CaseStage) && !string.IsNullOrEmpty(tc.StagePurpose))
+                    {
+                        item.CaseStage = tc.StagePurpose;
+                    }
                 }
 
-                if (todayOnly)
+                if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
                 {
-                    list = list.Where(x => x.IsListedToday).ToList();
+                    item.IsListedToday = true;
                 }
+            }
+
+            // 4. Ensure any tracked case scheduled for hearing on targetDate is included
+            foreach (var tc in trackedCases.Where(t => t.NextHearingDate.HasValue && t.NextHearingDate.Value.Date == targetDate))
+            {
+                string tcCnr = (tc.CNRNumber ?? "").Trim();
+                if (!string.IsNullOrEmpty(tcCnr) && seenCnrs.Contains(tcCnr))
+                    continue;
+
+                string tcBench = tc.EstCode switch
+                {
+                    "KAHC01" => "Principal Bench (Bengaluru)",
+                    "KAHC02" => "Dharwad Bench",
+                    "KAHC03" => "Kalaburagi Bench",
+                    _ => "High Court of Karnataka"
+                };
+
+                var roleResult = NwkrtcPartyMatcher.DetectRole(tc.Petitioner ?? "", tc.Respondent ?? "");
+                string role = roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
+
+                var item = new MVCCaseManagement.Models.PartyCaseSearchResultItem
+                {
+                    CNRNumber = tcCnr,
+                    CaseType = tc.CaseTypeCode ?? "MFA",
+                    RegNumber = tc.CaseNumber ?? "",
+                    RegYear = tc.CaseYear.ToString(),
+                    PetitionerName = tc.Petitioner ?? "—",
+                    RespondentName = tc.Respondent ?? "—",
+                    NwkrtcRole = role,
+                    MatchedDesignation = roleResult.MatchedDesignation,
+                    NextHearingDate = tc.NextHearingDate,
+                    CaseStage = tc.StagePurpose ?? "Hearing Active",
+                    CourtHall = !string.IsNullOrEmpty(tc.CourtNo) ? tc.CourtNo : "Court Hall",
+                    EstablishmentName = tcBench,
+                    HighCourtBench = tcBench,
+                    IsListedToday = true,
+                    IsTrackedInMyCases = true,
+                    TrackedId = tc.TrackedID,
+                    AssignedWorker = tc.AddedBy,
+                    IsLocalMatch = true,
+                    LocalModule = tc.RelatedModule ?? "MVC"
+                };
+
+                if (!string.IsNullOrEmpty(tcCnr)) seenCnrs.Add(tcCnr);
+                list.Add(item);
+            }
+
+            // 5. Ensure any local DB case scheduled for hearing on targetDate is included
+            foreach (var lc in localCases.Where(c => c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == targetDate))
+            {
+                string lcCnr = (lc.CNRNumber ?? "").Trim();
+                if (!string.IsNullOrEmpty(lcCnr) && seenCnrs.Contains(lcCnr))
+                    continue;
+
+                var roleResult = NwkrtcPartyMatcher.DetectRole(lc.PetitionerName ?? "", lc.RespondentName ?? "");
+                string role = roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
+
+                var item = new MVCCaseManagement.Models.PartyCaseSearchResultItem
+                {
+                    CNRNumber = lcCnr,
+                    CaseType = lc.AppealType ?? "MFA",
+                    RegNumber = lc.MFANumber ?? "",
+                    RegYear = lc.MFAYear?.ToString() ?? "",
+                    PetitionerName = lc.PetitionerName ?? "—",
+                    RespondentName = lc.RespondentName ?? "—",
+                    NwkrtcRole = role,
+                    MatchedDesignation = roleResult.MatchedDesignation,
+                    NextHearingDate = lc.NextHearingDate,
+                    CaseStage = lc.CaseStage ?? "Hearing Active",
+                    CourtHall = !string.IsNullOrEmpty(lc.CourtHall) ? lc.CourtHall : "Court Hall",
+                    EstablishmentName = lc.HighCourtBench ?? "Dharwad Bench",
+                    HighCourtBench = lc.HighCourtBench ?? "Dharwad Bench",
+                    IsListedToday = true,
+                    IsLocalMatch = true,
+                    LocalCaseId = lc.CaseID,
+                    LocalAppealId = lc.AppealID,
+                    LocalModule = lc.ModuleSource
+                };
+
+                if (!string.IsNullOrEmpty(lcCnr)) seenCnrs.Add(lcCnr);
+                list.Add(item);
+            }
+
+            // 6. If todayOnly is requested, strictly filter to cases scheduled for hearing on targetDate
+            if (todayOnly)
+            {
+                list = list.Where(x => x.IsListedToday).ToList();
             }
 
             // Sort: Listed today cases first, then local matches, then by year desc

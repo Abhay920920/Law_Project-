@@ -453,7 +453,13 @@
                 <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
                     <div class="d-flex align-items-center gap-3">
                         <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List (e-Courts Live Gateway API)</h6>
-                        <div class="form-check form-switch m-0 border-start ps-4">
+                        <div class="form-check form-switch m-0 border-start ps-3">
+                            <input class="form-check-input" type="checkbox" id="chkOnlyToday" checked onchange="fetchLiveHcCauselist()">
+                            <label class="form-check-label fw-bold text-danger small" for="chkOnlyToday">
+                                <i class="bi bi-calendar-check-fill me-1"></i>Only Today's Listed Cases
+                            </label>
+                        </div>
+                        <div class="form-check form-switch m-0 border-start ps-3">
                             <input class="form-check-input" type="checkbox" id="chkOnlyCorp" checked onchange="filterLiveCauselistRows()">
                             <label class="form-check-label fw-bold text-dark small" for="chkOnlyCorp">
                                 <i class="bi bi-shield-check text-primary me-1"></i>Show Only Corporation Cases
@@ -927,13 +933,15 @@ function fetchLiveHcCauselist() {
     const partyName = (document.getElementById('livePartySearchInput')?.value || 'NWKRTC').trim();
     const container = document.getElementById('liveCauselistContainer');
     const badge = document.getElementById('liveListBadge');
+    const chkOnlyToday = document.getElementById('chkOnlyToday');
+    const todayOnly = chkOnlyToday ? chkOnlyToday.checked : true;
 
     badge.className = "badge bg-warning text-dark px-3 py-1";
-    badge.textContent = "Querying Live Gateway...";
+    badge.textContent = todayOnly ? "Checking Today's Roster..." : "Querying Live Gateway...";
     container.innerHTML = `<div class="text-center py-5">
         <div class="spinner-border text-danger" role="status"></div>
-        <p class="mt-2 text-muted fw-bold">Querying official High Court e-Courts Gateway via NAPIX for '<strong>${partyName || 'NWKRTC'}</strong>' on ${dateInputVal}...</p>
-        <p class="extra-small text-muted mb-0">Cross-referencing Dharwad, Bengaluru, Kalaburagi rosters, designations, and hearing schedules...</p>
+        <p class="mt-2 text-muted fw-bold">Checking official High Court Daily Cause List for '<strong>${partyName || 'NWKRTC'}</strong>' on ${dateInputVal}...</p>
+        <p class="extra-small text-muted mb-0">${todayOnly ? "Filtering strictly to cases scheduled for hearing on " + dateInputVal + " across High Court benches..." : "Cross-referencing Dharwad, Bengaluru, Kalaburagi rosters, designations, and hearing schedules..."}</p>
     </div>`;
 
     let targetBench = "";
@@ -942,44 +950,97 @@ function fetchLiveHcCauselist() {
     else if (estCode === "KAHC03") targetBench = "Kalaburagi";
     else targetBench = "All Benches";
 
-    // Call GetLiveHighCourtPartyCases with partyName & hearingDate
-    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || 'NWKRTC')}&hearingDate=${encodeURIComponent(dateInputVal)}`;
+    // Call GetLiveHighCourtPartyCases with partyName, hearingDate, and todayOnly
+    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || 'NWKRTC')}&hearingDate=${encodeURIComponent(dateInputVal)}&todayOnly=${todayOnly}`;
 
     fetch(partyUrl)
         .then(r => r.json())
         .then(res => {
             if (res && res.success && res.data && res.data.length > 0) {
-                renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge, res.todayCount);
+                renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge, res.todayCount, todayOnly);
+            } else if (todayOnly) {
+                // If 0 cases listed for today, show informative empty state with button to browse historical cases
+                renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
             } else {
                 // If live party search returns 0, try causelist details or fallback table
                 renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
             }
         })
         .catch(() => {
-            renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
+            if (todayOnly) {
+                renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
+            } else {
+                renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
+            }
         });
 }
 
-function renderLivePartyCauseList(items, displayDate, targetBench, container, badge, todayCount) {
+function renderNoCasesListedTodayView(displayDate, targetBench, container, badge, partyName) {
+    badge.className = "badge bg-secondary px-3 py-1";
+    badge.textContent = `0 Cases Listed on ${displayDate}`;
+
+    container.innerHTML = `
+    <div class="text-center py-5 px-3">
+        <div class="mb-3">
+            <span class="badge bg-danger-subtle text-danger border border-danger p-3 rounded-circle shadow-sm">
+                <i class="bi bi-calendar-x fs-2"></i>
+            </span>
+        </div>
+        <h5 class="fw-bold text-dark mb-1">No '${partyName || 'NWKRTC'}' Matters Listed for Hearing on ${displayDate}</h5>
+        <p class="text-muted small mb-3">No High Court cases for <strong>${partyName || 'NWKRTC'}</strong> are scheduled on the official Daily Cause List for <strong>${displayDate}</strong> (${targetBench}).</p>
+        
+        <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
+            <button type="button" class="btn btn-primary btn-sm fw-bold px-3 py-1.5 shadow-sm" onclick="toggleTodayOnly(false)">
+                <i class="bi bi-archive me-1"></i>View All Historical / Registered Matters for '${partyName || 'NWKRTC'}'
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm fw-bold px-3 py-1.5" onclick="showAllSavedCnrCases()">
+                <i class="bi bi-card-checklist me-1"></i>Check Saved CNR Scheduled Dates
+            </button>
+        </div>
+        <p class="extra-small text-muted mb-0">High Court cause lists are published daily by the Court Registry. You can change the date above to check other daily rosters.</p>
+    </div>`;
+}
+
+function toggleTodayOnly(val) {
+    const chk = document.getElementById('chkOnlyToday');
+    if (chk) chk.checked = val;
+    fetchLiveHcCauselist();
+}
+
+function renderLivePartyCauseList(items, displayDate, targetBench, container, badge, todayCount, isTodayOnly) {
     const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
     const cnrSet = new Set(registeredCases.filter(c => c.CNRNumber).map(c => c.CNRNumber.trim().toUpperCase()));
 
     badge.className = "badge bg-success px-3 py-1";
-    badge.textContent = `${items.length} Live Cases (${todayCount || 0} Listed Today)`;
+    badge.textContent = isTodayOnly 
+        ? `${items.length} Matter${items.length > 1 ? 's' : ''} Listed on ${displayDate}` 
+        : `${items.length} Live Cases (${todayCount || 0} Listed Today)`;
 
     let html = `
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-2.5 bg-light border-bottom">
         <div class="d-flex align-items-center gap-2">
-            <span class="badge bg-danger text-white px-2.5 py-1">
-                <i class="bi bi-broadcast me-1"></i>Live eCourts Gateway
+            <span class="badge ${isTodayOnly ? 'bg-danger' : 'bg-primary'} text-white px-2.5 py-1">
+                <i class="bi ${isTodayOnly ? 'bi-bell-fill' : 'bi-broadcast'} me-1"></i>${isTodayOnly ? "Today's Cause List" : "Live eCourts Gateway"}
             </span>
             <span class="fw-bold text-dark small">
-                Found <strong>${items.length}</strong> High Court matters for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>'
+                ${isTodayOnly 
+                    ? `Found <strong>${items.length}</strong> matter${items.length > 1 ? 's' : ''} listed for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>' on <strong>${displayDate}</strong>`
+                    : `Found <strong>${items.length}</strong> High Court matters for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>'`
+                }
             </span>
-            ${todayCount > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 fw-bold"><i class="bi bi-calendar-check me-1"></i>${todayCount} Listed on ${displayDate}</span>` : ''}
+            ${!isTodayOnly && todayCount > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 fw-bold"><i class="bi bi-calendar-check me-1"></i>${todayCount} Listed on ${displayDate}</span>` : ''}
         </div>
-        <div class="extra-small text-muted font-monospace">
-            Bench: <strong>${targetBench}</strong> | Scheduled Date: <strong>${displayDate}</strong>
+        <div class="d-flex align-items-center gap-2">
+            <div class="extra-small text-muted font-monospace">
+                Bench: <strong>${targetBench}</strong> | Scheduled Date: <strong>${displayDate}</strong>
+            </div>
+            ${isTodayOnly ? `
+            <button type="button" class="btn btn-outline-secondary btn-sm py-0.5 px-2 extra-small fw-bold" onclick="toggleTodayOnly(false)" title="Show all registered historical matters">
+                <i class="bi bi-archive me-1"></i>View All Registered Matters
+            </button>` : `
+            <button type="button" class="btn btn-outline-danger btn-sm py-0.5 px-2 extra-small fw-bold" onclick="toggleTodayOnly(true)" title="Filter only to today's cause list">
+                <i class="bi bi-calendar-check me-1"></i>Show Only Today's Listed
+            </button>`}
         </div>
     </div>
     <div class="table-responsive" style="max-height: 580px;">
@@ -1255,9 +1316,11 @@ function setLiveListingFilter(filterType) {
 
 function filterLiveCauselistRows() {
     const chk = document.getElementById('chkOnlyCorp');
+    const chkToday = document.getElementById('chkOnlyToday');
     const partyInput = (document.getElementById('livePartySearchInput')?.value || '').trim().toLowerCase();
     const benchFilter = (document.getElementById('liveBenchId')?.value || 'ALL').trim();
     const onlyCorp = chk ? chk.checked : false;
+    const onlyToday = chkToday ? chkToday.checked : false;
     const rows = document.querySelectorAll('.live-causelist-row');
     let visibleCount = 0;
 
@@ -1269,6 +1332,7 @@ function filterLiveCauselistRows() {
         const searchTxt = r.getAttribute('data-search') || '';
 
         let matchCorp = !onlyCorp || isCorp;
+        let matchToday = !onlyToday || isToday;
         let matchParty = true;
         if (partyInput) {
             matchParty = searchTxt.includes(partyInput) || (partyInput.includes('nwkrtc') && isCorp);
@@ -1285,7 +1349,7 @@ function filterLiveCauselistRows() {
             matchBench = searchTxt.includes(`court hall ${benchFilter.toLowerCase()}`) || searchTxt.includes(`bench #${benchFilter.toLowerCase()}`);
         }
 
-        if (matchCorp && matchParty && matchPill && matchBench) {
+        if (matchCorp && matchParty && matchPill && matchBench && matchToday) {
             r.style.display = '';
             visibleCount++;
         } else {
