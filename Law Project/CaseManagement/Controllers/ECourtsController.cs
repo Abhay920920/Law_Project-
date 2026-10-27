@@ -2141,7 +2141,172 @@ namespace MVCCaseManagement.Controllers
                     record.CaseTypeCode = ResolveCaseType(record.CaseTypeCode, record.CaseNumber, record.CNRNumber, record.RelatedModule ?? "MVC");
                     record.CourtNo = FormatCourtHall(record.CourtNo, record.JudgeDesignation, record.EstCode);
                     PopulateHearingAnalysisAndProceedings(record, DateTime.Today);
-                    return Json(new { success = true, data = record });
+
+                    // Enrich ProceedingsHistory with stored verbatim roznamas from CASE_HEARINGS_HISTORY table
+                    if (record.ProceedingsHistory != null && record.ProceedingsHistory.Count > 0)
+                    {
+                        try
+                        {
+                            string clean = record.CNRNumber.Trim().ToUpperInvariant();
+                            bool isHighCourt = clean.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || clean.Contains("HC");
+                            string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(record.RelatedModule) ? "MVC" : record.RelatedModule);
+
+                            var dbHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
+                                SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
+                                FROM [dbo].[CASE_HEARINGS_HISTORY]
+                                WHERE CNRNumber = @cnr", new { cnr = clean })).ToList();
+
+                            // 1. First enrich all hearings that already exist in DB
+                            foreach (var h in record.ProceedingsHistory)
+                            {
+                                DateTime? d = null;
+                                string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                                foreach (var k in dtCandidateKeys)
+                                {
+                                    if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                                    {
+                                        if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
+                                        {
+                                            d = parsed;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (d.HasValue)
+                                {
+                                    var match = dbHearings.FirstOrDefault(r => r.HearingDate.Date == d.Value.Date);
+                                    if (match != null && !string.IsNullOrWhiteSpace(match.BusinessTransacted))
+                                    {
+                                        h["business"] = match.BusinessTransacted;
+                                        h["roznama"] = match.BusinessTransacted;
+                                    }
+                                }
+                            }
+
+                            // 2. By default once: if any hearing with a valid sitting date is missing Roznama in DB, fetch all from e-Courts and store in DB
+                            bool anyNewlyFetched = false;
+                            foreach (var h in record.ProceedingsHistory)
+                            {
+                                string? existingBiz = h.GetValueOrDefault("business") ?? h.GetValueOrDefault("roznama");
+                                if (!string.IsNullOrWhiteSpace(existingBiz)) continue;
+
+                                DateTime? sittingDt = null;
+                                string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                                foreach (var k in dtCandidateKeys)
+                                {
+                                    if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                                    {
+                                        if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
+                                        {
+                                            sittingDt = parsed;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                if (!sittingDt.HasValue) continue;
+
+                                string dtStr = sittingDt.Value.ToString("yyyy-MM-dd");
+                                try
+                                {
+                                    var result = await _napixService.GetCaseBusinessAsync(clean, dtStr, isHighCourt, effectiveModule);
+                                    if (result.HasValue && IsValidJsonData(result))
+                                    {
+                                        string bizText = "";
+                                        string? nextDateStr = null;
+                                        string? purposeStr = null;
+
+                                        var root = result.Value;
+                                        if (root.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                                            bizText = bProp.GetString()!;
+                                        else if (root.TryGetProperty("roznama", out var rProp) && !string.IsNullOrWhiteSpace(rProp.GetString()))
+                                            bizText = rProp.GetString()!;
+                                        else if (root.TryGetProperty("proceedings", out var pProp) && !string.IsNullOrWhiteSpace(pProp.GetString()))
+                                            bizText = pProp.GetString()!;
+                                        else if (root.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                                            bizText = soProp.GetString()!;
+                                        else if (root.TryGetProperty("order", out var oProp) && !string.IsNullOrWhiteSpace(oProp.GetString()))
+                                            bizText = oProp.GetString()!;
+
+                                        if (root.TryGetProperty("next_date", out var ndProp) && !string.IsNullOrWhiteSpace(ndProp.GetString()))
+                                            nextDateStr = ndProp.GetString();
+                                        else if (root.TryGetProperty("nextDate", out var ndProp2) && !string.IsNullOrWhiteSpace(ndProp2.GetString()))
+                                            nextDateStr = ndProp2.GetString();
+
+                                        if (root.TryGetProperty("purpose", out var purProp) && !string.IsNullOrWhiteSpace(purProp.GetString()))
+                                            purposeStr = purProp.GetString();
+                                        else if (root.TryGetProperty("stage", out var stgProp) && !string.IsNullOrWhiteSpace(stgProp.GetString()))
+                                            purposeStr = stgProp.GetString();
+
+                                        DateTime? nextDtVal = null;
+                                        if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                                        {
+                                            nextDtVal = ndVal;
+                                        }
+
+                                        // Persist to CASE_HEARINGS_HISTORY
+                                        await conn.ExecuteAsync(@"
+                                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                            USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
+                                            ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                                            WHEN MATCHED THEN
+                                                UPDATE SET BusinessTransacted = COALESCE(NULLIF(@bizText, ''), target.BusinessTransacted),
+                                                           NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                                           NextStage = COALESCE(@purposeStr, target.NextStage)
+                                            WHEN NOT MATCHED THEN
+                                                INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                                                VALUES (@clean, @hDate, NULLIF(@bizText, ''), @nextDtVal, @purposeStr, GETDATE());",
+                                            new { clean, hDate = sittingDt.Value.Date, bizText, nextDtVal, purposeStr });
+
+                                        if (!string.IsNullOrWhiteSpace(bizText))
+                                        {
+                                            h["business"] = bizText;
+                                            h["roznama"] = bizText;
+                                            anyNewlyFetched = true;
+                                        }
+                                    }
+                                }
+                                catch (Exception exFetch)
+                                {
+                                    _logger.LogWarning(exFetch, "Failed to auto-fetch roznama in GetCaseProceedings for CNR {CNR} on date {Date}", clean, dtStr);
+                                }
+                            }
+
+                            if (anyNewlyFetched)
+                            {
+                                await conn.ExecuteAsync(@"
+                                    UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                                    SET LastSyncedAt = GETDATE()
+                                    WHERE TrackedID = @trackedId", new { trackedId });
+
+                                // Update RawJson so local dossier cache also contains all fetched roznamas
+                                if (!string.IsNullOrWhiteSpace(record.RawJson))
+                                {
+                                    try
+                                    {
+                                        var docObj = JsonSerializer.Deserialize<Dictionary<string, object>>(record.RawJson);
+                                        if (docObj != null)
+                                        {
+                                            docObj["history"] = record.ProceedingsHistory;
+                                            string updatedRaw = JsonSerializer.Serialize(docObj);
+                                            await conn.ExecuteAsync(@"
+                                                UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                                                SET RawJson = @updatedRaw
+                                                WHERE TrackedID = @trackedId", new { updatedRaw, trackedId });
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                        catch (Exception exEnrich)
+                        {
+                            _logger.LogWarning(exEnrich, "Error enriching proceedings history from DB for trackedId {ID}", trackedId);
+                        }
+                    }
+
+                    return Json(new { success = true, data = record, caseInfo = record, proceedings = record.ProceedingsHistory });
                 }
 
                 return Json(new { success = false, message = "No proceedings data available." });
@@ -2156,9 +2321,9 @@ namespace MVCCaseManagement.Controllers
         [HttpGet]
         public async Task<IActionResult> FetchLiveHearingProceeding(string cnrNumber, string hearingDate, bool isHighCourt = false, string module = "MVC")
         {
-            if (string.IsNullOrWhiteSpace(cnrNumber) || string.IsNullOrWhiteSpace(hearingDate))
+            if (string.IsNullOrWhiteSpace(cnrNumber))
             {
-                return Json(new { success = false, message = "CNR Number and Hearing Date are required." });
+                return Json(new { success = false, message = "CNR Number is required." });
             }
 
             string clean = cnrNumber.Trim().ToUpperInvariant();
@@ -2169,17 +2334,159 @@ namespace MVCCaseManagement.Controllers
 
             string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(module) ? "MVC" : module);
 
+            // 1. Resolve a valid calendar date for the court hearing/sitting
+            DateTime? resolvedTargetDate = null;
+            if (!string.IsNullOrWhiteSpace(hearingDate) && 
+                !hearingDate.Contains("not given", StringComparison.OrdinalIgnoreCase) &&
+                !hearingDate.Contains("pending", StringComparison.OrdinalIgnoreCase) &&
+                TryParseFlexibleDate(hearingDate, out var pDt) && 
+                !IsCisSentinelDate(pDt) && 
+                pDt.Year >= 1970 && pDt.Year <= 2050)
+            {
+                resolvedTargetDate = pDt;
+            }
+
+            // 2. If client passed non-date or sentinel, fallback to resolving from tracked case in DB
+            if (!resolvedTargetDate.HasValue)
+            {
+                try
+                {
+                    using var conn = _db.GetConnection();
+                    var rawCase = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                        SELECT RawJson, LastHearingDate, NextHearingDate 
+                        FROM admin_Law.ECOURTS_TRACKED_CASES 
+                        WHERE CNRNumber = @clean", new { clean });
+
+                    if (rawCase != null)
+                    {
+                        object? rawLastHearing = rawCase.LastHearingDate;
+                        if (rawLastHearing is DateTime lastDt && lastDt.Year >= 1970 && lastDt.Year <= 2050)
+                        {
+                            resolvedTargetDate = lastDt;
+                        }
+                        else if (!string.IsNullOrWhiteSpace((string?)rawCase.RawJson))
+                        {
+                            using var doc = JsonDocument.Parse((string)rawCase.RawJson);
+                            var hist = ExtractHistoryArray(doc.RootElement);
+                            foreach (var hItem in hist)
+                            {
+                                string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                                foreach (var k in dtCandidateKeys)
+                                {
+                                    if (hItem.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                                    {
+                                        if (TryParseFlexibleDate(val, out var cDt) && !IsCisSentinelDate(cDt) && cDt.Year >= 1970 && cDt.Year <= 2050)
+                                        {
+                                            resolvedTargetDate = cDt;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (resolvedTargetDate.HasValue) break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception exResolve)
+                {
+                    _logger.LogWarning(exResolve, "Could not resolve sitting date fallback for CNR {CNR}", clean);
+                }
+            }
+
+            if (!resolvedTargetDate.HasValue)
+            {
+                return Json(new { 
+                    success = false, 
+                    message = $"Cannot query Roznama: \"{hearingDate}\" is not a calendar date, and no recorded sitting date was found for this case.",
+                    cnr = clean,
+                    date = hearingDate 
+                });
+            }
+
+            string validDateStr = resolvedTargetDate.Value.ToString("yyyy-MM-dd");
+
             try
             {
-                var result = await _napixService.GetCaseBusinessAsync(clean, hearingDate, isHighCourt, effectiveModule);
+                var result = await _napixService.GetCaseBusinessAsync(clean, validDateStr, isHighCourt, effectiveModule);
                 if (result.HasValue && IsValidJsonData(result))
                 {
-                    return Json(new { success = true, data = result.Value, cnr = clean, date = hearingDate });
+                    string bizText = "";
+                    string? nextDateStr = null;
+                    string? purposeStr = null;
+
+                    var root = result.Value;
+                    if (root.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                        bizText = bProp.GetString()!;
+                    else if (root.TryGetProperty("roznama", out var rProp) && !string.IsNullOrWhiteSpace(rProp.GetString()))
+                        bizText = rProp.GetString()!;
+                    else if (root.TryGetProperty("proceedings", out var pProp) && !string.IsNullOrWhiteSpace(pProp.GetString()))
+                        bizText = pProp.GetString()!;
+                    else if (root.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                        bizText = soProp.GetString()!;
+                    else if (root.TryGetProperty("order", out var oProp) && !string.IsNullOrWhiteSpace(oProp.GetString()))
+                        bizText = oProp.GetString()!;
+
+                    if (root.TryGetProperty("next_date", out var ndProp) && !string.IsNullOrWhiteSpace(ndProp.GetString()))
+                        nextDateStr = ndProp.GetString();
+                    else if (root.TryGetProperty("nextDate", out var ndProp2) && !string.IsNullOrWhiteSpace(ndProp2.GetString()))
+                        nextDateStr = ndProp2.GetString();
+
+                    if (root.TryGetProperty("purpose", out var purProp) && !string.IsNullOrWhiteSpace(purProp.GetString()))
+                        purposeStr = purProp.GetString();
+                    else if (root.TryGetProperty("stage", out var stgProp) && !string.IsNullOrWhiteSpace(stgProp.GetString()))
+                        purposeStr = stgProp.GetString();
+
+                    // Persist roznama to SQL Server CASE_HEARINGS_HISTORY with zero data loss
+                    try
+                    {
+                        using var conn = _db.GetConnection();
+                        DateTime? nextDtVal = null;
+                        if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                        {
+                            nextDtVal = ndVal;
+                        }
+
+                        await conn.ExecuteAsync(@"
+                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                            USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
+                            ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                            WHEN MATCHED THEN
+                                UPDATE SET BusinessTransacted = COALESCE(NULLIF(@bizText, ''), target.BusinessTransacted),
+                                           NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                           NextStage = COALESCE(@purposeStr, target.NextStage)
+                            WHEN NOT MATCHED THEN
+                                INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                                VALUES (@clean, @hDate, NULLIF(@bizText, ''), @nextDtVal, @purposeStr, GETDATE());",
+                            new { clean, hDate = resolvedTargetDate.Value.Date, bizText, nextDtVal, purposeStr });
+
+                        // Also update last synced timestamp and latest stage in ECOURTS_TRACKED_CASES
+                        await conn.ExecuteAsync(@"
+                            UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                            SET LastSyncedAt = GETDATE(),
+                                NextHearingDate = COALESCE(@nextDtVal, NextHearingDate),
+                                StagePurpose = COALESCE(@purposeStr, StagePurpose)
+                            WHERE CNRNumber = @clean",
+                            new { clean, nextDtVal, purposeStr });
+                    }
+                    catch (Exception exSave)
+                    {
+                        _logger.LogWarning(exSave, "Could not persist live roznama to CASE_HEARINGS_HISTORY for CNR {CNR}", clean);
+                    }
+
+                    return Json(new { 
+                        success = true, 
+                        data = result.Value, 
+                        business = bizText, 
+                        nextDate = nextDateStr, 
+                        purpose = purposeStr, 
+                        cnr = clean, 
+                        date = validDateStr 
+                    });
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Live NAPIX GetCaseBusiness failed for CNR {CNR} on date {Date}", clean, hearingDate);
+                _logger.LogWarning(ex, "Live NAPIX GetCaseBusiness failed for CNR {CNR} on date {Date}", clean, validDateStr);
             }
 
             var lastErr = _napixService.GetLastModuleError(effectiveModule);
@@ -2187,10 +2494,202 @@ namespace MVCCaseManagement.Controllers
                 success = false, 
                 message = !string.IsNullOrWhiteSpace(lastErr) 
                     ? $"eCourts NAPIX: {lastErr}" 
-                    : $"No verbatim proceedings recorded on eCourts NJDG for {hearingDate}.",
+                    : $"No verbatim proceedings recorded on eCourts NJDG for sitting date {validDateStr}.",
                 cnr = clean,
-                date = hearingDate
+                date = validDateStr
             });
+        }
+
+        [HttpGet, HttpPost]
+        public async Task<IActionResult> FetchAllCaseProceedings(int trackedId, string module = "MVC")
+        {
+            try
+            {
+                using var conn = _db.GetConnection();
+                var record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy, RawJson
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE TrackedID = @trackedId", new { trackedId });
+
+                if (record == null || string.IsNullOrWhiteSpace(record.CNRNumber))
+                {
+                    return Json(new { success = false, message = "Case record not found." });
+                }
+
+                string clean = record.CNRNumber.Trim().ToUpperInvariant();
+                bool isHighCourt = clean.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || clean.Contains("HC");
+                string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(module) ? (record.RelatedModule ?? "MVC") : module);
+
+                // 1. Ensure history array is parsed
+                List<Dictionary<string, string?>> rawHistory = null;
+                if (!string.IsNullOrWhiteSpace(record.RawJson))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(record.RawJson);
+                        rawHistory = ExtractHistoryArray(doc.RootElement);
+                    }
+                    catch { }
+                }
+
+                if (rawHistory == null || rawHistory.Count == 0)
+                {
+                    return Json(new { success = false, message = "No listed hearings found in case record." });
+                }
+
+                // 2. Fetch existing hearings from CASE_HEARINGS_HISTORY
+                var existingHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
+                    SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
+                    FROM [dbo].[CASE_HEARINGS_HISTORY]
+                    WHERE CNRNumber = @clean", new { clean })).ToList();
+
+                int fetchedCount = 0;
+                int existingCount = 0;
+
+                // 3. For each hearing, identify sitting date and fetch if missing
+                foreach (var h in rawHistory)
+                {
+                    DateTime? sittingDt = null;
+                    string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                    foreach (var k in dtCandidateKeys)
+                    {
+                        if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                        {
+                            if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
+                            {
+                                sittingDt = parsed;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!sittingDt.HasValue) continue;
+
+                    var existing = existingHearings.FirstOrDefault(r => r.HearingDate.Date == sittingDt.Value.Date);
+                    if (existing != null && !string.IsNullOrWhiteSpace(existing.BusinessTransacted))
+                    {
+                        h["business"] = existing.BusinessTransacted;
+                        h["roznama"] = existing.BusinessTransacted;
+                        existingCount++;
+                        continue;
+                    }
+
+                    // Query live NAPIX for this sitting date
+                    string dtStr = sittingDt.Value.ToString("yyyy-MM-dd");
+                    try
+                    {
+                        var result = await _napixService.GetCaseBusinessAsync(clean, dtStr, isHighCourt, effectiveModule);
+                        if (result.HasValue && IsValidJsonData(result))
+                        {
+                            string bizText = "";
+                            string? nextDateStr = null;
+                            string? purposeStr = null;
+
+                            var root = result.Value;
+                            if (root.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                                bizText = bProp.GetString()!;
+                            else if (root.TryGetProperty("roznama", out var rProp) && !string.IsNullOrWhiteSpace(rProp.GetString()))
+                                bizText = rProp.GetString()!;
+                            else if (root.TryGetProperty("proceedings", out var pProp) && !string.IsNullOrWhiteSpace(pProp.GetString()))
+                                bizText = pProp.GetString()!;
+                            else if (root.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                                bizText = soProp.GetString()!;
+                            else if (root.TryGetProperty("order", out var oProp) && !string.IsNullOrWhiteSpace(oProp.GetString()))
+                                bizText = oProp.GetString()!;
+
+                            if (root.TryGetProperty("next_date", out var ndProp) && !string.IsNullOrWhiteSpace(ndProp.GetString()))
+                                nextDateStr = ndProp.GetString();
+                            else if (root.TryGetProperty("nextDate", out var ndProp2) && !string.IsNullOrWhiteSpace(ndProp2.GetString()))
+                                nextDateStr = ndProp2.GetString();
+
+                            if (root.TryGetProperty("purpose", out var purProp) && !string.IsNullOrWhiteSpace(purProp.GetString()))
+                                purposeStr = purProp.GetString();
+                            else if (root.TryGetProperty("stage", out var stgProp) && !string.IsNullOrWhiteSpace(stgProp.GetString()))
+                                purposeStr = stgProp.GetString();
+
+                            DateTime? nextDtVal = null;
+                            if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                            {
+                                nextDtVal = ndVal;
+                            }
+
+                            // Persist to CASE_HEARINGS_HISTORY
+                            await conn.ExecuteAsync(@"
+                                MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
+                                ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                                WHEN MATCHED THEN
+                                    UPDATE SET BusinessTransacted = COALESCE(NULLIF(@bizText, ''), target.BusinessTransacted),
+                                               NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                               NextStage = COALESCE(@purposeStr, target.NextStage)
+                                WHEN NOT MATCHED THEN
+                                    INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                                    VALUES (@clean, @hDate, NULLIF(@bizText, ''), @nextDtVal, @purposeStr, GETDATE());",
+                                new { clean, hDate = sittingDt.Value.Date, bizText, nextDtVal, purposeStr });
+
+                            if (!string.IsNullOrWhiteSpace(bizText))
+                            {
+                                h["business"] = bizText;
+                                h["roznama"] = bizText;
+                                fetchedCount++;
+                            }
+                        }
+                    }
+                    catch (Exception exFetch)
+                    {
+                        _logger.LogWarning(exFetch, "Failed to auto-fetch roznama for CNR {CNR} on date {Date}", clean, dtStr);
+                    }
+                }
+
+                // Update case last synced and RawJson
+                if (fetchedCount > 0 && !string.IsNullOrWhiteSpace(record.RawJson))
+                {
+                    try
+                    {
+                        var docObj = JsonSerializer.Deserialize<Dictionary<string, object>>(record.RawJson);
+                        if (docObj != null)
+                        {
+                            docObj["history"] = rawHistory;
+                            string updatedRaw = JsonSerializer.Serialize(docObj);
+                            await conn.ExecuteAsync(@"
+                                UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                                SET RawJson = @updatedRaw, LastSyncedAt = GETDATE()
+                                WHERE TrackedID = @trackedId", new { updatedRaw, trackedId });
+                        }
+                    }
+                    catch
+                    {
+                        await conn.ExecuteAsync(@"
+                            UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                            SET LastSyncedAt = GETDATE()
+                            WHERE TrackedID = @trackedId", new { trackedId });
+                    }
+                }
+                else
+                {
+                    await conn.ExecuteAsync(@"
+                        UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                        SET LastSyncedAt = GETDATE()
+                        WHERE TrackedID = @trackedId", new { trackedId });
+                }
+
+                record.ProceedingsHistory = rawHistory;
+                return Json(new { 
+                    success = true, 
+                    message = $"Successfully stored proceedings in database ({fetchedCount} newly fetched from e-Courts, {existingCount} already saved).",
+                    fetched = fetchedCount,
+                    total = rawHistory.Count,
+                    proceedings = rawHistory
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching all proceedings for trackedId {ID}", trackedId);
+                return Json(new { success = false, message = ex.Message });
+            }
         }
 
         [HttpPost]
@@ -2279,14 +2778,18 @@ namespace MVCCaseManagement.Controllers
                     var parsedHearings = new List<(DateTime? Date, Dictionary<string, string?> Row)>();
                     foreach (var h in rawHistory)
                     {
-                        string? dtStr = h.GetValueOrDefault("hearing_date") ?? 
-                                        h.GetValueOrDefault("business_date") ?? 
-                                        h.GetValueOrDefault("next_date");
-
                         DateTime? dt = null;
-                        if (!string.IsNullOrWhiteSpace(dtStr) && TryParseFlexibleDate(dtStr, out var pDt) && !IsCisSentinelDate(pDt))
+                        string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                        foreach (var k in dtCandidateKeys)
                         {
-                            dt = pDt;
+                            if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                            {
+                                if (TryParseFlexibleDate(val, out var pDt) && !IsCisSentinelDate(pDt) && pDt.Year >= 1970 && pDt.Year <= 2050)
+                                {
+                                    dt = pDt;
+                                    break;
+                                }
+                            }
                         }
                         parsedHearings.Add((dt, h));
                     }
@@ -3805,6 +4308,186 @@ namespace MVCCaseManagement.Controllers
                     RawJson = rawDossierJson,
                     AddedBy = userName
                 });
+
+            // Synchronize and persist 100% of authentic hearing history into CASE_HEARINGS_HISTORY table
+            if (history != null && history.Count > 0)
+            {
+                try
+                {
+                    foreach (var h in history)
+                    {
+                        DateTime? hDt = null;
+                        string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                        foreach (var k in dtCandidateKeys)
+                        {
+                            if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                            {
+                                if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
+                                {
+                                    hDt = parsed;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (hDt.HasValue)
+                        {
+                            string? nextStr = h.GetValueOrDefault("next_date") ?? h.GetValueOrDefault("hearing_date");
+                            DateTime? nextDtVal = null;
+                            if (!string.IsNullOrWhiteSpace(nextStr) && TryParseFlexibleDate(nextStr, out var nDt) && !IsCisSentinelDate(nDt) && nDt.Year >= 1970 && nDt.Year <= 2050)
+                            {
+                                nextDtVal = nDt;
+                            }
+                            string? stage = h.GetValueOrDefault("purpose_of_listing") ?? 
+                                            h.GetValueOrDefault("next_purpose") ?? 
+                                            h.GetValueOrDefault("stage");
+                            string? biz = h.GetValueOrDefault("business") ?? 
+                                          h.GetValueOrDefault("roznama") ?? 
+                                          h.GetValueOrDefault("proceeding");
+
+                            await conn.ExecuteAsync(@"
+                                MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                USING (SELECT @cleanCnr AS CNRNumber, @hDt AS HearingDate) AS source
+                                ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                                WHEN MATCHED THEN
+                                    UPDATE SET 
+                                        BusinessTransacted = COALESCE(NULLIF(@biz, ''), target.BusinessTransacted),
+                                        NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                        NextStage = COALESCE(NULLIF(@stage, ''), target.NextStage)
+                                WHEN NOT MATCHED THEN
+                                    INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                                    VALUES (@cleanCnr, @hDt, @biz, @nextDtVal, @stage, GETDATE());",
+                                new { cleanCnr, hDt = hDt.Value.Date, biz, nextDtVal, stage });
+                        }
+                    }
+
+                    // By default once: fetch all roznamas and store in DB for all listed hearing dates
+                    bool anyRoznamaFetched = false;
+                    foreach (var h in history)
+                    {
+                        string? biz = h.GetValueOrDefault("business") ?? h.GetValueOrDefault("roznama");
+                        if (string.IsNullOrWhiteSpace(biz))
+                        {
+                            DateTime? sDt = null;
+                            string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                            foreach (var k in dtCandidateKeys)
+                            {
+                                if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
+                                {
+                                    if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
+                                    {
+                                        sDt = parsed;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (sDt.HasValue)
+                            {
+                                string dtStr = sDt.Value.ToString("yyyy-MM-dd");
+                                try
+                                {
+                                    var bizRes = await _napixService.GetCaseBusinessAsync(cleanCnr, dtStr, isHc, norm);
+                                    if (bizRes.HasValue && IsValidJsonData(bizRes))
+                                    {
+                                        string bizText = "";
+                                        string? nextDateStr = null;
+                                        string? purposeStr = null;
+
+                                        var rootBiz = bizRes.Value;
+                                        if (rootBiz.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                                            bizText = bProp.GetString()!;
+                                        else if (rootBiz.TryGetProperty("roznama", out var rProp) && !string.IsNullOrWhiteSpace(rProp.GetString()))
+                                            bizText = rProp.GetString()!;
+                                        else if (rootBiz.TryGetProperty("proceedings", out var pProp) && !string.IsNullOrWhiteSpace(pProp.GetString()))
+                                            bizText = pProp.GetString()!;
+                                        else if (rootBiz.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                                            bizText = soProp.GetString()!;
+                                        else if (rootBiz.TryGetProperty("order", out var oProp) && !string.IsNullOrWhiteSpace(oProp.GetString()))
+                                            bizText = oProp.GetString()!;
+
+                                        if (rootBiz.TryGetProperty("next_date", out var ndProp) && !string.IsNullOrWhiteSpace(ndProp.GetString()))
+                                            nextDateStr = ndProp.GetString();
+                                        else if (rootBiz.TryGetProperty("nextDate", out var ndProp2) && !string.IsNullOrWhiteSpace(ndProp2.GetString()))
+                                            nextDateStr = ndProp2.GetString();
+
+                                        if (rootBiz.TryGetProperty("purpose", out var purProp) && !string.IsNullOrWhiteSpace(purProp.GetString()))
+                                            purposeStr = purProp.GetString();
+                                        else if (rootBiz.TryGetProperty("stage", out var stgProp) && !string.IsNullOrWhiteSpace(stgProp.GetString()))
+                                            purposeStr = stgProp.GetString();
+
+                                        DateTime? nextDtVal = null;
+                                        if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                                        {
+                                            nextDtVal = ndVal;
+                                        }
+
+                                        // Persist to CASE_HEARINGS_HISTORY via MERGE
+                                        await conn.ExecuteAsync(@"
+                                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                            USING (SELECT @cleanCnr AS CNRNumber, @hDate AS HearingDate) AS source
+                                            ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                                            WHEN MATCHED THEN
+                                                UPDATE SET BusinessTransacted = COALESCE(NULLIF(@bizText, ''), target.BusinessTransacted),
+                                                           NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                                           NextStage = COALESCE(@purposeStr, target.NextStage)
+                                            WHEN NOT MATCHED THEN
+                                                INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                                                VALUES (@cleanCnr, @hDate, NULLIF(@bizText, ''), @nextDtVal, @purposeStr, GETDATE());",
+                                            new { cleanCnr, hDate = sDt.Value.Date, bizText, nextDtVal, purposeStr });
+
+                                        if (!string.IsNullOrWhiteSpace(bizText))
+                                        {
+                                            h["business"] = bizText;
+                                            h["roznama"] = bizText;
+                                            anyRoznamaFetched = true;
+                                        }
+                                    }
+                                }
+                                catch (Exception exBiz)
+                                {
+                                    _logger.LogDebug(exBiz, "Auto-fetch roznama skipped for CNR {CNR} on date {Date}", cleanCnr, dtStr);
+                                }
+                            }
+                        }
+                    }
+
+                    if (anyRoznamaFetched)
+                    {
+                        try
+                        {
+                            var updatedDossier = new {
+                                success = true,
+                                cnr = cleanCnr,
+                                module = norm,
+                                data = summary,
+                                history = history,
+                                orders = orders,
+                                ia_filings = iaFilings,
+                                processes = processes,
+                                acts = acts,
+                                extra_parties = extraParties,
+                                objections = objections,
+                                transfers = transfers,
+                                linked_cases = linkedCases,
+                                raw = apiResult.Value,
+                                synced_at = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                            };
+                            string updatedJson = JsonSerializer.Serialize(updatedDossier);
+                            await conn.ExecuteAsync(@"
+                                UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                                SET RawJson = @updatedJson, LastSyncedAt = GETDATE()
+                                WHERE CNRNumber = @cleanCnr AND RelatedModule = @norm",
+                                new { updatedJson, cleanCnr, norm });
+                        }
+                        catch { }
+                    }
+                }
+                catch (Exception exHist)
+                {
+                    _logger.LogWarning(exHist, "Error persisting case hearings history to CASE_HEARINGS_HISTORY for CNR {CNR}", cleanCnr);
+                }
+            }
 
             return (true, !exists, null);
         }

@@ -1,4 +1,4 @@
-﻿@model MVCCaseManagement.Models.HighCourtCauseListViewModel
+@model MVCCaseManagement.Models.HighCourtCauseListViewModel
 @{
     ViewData["Title"] = "High Court Cause List — Central Office";
     ViewData["HidePageHeader"] = true;
@@ -67,6 +67,31 @@
         right: 24px;
         z-index: 1080;
         max-width: 380px;
+    }
+
+    @@media (max-width: 767.98px) {
+        .hc-header-gradient {
+            padding: 1.1rem !important;
+            border-radius: 1rem !important;
+        }
+        .hc-header-gradient h3 {
+            font-size: 1.15rem !important;
+        }
+        .hc-tab-btn {
+            font-size: 0.8rem !important;
+            padding: 0.5rem 0.75rem !important;
+            text-align: center;
+        }
+        .kpi-card {
+            border-radius: 1rem !important;
+            margin-bottom: 0.5rem;
+        }
+        .hc-toast-container {
+            left: 12px;
+            right: 12px;
+            bottom: 12px;
+            max-width: calc(100% - 24px);
+        }
     }
 </style>
 

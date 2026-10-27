@@ -39,24 +39,29 @@
 <body>
     <!-- Official Branding Header -->
     <header class="branding-header d-print-none">
-        <div class="d-flex align-items-center">
-            <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo" asp-append-version="true" />
-            <div class="branding-text">
-                <span class="kannada fw-bold text-dark opacity-75">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</span>
-                <h1 class="mb-0">North Western Karnataka Road Transport Corporation</h1>
+        <div class="d-flex align-items-center min-w-0">
+            <!-- Mobile Offcanvas Toggle Hamburger -->
+            <button class="btn btn-sm btn-light border-0 me-2 d-md-none p-1 rounded-2 shadow-none flex-shrink-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileNavigationDrawer" aria-controls="mobileNavigationDrawer" aria-label="Toggle navigation" style="width: 36px; height: 36px;">
+                <i class="bi bi-list fs-3 text-dark"></i>
+            </button>
+            <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo flex-shrink-0" asp-append-version="true" />
+            <div class="branding-text min-w-0 text-truncate">
+                <span class="kannada fw-bold text-dark opacity-75 d-none d-sm-block">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</span>
+                <h1 class="mb-0 text-truncate d-none d-lg-block">North Western Karnataka Road Transport Corporation</h1>
+                <h1 class="mb-0 text-truncate d-none d-sm-block d-lg-none">NWKRTC Legal Management</h1>
+                <h1 class="mb-0 text-truncate d-block d-sm-none fs-6">NWKRTC Legal</h1>
             </div>
         </div>
-        <div class="ms-auto d-flex align-items-center">
-            
+        <div class="ms-auto d-flex align-items-center flex-shrink-0">
             <!-- Notification Bell -->
-            <div class="dropdown me-3">
-                <a class="text-dark position-relative d-flex align-items-center justify-content-center bg-white rounded-circle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 40px; height: 40px; text-decoration: none;">
-                    <i class="bi bi-bell-fill fs-5 text-primary"></i>
+            <div class="dropdown me-2 me-sm-3">
+                <a class="text-dark position-relative d-flex align-items-center justify-content-center bg-white rounded-circle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 36px; height: 36px; text-decoration: none;">
+                    <i class="bi bi-bell-fill fs-6 text-primary"></i>
                     <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem;">
                         0
                     </span>
                 </a>
-                <div class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-0 mt-2" style="width: 320px; max-height: 400px; overflow-y: auto; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+                <div class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-0 mt-2" style="width: 300px; max-width: 90vw; max-height: 400px; overflow-y: auto; background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px);">
                     <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light rounded-top-4">
                         <h6 class="mb-0 fw-bold"><i class="bi bi-bell-fill text-primary me-2"></i>Notifications</h6>
                         <a href="/Notification/Index" class="small text-decoration-none">View All</a>
@@ -67,372 +72,60 @@
                 </div>
             </div>
 
-            <div class="user-profile-widget me-3 shadow-sm">
-                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
+            <!-- User Profile Widget -->
+            <div class="user-profile-widget me-2 me-sm-3 shadow-sm" title="@User.FindFirst("FullName")?.Value (@User.FindFirst("DivisionName")?.Value)">
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 30px; height: 30px; font-size: 0.8rem; font-weight: 700;">
                     @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
                 </div>
-                <div class="text-start leading-tight">
-                    <div class="fw-bold text-dark small">@User.FindFirst("FullName")?.Value</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">@User.FindFirst("DivisionName")?.Value</div>
+                <div class="text-start leading-tight d-none d-md-block ms-2">
+                    <div class="fw-bold text-dark small text-truncate" style="max-width: 130px;">@User.FindFirst("FullName")?.Value</div>
+                    <div class="text-muted text-truncate" style="font-size: 0.7rem; max-width: 130px;">@User.FindFirst("DivisionName")?.Value</div>
                 </div>
             </div>
-            <a href="/Account/Logout" class="logout-pill shadow-sm">
-                <i class="bi bi-power me-2"></i> Sign Out
+
+            <!-- Sign Out Pill -->
+            <a href="/Account/Logout" class="logout-pill shadow-sm" title="Sign Out">
+                <i class="bi bi-power"></i>
+                <span class="d-none d-sm-inline ms-1.5">Sign Out</span>
             </a>
         </div>
     </header>
 
-    <div class="main-wrapper">
-        <!-- Sidebar -->
-        <aside class="sidebar d-none d-md-block d-print-none">
-
-            <nav class="nav flex-column flex-grow-1">
-                @{
-                    var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
-                    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
-                    var currentModuleQuery = Context.Request.Query["module"].ToString();
-                    var divId_Layout = User.FindFirst("DivisionID")?.Value;
-                    bool isCO_Layout = string.IsNullOrEmpty(divId_Layout) || divId_Layout == "0" || divId_Layout == "5";
-                    
-                    var currentPath = Context.Request.Path.Value ?? "";
-                    var isPettyBill = currentPath.StartsWith("/pettybill", StringComparison.OrdinalIgnoreCase) || 
-                                      ((currentController == "Report" || currentController == "PettyBill") && (currentAction == "Index" || string.IsNullOrEmpty(currentAction)));
-
-                    var isReport = (currentController == "Report" && currentAction == "CentralOffice") || (isCO_Layout && currentController == "Report" && !isPettyBill);
-                    var isGratuity = currentController == "Gratuity";
-                    var isLabour = currentController == "Labour" || currentController == "LabourEP" || (currentController == "ECourts" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase));
-                    var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
-                    var isMaster = currentController == "Master" || currentController == "ApiDashboard";
-                    var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
-
-                    var layoutRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? User.FindFirst("Role")?.Value ?? "";
-                    var layoutFullName = User.FindFirst("FullName")?.Value ?? "";
-                    var layoutUsername = User.Identity?.Name ?? "";
-
-                    bool isDivisionController = User.IsInRole("Division Controller") || 
-                                               User.IsInRole("DC") ||
-                                               string.Equals(layoutRole, "Division Controller", StringComparison.OrdinalIgnoreCase) ||
-                                               string.Equals(layoutRole, "DC", StringComparison.OrdinalIgnoreCase) ||
-                                               layoutRole.Contains("Division Controller", StringComparison.OrdinalIgnoreCase) ||
-                                               layoutUsername.StartsWith("DC_", StringComparison.OrdinalIgnoreCase) ||
-                                               layoutFullName.Contains("Division Controller", StringComparison.OrdinalIgnoreCase);
-
-                    // Read-only roles: LO, Dy CLO, CLO, MD, Division Controller see only Dashboard + Case List
-                    bool isReadOnlyRole = User.IsInRole("LO") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || isDivisionController;
-                }
-
-                <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")" href="/Home/Index">
-                    <i class="bi bi-house-door"></i>
-                    <div class="link-text">
-                        <span>Central Portal Home</span>
-                    </div>
-                </a>
-
-                @{
-                    var config = Context.RequestServices.GetService(typeof(Microsoft.Extensions.Configuration.IConfiguration)) as Microsoft.Extensions.Configuration.IConfiguration;
-                    bool isAIEnabled = config == null || (config["AI:Enabled"] != "false" && config["NyayaPathaAI:IsEnabled"] != "false");
-                    bool isAuthorizedForAI = isAIEnabled && (User.Identity?.IsAuthenticated == true);
-                }
-                @if (isAuthorizedForAI)
-                {
-                    <a class="nav-link @(currentController == "NyayaPatha" ? "active" : "") fw-bold mb-2" href="/NyayaPatha" 
-                       style="padding: 10px 14px; border-radius: 8px; border-left: 3px solid #3b82f6; background: @(currentController == "NyayaPatha" ? "rgba(37, 99, 235, 0.2)" : "rgba(37, 99, 235, 0.08)");">
-                        <i class="bi bi-robot text-info" style="font-size: 19px; width: 22px; text-align: center; margin-right: 10px;"></i>
-                        <div class="link-text d-flex align-items-center justify-content-between w-100">
-                            <span class="text-white">Nyaya Patha AI</span>
-                            <span class="badge bg-primary rounded-pill px-1.5 py-0.5" style="font-size: 0.62rem; letter-spacing: 0.3px;">AI</span>
-                        </div>
-                    </a>
-                }
-
-                @if (isReport)
-                {
-                    <div class="nav-section-title">REPORTS & MIS</div>
-
-                    <div class="nav-section-title mt-2" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">MVC MODULE</div>
-                    <a class="nav-link @(currentAction == "CentralOffice" && (string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MVC">
-                        <i class="bi bi-truck-front-fill me-2 text-primary"></i>
-                        <span>MVC Monthly Statement</span>
-                    </a>
-
-                    <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">LABOUR MODULE</div>
-                    <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Labour">
-                        <i class="bi bi-briefcase-fill me-2" style="color: #8b5cf6;"></i>
-                        <span>Labour Monthly Statement</span>
-                    </a>
-
-                    <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">GRATUITY MODULE</div>
-                    <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Gratuity", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Gratuity">
-                        <i class="bi bi-cash-stack me-2" style="color: #f59e0b;"></i>
-                        <span>Gratuity Monthly Statement</span>
-                    </a>
-
-                    <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">OTHER COURTS MODULE</div>
-                    <a class="nav-link @(currentAction == "CentralOffice" && currentModuleQuery.Equals("Others", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/Report/CentralOffice?module=Others">
-                        <i class="bi bi-building me-2" style="color: #06b6d4;"></i>
-                        <span>Other Courts Statement</span>
-                    </a>
-
-                    <div class="nav-section-title mt-3" style="font-size: 0.65rem; color: #94a3b8; letter-spacing: 0.08em;">CONSOLIDATED MIS</div>
-                    <a class="nav-link @(currentAction == "CentralOffice" && (currentModuleQuery.Equals("MMR-ST2", StringComparison.OrdinalIgnoreCase) || currentModuleQuery.Equals("MMRST2", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/Report/CentralOffice?module=MMR-ST2">
-                        <i class="bi bi-file-earmark-text-fill me-2" style="color: #ff9800;"></i>
-                        <span>MMR-ST2 Particulars</span>
-                    </a>
-                }
-                else if (isLabour)
-                {
-                    <div class="nav-section-title">LABOUR DISPUTES</div>
-                    <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Labour/Index">
-                        <i class="bi bi-columns-gap"></i>
-                        <span>Labour Dashboard</span>
-                    </a>
-
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/Labour/HighCourtCauseList">
-                            <i class="bi bi-broadcast-pin text-danger"></i>
-                            <span>Live HC Cause List</span>
-                        </a>
-                        <a class="nav-link @((currentController == "Labour" || currentController == "ECourts") && ViewContext.RouteData.Values["action"]?.ToString() == "MyCases" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase) ? "active" : "")" href="/ECourts/MyCases?module=Labour">
-                            <i class="bi bi-folder-check text-info"></i>
-                            <span>My Cases</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" && Context.Request.Query["type"] != "ArisingApplication" ? "active" : "")" href="/Labour/Create">
-                             <i class="bi bi-plus-circle-fill"></i>
-                            <span>New Registration</span>
-                        </a>
-                    }
-
-                    <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" && Context.Request.Query["status"] != "ArisingApplication" ? "active" : "")" href="/Labour/CaseList">
-                        <i class="bi bi-list-ul"></i>
-                        <span>Labour Case List</span>
-                    </a>
-
-                    @if (!isReadOnlyRole && !isCO_Layout)
-                    {
-                        <a class="nav-link @(currentController == "Labour" && 
-                            ((ViewContext.RouteData.Values["action"]?.ToString() == "Create" && Context.Request.Query["type"] == "ArisingApplication") || 
-                             (ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" && Context.Request.Query["status"] == "ArisingApplication") ||
-                             (ViewContext.RouteData.Values["action"]?.ToString() == "CreateArisingApplication") ||
-                             (ViewContext.RouteData.Values["action"]?.ToString() == "ArisingApplication") ||
-                             (ViewContext.RouteData.Values["action"]?.ToString() == "EditArisingApplication")) ? "active" : "")" href="/Labour/ArisingApplication">
-                            <i class="bi bi-layers-half"></i>
-                            <span>Arising Applications</span>
-                        </a>
-                    }
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "Transfer") ? "active" : "")" href="/Labour/Transfer">
-                            <i class="bi bi-arrows-move"></i>
-                            <span>Case Transfer</span>
-                        </a>
-                    }
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(currentController == "LabourEP" ? "active" : "")" href="/LabourEP">
-                            <i class="bi bi-hammer"></i>
-                            <span>EP (Execution Petitions)</span>
-                        </a>
-                    }
-                    @if (!isReadOnlyRole && isCO_Layout)
-                    {
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ServiceMatters" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageServiceMatter") ? "active" : "")" href="/Labour/ServiceMatters">
-                            <i class="bi bi-file-earmark-text"></i>
-                            <span>Service/Commercial Matters</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantAppeal") ? "active" : "")" href="/Labour/ClaimantAppeals">
-                            <i class="bi bi-person-badge"></i>
-                            <span>Claimant Writ Petition </span>
-                        </a>
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "CCCCases" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageCCCCase") ? "active" : "")" href="/Labour/CCCCases">
-                            <i class="bi bi-shield-shaded"></i>
-                            <span>CCC Cases</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ReviewPetitions" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageReviewPetition") ? "active" : "")" href="/Labour/ReviewPetitions">
-                            <i class="bi bi-file-earmark-diff"></i>
-                            <span>Review Petition Filing</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantWritAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantWritAppeal") ? "active" : "")" href="/Labour/ClaimantWritAppeals">
-                            <i class="bi bi-pencil-square"></i>
-                            <span>Claimant Writ Appeal</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Labour" && ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantSLPs" ? "active" : "")" href="/Labour/ClaimantSLPs">
-                            <i class="bi bi-bank"></i>
-                            <span>Claimant SLP</span>
-                        </a>
-                    }
-                }
-                else if (isGratuity)
-                {
-                    <div class="nav-section-title">GRATUITY CLAIMS</div>
-                     <a class="nav-link @(currentController == "Gratuity" && (ViewContext.RouteData.Values["action"]?.ToString() == "Index" || ViewContext.RouteData.Values["action"]?.ToString() == "") ? "active" : "")" href="/Gratuity">
-                         <i class="bi bi-columns-gap"></i>
-                         <span>Gratuity Dashboard</span>
-                     </a>
-                     @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                     {
-                         <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Gratuity/Create">
-                             <i class="bi bi-plus-circle-fill"></i>
-                             <span>New Registration</span>
-                         </a>
-                     }
-                     <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" ? "active" : "")" href="/Gratuity/CaseList">
-                         <i class="bi bi-list-ul"></i>
-                         <span>Gratuity Case List</span>
-                     </a>
-                     @if (!isReadOnlyRole)
-                     {
-                         <a class="nav-link @(currentController == "Gratuity" && ViewContext.RouteData.Values["action"]?.ToString() == "AuditCalculation" ? "active" : "")" href="/Gratuity/AuditCalculation">
-                             <i class="bi bi-calculator"></i>
-                             <span>Audit Calculation</span>
-                         </a>
-                         <a class="nav-link @(currentController == "Gratuity" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantAppeal") ? "active" : "")" href="/Gratuity/ClaimantAppeals">
-                             <i class="bi bi-person-badge"></i>
-                             <span>Claimant PGA/APPL/CR</span>
-                         </a>
-                     }
-                }
-                else if (isOtherCourts)
-                {
-                    <div class="nav-section-title">OTHER COURTS</div>
-                    <a class="nav-link @(currentAction == "OtherCourts" ? "active" : "")" href="/Home/OtherCourts">
-                        <i class="bi bi-bank2"></i>
-                        <span>Other Courts Gateway</span>
-                    </a>
-                    <a class="nav-link @(currentAction == "OSCorporation" ? "active" : "")" href="/Home/OSCorporation">
-                        <i class="bi bi-building"></i>
-                        <span>O.S (Corporation)</span>
-                    </a>
-                    <a class="nav-link @(currentAction == "OSClaimant" ? "active" : "")" href="/Home/OSClaimant">
-                        <i class="bi bi-person-fill"></i>
-                        <span>O.S (Claimant)</span>
-                    </a>
-                    <a class="nav-link @(currentAction == "OtherCourtsCaseList" ? "active" : "")" href="/Home/OtherCourtsCaseList">
-                        <i class="bi bi-list-columns"></i>
-                        <span>Case List</span>
-                    </a>
-                }
-                else
-                {
-                    <div class="nav-section-title">MVC / MACT CLAIMS</div>
-                    <a class="nav-link @(currentController == "Dashboard" ? "active" : "")" href="/Dashboard">
-                        <i class="bi bi-columns-gap"></i>
-                        <div class="link-text">
-                            <span>Dashboard</span>
-                        </div>
-                    </a>
-
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Create" ? "active" : "")" href="/Case/Create">
-                            <i class="bi bi-plus-circle-fill"></i>
-                            <span>New Registration</span>
-                        </a>
-                        <a class="nav-link @(currentController == "Case" && (ViewContext.RouteData.Values["action"]?.ToString() == "ThirdPartyList" || ViewContext.RouteData.Values["action"]?.ToString() == "RegisterThirdParty") ? "active" : "")" href="/Case/ThirdPartyList">
-                            <i class="bi bi-person-plus-fill"></i>
-                            <span>Third Party Cases</span>
-                        </a>
-                    }
-
-                    <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "Index" ? "active" : "")" href="/Case/Index">
-                        <i class="bi bi-stack"></i>
-                        <span>MVC Case List</span>
-                    </a>
-
-                    @if (!isReadOnlyRole && isCO_Layout)
-                    {
-                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
-                            <i class="bi bi-calendar-event-fill text-warning"></i>
-                            <span>HC Cause List</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "MyCases" && (string.IsNullOrEmpty(currentModuleQuery) || currentModuleQuery.Equals("MVC", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/ECourts/MyCases?module=MVC">
-                            <i class="bi bi-folder-check text-info"></i>
-                            <span>My Cases</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Appeal" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantList" || ViewContext.RouteData.Values["action"]?.ToString() == "Register" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimant") ? "active" : "")" href="/Appeal/Register">
-                            <i class="bi bi-person-badge"></i>
-                            <span>Claimant Appeals</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Appeal" && ViewContext.RouteData.Values["action"]?.ToString() == "SLPRegistration" ? "active" : "")" href="/Appeal/SLPRegistration">
-                            <i class="bi bi-journal-plus"></i>
-                            <span>SLP Registration</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Audit" ? "active" : "")" href="/Audit">
-                            <i class="bi bi-shield-fill-check"></i>
-                            <span>Audit Registry</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "EP" ? "active" : "")" href="/EP">
-                            <i class="bi bi-hammer"></i>
-                            <span>EP (Execution Petitions)</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
-                    {
-                        <a class="nav-link @(isPettyBill ? "active" : "")" href="/pettybill">
-                            <i class="bi bi-receipt-cutoff"></i>
-                            <span>Petty Bill</span>
-                        </a>
-
-                        <a class="nav-link @(currentController == "Case" && ViewContext.RouteData.Values["action"]?.ToString() == "RemindBack" ? "active" : "")" href="/Case/RemindBack">
-                            <i class="bi bi-arrow-counterclockwise"></i>
-                            <span>MVC Remand Back Case</span>
-                        </a>
-                    }
-
-                    @if (!isReadOnlyRole)
-                    {
-                        <a class="nav-link @(currentController == "Judgement" ? "active" : "")" href="/Judgement">
-                            <i class="bi bi-bank2"></i>
-                            <span>Judgements & Circulars</span>
-                        </a>
-                    }
-                }
-
-                @if (User.IsInRole("Admin"))
-                {
-                    <div class="nav-section-title">ADMINISTRATION</div>
-                    <a class="nav-link @(currentController == "Master" ? "active" : "")" href="/Master">
-                        <i class="bi bi-gear-wide-connected"></i>
-                        <span>Systems Setup</span>
-                    </a>
-                }
-
-                @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO"))
-                {
-                    <a class="nav-link @(currentController == "ApiDashboard" ? "active" : "")" href="/ApiDashboard"
-                       style="position:relative">
-                        <i class="bi bi-speedometer2"></i>
-                        <span>API Dashboard</span>
-                        <span id="quotaDot" style="display:none;position:absolute;top:8px;right:10px;
-                            width:8px;height:8px;border-radius:50%;background:#ef4444;
-                            animation:quotaPulse 1.4s ease-in-out infinite"></span>
-                    </a>
-                }
-            </nav>
-
-            <!-- e-Courts Quick Link -->
-            <div class="px-2 pt-3 mt-auto flex-shrink-0 border-top border-white border-opacity-10 mb-2">
-                <a href="https://services.ecourts.gov.in/ecourtindia_v6/" target="_blank" rel="noopener noreferrer" 
-                   class="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2 py-2" 
-                   style="border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(10px); background: rgba(255,255,255,0.06); font-size: 0.85rem;">
-                    <i class="bi bi-globe"></i>
-                    <span class="fw-semibold">e-Courts India</span>
-                    <i class="bi bi-box-arrow-up-right small opacity-75"></i>
-                </a>
+    <!-- Mobile Offcanvas Navigation Drawer -->
+    <div class="offcanvas offcanvas-start bg-dark text-white border-0 shadow-lg d-md-none" tabindex="-1" id="mobileNavigationDrawer" aria-labelledby="mobileNavDrawerLabel" style="width: 300px; z-index: 1060;">
+        <div class="offcanvas-header border-bottom border-white border-opacity-10 py-3 px-3">
+            <div class="d-flex align-items-center gap-2.5">
+                <img src="~/images/logo.jpg" alt="NWKRTC Logo" style="height: 32px; width: auto; border-radius: 4px;" asp-append-version="true" />
+                <div>
+                    <h6 class="offcanvas-title fw-bold text-white mb-0" id="mobileNavDrawerLabel" style="font-size: 0.95rem;">NWKRTC Legal Hub</h6>
+                    <span class="text-white-50" style="font-size: 0.7rem;">Official Portal Navigation</span>
+                </div>
             </div>
+            <button type="button" class="btn-close btn-close-white text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body p-2 d-flex flex-column" style="overflow-y: auto;">
+            <!-- User Status Card in Mobile Menu -->
+            <div class="p-2.5 mb-2 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
+                <div class="d-flex align-items-center gap-2.5">
+                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700;">
+                        @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
+                    </div>
+                    <div class="min-w-0 text-truncate">
+                        <div class="fw-bold text-white small text-truncate">@User.FindFirst("FullName")?.Value</div>
+                        <div class="text-white-50 small text-truncate" style="font-size: 0.72rem;">@User.FindFirst("DivisionName")?.Value</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Links -->
+            <partial name="_LayoutNav" />
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        <!-- Sidebar (Desktop) -->
+        <aside class="sidebar d-none d-md-block d-print-none">
+            <partial name="_LayoutNav" />
         </aside>
 
         <!-- Main Content -->

@@ -90,6 +90,39 @@
         border-color: #e2e8f0;
         cursor: not-allowed;
     }
+
+    @@media (max-width: 767.98px) {
+        .mycases-page {
+            padding: 8px 4px !important;
+        }
+        .mycases-header-gradient {
+            padding: 1.1rem !important;
+            border-radius: 1rem !important;
+        }
+        .mycases-header-gradient h3 {
+            font-size: 1.2rem !important;
+        }
+        .kpi-card-clean {
+            border-radius: 1rem !important;
+            margin-bottom: 0.5rem;
+        }
+        .kpi-card-clean .card-body {
+            padding: 0.85rem !important;
+        }
+        .kpi-card-clean h2 {
+            font-size: 1.5rem !important;
+        }
+        .status-filter-group {
+            width: 100%;
+            overflow-x: auto;
+            white-space: nowrap;
+            padding-bottom: 4px;
+        }
+        .modal-dialog {
+            max-width: 96% !important;
+            margin: 0.5rem auto !important;
+        }
+    }
 </style>
 
 <div class="mycases-page px-3 px-md-4 py-3">
@@ -1120,6 +1153,9 @@
                     </div>
                 </div>
                 <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1.5" onclick="fetchAllCaseRoznamas()" id="btnHeaderFetchAllRoznamas" title="Fetch verbatim roznamas for all hearings from eCourts and store in database">
+                        <i class="bi bi-cloud-arrow-down-fill me-1"></i>Fetch All Roznamas
+                    </button>
                     <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" onclick="printProceedingsModal()" title="Print Proceedings History">
                         <i class="bi bi-printer me-1"></i>Print
                     </button>
@@ -1203,6 +1239,9 @@
                             <h6 class="fw-bold mb-0 text-dark">Chronological Daily Proceedings Timeline (<span id="dpTableCount">0</span> Hearings)</h6>
                         </div>
                         <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 py-1 extra-small shadow-xs" onclick="fetchAllCaseRoznamas()" id="btnFetchAllProceedings" title="Query e-Courts NAPIX for all listings and save to database">
+                                <i class="bi bi-cloud-arrow-down-fill me-1"></i>Fetch All Roznamas to DB
+                            </button>
                             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 extra-small shadow-xs" onclick="syncCurrentCaseProceedings()" id="btnSyncCurrentProceedings">
                                 <i class="bi bi-arrow-clockwise me-1"></i>Sync Case Live
                             </button>
@@ -1756,9 +1795,39 @@
         const workerName = c.addedBy || "Central Office";
         const rowClassAttr = groupClass ? `class="group-row-${groupClass}"` : "";
 
+        // Build recent hearings timeline snippet for the drawer
+        let recentHearingsSnippet = "";
+        if (c.proceedingsHistory && Array.isArray(c.proceedingsHistory) && c.proceedingsHistory.length > 0) {
+            const recent = c.proceedingsHistory.slice(0, 3);
+            recentHearingsSnippet = `<div class="d-flex flex-column gap-1 mt-1">` + recent.map((rh, idx) => {
+                const rDt = rh.hearing_date || rh.business_date || rh.next_date || "—";
+                const rPurp = rh.purpose_of_listing || rh.purpose || rh.next_purpose || rh.stage || "Listing";
+                const rBiz = (rh.business || rh.roznama || rh.proceeding || "").trim();
+                return `
+                <div class="extra-small p-1.5 bg-white rounded border d-flex justify-content-between align-items-center gap-2">
+                    <span class="font-monospace fw-bold text-primary">${escapeHtml(rDt)}</span>
+                    <span class="text-truncate text-dark fw-semibold" style="max-width: 140px;" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
+                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
+                </div>`;
+            }).join("") + `</div>`;
+        } else {
+            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
+        }
+
+        const isTodayListed = c.hearingUrgency === "TODAY";
+        const isTomorrowListed = c.hearingUrgency === "TOMORROW";
+        const lastBiz = (c.lastProceeding || "").trim();
+
         return `
         <tr id="row_${c.trackedID}" ${rowClassAttr}>
-            <td class="text-muted fw-bold ps-4">${index}</td>
+            <td class="text-muted fw-bold ps-3">
+                <div class="d-flex align-items-center gap-1">
+                    <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" onclick="toggleHearingDrawer(${c.trackedID})" title="Toggle Hearing History & Daily Status Drawer">
+                        <i class="bi bi-chevron-right fs-6 fw-bold text-secondary" id="drawer_icon_${c.trackedID}"></i>
+                    </button>
+                    <span>${index}</span>
+                </div>
+            </td>
             <td>
                 <div class="d-flex align-items-center gap-1.5">
                     <span class="font-monospace fw-bold text-dark fs-6">${escapeHtml(c.cnrNumber)}</span>
@@ -1771,6 +1840,9 @@
                     <span class="badge bg-light text-dark border extra-small" title="Assigned Case Worker">
                         <i class="bi bi-person-fill text-primary me-0.5"></i>${escapeHtml(workerName)}
                     </span>
+                    <button type="button" class="btn btn-link p-0 extra-small text-primary text-decoration-none fw-semibold ms-1" onclick="toggleHearingDrawer(${c.trackedID})">
+                        <i class="bi bi-journal-text me-0.5"></i>History (${c.totalHearings || 0})
+                    </button>
                 </div>
             </td>
             <td>
@@ -1840,7 +1912,142 @@
                     </button>
                 </div>
             </td>
+        </tr>
+        
+        <!-- Expandable Hearing History & Daily Status Drawer Row -->
+        <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClass ? `group-row-${groupClass}` : ''}">
+            <td colspan="9" class="p-3 ps-4 pe-4">
+                <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
+                    <div class="card-header bg-dark text-white py-2.5 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-warning text-dark font-monospace fw-bold">${escapeHtml(getDisplayCaseType(c))}</span>
+                            <span class="font-monospace fw-bold text-white small">${escapeHtml(c.cnrNumber)}</span>
+                            <span class="badge ${isTodayListed ? 'bg-danger text-white' : (isTomorrowListed ? 'bg-warning text-dark' : 'bg-primary-subtle text-primary')} extra-small">
+                                ${escapeHtml(c.hearingUrgency || 'SCHEDULED')}
+                            </span>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-xs btn-outline-light rounded-pill px-2.5 py-1 extra-small" onclick="openDailyProceedingsModal(${c.trackedID})">
+                                <i class="bi bi-journal-text me-1"></i>Full Roznama Timeline
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-light rounded-pill px-2.5 py-1 extra-small" onclick="openCaseDossier(${c.trackedID})">
+                                <i class="bi bi-file-earmark-medical me-1"></i>Full Dossier
+                            </button>
+                            <button type="button" class="btn btn-xs btn-link text-white p-0 text-decoration-none ms-1" onclick="toggleHearingDrawer(${c.trackedID})" title="Close Drawer">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body p-3">
+                        <div class="row g-3">
+                            <!-- Column 1: Daily Status & Court Listing -->
+                            <div class="col-12 col-md-4 border-end-md">
+                                <div class="extra-small text-uppercase fw-bold text-primary mb-1">
+                                    <i class="bi bi-broadcast me-1"></i>Daily Status & Court Listing
+                                </div>
+                                <div class="p-2.5 rounded-3 bg-light border">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Court Hall:</span>
+                                        <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">${escapeHtml(c.courtNo || 'Awaited')}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Serial / Item #:</span>
+                                        <span class="font-monospace fw-bold text-dark small">${c.itemNo ? escapeHtml(c.itemNo) : '—'}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Bench Roster:</span>
+                                        <span class="extra-small fw-semibold text-truncate" style="max-width: 170px;" title="${escapeHtml(c.benchName || '')}">${escapeHtml(c.benchName || (isHc ? 'Single Bench' : 'Court'))}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Coram / Judge:</span>
+                                        <span class="extra-small fw-semibold text-truncate text-secondary" style="max-width: 170px;" title="${escapeHtml(c.judgeDesignation || '')}">${escapeHtml(c.judgeDesignation || 'Hon\'ble Court')}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top">
+                                        <span class="extra-small text-muted">Next Listing Date:</span>
+                                        <span class="font-monospace fw-bold ${c.nextHearingDate ? 'text-primary' : 'text-muted'}">${c.nextHearingDate ? c.nextHearingDate.split('T')[0] : 'Date Awaited'}</span>
+                                    </div>
+                                    <div class="extra-small text-dark fw-semibold mt-1 text-truncate" title="${escapeHtml(c.stagePurpose || '')}">
+                                        <i class="bi bi-bookmark-fill text-warning me-1"></i>Stage: ${escapeHtml(c.stagePurpose || 'Regular Listing')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Column 2: Last Concluded Proceeding & Roznama -->
+                            <div class="col-12 col-md-5 border-end-md">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="extra-small text-uppercase fw-bold text-success">
+                                        <i class="bi bi-file-earmark-text me-1"></i>Last Concluded Proceeding (Roznama)
+                                    </span>
+                                    <span class="extra-small text-muted">${c.daysSinceLastHearing != null ? c.daysSinceLastHearing + ' days ago' : ''}</span>
+                                </div>
+                                <div class="p-2.5 rounded-3 bg-light border h-100 d-flex flex-column justify-content-between">
+                                    <div>
+                                        <div class="d-flex justify-content-between align-items-center mb-1.5">
+                                            <span class="extra-small text-muted">Listing Date: <strong class="text-dark font-monospace">${escapeHtml(c.lastHearingDate || '—')}</strong></span>
+                                            <span class="extra-small text-muted">Coram: <strong class="text-dark text-truncate" style="max-width: 120px;">${escapeHtml(c.lastHearingJudge || '—')}</strong></span>
+                                        </div>
+                                        <div class="p-2 bg-white rounded border text-dark font-monospace extra-small" style="max-height: 85px; overflow-y: auto; line-height: 1.4;">
+                                            ${lastBiz ? escapeHtml(lastBiz) : '<span class="text-muted fst-italic">No offline roznama text stored. Click below to query live from eCourts.</span>'}
+                                        </div>
+                                    </div>
+                                    <div class="mt-2 d-flex justify-content-between align-items-center">
+                                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1 extra-small"
+                                                onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(c.lastHearingDate || '')}', ${isHc}, null)">
+                                            <i class="bi bi-broadcast me-1"></i>Fetch Live Roznama
+                                        </button>
+                                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 extra-small"
+                                                onclick="openDailyProceedingsModal(${c.trackedID})">
+                                            All ${c.totalHearings || 0} Proceedings &raquo;
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Column 3: Hearing Velocity & Recent Hearings -->
+                            <div class="col-12 col-md-3">
+                                <div class="extra-small text-uppercase fw-bold text-dark mb-1">
+                                    <i class="bi bi-clock-history me-1 text-info"></i>Hearing Velocity & Timeline
+                                </div>
+                                <div class="p-2.5 rounded-3 bg-light border">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Total Hearings:</span>
+                                        <span class="badge bg-info text-dark font-monospace fw-bold">${c.totalHearings || 0} Listed</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">Avg Interval:</span>
+                                        <span class="extra-small fw-bold text-dark">${c.avgDaysBetweenHearings ? `~${c.avgDaysBetweenHearings} days` : '—'}</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <span class="extra-small text-muted">First Listed:</span>
+                                        <span class="extra-small font-monospace text-secondary">${escapeHtml(c.firstHearingDate || '—')}</span>
+                                    </div>
+                                    <div class="mt-2 pt-1 border-top">
+                                        <span class="extra-small fw-bold text-muted text-uppercase">Recent Hearings:</span>
+                                        ${recentHearingsSnippet}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </td>
         </tr>`;
+    }
+
+    // ==========================================
+    // Toggle Inline Hearing Drawer
+    // ==========================================
+    function toggleHearingDrawer(trackedId) {
+        const row = document.getElementById(`drawer_row_${trackedId}`);
+        const icon = document.getElementById(`drawer_icon_${trackedId}`);
+        if (!row) return;
+        if (row.classList.contains("d-none")) {
+            row.classList.remove("d-none");
+            if (icon) icon.className = "bi bi-chevron-down fs-6 fw-bold text-primary";
+        } else {
+            row.classList.add("d-none");
+            if (icon) icon.className = "bi bi-chevron-right fs-6 fw-bold text-secondary";
+        }
     }
 
     // ==========================================
@@ -2634,12 +2841,23 @@
         // Fetch fresh proceedings details from server
         try {
             const res = await fetch(`/ECourts/GetCaseProceedings?trackedId=${trackedId}`);
+            const json = await res.json();
             const cInfo = json.caseInfo || json.data;
             const pList = json.proceedings || (cInfo && cInfo.proceedingsHistory) || [];
             if (json.success && cInfo) {
                 currentProceedingsCase = cInfo;
                 currentProceedingsList = pList;
                 populateDailyProceedingsModal(cInfo, pList);
+
+                // By default: if any listed hearing is missing verbatim Roznama text, auto-fetch all and store in DB
+                const missingCount = pList.filter(h => {
+                    const r = (h.business || h.roznama || h.proceeding || "").trim();
+                    const dt = extractValidDate(h.business_date || h.businessDate || h.hearing_date || h.hearingDate);
+                    return !r && !!dt;
+                }).length;
+                if (missingCount > 0) {
+                    fetchAllCaseRoznamas(true);
+                }
             } else if (!cachedCase) {
                 document.getElementById("dpProceedingsTbody").innerHTML = `<tr><td colspan="9" class="text-center py-4 text-danger"><i class="bi bi-exclamation-triangle me-1"></i>${json.message || "Failed to load proceedings."}</td></tr>`;
             }
@@ -2702,10 +2920,23 @@
         const tbody = document.getElementById("dpProceedingsTbody");
         if (hist && hist.length > 0) {
             tbody.innerHTML = hist.map((h, i) => {
-                const hearingDt = h.hearing_date || h.hearingDate || "—";
-                const busDt = h.business_date || h.businessDate || "—";
+                const rawBus = (h.business_date || h.businessDate || h.cause_date || h.hist_date || "").trim();
+                const rawHear = (h.hearing_date || h.hearingDate || "").trim();
+                const rawNext = (h.next_date || h.nextDate || "").trim();
+
+                const validBus = extractValidDate(rawBus);
+                const validHear = extractValidDate(rawHear);
+                const validNext = extractValidDate(rawNext);
+
+                // Sitting date (when the court sat and business was transacted)
+                const sittingDate = validBus || validHear || "";
+                // Next date (when case is listed next)
+                const nextDate = validNext || (rawNext && !rawNext.toLowerCase().includes("not given") ? rawNext : (rawHear && !rawHear.toLowerCase().includes("not given") && rawHear !== rawBus ? rawHear : "Next Date Not Given"));
+
+                // Date to query for Roznama (the actual court sitting date)
+                const targetQueryDate = sittingDate || validNext || "";
+
                 const purpose = h.purpose_of_listing || h.purpose || h.stage || "—";
-                const nextDate = h.next_date || h.nextDate || "—";
                 const nextPurpose = h.next_purpose || h.nextPurpose || "—";
                 const judge = h.judge || h.judge_name || h.judgeName || "—";
                 const roznama = (h.business || h.roznama || h.proceeding || h.order || "").trim();
@@ -2713,38 +2944,64 @@
                 const isLatest = (i === hist.length - 1);
                 const rowClass = isLatest ? "table-warning bg-opacity-25" : "";
 
+                const canFetch = !!targetQueryDate;
+                const fetchBtnHtml = canFetch
+                    ? (roznama 
+                        ? `<button type="button" class="btn btn-xs btn-outline-success rounded-pill extra-small px-2 py-1 text-nowrap shadow-xs"
+                                   onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(targetQueryDate)}', ${c.isHighCourt ? 'true' : 'false'}, ${i})"
+                                   title="Saved in Database. Click to re-verify live from eCourts">
+                               <i class="bi bi-database-check me-1"></i>Saved in DB <i class="bi bi-arrow-repeat ms-0.5 opacity-75"></i>
+                           </button>`
+                        : `<button type="button" class="btn btn-xs btn-outline-primary rounded-pill extra-small px-2 py-1 text-nowrap shadow-xs"
+                                   onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(targetQueryDate)}', ${c.isHighCourt ? 'true' : 'false'}, ${i})">
+                               <i class="bi bi-cloud-arrow-down-fill me-1"></i>Fetch Roznama
+                           </button>`)
+                    : `<button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small px-2 py-1 text-nowrap disabled opacity-50"
+                               title="No calendar sitting date recorded for this hearing" disabled>
+                           <i class="bi bi-slash-circle me-1"></i>No Date
+                       </button>`;
+
                 return `
                 <tr class="${rowClass}" id="dpRow_${i}">
                     <td class="ps-3 text-muted fw-bold">
                         ${i + 1}
                         ${isLatest ? '<span class="badge bg-warning text-dark extra-small d-block" style="font-size: 9px;">LATEST</span>' : ''}
                     </td>
-                    <td class="font-monospace fw-bold text-primary">${escapeHtml(hearingDt)}</td>
-                    <td class="font-monospace text-muted small">${escapeHtml(busDt)}</td>
+                    <td class="font-monospace fw-bold text-primary">${escapeHtml(sittingDate || rawBus || rawHear || "—")}</td>
+                    <td class="font-monospace text-muted small">${escapeHtml(validBus || sittingDate || "—")}</td>
                     <td>
                         <span class="badge bg-light text-dark border extra-small px-2 py-1 fw-semibold text-wrap text-start">
                             ${escapeHtml(purpose)}
                         </span>
                     </td>
-                    <td class="font-monospace fw-bold ${nextDate !== '—' ? 'text-success' : 'text-muted'}">${escapeHtml(nextDate)}</td>
+                    <td class="font-monospace fw-bold ${nextDate !== '—' && !nextDate.toLowerCase().includes('not given') ? 'text-success' : 'text-muted'}">${escapeHtml(nextDate)}</td>
                     <td class="small text-muted">${escapeHtml(nextPurpose)}</td>
                     <td class="small text-truncate" style="max-width: 160px;" title="${escapeHtml(judge)}">${escapeHtml(judge)}</td>
-                    <td class="small" style="max-width: 250px;">
-                        <div id="dpRoznamaCell_${i}" class="text-break font-monospace" style="font-size: 11.5px; line-height: 1.4;">
-                            ${roznama ? escapeHtml(roznama) : '<span class="text-muted fst-italic">No offline roznama text</span>'}
+                    <td class="small" style="max-width: 260px;">
+                        <div id="dpRoznamaCell_${i}" class="text-break" style="font-size: 11.5px; line-height: 1.45;">
+                            ${roznama 
+                                ? `<div class="d-flex align-items-center gap-1 mb-1"><span class="badge bg-success-subtle text-success border border-success extra-small py-0.5 px-1.5"><i class="bi bi-database-fill-check me-1"></i>Stored in DB</span></div><div class="font-monospace text-dark">${escapeHtml(roznama)}</div>` 
+                                : '<span class="text-muted fst-italic"><i class="bi bi-hourglass-split me-1"></i>No offline roznama text</span>'}
                         </div>
                     </td>
                     <td class="text-end pe-3">
-                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill extra-small px-2 py-1 text-nowrap shadow-xs"
-                                onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(hearingDt)}', ${c.isHighCourt ? 'true' : 'false'}, ${i})">
-                            <i class="bi bi-broadcast me-1"></i>Fetch Roznama
-                        </button>
+                        ${fetchBtnHtml}
                     </td>
                 </tr>`;
             }).join("");
         } else {
             tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted"><i class="bi bi-calendar-x fs-4 d-block mb-2 text-secondary"></i>No daily proceedings or hearing history recorded in eCourts repository yet.</td></tr>`;
         }
+    }
+
+    function extractValidDate(str) {
+        if (!str || typeof str !== 'string') return "";
+        const s = str.trim();
+        if (!s || s === "—" || s === "-" || s === "--") return "";
+        const lower = s.toLowerCase();
+        if (lower.includes("not given") || lower.includes("next date") || lower.includes("pending") || lower.includes("awaited") || lower.includes("sine die") || lower.includes("null")) return "";
+        const m = s.match(/\b(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})\b/);
+        return m ? m[1] : "";
     }
 
     function getHearingUrgencyBadge(urgency, days) {
@@ -2773,8 +3030,29 @@
     // Fetch Live Hearing Roznama (NAPIX Gateway)
     // ==========================================
     async function fetchLiveHearingRoznama(cnrNumber, hearingDate, isHighCourt, rowIndex) {
-        if (!cnrNumber || !hearingDate || hearingDate === "—") {
-            showToast("Invalid Request", "Hearing date is required to fetch verbatim proceeding.", false);
+        if (!cnrNumber) {
+            showToast("Invalid Request", "CNR number is required to fetch verbatim proceeding.", false);
+            return;
+        }
+
+        let targetDt = extractValidDate(hearingDate);
+        if (!targetDt) {
+            if (currentProceedingsCase && currentProceedingsCase.lastHearingDate) {
+                targetDt = extractValidDate(currentProceedingsCase.lastHearingDate);
+            }
+            if (!targetDt && currentProceedingsList && currentProceedingsList.length > 0) {
+                for (const item of currentProceedingsList) {
+                    const cDt = extractValidDate(item.business_date || item.businessDate || item.hearing_date || item.hearingDate);
+                    if (cDt) {
+                        targetDt = cDt;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!targetDt) {
+            showToast("Invalid Date", `Cannot query Roznama: "${hearingDate}" is not a calendar date and no sitting date was found.`, false);
             return;
         }
 
@@ -2783,33 +3061,55 @@
         const liveText = document.getElementById("dpLiveRoznamaText");
 
         liveSection.classList.remove("d-none");
-        liveDateLabel.innerText = `Hearing Date: ${hearingDate} (CNR: ${cnrNumber})`;
+        liveDateLabel.innerText = `Hearing Date: ${targetDt} (CNR: ${cnrNumber})`;
         liveText.innerHTML = `<span class="spinner-border spinner-border-sm me-2 text-primary"></span>Connecting to live e-Courts NAPIX Gateway for verbatim roznama...`;
 
         liveSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
         try {
-            const url = `/ECourts/FetchLiveHearingProceeding?cnrNumber=${encodeURIComponent(cnrNumber)}&hearingDate=${encodeURIComponent(hearingDate)}&isHighCourt=${isHighCourt}&module=${encodeURIComponent(currentModule)}`;
+            const url = `/ECourts/FetchLiveHearingProceeding?cnrNumber=${encodeURIComponent(cnrNumber)}&hearingDate=${encodeURIComponent(targetDt)}&isHighCourt=${isHighCourt}&module=${encodeURIComponent(currentModule)}`;
             const res = await fetch(url);
             const json = await res.json();
 
             if (json.success) {
                 const bData = json.data || {};
                 const businessText = (json.business || bData.business || bData.roznama || bData.proceeding || "").trim();
+                const returnDate = json.date || targetDt;
                 if (businessText) {
                     liveText.innerText = businessText;
-                    showToast("Roznama Fetched", `Verbatim proceeding for ${hearingDate} fetched successfully.`, true);
+                    showToast("Roznama Fetched", `Verbatim proceeding for ${returnDate} fetched and saved to registry.`, true);
 
+                    // Update live cell in modal timeline table
                     if (rowIndex !== null && rowIndex !== undefined) {
                         const cell = document.getElementById(`dpRoznamaCell_${rowIndex}`);
                         if (cell) {
-                            cell.innerHTML = `<strong class="text-success"><i class="bi bi-check2 me-1"></i>Live Fetched:</strong><br>${escapeHtml(businessText)}`;
+                            cell.innerHTML = `<strong class="text-success"><i class="bi bi-check2 me-1"></i>Live Fetched &amp; Saved:</strong><br>${escapeHtml(businessText)}`;
                         }
+                    }
+
+                    // Update in-memory caches in allCasesData and currentProceedingsList
+                    const foundCase = allCasesData.find(x => x.cnrNumber === cnrNumber);
+                    if (foundCase) {
+                        foundCase.lastProceeding = businessText;
+                        if (foundCase.proceedingsHistory) {
+                            const pItem = foundCase.proceedingsHistory.find(h => {
+                                const hDt = extractValidDate(h.business_date || h.businessDate || h.hearing_date || h.hearingDate);
+                                return hDt === returnDate;
+                            });
+                            if (pItem) {
+                                pItem.business = businessText;
+                                pItem.roznama = businessText;
+                            }
+                        }
+                    }
+                    if (currentProceedingsList && rowIndex !== null && rowIndex !== undefined && currentProceedingsList[rowIndex]) {
+                        currentProceedingsList[rowIndex].business = businessText;
+                        currentProceedingsList[rowIndex].roznama = businessText;
                     }
                 } else {
                     const stagePurpose = json.purpose || bData.purpose || bData.stage || bData.short_order_det || "—";
                     const nextDateStr = json.nextDate || bData.next_date || bData.nextDate || "—";
-                    const fallbackInfo = `e-Courts recorded purpose: "${stagePurpose}" | Next Date: "${nextDateStr}"\nNo separate long-form written roznama text was recorded by the bench clerk for this hearing date.`;
+                    const fallbackInfo = `e-Courts recorded purpose: "${stagePurpose}" | Next Date: "${nextDateStr}"\nNo separate long-form written roznama text was recorded by the bench clerk on NJDG for this date.`;
                     liveText.innerText = fallbackInfo;
                     showToast("Notice", `Hearing details retrieved, but no separate verbatim roznama text was recorded.`, true);
                 }
@@ -2827,6 +3127,138 @@
     function closeLiveRoznamaBox() {
         const liveSection = document.getElementById("dpLiveRoznamaSection");
         if (liveSection) liveSection.classList.add("d-none");
+    }
+
+    // ==========================================
+    // Fetch ALL Case Proceedings and Store in DB
+    // ==========================================
+    async function fetchAllCaseRoznamas(isAuto = false) {
+        if (!currentProceedingsTrackedId) return;
+
+        const btnHeader = document.getElementById("btnHeaderFetchAllRoznamas");
+        const btnTable = document.getElementById("btnFetchAllProceedings");
+
+        if (btnHeader) {
+            btnHeader.disabled = true;
+            btnHeader.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Fetching All...`;
+        }
+        if (btnTable) {
+            btnTable.disabled = true;
+            btnTable.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Fetching All Roznamas...`;
+        }
+
+        if (!isAuto) {
+            showToast("Fetching All Roznamas", "Querying e-Courts NAPIX for all hearings and storing in database...", true);
+        }
+
+        try {
+            let handled = false;
+            try {
+                const res = await fetch(`/ECourts/FetchAllCaseProceedings?trackedId=${currentProceedingsTrackedId}&module=${encodeURIComponent(currentModule)}`, {
+                    method: "POST"
+                });
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text && text.trim()) {
+                        const json = JSON.parse(text);
+                        if (json.success) {
+                            if (json.proceedings && json.proceedings.length > 0) {
+                                currentProceedingsList = json.proceedings;
+                                if (currentProceedingsCase) {
+                                    currentProceedingsCase.proceedingsHistory = json.proceedings;
+                                }
+                                populateDailyProceedingsModal(currentProceedingsCase, json.proceedings);
+                            }
+                            showToast("All Proceedings Stored", json.message || "All proceedings successfully saved into database.", true);
+                            handled = true;
+                        }
+                    }
+                }
+            } catch (eBatch) {
+                console.warn("Batch fetch endpoint not yet active or network error, falling back to live hearings fetch:", eBatch);
+            }
+
+            // Fallback: If FetchAllCaseProceedings is 404 or unavailable, fetch missing hearings sequentially via FetchLiveHearingProceeding
+            if (!handled && currentProceedingsCase && currentProceedingsList && currentProceedingsList.length > 0) {
+                let newlySaved = 0;
+                const cnr = currentProceedingsCase.cnrNumber;
+                const isHc = currentProceedingsCase.isHighCourt || (cnr && (cnr.startsWith("HC") || cnr.startsWith("KAHC")));
+
+                for (let i = 0; i < currentProceedingsList.length; i++) {
+                    const h = currentProceedingsList[i];
+                    const existingRoz = (h.business || h.roznama || h.proceeding || "").trim();
+                    if (existingRoz) continue;
+
+                    const rawBus = (h.business_date || h.businessDate || h.cause_date || h.hist_date || "").trim();
+                    const rawHear = (h.hearing_date || h.hearingDate || "").trim();
+                    const validBus = extractValidDate(rawBus);
+                    const validHear = extractValidDate(rawHear);
+                    const targetDt = validBus || validHear || extractValidDate(h.next_date || h.nextDate);
+
+                    if (!targetDt) continue;
+
+                    const rowCell = document.getElementById(`dpRoznamaCell_${i}`);
+                    if (rowCell) {
+                        rowCell.innerHTML = `<span class="spinner-border spinner-border-sm me-1 text-primary"></span><span class="text-muted extra-small">Fetching live from eCourts &amp; storing in DB...</span>`;
+                    }
+
+                    try {
+                        const url = `/ECourts/FetchLiveHearingProceeding?cnrNumber=${encodeURIComponent(cnr)}&hearingDate=${encodeURIComponent(targetDt)}&isHighCourt=${isHc ? 'true' : 'false'}&module=${encodeURIComponent(currentModule)}`;
+                        const fRes = await fetch(url);
+                        if (fRes.ok) {
+                            const fText = await fRes.text();
+                            if (fText && fText.trim()) {
+                                const fJson = JSON.parse(fText);
+                                if (fJson.success) {
+                                    const bData = fJson.data || {};
+                                    const bizText = (fJson.business || bData.business || bData.roznama || bData.proceeding || "").trim();
+                                    if (bizText) {
+                                        h.business = bizText;
+                                        h.roznama = bizText;
+                                        newlySaved++;
+                                        if (rowCell) {
+                                            rowCell.innerHTML = `<div class="d-flex align-items-center gap-1 mb-1"><span class="badge bg-success-subtle text-success border border-success extra-small py-0.5 px-1.5"><i class="bi bi-database-fill-check me-1"></i>Stored in DB</span></div><div class="font-monospace text-dark">${escapeHtml(bizText)}</div>`;
+                                        }
+                                        const rowBtnCell = document.querySelector(`#dpRow_${i} td:last-child`);
+                                        if (rowBtnCell) {
+                                            rowBtnCell.innerHTML = `<button type="button" class="btn btn-xs btn-outline-success rounded-pill extra-small px-2 py-1 text-nowrap shadow-xs" onclick="fetchLiveHearingRoznama('${escapeJs(cnr)}', '${escapeJs(targetDt)}', ${isHc ? 'true' : 'false'}, ${i})" title="Saved in Database. Click to re-verify"><i class="bi bi-database-check me-1"></i>Saved in DB <i class="bi bi-arrow-repeat ms-0.5 opacity-75"></i></button>`;
+                                        }
+                                    } else if (rowCell) {
+                                        rowCell.innerHTML = `<span class="text-muted fst-italic"><i class="bi bi-info-circle me-1"></i>No verbatim text recorded on eCourts NJDG</span>`;
+                                    }
+                                } else if (rowCell) {
+                                    rowCell.innerHTML = `<span class="text-muted fst-italic"><i class="bi bi-info-circle me-1"></i>${escapeHtml(fJson.message || "No roznama found")}</span>`;
+                                }
+                            }
+                        }
+                    } catch (eItem) {
+                        console.warn("Item live roznama fetch error:", eItem);
+                    }
+                }
+
+                if (newlySaved > 0) {
+                    showToast("Proceedings Saved", `${newlySaved} hearing proceeding(s) fetched and saved into database.`, true);
+                    handled = true;
+                } else if (!isAuto) {
+                    showToast("Notice", "eCourts NAPIX queries completed. No additional verbatim roznamas were returned for these dates.", false);
+                    handled = true;
+                }
+            }
+        } catch (err) {
+            console.error("Error in fetchAllCaseRoznamas:", err);
+            if (!isAuto) {
+                showToast("Fetch Notice", "Could not connect to eCourts gateway.", false);
+            }
+        } finally {
+            if (btnHeader) {
+                btnHeader.disabled = false;
+                btnHeader.innerHTML = `<i class="bi bi-cloud-arrow-down-fill me-1"></i>Fetch All Roznamas`;
+            }
+            if (btnTable) {
+                btnTable.disabled = false;
+                btnTable.innerHTML = `<i class="bi bi-cloud-arrow-down-fill me-1"></i>Fetch All Roznamas to DB`;
+            }
+        }
     }
 
     function copyLiveRoznamaText() {

@@ -1,0 +1,128 @@
+<nav class="nav flex-column flex-grow-1">
+    @{
+        var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+        string activeCourt = ViewBag.ActiveCourt?.ToString() ?? "OS";
+        string litigantType = ViewBag.LitigantType?.ToString() ?? "Corporation";
+
+        string courtDisplayTitle = activeCourt switch {
+            "OS" => (litigantType == "Corporation" ? "O.S (Corporation)" : "O.S (Claimant)"),
+            "PSC" => "P & SC Cases",
+            "CC" => "Criminal Cases",
+            "Consumer" => "Consumer Disputes",
+            "LAC" => "Land Acquisition",
+            "ECA" => "ECA Cases",
+            _ => activeCourt
+        };
+
+        string dashboardAction = activeCourt switch {
+            "OS" => (litigantType == "Corporation" ? "OSCorporation" : "OSClaimant"),
+            "ECA" => "ECADashboard",
+            _ => activeCourt
+        };
+
+        string formAction = activeCourt switch {
+            "OS" => (litigantType == "Corporation" ? "OSCorporationForm" : "OSClaimantForm"),
+            "ECA" => "ECA",
+            _ => activeCourt + "Form"
+        };
+    }
+
+    <!-- Central Home Portal Link -->
+    <a class="nav-link" href="/Home/Index">
+        <i class="bi bi-house-door"></i>
+        <div class="link-text">
+            <span>Central Portal Home</span>
+        </div>
+    </a>
+
+    <!-- Other Courts Gateway Hub Link -->
+    <a class="nav-link @(currentAction == "OtherCourts" ? "active" : "")" href="/Home/OtherCourts">
+        <i class="bi bi-bank2"></i>
+        <div class="link-text">
+            <span>Other Courts Gateway</span>
+        </div>
+    </a>
+
+    <!-- Active Court Context Indicator & Switcher Dropdown -->
+    <div class="sidebar-court-badge">
+        <div class="d-flex align-items-center justify-content-between mb-1">
+            <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.65rem; letter-spacing: 0.05em;">ACTIVE COURT</small>
+            <span class="badge bg-warning text-dark px-2 py-0" style="font-size: 0.6rem;">@activeCourt</span>
+        </div>
+        <div class="fw-bold small text-truncate text-white">@courtDisplayTitle</div>
+    </div>
+
+    <!-- Primary Active Court Navigation Links -->
+    <a class="nav-link @(currentAction == dashboardAction ? "active" : "")" href="@Url.Action(dashboardAction, "Home")">
+        <i class="bi bi-columns-gap"></i>
+        <div class="link-text">
+            <span>@activeCourt Dashboard</span>
+        </div>
+    </a>
+
+    <a class="nav-link @(currentAction == formAction ? "active" : "")" href="@Url.Action(formAction, "Home")">
+        <i class="bi bi-plus-circle-fill"></i>
+        <div class="link-text">
+            <span>New Registration</span>
+        </div>
+    </a>
+
+    <a class="nav-link @(currentAction == "OtherCourtsCaseList" ? "active" : "")" 
+       href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = activeCourt, litigantType = litigantType })">
+        <i class="bi bi-stack"></i>
+        <div class="link-text">
+            <span>Case Registry</span>
+        </div>
+    </a>
+
+    <!-- Quick Switch Court Divider & Items -->
+    <div class="px-3 pt-3 pb-1">
+        <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.65rem; letter-spacing: 0.06em;">SWITCH COURT</small>
+    </div>
+
+    <a class="nav-link py-2 @(activeCourt == "OS" && litigantType == "Corporation" ? "active" : "")" href="/Home/OSCorporation" style="font-size: 0.85rem;">
+        <i class="bi bi-building"></i>
+        <span>O.S (Corporation)</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "OS" && litigantType == "Claimant" ? "active" : "")" href="/Home/OSClaimant" style="font-size: 0.85rem;">
+        <i class="bi bi-person"></i>
+        <span>O.S (Claimant)</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "ECA" ? "active" : "")" href="/Home/ECA" style="font-size: 0.85rem;">
+        <i class="bi bi-person-workspace"></i>
+        <span>ECA Cases</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "PSC" ? "active" : "")" href="/Home/PSC" style="font-size: 0.85rem;">
+        <i class="bi bi-shield-check"></i>
+        <span>P &amp; SC Cases</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "CC" ? "active" : "")" href="/Home/CC" style="font-size: 0.85rem;">
+        <i class="bi bi-shield-exclamation"></i>
+        <span>Criminal Cases</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "Consumer" ? "active" : "")" href="/Home/Consumer" style="font-size: 0.85rem;">
+        <i class="bi bi-person-badge"></i>
+        <span>Consumer Complaint</span>
+    </a>
+
+    <a class="nav-link py-2 @(activeCourt == "LAC" ? "active" : "")" href="/Home/LAC" style="font-size: 0.85rem;">
+        <i class="bi bi-geo-alt"></i>
+        <span>Land Acquisition (LAC)</span>
+    </a>
+</nav>
+
+<!-- e-Courts Quick Link (Matches MVC & Labour) -->
+<div class="px-2 pt-3 mt-auto flex-shrink-0 border-top border-white border-opacity-10 mb-2">
+    <a href="https://services.ecourts.gov.in/ecourtindia_v6/" target="_blank" rel="noopener noreferrer" 
+       class="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2 py-2" 
+       style="border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(10px); background: rgba(255,255,255,0.06); font-size: 0.85rem;">
+        <i class="bi bi-globe"></i>
+        <span class="fw-semibold">e-Courts India</span>
+        <i class="bi bi-box-arrow-up-right small opacity-75"></i>
+    </a>
+</div>

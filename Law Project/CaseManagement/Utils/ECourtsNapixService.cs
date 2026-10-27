@@ -1284,6 +1284,11 @@ namespace MVCCaseManagement.Utils
 
             string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(module) ? "MVC" : module);
             var dateVariants = GetDateVariants(date);
+            if (dateVariants.Count == 0)
+            {
+                _logger.LogWarning("[NAPIX] showBusiness skipped for CNR {CNR}: input date '{Date}' is not a valid date format.", clean, date);
+                return null;
+            }
 
             // Try correct endpoint first with official parameters only: cino + business_date
             string endpoint = isHighCourt ? "hc-show-business-api" : "dc-show-business-api";
@@ -1779,29 +1784,42 @@ namespace MVCCaseManagement.Utils
             var list = new List<string>();
             if (string.IsNullOrWhiteSpace(inputDate))
             {
-                var today = DateTime.Today;
-                list.Add(today.ToString("yyyy-MM-dd"));
-                list.Add(today.ToString("dd-MM-yyyy"));
-                list.Add(today.ToString("dd/MM/yyyy"));
                 return list;
             }
 
             string clean = inputDate.Trim();
+
+            // Ignore sentinel / non-date strings
+            if (clean.Contains("not given", StringComparison.OrdinalIgnoreCase) ||
+                clean.Contains("next date", StringComparison.OrdinalIgnoreCase) ||
+                clean.Contains("pending", StringComparison.OrdinalIgnoreCase) ||
+                clean.Contains("awaited", StringComparison.OrdinalIgnoreCase) ||
+                clean.Equals("—") || clean.Equals("-") || clean.Equals("--"))
+            {
+                return list;
+            }
 
             // Always prioritize yyyy-MM-dd format as required by official NAPIX OpenAPI specs
             if (DateTime.TryParse(clean, out var dt) ||
                 DateTime.TryParseExact(clean, new[] { "dd-MM-yyyy", "yyyy-MM-dd", "dd/MM/yyyy", "yyyy/MM/dd", "d-M-yyyy", "d/M/yyyy" },
                     System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out dt))
             {
-                string f1 = dt.ToString("yyyy-MM-dd");
-                string f2 = dt.ToString("dd-MM-yyyy");
-                string f3 = dt.ToString("dd/MM/yyyy");
+                if (dt.Year >= 1970 && dt.Year <= 2050)
+                {
+                    string f1 = dt.ToString("yyyy-MM-dd");
+                    string f2 = dt.ToString("dd-MM-yyyy");
+                    string f3 = dt.ToString("dd/MM/yyyy");
 
-                if (!list.Contains(f1)) list.Add(f1);
-                if (!list.Contains(f2)) list.Add(f2);
-                if (!list.Contains(f3)) list.Add(f3);
+                    if (!list.Contains(f1)) list.Add(f1);
+                    if (!list.Contains(f2)) list.Add(f2);
+                    if (!list.Contains(f3)) list.Add(f3);
+                }
             }
-            if (!list.Contains(clean)) list.Add(clean);
+            else if (System.Text.RegularExpressions.Regex.IsMatch(clean, @"^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}$"))
+            {
+                if (!list.Contains(clean)) list.Add(clean);
+            }
+
             return list;
         }
 

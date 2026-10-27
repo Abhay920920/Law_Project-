@@ -482,12 +482,39 @@
 
     /* RESPONSIVE */
     @@media (max-width: 991px) {
-        :root { --orbit-size: 350px; --hub-size: 120px; }
-        .nav-satellite { 
-            transform: translate(-50%, -50%) rotate(var(--angle)) translate(var(--orbit-size) / 2) rotate(calc(var(--angle) * -1));
+        :root { --orbit-size: 340px; --hub-size: 110px; }
+        .orbit-section {
+            padding-left: 0 !important;
         }
-        .nav-satellite:hover {
-           transform: translate(-50%, -50%) rotate(var(--angle)) translate(calc(var(--orbit-size) / 1.8)) rotate(calc(var(--angle) * -1)) scale(1.1);
+    }
+
+    @@media (max-width: 575.98px) {
+        :root { --orbit-size: 260px; --hub-size: 80px; }
+        .orbit-section {
+            padding-left: 0 !important;
+            margin: 0.5rem auto !important;
+            width: 100% !important;
+            overflow: visible !important;
+        }
+        .satellite-icon {
+            width: 46px !important;
+            height: 46px !important;
+            font-size: 1.15rem !important;
+        }
+        .satellite-label {
+            font-size: 0.62rem !important;
+            padding: 2px 6px !important;
+            margin-top: 2px !important;
+        }
+        .hub-content h6 {
+            font-size: 0.78rem !important;
+            margin-top: 2px !important;
+        }
+        .hub-content i {
+            font-size: 1.6rem !important;
+        }
+        .hub-content small {
+            font-size: 0.55rem !important;
         }
     }
 </style>

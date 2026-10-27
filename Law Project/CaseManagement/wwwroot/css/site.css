@@ -1146,3 +1146,234 @@ input[type="radio"].form-check-input:checked {
         overflow: visible !important;
     }
 }
+
+/* ========================================================
+   RESPONSIVE MOBILE & TABLET ALIGNMENT (Phase 1 Global Shell)
+   ======================================================== */
+
+/* Tablet Optimization (<= 991.98px) */
+@media (max-width: 991.98px) {
+    .branding-text h1 {
+        font-size: 0.95rem;
+    }
+    .branding-text .kannada {
+        font-size: 0.72rem;
+    }
+    .user-profile-widget .text-start {
+        display: none;
+    }
+    .user-profile-widget {
+        padding: 0 4px;
+        margin-right: 8px !important;
+    }
+}
+
+/* Smartphone & Small Tablet Optimization (<= 767.98px) */
+@media (max-width: 767.98px) {
+    /* Layout & Main Viewport Alignment */
+    .main-wrapper {
+        display: block !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .content-area {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        padding: 12px 10px !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    /* Fixed Sidebar Hiding (Handled by Offcanvas on Mobile) */
+    .sidebar {
+        display: none !important;
+    }
+
+    /* Top Branding Header Alignment */
+    .branding-header {
+        height: 56px !important;
+        padding: 0 10px !important;
+    }
+
+    .branding-logo {
+        height: 32px !important;
+        margin-right: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    .branding-text h1 {
+        font-size: 0.82rem !important;
+        line-height: 1.15 !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .branding-text .kannada {
+        display: none !important;
+    }
+
+    .user-profile-widget {
+        padding: 0 !important;
+        height: 32px !important;
+        width: 32px !important;
+        justify-content: center;
+        border-radius: 50% !important;
+        margin-right: 6px !important;
+    }
+
+    .user-profile-widget .bg-primary {
+        margin-right: 0 !important;
+    }
+
+    .logout-pill {
+        height: 32px !important;
+        padding: 0 8px !important;
+        font-size: 0.72rem !important;
+        border-radius: var(--radius-lg) !important;
+    }
+
+    /* Input & Form Control Alignment (Prevent Auto-Zoom on Touch Focus) */
+    input, 
+    select, 
+    textarea, 
+    .form-control, 
+    .form-select {
+        font-size: 16px !important; /* Prevents auto-zoom in mobile Safari / Chrome */
+    }
+
+    /* Touch Friendly Target Sizes */
+    .btn:not(.btn-sm):not(.btn-xs),
+    .nav-link {
+        min-height: 42px;
+    }
+
+    /* Page Header & Breadcrumbs Alignment */
+    .page-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        margin-bottom: 16px !important;
+        padding-bottom: 10px !important;
+    }
+
+    .page-title h2 {
+        font-size: 1.25rem !important;
+    }
+
+    /* Cards & Containers Alignment */
+    .stat-card,
+    .gov-card,
+    .glass-card,
+    .table-card,
+    .card {
+        border-radius: 1rem !important;
+    }
+
+    .glass-card,
+    .gov-card,
+    .card-body {
+        padding: 1rem !important;
+    }
+
+    .stat-card {
+        padding: 1.1rem !important;
+        border-radius: 1.25rem !important;
+    }
+
+    .stat-value {
+        font-size: 2rem !important;
+    }
+
+    .stat-card-gradient {
+        border-radius: 1rem !important;
+        padding: 0.85rem !important;
+        min-height: 90px !important;
+    }
+
+    .stat-card-gradient .value {
+        font-size: 1.6rem !important;
+    }
+
+    .stat-card-gradient .label {
+        font-size: 0.65rem !important;
+    }
+
+    .glass-header {
+        border-radius: 1rem !important;
+        padding: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    /* Responsive Table Wrappers */
+    .table-responsive {
+        border-radius: 0.75rem;
+        -webkit-overflow-scrolling: touch;
+        margin-bottom: 1rem;
+    }
+
+    .table-responsive::-webkit-scrollbar {
+        height: 6px;
+    }
+
+    .table-responsive::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+
+    /* Form Check & Radios Touch Spacing */
+    .form-check {
+        margin-bottom: 0.5rem;
+        min-height: 32px;
+        display: flex;
+        align-items: center;
+    }
+
+    .form-check-input {
+        margin-right: 8px;
+    }
+
+    /* Modals on Mobile: Centered with Touch Margins */
+    .modal-dialog {
+        margin: 0.5rem !important;
+        max-width: calc(100% - 1rem) !important;
+    }
+
+    /* Filter Ribbons & Action Bars */
+    .filter-btn {
+        padding: 0.35rem 0.75rem !important;
+        font-size: 0.75rem !important;
+    }
+
+    .btn-group {
+        flex-wrap: wrap !important;
+    }
+}
+
+/* Extra Small Phones (<= 480px) */
+@media (max-width: 480px) {
+    .content-area {
+        padding: 8px 6px !important;
+    }
+
+    .branding-header {
+        padding: 0 6px !important;
+    }
+
+    .branding-text h1 {
+        max-width: 130px !important;
+        font-size: 0.75rem !important;
+    }
+
+    .stat-card-gradient .value {
+        font-size: 1.4rem !important;
+    }
+
+    .pagination .page-link {
+        padding: 0.25rem 0.5rem !important;
+        font-size: 0.75rem !important;
+    }
+}

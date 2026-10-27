@@ -194,23 +194,29 @@
 <body>
     <!-- Official Branding Header (Identical to MVC & Labour) -->
     <header class="branding-header d-print-none">
-        <div class="d-flex align-items-center">
-            <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo" asp-append-version="true" />
-            <div class="branding-text">
-                <span class="kannada fw-bold text-dark opacity-75">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</span>
-                <h1 class="mb-0">North Western Karnataka Road Transport Corporation</h1>
+        <div class="d-flex align-items-center min-w-0">
+            <!-- Mobile Offcanvas Toggle Hamburger -->
+            <button class="btn btn-sm btn-light border-0 me-2 d-md-none p-1 rounded-2 shadow-none flex-shrink-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileOtherCourtsDrawer" aria-controls="mobileOtherCourtsDrawer" aria-label="Toggle navigation" style="width: 36px; height: 36px;">
+                <i class="bi bi-list fs-3 text-dark"></i>
+            </button>
+            <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo flex-shrink-0" asp-append-version="true" />
+            <div class="branding-text min-w-0 text-truncate">
+                <span class="kannada fw-bold text-dark opacity-75 d-none d-sm-block">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</span>
+                <h1 class="mb-0 text-truncate d-none d-lg-block">North Western Karnataka Road Transport Corporation</h1>
+                <h1 class="mb-0 text-truncate d-none d-sm-block d-lg-none">NWKRTC Other Courts</h1>
+                <h1 class="mb-0 text-truncate d-block d-sm-none fs-6">Other Courts</h1>
             </div>
         </div>
-        <div class="ms-auto d-flex align-items-center">
+        <div class="ms-auto d-flex align-items-center flex-shrink-0">
             <!-- Notification Bell -->
-            <div class="dropdown me-3">
-                <a class="text-dark position-relative d-flex align-items-center justify-content-center bg-white rounded-circle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 40px; height: 40px; text-decoration: none;">
-                    <i class="bi bi-bell-fill fs-5 text-primary"></i>
+            <div class="dropdown me-2 me-sm-3">
+                <a class="text-dark position-relative d-flex align-items-center justify-content-center bg-white rounded-circle shadow-sm" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" style="width: 36px; height: 36px; text-decoration: none;">
+                    <i class="bi bi-bell-fill fs-6 text-primary"></i>
                     <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6rem;">
                         0
                     </span>
                 </a>
-                <div class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-0 mt-2" style="width: 320px; max-height: 400px; overflow-y: auto; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px);">
+                <div class="dropdown-menu dropdown-menu-end shadow border-0 rounded-4 p-0 mt-2" style="width: 300px; max-width: 90vw; max-height: 400px; overflow-y: auto; background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px);">
                     <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-light rounded-top-4">
                         <h6 class="mb-0 fw-bold"><i class="bi bi-bell-fill text-primary me-2"></i>Notifications</h6>
                         <a href="/Notification/Index" class="small text-decoration-none">View All</a>
@@ -221,152 +227,60 @@
                 </div>
             </div>
 
-            <div class="user-profile-widget me-3 shadow-sm">
-                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 32px; height: 32px; font-size: 0.8rem; font-weight: 700;">
+            <!-- User Profile Widget -->
+            <div class="user-profile-widget me-2 me-sm-3 shadow-sm" title="@User.FindFirst("FullName")?.Value (@User.FindFirst("DivisionName")?.Value)">
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 30px; height: 30px; font-size: 0.8rem; font-weight: 700;">
                     @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
                 </div>
-                <div class="text-start leading-tight">
-                    <div class="fw-bold text-dark small">@User.FindFirst("FullName")?.Value</div>
-                    <div class="text-muted" style="font-size: 0.7rem;">@User.FindFirst("DivisionName")?.Value</div>
+                <div class="text-start leading-tight d-none d-md-block ms-2">
+                    <div class="fw-bold text-dark small text-truncate" style="max-width: 130px;">@User.FindFirst("FullName")?.Value</div>
+                    <div class="text-muted text-truncate" style="font-size: 0.7rem; max-width: 130px;">@User.FindFirst("DivisionName")?.Value</div>
                 </div>
             </div>
-            <a href="/Account/Logout" class="logout-pill shadow-sm">
-                <i class="bi bi-power me-2"></i> Sign Out
+
+            <!-- Sign Out Pill -->
+            <a href="/Account/Logout" class="logout-pill shadow-sm" title="Sign Out">
+                <i class="bi bi-power"></i>
+                <span class="d-none d-sm-inline ms-1.5">Sign Out</span>
             </a>
         </div>
     </header>
 
-    <div class="main-wrapper">
-        <!-- Sidebar Dedicated to Other Courts Module -->
-        <aside class="sidebar d-none d-md-block d-print-none">
-            <nav class="nav flex-column flex-grow-1">
-                @{
-                    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
-                    string activeCourt = ViewBag.ActiveCourt?.ToString() ?? "OS";
-                    string litigantType = ViewBag.LitigantType?.ToString() ?? "Corporation";
-
-                    string courtDisplayTitle = activeCourt switch {
-                        "OS" => (litigantType == "Corporation" ? "O.S (Corporation)" : "O.S (Claimant)"),
-                        "PSC" => "P & SC Cases",
-                        "CC" => "Criminal Cases",
-                        "Consumer" => "Consumer Disputes",
-                        "LAC" => "Land Acquisition",
-                        "ECA" => "ECA Cases",
-                        _ => activeCourt
-                    };
-
-                    string dashboardAction = activeCourt switch {
-                        "OS" => (litigantType == "Corporation" ? "OSCorporation" : "OSClaimant"),
-                        "ECA" => "ECADashboard",
-                        _ => activeCourt
-                    };
-
-                    string formAction = activeCourt switch {
-                        "OS" => (litigantType == "Corporation" ? "OSCorporationForm" : "OSClaimantForm"),
-                        "ECA" => "ECA",
-                        _ => activeCourt + "Form"
-                    };
-                }
-
-                <!-- Central Home Portal Link -->
-                <a class="nav-link" href="/Home/Index">
-                    <i class="bi bi-house-door"></i>
-                    <div class="link-text">
-                        <span>Central Portal Home</span>
-                    </div>
-                </a>
-
-                <!-- Other Courts Gateway Hub Link -->
-                <a class="nav-link @(currentAction == "OtherCourts" ? "active" : "")" href="/Home/OtherCourts">
-                    <i class="bi bi-bank2"></i>
-                    <div class="link-text">
-                        <span>Other Courts Gateway</span>
-                    </div>
-                </a>
-
-                <!-- Active Court Context Indicator & Switcher Dropdown -->
-                <div class="sidebar-court-badge">
-                    <div class="d-flex align-items-center justify-content-between mb-1">
-                        <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.65rem; letter-spacing: 0.05em;">ACTIVE COURT</small>
-                        <span class="badge bg-warning text-dark px-2 py-0" style="font-size: 0.6rem;">@activeCourt</span>
-                    </div>
-                    <div class="fw-bold small text-truncate text-white">@courtDisplayTitle</div>
+    <!-- Mobile Offcanvas Navigation Drawer -->
+    <div class="offcanvas offcanvas-start bg-dark text-white border-0 shadow-lg d-md-none" tabindex="-1" id="mobileOtherCourtsDrawer" aria-labelledby="mobileOtherCourtsDrawerLabel" style="width: 300px; z-index: 1060;">
+        <div class="offcanvas-header border-bottom border-white border-opacity-10 py-3 px-3">
+            <div class="d-flex align-items-center gap-2.5">
+                <img src="~/images/logo.jpg" alt="NWKRTC Logo" style="height: 32px; width: auto; border-radius: 4px;" asp-append-version="true" />
+                <div>
+                    <h6 class="offcanvas-title fw-bold text-white mb-0" id="mobileOtherCourtsDrawerLabel" style="font-size: 0.95rem;">Other Courts Hub</h6>
+                    <span class="text-white-50" style="font-size: 0.7rem;">Official Portal Navigation</span>
                 </div>
-
-                <!-- Primary Active Court Navigation Links -->
-                <a class="nav-link @(currentAction == dashboardAction ? "active" : "")" href="@Url.Action(dashboardAction, "Home")">
-                    <i class="bi bi-columns-gap"></i>
-                    <div class="link-text">
-                        <span>@activeCourt Dashboard</span>
-                    </div>
-                </a>
-
-                <a class="nav-link @(currentAction == formAction ? "active" : "")" href="@Url.Action(formAction, "Home")">
-                    <i class="bi bi-plus-circle-fill"></i>
-                    <div class="link-text">
-                        <span>New Registration</span>
-                    </div>
-                </a>
-
-                <a class="nav-link @(currentAction == "OtherCourtsCaseList" ? "active" : "")" 
-                   href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = activeCourt, litigantType = litigantType })">
-                    <i class="bi bi-stack"></i>
-                    <div class="link-text">
-                        <span>Case Registry</span>
-                    </div>
-                </a>
-
-                <!-- Quick Switch Court Divider & Items -->
-                <div class="px-3 pt-3 pb-1">
-                    <small class="text-uppercase fw-bold text-white-50" style="font-size: 0.65rem; letter-spacing: 0.06em;">SWITCH COURT</small>
-                </div>
-
-                <a class="nav-link py-2 @(activeCourt == "OS" && litigantType == "Corporation" ? "active" : "")" href="/Home/OSCorporation" style="font-size: 0.85rem;">
-                    <i class="bi bi-building"></i>
-                    <span>O.S (Corporation)</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "OS" && litigantType == "Claimant" ? "active" : "")" href="/Home/OSClaimant" style="font-size: 0.85rem;">
-                    <i class="bi bi-person"></i>
-                    <span>O.S (Claimant)</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "ECA" ? "active" : "")" href="/Home/ECA" style="font-size: 0.85rem;">
-                    <i class="bi bi-person-workspace"></i>
-                    <span>ECA Cases</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "PSC" ? "active" : "")" href="/Home/PSC" style="font-size: 0.85rem;">
-                    <i class="bi bi-shield-check"></i>
-                    <span>P &amp; SC Cases</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "CC" ? "active" : "")" href="/Home/CC" style="font-size: 0.85rem;">
-                    <i class="bi bi-shield-exclamation"></i>
-                    <span>Criminal Cases</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "Consumer" ? "active" : "")" href="/Home/Consumer" style="font-size: 0.85rem;">
-                    <i class="bi bi-person-badge"></i>
-                    <span>Consumer Complaint</span>
-                </a>
-
-                <a class="nav-link py-2 @(activeCourt == "LAC" ? "active" : "")" href="/Home/LAC" style="font-size: 0.85rem;">
-                    <i class="bi bi-geo-alt"></i>
-                    <span>Land Acquisition (LAC)</span>
-                </a>
-            </nav>
-
-            <!-- e-Courts Quick Link (Matches MVC & Labour) -->
-            <div class="px-2 pt-3 mt-auto flex-shrink-0 border-top border-white border-opacity-10 mb-2">
-                <a href="https://services.ecourts.gov.in/ecourtindia_v6/" target="_blank" rel="noopener noreferrer" 
-                   class="btn btn-outline-light w-100 d-flex align-items-center justify-content-center gap-2 py-2" 
-                   style="border: 1px solid rgba(255,255,255,0.25); backdrop-filter: blur(10px); background: rgba(255,255,255,0.06); font-size: 0.85rem;">
-                    <i class="bi bi-globe"></i>
-                    <span class="fw-semibold">e-Courts India</span>
-                    <i class="bi bi-box-arrow-up-right small opacity-75"></i>
-                </a>
             </div>
+            <button type="button" class="btn-close btn-close-white text-reset" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body p-2 d-flex flex-column" style="overflow-y: auto;">
+            <!-- User Status Card in Mobile Menu -->
+            <div class="p-2.5 mb-2 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
+                <div class="d-flex align-items-center gap-2.5">
+                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700;">
+                        @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
+                    </div>
+                    <div class="min-w-0 text-truncate">
+                        <div class="fw-bold text-white small text-truncate">@User.FindFirst("FullName")?.Value</div>
+                        <div class="text-white-50 small text-truncate" style="font-size: 0.72rem;">@User.FindFirst("DivisionName")?.Value</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Links -->
+            <partial name="_OtherCourtsNav" />
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        <!-- Sidebar Dedicated to Other Courts Module (Desktop) -->
+        <aside class="sidebar d-none d-md-block d-print-none">
+            <partial name="_OtherCourtsNav" />
         </aside>
 
         <!-- Main Content Area with Professional Official Tone -->
