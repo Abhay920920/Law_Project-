@@ -118,377 +118,172 @@
         </div>
     </div>
 
-    <!-- Main Navigation Tabs -->
-    <ul class="nav nav-pills mb-4 gap-2 bg-white p-2 rounded-3 shadow-sm border" role="tablist">
-        <li class="nav-item">
-            <button class="nav-link hc-tab-btn hc-tab-registered active py-2.5 px-4" data-bs-toggle="pill" data-bs-target="#tabRegisteredCases">
-                <i class="bi bi-building me-2"></i>Registered High Court Cases (<span id="tabBadgeRegistered">@Model.TotalRegisteredCases</span>)
-            </button>
-        </li>
-        <li class="nav-item">
-            <button class="nav-link hc-tab-btn hc-tab-live py-2.5 px-4" data-bs-toggle="pill" data-bs-target="#tabLiveHcCauseList" onclick="initLiveHcCauselist()">
-                <i class="bi bi-broadcast me-2"></i>Live High Court Daily Cause List (e-Courts Gateway)
-            </button>
-        </li>
-    </ul>
-
-    <div class="tab-content">
-        <!-- TAB 1: Registered High Court Cases -->
-        <div class="tab-pane fade show active" id="tabRegisteredCases">
-            <!-- KPI Summary Cards -->
-            <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
-                <div class="col">
-                    <div class="card border-0 shadow-sm border-start border-4 border-primary bg-white kpi-card h-100">
-                        <div class="card-body py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="text-muted extra-small text-uppercase fw-bold">Total HC Appeals</span>
-                                    <h2 class="fw-bold text-primary mb-0 mt-1" id="kpiTotal">@Model.TotalRegisteredCases</h2>
-                                </div>
-                                <div class="bg-primary-subtle p-3 rounded-3 text-primary">
-                                    <i class="bi bi-card-list fs-3"></i>
-                                </div>
-                            </div>
+    <!-- KPI Summary Cards -->
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+        <div class="col">
+            <div class="card border-0 shadow-sm border-start border-4 border-danger bg-white kpi-card h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Listed Today (NWKRTC)</span>
+                            <h2 class="fw-bold text-danger mb-0 mt-1" id="kpiListedTodayVal">@Model.NwkrtcListedTodayCount</h2>
                         </div>
-                    </div>
-                </div>
-
-                <div class="col">
-                    <div class="card border-0 shadow-sm border-start border-4 border-danger bg-white kpi-card h-100">
-                        <div class="card-body py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="text-muted extra-small text-uppercase fw-bold">Listed Today</span>
-                                    <h2 class="fw-bold text-danger mb-0 mt-1" id="kpiToday">@Model.ListedTodayCount</h2>
-                                </div>
-                                <div class="bg-danger-subtle p-3 rounded-3 text-danger">
-                                    <i class="bi bi-bell-fill fs-3"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col">
-                    <div class="card border-0 shadow-sm border-start border-4 border-warning bg-white kpi-card h-100">
-                        <div class="card-body py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="text-muted extra-small text-uppercase fw-bold">Next 7 Days</span>
-                                    <h2 class="fw-bold text-warning mb-0 mt-1" id="kpiWeek">@Model.ListedThisWeekCount</h2>
-                                </div>
-                                <div class="bg-warning-subtle p-3 rounded-3 text-warning">
-                                    <i class="bi bi-calendar-week fs-3"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col">
-                    <div class="card border-0 shadow-sm border-start border-4 border-success bg-white kpi-card h-100">
-                        <div class="card-body py-3">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="text-muted extra-small text-uppercase fw-bold">Linked with CNR</span>
-                                    <h2 class="fw-bold text-success mb-0 mt-1" id="kpiCnr">@Model.SyncedCnrCount</h2>
-                                </div>
-                                <div class="bg-success-subtle p-3 rounded-3 text-success">
-                                    <i class="bi bi-check-circle-fill fs-3"></i>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Filter Bar -->
-            <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
-                <div class="card-body p-3">
-                    <form method="get" action="/ECourts/HighCourtCauseList" id="filterForm">
-                        <div class="row g-2 align-items-end">
-                            <div class="col-12 col-md-3 col-lg-2">
-                                <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-building me-1"></i>High Court Bench</label>
-                                <select name="bench" class="form-select form-select-sm fw-bold">
-                                    @foreach (var b in Model.Benches)
-                                    {
-                                        <option value="@b" selected="@(Model.SelectedBench == b)">@b</option>
-                                    }
-                                </select>
-                            </div>
-
-                            <div class="col-12 col-md-3 col-lg-3">
-                                <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-geo-alt me-1"></i>Division</label>
-                                <select name="division" class="form-select form-select-sm fw-bold">
-                                    @foreach (var d in Model.Divisions)
-                                    {
-                                        <option value="@d" selected="@(Model.SelectedDivision == d)">@d</option>
-                                    }
-                                </select>
-                            </div>
-
-                            <div class="col-12 col-md-3 col-lg-2">
-                                <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-funnel me-1"></i>Appeal Type</label>
-                                <select name="appealType" class="form-select form-select-sm fw-bold">
-                                    <option value="All" selected="@(string.IsNullOrEmpty(Model.SelectedAppealType) || Model.SelectedAppealType == "All")">All Appeals</option>
-                                    <option value="Corporation MFA" selected="@(Model.SelectedAppealType == "Corporation MFA")">Corporation MFA</option>
-                                    <option value="Claimant MFA" selected="@(Model.SelectedAppealType == "Claimant MFA")">Claimant MFA</option>
-                                </select>
-                            </div>
-
-                            <div class="col-12 col-md-3 col-lg-3">
-                                <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-search me-1"></i>Search</label>
-                                <input type="text" name="q" class="form-control form-control-sm" placeholder="MFA No, CNR, Parties, MVC No..." value="@Model.SearchQuery" />
-                            </div>
-
-                            <div class="col-12 col-md-12 col-lg-2 d-flex gap-2">
-                                <button type="submit" class="btn btn-primary btn-sm flex-fill fw-bold"><i class="bi bi-filter me-1"></i>Filter</button>
-                                <a href="/ECourts/HighCourtCauseList" class="btn btn-outline-secondary btn-sm" title="Reset Filters"><i class="bi bi-x-lg"></i></a>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Cause List Table -->
-            <div class="card shadow-sm border-0 rounded-3">
-                <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
-                    <h6 class="mb-0 fw-bold text-primary"><i class="bi bi-list-stars me-2"></i>High Court Hearings & Listings (@Model.Items.Count cases)</h6>
-                    <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-1">Updated Live via NAPIX</span>
-                </div>
-                <div class="card-body p-0">
-                    @if (Model.Items == null || !Model.Items.Any())
-                    {
-                        <div class="text-center py-5 text-muted">
-                            <i class="bi bi-calendar-x fs-1 d-block text-secondary mb-2"></i>
-                            <h5>No High Court cases match the selected filters</h5>
-                            <p class="small mb-0">Try adjusting your filters or search query.</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0 small">
-                                <thead class="bg-light text-secondary extra-small text-uppercase">
-                                    <tr>
-                                        <th style="width: 40px;">#</th>
-                                        <th style="min-width: 130px;">MFA No / Type</th>
-                                        <th style="min-width: 140px;">Bench / Court Hall</th>
-                                        <th style="min-width: 160px;">CNR Number</th>
-                                        <th style="min-width: 150px;">Arising MVC & Division</th>
-                                        <th style="min-width: 200px; max-width: 250px;">Petitioner vs Respondent</th>
-                                        <th style="min-width: 150px;">Next Hearing / Stage</th>
-                                        <th style="min-width: 120px;">Status</th>
-                                        <th style="min-width: 150px;" class="text-end">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @for (int i = 0; i < Model.Items.Count; i++)
-                                    {
-                                        var item = Model.Items[i];
-                                        bool isCorp = item.AppealType == "Corporation MFA";
-                                        string bgBadge = isCorp ? "bg-primary text-white" : "bg-info text-dark";
-                                        string statusBadge = item.ListingStatus switch
-                                        {
-                                            "Listed Today" => "bg-danger text-white animate-pulse",
-                                            "Upcoming This Week" => "bg-warning text-dark",
-                                            "Future Hearing" => "bg-info text-dark",
-                                            _ => "bg-secondary text-white"
-                                        };
-
-                                        <tr id="row_@item.AppealID" class="@(item.ListingStatus == "Listed Today" ? "table-danger" : "")" data-appeal-id="@item.AppealID" data-cnr="@(item.CNRNumber ?? "")">
-                                            <td class="text-muted fw-bold">@(i + 1)</td>
-                                            <td>
-                                                <strong class="text-primary font-monospace fs-6">@item.DisplayMFANo</strong>
-                                                <div class="mt-1">
-                                                    <span class="badge @bgBadge extra-small">@item.AppealType</span>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span class="badge bg-light text-dark border fw-bold d-block mb-1 text-truncate" style="max-width: 160px;" title="@item.HighCourtBench">@item.HighCourtBench</span>
-                                                @if (!string.IsNullOrEmpty(item.CourtHall))
-                                                {
-                                                    <span class="badge bg-warning-subtle text-dark border border-warning extra-small text-truncate" style="max-width: 160px;" id="courthall_@item.AppealID" title="@item.CourtHall">
-                                                        <i class="bi bi-bank2 me-1"></i>@item.CourtHall
-                                                    </span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="badge bg-light text-muted border extra-small" id="courthall_@item.AppealID">
-                                                        <i class="bi bi-wifi me-1 text-primary"></i>Sync Pending
-                                                    </span>
-                                                }
-                                            </td>
-                                            <td>
-                                                @if (!string.IsNullOrEmpty(item.CNRNumber))
-                                                {
-                                                    <span class="font-monospace fw-bold text-dark d-block">@item.CNRNumber</span>
-                                                    <span class="badge bg-success-subtle text-success border border-success extra-small"><i class="bi bi-wifi me-1"></i>CNR Synced</span>
-                                                }
-                                                else
-                                                {
-                                                    <span class="text-muted extra-small">No CNR Linked</span>
-                                                }
-                                            </td>
-                                            <td>
-                                                <strong class="text-dark">MVC @item.ArisingMVCNo / @item.ArisingMVCYear</strong>
-                                                <div class="extra-small text-muted text-truncate" style="max-width: 150px;">@item.DivisionName (@(item.MACTName ?? "MACT"))</div>
-                                            </td>
-                                            <td>
-                                                <div class="fw-bold text-dark text-truncate" style="max-width: 240px;" title="@item.PetitionerName">
-                                                    @(string.IsNullOrEmpty(item.PetitionerName) ? "—" : item.PetitionerName)
-                                                </div>
-                                                <div class="extra-small text-muted text-truncate" style="max-width: 240px;" title="@item.RespondentName">
-                                                    vs @(string.IsNullOrEmpty(item.RespondentName) ? "—" : item.RespondentName)
-                                                </div>
-                                            </td>
-                                            <td id="hearing_col_@item.AppealID">
-                                                @if (item.NextHearingDate.HasValue)
-                                                {
-                                                    <strong class="text-dark fs-6 d-block" id="hearing_dt_@item.AppealID">
-                                                        <i class="bi bi-calendar-event me-1 text-primary"></i>@item.NextHearingDate.Value.ToString("dd-MM-yyyy")
-                                                    </strong>
-                                                }
-                                                else
-                                                {
-                                                    <span class="text-muted fst-italic" id="hearing_dt_@item.AppealID">Date Pending</span>
-                                                }
-                                                <span class="badge bg-light text-dark border extra-small mt-1 text-truncate d-inline-block" style="max-width: 150px;" id="stage_@item.AppealID" title="@(string.IsNullOrEmpty(item.CaseStage) ? "—" : item.CaseStage)">
-                                                    @(string.IsNullOrEmpty(item.CaseStage) ? "—" : item.CaseStage)
-                                                </span>
-                                            </td>
-                                            <td id="status_col_@item.AppealID">
-                                                <span class="badge @statusBadge p-2" id="status_badge_@item.AppealID">@item.ListingStatus</span>
-                                            </td>
-                                            <td class="text-end">
-                                                <div class="btn-group btn-group-sm">
-                                                    @if (!string.IsNullOrEmpty(item.CNRNumber))
-                                                    {
-                                                        <button class="btn btn-outline-primary" type="button" id="sync_btn_@item.AppealID" onclick="syncSingleCnr('@item.AppealID', '@item.CNRNumber')" title="Fetch Live e-Courts Data via NAPIX">
-                                                            <i class="bi bi-arrow-repeat"></i> Sync
-                                                        </button>
-                                                        <button class="btn btn-outline-info" type="button" onclick="openDossierModal('@item.AppealID', '@item.CNRNumber', '@item.DisplayMFANo')" title="View Orders & Judgments">
-                                                            <i class="bi bi-journal-text"></i> Dossier
-                                                        </button>
-                                                    }
-                                                    <a href="/Case/Details/@item.CaseID" class="btn btn-outline-secondary" title="View Full Case Details">
-                                                        <i class="bi bi-eye"></i> View
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB 2: Live High Court Official Daily Cause List -->
-        <div class="tab-pane fade" id="tabLiveHcCauseList">
-            <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
-                <div class="card-body p-3">
-                    <div class="row g-2 align-items-end">
-                        <div class="col-12 col-md-3 col-lg-3">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-bank me-1 text-danger"></i>High Court Establishment</label>
-                            <select id="liveEstCode" class="form-select form-select-sm fw-bold" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();">
-                                <option value="ALL" selected>All High Court Benches (Bengaluru, Dharwad, Kalaburagi)</option>
-                                <option value="KAHC01">High Court of Karnataka — Principal Bench (Bengaluru)</option>
-                                <option value="KAHC02">High Court of Karnataka — Dharwad Bench</option>
-                                <option value="KAHC03">High Court of Karnataka — Kalaburagi Bench</option>
-                            </select>
-                        </div>
-
-                        <div class="col-12 col-md-3 col-lg-2">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Today's Hearing Date</label>
-                            <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
-                        </div>
-
-                        <div class="col-12 col-md-3 col-lg-3">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-person-badge-fill me-1 text-danger"></i>Litigant Party Name</label>
-                            <input type="text" id="livePartySearchInput" class="form-control form-control-sm fw-bold" value="NWKRTC" placeholder="e.g. NWKRTC, Managing Director, CPM" oninput="filterLiveCauselistRows()" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
-                        </div>
-
-                        <div class="col-12 col-md-3 col-lg-2">
-                            <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall / Bench</label>
-                            <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
-                                <option value="ALL">All Benches / Court Halls</option>
-                            </select>
-                        </div>
-
-                        <div class="col-12 col-md-12 col-lg-2 d-flex gap-2">
-                            <button type="button" class="btn btn-danger btn-sm w-100 fw-bold shadow-sm" onclick="fetchLiveHcCauselist()">
-                                <i class="bi bi-broadcast me-1"></i> Fetch Live Cause List
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Quick Party Presets & Saved CNR Dates Bar -->
-                    <div class="mt-2 pt-2 border-top d-flex flex-wrap align-items-center gap-1">
-                        <span class="extra-small fw-bold text-secondary text-uppercase me-1"><i class="bi bi-tags me-1 text-danger"></i>Party Presets:</span>
-                        <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small active" id="chipLiveNwkrtc" onclick="setLivePartyPreset('NWKRTC')">NWKRTC</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveMd" onclick="setLivePartyPreset('MANAGING DIRECTOR')">Managing Director</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveCpm" onclick="setLivePartyPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDc" onclick="setLivePartyPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDm" onclick="setLivePartyPreset('DEPOT MANAGER')">Depot Manager</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveAll" onclick="setLivePartyPreset('')">All Parties (Entire Roster)</button>
-
-                        <div class="ms-auto d-flex align-items-center gap-2">
-                            <span class="extra-small fw-bold text-secondary text-uppercase"><i class="bi bi-calendar3 me-1 text-primary"></i>Saved CNR Dates:</span>
-                            <div id="quickHearingDateChips" class="d-inline-flex flex-wrap gap-1">
-                                <!-- Populated dynamically -->
-                            </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small fw-bold" onclick="showAllSavedCnrCases()">
-                                <i class="bi bi-card-checklist me-1"></i>View All Saved CNR Cases (<span id="btnAllCnrCount">4</span>)
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Live Cause List Results Container -->
-            <div class="card shadow-sm border-0 rounded-3">
-                <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
-                    <div class="d-flex align-items-center gap-3">
-                        <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List (e-Courts Live Gateway API)</h6>
-                        <div class="form-check form-switch m-0 border-start ps-3">
-                            <input class="form-check-input" type="checkbox" id="chkOnlyToday" checked onchange="fetchLiveHcCauselist()">
-                            <label class="form-check-label fw-bold text-danger small" for="chkOnlyToday">
-                                <i class="bi bi-calendar-check-fill me-1"></i>Only Today's Listed Cases
-                            </label>
-                        </div>
-                        <div class="form-check form-switch m-0 border-start ps-3">
-                            <input class="form-check-input" type="checkbox" id="chkOnlyCorp" checked onchange="filterLiveCauselistRows()">
-                            <label class="form-check-label fw-bold text-dark small" for="chkOnlyCorp">
-                                <i class="bi bi-shield-check text-primary me-1"></i>Show Only Corporation Cases
-                            </label>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="btn-group btn-group-sm" role="group">
-                            <button type="button" class="btn btn-outline-secondary py-0 px-2 extra-small active" id="pillFilterAll" onclick="setLiveListingFilter('ALL')">All</button>
-                            <button type="button" class="btn btn-outline-danger py-0 px-2 extra-small fw-bold" id="pillFilterToday" onclick="setLiveListingFilter('TODAY')"><i class="bi bi-bell-fill me-1"></i>Listed Today</button>
-                            <button type="button" class="btn btn-outline-primary py-0 px-2 extra-small" id="pillFilterWith" onclick="setLiveListingFilter('WITH')">With NWKRTC</button>
-                            <button type="button" class="btn btn-outline-warning text-dark py-0 px-2 extra-small" id="pillFilterAgainst" onclick="setLiveListingFilter('AGAINST')">Against NWKRTC</button>
-                            <button type="button" class="btn btn-outline-success py-0 px-2 extra-small" id="pillFilterSaved" onclick="setLiveListingFilter('SAVED')">Saved in DB</button>
-                        </div>
-                        <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Select Bench & Fetch</span>
-                    </div>
-                </div>
-                <div class="card-body p-0">
-                    <div id="liveCauselistContainer">
-                        <div class="text-center py-5 text-muted">
-                            <i class="bi bi-bank fs-1 d-block text-danger mb-2"></i>
-                            <h5>Select a High Court Bench and click "Fetch Live Cause List"</h5>
-                            <p class="small mb-0">The e-Courts Gateway API will pull official daily cause lists directly from High Court servers.</p>
+                        <div class="bg-danger-subtle p-3 rounded-3 text-danger">
+                            <i class="bi bi-bell-fill fs-3"></i>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
+        <div class="col">
+            <div class="card border-0 shadow-sm border-start border-4 border-primary bg-white kpi-card h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted extra-small text-uppercase fw-bold">With NWKRTC (Appellant)</span>
+                            <h2 class="fw-bold text-primary mb-0 mt-1" id="kpiWithNwkrtcVal">@Model.NwkrtcWithCount</h2>
+                        </div>
+                        <div class="bg-primary-subtle p-3 rounded-3 text-primary">
+                            <i class="bi bi-shield-check fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card border-0 shadow-sm border-start border-4 border-warning bg-white kpi-card h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Against NWKRTC (Respondent)</span>
+                            <h2 class="fw-bold text-warning mb-0 mt-1" id="kpiAgainstNwkrtcVal">@Model.NwkrtcAgainstCount</h2>
+                        </div>
+                        <div class="bg-warning-subtle p-3 rounded-3 text-warning">
+                            <i class="bi bi-shield-exclamation fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card border-0 shadow-sm border-start border-4 border-success bg-white kpi-card h-100">
+                <div class="card-body py-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted extra-small text-uppercase fw-bold">Total Saved in Registry</span>
+                            <h2 class="fw-bold text-success mb-0 mt-1" id="kpiTotal">@Model.TotalRegisteredCases</h2>
+                        </div>
+                        <div class="bg-success-subtle p-3 rounded-3 text-success">
+                            <i class="bi bi-check-circle-fill fs-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Search & Roster Filter Bar -->
+    <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
+        <div class="card-body p-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-3 col-lg-3">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-bank me-1 text-danger"></i>High Court Establishment</label>
+                    <select id="liveEstCode" class="form-select form-select-sm fw-bold" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();">
+                        <option value="ALL" selected>All High Court Benches (Bengaluru, Dharwad, Kalaburagi)</option>
+                        <option value="KAHC01">High Court of Karnataka — Principal Bench (Bengaluru)</option>
+                        <option value="KAHC02">High Court of Karnataka — Dharwad Bench</option>
+                        <option value="KAHC03">High Court of Karnataka — Kalaburagi Bench</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-3 col-lg-2">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Today's Hearing Date</label>
+                    <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
+                </div>
+
+                <div class="col-12 col-md-3 col-lg-3">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-person-badge-fill me-1 text-danger"></i>Litigant Party Name</label>
+                    <input type="text" id="livePartySearchInput" class="form-control form-control-sm fw-bold" value="NWKRTC" placeholder="e.g. NWKRTC, Managing Director, CPM" oninput="filterLiveCauselistRows()" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
+                </div>
+
+                <div class="col-12 col-md-3 col-lg-2">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall / Bench</label>
+                    <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
+                        <option value="ALL">All Benches / Court Halls</option>
+                    </select>
+                </div>
+
+                <div class="col-12 col-md-12 col-lg-2 d-flex gap-2">
+                    <button type="button" class="btn btn-danger btn-sm w-100 fw-bold shadow-sm" onclick="fetchLiveHcCauselist()">
+                        <i class="bi bi-broadcast me-1"></i> Search Today's Cause List
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Party Presets & Saved CNR Dates Bar -->
+            <div class="mt-2 pt-2 border-top d-flex flex-wrap align-items-center gap-1">
+                <span class="extra-small fw-bold text-secondary text-uppercase me-1"><i class="bi bi-tags me-1 text-danger"></i>Party Presets:</span>
+                <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small active" id="chipLiveNwkrtc" onclick="setLivePartyPreset('NWKRTC')">NWKRTC</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveMd" onclick="setLivePartyPreset('MANAGING DIRECTOR')">Managing Director</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveCpm" onclick="setLivePartyPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDc" onclick="setLivePartyPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDm" onclick="setLivePartyPreset('DEPOT MANAGER')">Depot Manager</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveAll" onclick="setLivePartyPreset('')">All Parties (Entire Roster)</button>
+
+                <div class="ms-auto d-flex align-items-center gap-2">
+                    <span class="extra-small fw-bold text-secondary text-uppercase"><i class="bi bi-calendar3 me-1 text-primary"></i>Saved CNR Dates:</span>
+                    <div id="quickHearingDateChips" class="d-inline-flex flex-wrap gap-1">
+                        <!-- Populated dynamically -->
+                    </div>
+                    <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small fw-bold" onclick="showAllSavedCnrCases()">
+                        <i class="bi bi-card-checklist me-1"></i>View All Saved Cases (<span id="btnAllCnrCount">4</span>)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Cause List Results Container -->
+    <div class="card shadow-sm border-0 rounded-3">
+        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+            <div class="d-flex align-items-center gap-3">
+                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List (e-Courts Live Gateway API)</h6>
+                <div class="form-check form-switch m-0 border-start ps-3">
+                    <input class="form-check-input" type="checkbox" id="chkOnlyToday" checked onchange="fetchLiveHcCauselist()">
+                    <label class="form-check-label fw-bold text-danger small" for="chkOnlyToday">
+                        <i class="bi bi-calendar-check-fill me-1"></i>Only Today's Listed Cases
+                    </label>
+                </div>
+                <div class="form-check form-switch m-0 border-start ps-3">
+                    <input class="form-check-input" type="checkbox" id="chkOnlyCorp" checked onchange="filterLiveCauselistRows()">
+                    <label class="form-check-label fw-bold text-dark small" for="chkOnlyCorp">
+                        <i class="bi bi-shield-check text-primary me-1"></i>Show Only Corporation Cases
+                    </label>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary py-0 px-2 extra-small active" id="pillFilterAll" onclick="setLiveListingFilter('ALL')">All</button>
+                    <button type="button" class="btn btn-outline-danger py-0 px-2 extra-small fw-bold" id="pillFilterToday" onclick="setLiveListingFilter('TODAY')"><i class="bi bi-bell-fill me-1"></i>Listed Today</button>
+                    <button type="button" class="btn btn-outline-primary py-0 px-2 extra-small" id="pillFilterWith" onclick="setLiveListingFilter('WITH')">With NWKRTC</button>
+                    <button type="button" class="btn btn-outline-warning text-dark py-0 px-2 extra-small" id="pillFilterAgainst" onclick="setLiveListingFilter('AGAINST')">Against NWKRTC</button>
+                    <button type="button" class="btn btn-outline-success py-0 px-2 extra-small" id="pillFilterSaved" onclick="setLiveListingFilter('SAVED')">Saved in DB</button>
+                </div>
+                <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Loading Today's Cause List...</span>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="liveCauselistContainer">
+                <div class="text-center py-5 text-muted">
+                    <div class="spinner-border text-danger" role="status"></div>
+                    <h5 class="mt-3 fw-bold">Querying High Court Daily Cause List for 'NWKRTC'...</h5>
+                    <p class="small mb-0">Cross-referencing Dharwad, Bengaluru, and Kalaburagi official daily rosters.</p>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1727,24 +1522,10 @@ function openDossierModal(appealId, cnr, mfaNo) {
         });
 }
 
-// Auto-initialize when page loads or when live tab is opened
+// Auto-initialize on page load: load benches, populate date chips, and immediately fetch today's live cause list!
 document.addEventListener('DOMContentLoaded', function () {
     populateScheduledDateChips();
     loadHcCourtBenches();
-    
-    const liveTabBtn = document.querySelector('button[data-bs-target="#tabLiveHcCauseList"]');
-    if (liveTabBtn) {
-        liveTabBtn.addEventListener('shown.bs.tab', function () {
-            initLiveHcCauselist();
-        });
-    }
-
-    if (window.location.hash === '#tabLiveHcCauseList' || window.location.hash.toLowerCase().includes('live')) {
-        if (liveTabBtn) {
-            const bsTab = new bootstrap.Tab(liveTabBtn);
-            bsTab.show();
-        }
-        initLiveHcCauselist();
-    }
+    fetchLiveHcCauselist();
 });
 </script>
