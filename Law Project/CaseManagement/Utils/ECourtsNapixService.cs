@@ -1282,7 +1282,7 @@ namespace MVCCaseManagement.Utils
             if (!isHighCourt && (clean.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || (clean.Length >= 4 && clean.Substring(2, 2).Equals("HC", StringComparison.OrdinalIgnoreCase))))
                 isHighCourt = true;
 
-            string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(module) ? "MVC" : module);
+            string norm = NapixQuotaService.NormalizeModule(module);
             var dateVariants = GetDateVariants(date);
             if (dateVariants.Count == 0)
             {
@@ -1290,22 +1290,38 @@ namespace MVCCaseManagement.Utils
                 return null;
             }
 
-            // Try correct endpoint first with official parameters only: cino + business_date
-            string endpoint = isHighCourt ? "hc-show-business-api" : "dc-show-business-api";
-            foreach (var dt in dateVariants)
+            var candidateEndpoints = isHighCourt
+                ? new[] { "hc-show-business-api" }
+                : new[] { "dc-show-business-api", "ecourt-icjs-show-business-api" };
+
+            var modulesToTry = new List<string> { norm };
+            if (!string.Equals(norm, "MVC", StringComparison.OrdinalIgnoreCase))
             {
-                var res = await QueryApiAsync(endpoint, "showBusiness", $"cino={clean}|business_date={dt}", module: effectiveModule);
-                if (res.HasValue && !IsErrorJson(res.Value, effectiveModule))
+                modulesToTry.Add("MVC");
+            }
+
+            foreach (var mod in modulesToTry)
+            {
+                foreach (var endpoint in candidateEndpoints)
                 {
-                    _logger.LogInformation("[NAPIX] showBusiness: {CNR} on {Date} via {Endpoint} ({Module})", clean, dt, endpoint, effectiveModule);
-                    return res;
-                }
-                // 626 = dept-level auth failure — retrying other params/endpoints won't help
-                string? lastErr = GetLastModuleError(effectiveModule);
-                if (lastErr != null && lastErr.Contains("626"))
-                {
-                    _logger.LogWarning("[NAPIX] showBusiness: eCourts CIS returned 626 INVALID_TOKEN for dept_id '{DeptId}'. Aborting retries.", GetConfigForModule(effectiveModule).DeptId);
-                    return null;
+                    foreach (var dt in dateVariants)
+                    {
+                        // Variant 1: official parameter cino + business_date
+                        var res = await QueryApiAsync(endpoint, "showBusiness", $"cino={clean}|business_date={dt}", module: mod);
+                        if (res.HasValue && !IsErrorJson(res.Value, mod))
+                        {
+                            _logger.LogInformation("[NAPIX] showBusiness: {CNR} on {Date} via {Endpoint} ({Module})", clean, dt, endpoint, mod);
+                            return res;
+                        }
+
+                        // Variant 2: parameter cino + date
+                        var res2 = await QueryApiAsync(endpoint, "showBusiness", $"cino={clean}|date={dt}", module: mod);
+                        if (res2.HasValue && !IsErrorJson(res2.Value, mod))
+                        {
+                            _logger.LogInformation("[NAPIX] showBusiness: {CNR} on {Date} via {Endpoint} (date param) ({Module})", clean, dt, endpoint, mod);
+                            return res2;
+                        }
+                    }
                 }
             }
 

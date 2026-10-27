@@ -1,6 +1,6 @@
 @model MVCCaseManagement.Models.HighCourtCauseListViewModel
 @{
-    ViewData["Title"] = "High Court Cause List — Central Office";
+    ViewData["Title"] = "High Court Cause List — NWKRTC Matters Listed Today";
     ViewData["HidePageHeader"] = true;
 }
 
@@ -14,31 +14,6 @@
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
         color: #fff;
         border-radius: 12px;
-    }
-    .hc-tab-btn {
-        border-radius: 8px;
-        background: #f8fafc;
-        color: #475569;
-        font-weight: 600;
-        font-size: 0.9rem;
-        transition: all 0.2s ease;
-        border: 1px solid #e2e8f0;
-    }
-    .hc-tab-btn:hover {
-        background: #f1f5f9;
-        color: #0f172a;
-    }
-    .hc-tab-registered.active {
-        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%) !important;
-        color: #fff !important;
-        border-color: #2563eb !important;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-    }
-    .hc-tab-live.active {
-        background: linear-gradient(135deg, #991b1b 0%, #dc2626 100%) !important;
-        color: #fff !important;
-        border-color: #dc2626 !important;
-        box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
     }
     .kpi-card {
         border-radius: 12px;
@@ -69,22 +44,93 @@
         max-width: 380px;
     }
 
+    /* Mobile First Enhancements */
+    .mobile-presets-scroll {
+        scrollbar-width: none;
+    }
+    .mobile-presets-scroll::-webkit-scrollbar {
+        display: none;
+    }
+
+    .causelist-mobile-card {
+        border-radius: 10px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        border: 1px solid #e2e8f0;
+    }
+    .corp-match-card {
+        background-color: #f0fdf4 !important;
+        border: 1.5px solid #86efac !important;
+        border-left: 5px solid #10b981 !important;
+    }
+
     @@media (max-width: 767.98px) {
         .hc-header-gradient {
-            padding: 1.1rem !important;
-            border-radius: 1rem !important;
+            padding: 1.15rem !important;
+            border-radius: 0.75rem !important;
         }
         .hc-header-gradient h3 {
             font-size: 1.15rem !important;
+            line-height: 1.35;
         }
-        .hc-tab-btn {
-            font-size: 0.8rem !important;
-            padding: 0.5rem 0.75rem !important;
-            text-align: center;
+        .hc-header-actions {
+            width: 100%;
+            display: flex;
+            gap: 8px;
+        }
+        .hc-header-actions .btn {
+            flex: 1;
+            padding: 8px 12px !important;
+            font-size: 0.82rem !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .kpi-row {
+            margin-bottom: 0.75rem !important;
         }
         .kpi-card {
-            border-radius: 1rem !important;
-            margin-bottom: 0.5rem;
+            border-radius: 0.75rem !important;
+        }
+        .kpi-card .card-body {
+            padding: 0.6rem 0.75rem !important;
+        }
+        .kpi-label {
+            font-size: 0.66rem !important;
+            line-height: 1.15;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .kpi-num {
+            font-size: 1.3rem !important;
+            margin-top: 2px !important;
+        }
+        .mobile-presets-scroll {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 4px;
+        }
+        .mobile-presets-scroll .btn {
+            flex-shrink: 0;
+            white-space: nowrap;
+            padding: 4px 10px !important;
+            font-size: 0.75rem !important;
+        }
+        .dossier-nav-tabs {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .dossier-nav-tabs .nav-item {
+            flex-shrink: 0;
+        }
+        .dossier-nav-tabs .nav-link {
+            white-space: nowrap;
+            padding: 7px 12px !important;
+            font-size: 0.8rem !important;
         }
         .hc-toast-container {
             left: 12px;
@@ -93,22 +139,35 @@
             max-width: calc(100% - 24px);
         }
     }
+
+    @@media (max-width: 575.98px) {
+        .kpi-card .card-body {
+            padding: 0.5rem 0.6rem !important;
+        }
+        .kpi-label {
+            font-size: 0.62rem !important;
+        }
+        .kpi-num {
+            font-size: 1.2rem !important;
+        }
+    }
 </style>
 
 <div class="hc-causelist-page">
     <!-- Header Banner -->
-    <div class="hc-header-gradient p-4 mb-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div class="hc-header-gradient p-3 p-md-4 mb-3 mb-md-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-3">
         <div>
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <span class="badge bg-warning text-dark font-monospace fw-bold px-2 py-1"><i class="bi bi-shield-check me-1"></i>CENTRAL OFFICE</span>
-                <span class="badge bg-danger text-white font-monospace fw-bold px-2 py-1"><i class="bi bi-broadcast me-1"></i>LIVE E-COURTS GATEWAY</span>
+            <div class="d-flex flex-wrap align-items-center gap-1.5 mb-2">
+                <span class="badge bg-warning text-dark font-monospace fw-bold px-2 py-1 extra-small"><i class="bi bi-shield-check me-1"></i>CENTRAL OFFICE</span>
+                <span class="badge bg-danger text-white font-monospace fw-bold px-2 py-1 extra-small"><i class="bi bi-broadcast me-1"></i>LIVE E-COURTS GATEWAY</span>
+                <span class="badge bg-danger-subtle text-danger border border-danger font-monospace fw-bold px-2 py-1 extra-small d-none d-sm-inline-block"><i class="bi bi-calendar-check me-1"></i>TODAY'S LISTINGS ONLY</span>
             </div>
             <h3 class="fw-bold mb-1 text-white">
-                <i class="bi bi-calendar-event-fill me-2 text-warning"></i>High Court Cause List & Hearing Schedule
+                <i class="bi bi-calendar-event-fill me-2 text-warning"></i>High Court Cause List — NWKRTC Matters Listed Today
             </h3>
-            <p class="text-light text-opacity-75 small mb-0">Central Office Registry — Monitoring registered High Court MFA cases & live e-Courts listings.</p>
+            <p class="text-light text-opacity-75 small mb-0">Official daily cause list for NWKRTC across Karnataka High Court benches (Dharwad, Bengaluru, Kalaburagi).</p>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-center gap-2 hc-header-actions">
             <button class="btn btn-warning btn-sm fw-bold shadow-sm px-3 py-2" type="button" id="btnSyncAll" onclick="syncAllVisibleCnrs()">
                 <i class="bi bi-arrow-repeat me-1"></i> Sync All Visible CNRs
             </button>
@@ -118,18 +177,18 @@
         </div>
     </div>
 
-    <!-- KPI Summary Cards -->
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+    <!-- KPI Summary Cards: Strictly NWKRTC Listed Today -->
+    <div class="row row-cols-3 g-2 g-md-3 mb-3 mb-md-4 kpi-row">
         <div class="col">
             <div class="card border-0 shadow-sm border-start border-4 border-danger bg-white kpi-card h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2 p-md-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Listed Today (NWKRTC)</span>
-                            <h2 class="fw-bold text-danger mb-0 mt-1" id="kpiListedTodayVal">@Model.NwkrtcListedTodayCount</h2>
+                        <div class="w-100">
+                            <span class="text-muted extra-small text-uppercase fw-bold kpi-label">Listed Today</span>
+                            <h2 class="fw-bold text-danger mb-0 mt-1 kpi-num" id="kpiListedTodayVal">@Model.NwkrtcListedTodayCount</h2>
                         </div>
-                        <div class="bg-danger-subtle p-3 rounded-3 text-danger">
-                            <i class="bi bi-bell-fill fs-3"></i>
+                        <div class="bg-danger-subtle p-2 p-md-3 rounded-3 text-danger d-none d-sm-block flex-shrink-0 ms-2">
+                            <i class="bi bi-bell-fill fs-4 fs-md-3"></i>
                         </div>
                     </div>
                 </div>
@@ -138,14 +197,14 @@
 
         <div class="col">
             <div class="card border-0 shadow-sm border-start border-4 border-primary bg-white kpi-card h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2 p-md-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">With NWKRTC (Appellant)</span>
-                            <h2 class="fw-bold text-primary mb-0 mt-1" id="kpiWithNwkrtcVal">@Model.NwkrtcWithCount</h2>
+                        <div class="w-100">
+                            <span class="text-muted extra-small text-uppercase fw-bold kpi-label">With NWKRTC</span>
+                            <h2 class="fw-bold text-primary mb-0 mt-1 kpi-num" id="kpiWithNwkrtcVal">@Model.NwkrtcWithCount</h2>
                         </div>
-                        <div class="bg-primary-subtle p-3 rounded-3 text-primary">
-                            <i class="bi bi-shield-check fs-3"></i>
+                        <div class="bg-primary-subtle p-2 p-md-3 rounded-3 text-primary d-none d-sm-block flex-shrink-0 ms-2">
+                            <i class="bi bi-shield-check fs-4 fs-md-3"></i>
                         </div>
                     </div>
                 </div>
@@ -154,30 +213,14 @@
 
         <div class="col">
             <div class="card border-0 shadow-sm border-start border-4 border-warning bg-white kpi-card h-100">
-                <div class="card-body py-3">
+                <div class="card-body p-2 p-md-3">
                     <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Against NWKRTC (Respondent)</span>
-                            <h2 class="fw-bold text-warning mb-0 mt-1" id="kpiAgainstNwkrtcVal">@Model.NwkrtcAgainstCount</h2>
+                        <div class="w-100">
+                            <span class="text-muted extra-small text-uppercase fw-bold kpi-label">Against NWKRTC</span>
+                            <h2 class="fw-bold text-warning mb-0 mt-1 kpi-num" id="kpiAgainstNwkrtcVal">@Model.NwkrtcAgainstCount</h2>
                         </div>
-                        <div class="bg-warning-subtle p-3 rounded-3 text-warning">
-                            <i class="bi bi-shield-exclamation fs-3"></i>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col">
-            <div class="card border-0 shadow-sm border-start border-4 border-success bg-white kpi-card h-100">
-                <div class="card-body py-3">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-muted extra-small text-uppercase fw-bold">Total Saved in Registry</span>
-                            <h2 class="fw-bold text-success mb-0 mt-1" id="kpiTotal">@Model.TotalRegisteredCases</h2>
-                        </div>
-                        <div class="bg-success-subtle p-3 rounded-3 text-success">
-                            <i class="bi bi-check-circle-fill fs-3"></i>
+                        <div class="bg-warning-subtle p-2 p-md-3 rounded-3 text-warning d-none d-sm-block flex-shrink-0 ms-2">
+                            <i class="bi bi-shield-exclamation fs-4 fs-md-3"></i>
                         </div>
                     </div>
                 </div>
@@ -186,7 +229,7 @@
     </div>
 
     <!-- Live Search & Roster Filter Bar -->
-    <div class="card shadow-sm border-0 mb-4 bg-white rounded-3">
+    <div class="card shadow-sm border-0 mb-3 mb-md-4 bg-white rounded-3">
         <div class="card-body p-3">
             <div class="row g-2 align-items-end">
                 <div class="col-12 col-md-3 col-lg-3">
@@ -199,9 +242,16 @@
                     </select>
                 </div>
 
-                <div class="col-12 col-md-3 col-lg-2">
-                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Today's Hearing Date</label>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Hearing Date</label>
                     <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
+                </div>
+
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall</label>
+                    <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
+                        <option value="ALL">All Benches / Halls</option>
+                    </select>
                 </div>
 
                 <div class="col-12 col-md-3 col-lg-3">
@@ -209,39 +259,21 @@
                     <input type="text" id="livePartySearchInput" class="form-control form-control-sm fw-bold" value="NWKRTC" placeholder="e.g. NWKRTC, Managing Director, CPM" oninput="filterLiveCauselistRows()" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
                 </div>
 
-                <div class="col-12 col-md-3 col-lg-2">
-                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall / Bench</label>
-                    <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
-                        <option value="ALL">All Benches / Court Halls</option>
-                    </select>
-                </div>
-
                 <div class="col-12 col-md-12 col-lg-2 d-flex gap-2">
-                    <button type="button" class="btn btn-danger btn-sm w-100 fw-bold shadow-sm" onclick="fetchLiveHcCauselist()">
-                        <i class="bi bi-broadcast me-1"></i> Search Today's Cause List
+                    <button type="button" class="btn btn-danger btn-sm w-100 fw-bold shadow-sm py-2" onclick="fetchLiveHcCauselist()">
+                        <i class="bi bi-broadcast me-1"></i> Search Cause List
                     </button>
                 </div>
             </div>
 
-            <!-- Quick Party Presets & Saved CNR Dates Bar -->
-            <div class="mt-2 pt-2 border-top d-flex flex-wrap align-items-center gap-1">
-                <span class="extra-small fw-bold text-secondary text-uppercase me-1"><i class="bi bi-tags me-1 text-danger"></i>Party Presets:</span>
+            <!-- Quick Party Presets Bar (NWKRTC Designations Only) -->
+            <div class="mt-2 pt-2 border-top d-flex align-items-center gap-1 mobile-presets-scroll">
+                <span class="extra-small fw-bold text-secondary text-uppercase me-1 flex-shrink-0"><i class="bi bi-tags me-1 text-danger"></i>Presets:</span>
                 <button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small active" id="chipLiveNwkrtc" onclick="setLivePartyPreset('NWKRTC')">NWKRTC</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveMd" onclick="setLivePartyPreset('MANAGING DIRECTOR')">Managing Director</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveCpm" onclick="setLivePartyPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDc" onclick="setLivePartyPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveDm" onclick="setLivePartyPreset('DEPOT MANAGER')">Depot Manager</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small" id="chipLiveAll" onclick="setLivePartyPreset('')">All Parties (Entire Roster)</button>
-
-                <div class="ms-auto d-flex align-items-center gap-2">
-                    <span class="extra-small fw-bold text-secondary text-uppercase"><i class="bi bi-calendar3 me-1 text-primary"></i>Saved CNR Dates:</span>
-                    <div id="quickHearingDateChips" class="d-inline-flex flex-wrap gap-1">
-                        <!-- Populated dynamically -->
-                    </div>
-                    <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small fw-bold" onclick="showAllSavedCnrCases()">
-                        <i class="bi bi-card-checklist me-1"></i>View All Saved Cases (<span id="btnAllCnrCount">4</span>)
-                    </button>
-                </div>
             </div>
         </div>
     </div>
@@ -249,29 +281,13 @@
     <!-- Live Cause List Results Container -->
     <div class="card shadow-sm border-0 rounded-3">
         <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
-            <div class="d-flex align-items-center gap-3">
-                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List (e-Courts Live Gateway API)</h6>
-                <div class="form-check form-switch m-0 border-start ps-3">
-                    <input class="form-check-input" type="checkbox" id="chkOnlyToday" checked onchange="fetchLiveHcCauselist()">
-                    <label class="form-check-label fw-bold text-danger small" for="chkOnlyToday">
-                        <i class="bi bi-calendar-check-fill me-1"></i>Only Today's Listed Cases
-                    </label>
-                </div>
-                <div class="form-check form-switch m-0 border-start ps-3">
-                    <input class="form-check-input" type="checkbox" id="chkOnlyCorp" checked onchange="filterLiveCauselistRows()">
-                    <label class="form-check-label fw-bold text-dark small" for="chkOnlyCorp">
-                        <i class="bi bi-shield-check text-primary me-1"></i>Show Only Corporation Cases
-                    </label>
-                </div>
+            <div class="d-flex align-items-center gap-2">
+                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List — NWKRTC Matters Listed Today</h6>
+                <span class="badge bg-danger-subtle text-danger border border-danger fw-bold extra-small px-2 py-1">
+                    <i class="bi bi-bell-fill me-1"></i>Today's Listed NWKRTC Matters Only
+                </span>
             </div>
             <div class="d-flex align-items-center gap-2">
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary py-0 px-2 extra-small active" id="pillFilterAll" onclick="setLiveListingFilter('ALL')">All</button>
-                    <button type="button" class="btn btn-outline-danger py-0 px-2 extra-small fw-bold" id="pillFilterToday" onclick="setLiveListingFilter('TODAY')"><i class="bi bi-bell-fill me-1"></i>Listed Today</button>
-                    <button type="button" class="btn btn-outline-primary py-0 px-2 extra-small" id="pillFilterWith" onclick="setLiveListingFilter('WITH')">With NWKRTC</button>
-                    <button type="button" class="btn btn-outline-warning text-dark py-0 px-2 extra-small" id="pillFilterAgainst" onclick="setLiveListingFilter('AGAINST')">Against NWKRTC</button>
-                    <button type="button" class="btn btn-outline-success py-0 px-2 extra-small" id="pillFilterSaved" onclick="setLiveListingFilter('SAVED')">Saved in DB</button>
-                </div>
                 <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Loading Today's Cause List...</span>
             </div>
         </div>
@@ -280,7 +296,7 @@
                 <div class="text-center py-5 text-muted">
                     <div class="spinner-border text-danger" role="status"></div>
                     <h5 class="mt-3 fw-bold">Querying High Court Daily Cause List for 'NWKRTC'...</h5>
-                    <p class="small mb-0">Cross-referencing Dharwad, Bengaluru, and Kalaburagi official daily rosters.</p>
+                    <p class="small mb-0">Cross-referencing Dharwad, Bengaluru, and Kalaburagi official daily rosters for today.</p>
                 </div>
             </div>
         </div>
@@ -289,7 +305,7 @@
 
 <!-- Full e-Courts Dossier Modal -->
 <div class="modal fade" id="dossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white py-3">
                 <h5 class="modal-title fw-bold" id="dossierModalLabel">
@@ -297,7 +313,7 @@
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-4">
+            <div class="modal-body p-3 p-md-4">
                 <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                     <div>
                         <strong>CNR Number:</strong> <span id="modalCnr" class="font-monospace fw-bold fs-6 ms-1"></span>
@@ -306,7 +322,7 @@
                 </div>
 
                 <!-- Tabs -->
-                <ul class="nav nav-tabs nav-fill mb-3" role="tablist">
+                <ul class="nav nav-tabs nav-fill mb-3 dossier-nav-tabs" role="tablist">
                     <li class="nav-item">
                         <button class="nav-link active fw-bold small" data-bs-toggle="tab" data-bs-target="#mTabHistory">
                             <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History (<span id="mCountHistory">0</span>)
@@ -379,6 +395,65 @@
                     </div>
                 </div>
             </div>
+            <div class="modal-footer py-2 px-3 bg-light">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Live Roznama / Daily Status Modal -->
+<div class="modal fade" id="roznamaModal" tabindex="-1" aria-hidden="true" style="z-index: 1065;">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white py-2.5 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-warning text-dark font-monospace fw-bold" id="rzModalBadge">ROZNAMA</span>
+                    <h6 class="modal-title fw-bold text-white mb-0" id="rzModalTitle">Daily Court Proceedings</h6>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center justify-content-between">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-broadcast text-primary fs-5"></i>
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <strong class="text-primary small">e-Courts High Court Daily Status Gateway</strong>
+                                <span id="rzLiveBadge" class="badge bg-secondary extra-small">Connecting...</span>
+                            </div>
+                            <span id="rzLiveMsg" class="text-muted extra-small">Querying live court business...</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" id="btnRefreshRz" onclick="reloadCurrentRoznama()">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Re-fetch
+                    </button>
+                </div>
+                <div class="p-2.5 p-md-3 border rounded bg-light mb-3">
+                    <div class="row g-2 small">
+                        <div class="col-12 col-sm-4"><strong>CNR Number:</strong> <span class="font-monospace fw-bold text-primary text-break" id="rzCnr">—</span></div>
+                        <div class="col-6 col-sm-4"><strong>Hearing Date:</strong> <span class="font-monospace fw-bold text-dark" id="rzDate">—</span></div>
+                        <div class="col-6 col-sm-4"><strong>Case:</strong> <span class="font-monospace fw-bold text-dark" id="rzCaseNo">—</span></div>
+                        <div class="col-12 text-truncate"><strong>Parties:</strong> <span class="text-secondary" id="rzParties">—</span></div>
+                    </div>
+                </div>
+                <div class="card border">
+                    <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+                        <strong class="text-uppercase small text-dark"><i class="bi bi-journal-text me-1 text-primary"></i>Verbatim Business Transacted (Roznama)</strong>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2.5 py-0.5 extra-small" onclick="copyRoznamaText()">
+                            <i class="bi bi-clipboard me-1"></i>Copy Roznama
+                        </button>
+                    </div>
+                    <div class="card-body p-3">
+                        <div id="rzText" class="p-3 border rounded text-dark font-monospace" style="white-space: pre-wrap; min-height: 140px; max-height: 320px; overflow-y: auto; font-size: 13px; line-height: 1.7; background: #fff;">
+                            Loading verbatim roznama proceedings from e-Courts...
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer py-1.5 px-3 bg-light">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
         </div>
     </div>
 </div>
@@ -388,6 +463,15 @@
 
 <script>
 let liveHcInitialized = false;
+
+function safeJsArg(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '&quot;')
+        .replace(/\n|\r/g, ' ');
+}
 
 function showToast(title, message, isSuccess = true) {
     const container = document.getElementById('hcToastContainer');
@@ -438,97 +522,11 @@ function extractArrayFromData(data) {
     return [];
 }
 
-function initLiveHcCauselist() {
-    populateScheduledDateChips();
-    if (!liveHcInitialized) {
-        liveHcInitialized = true;
-        loadHcCourtBenches();
-    }
-    fetchLiveHcCauselist();
-}
-
-function normalizeDateKey(val) {
-    if (!val) return "";
-    val = String(val).split('T')[0].trim();
-    const delim = val.includes('-') ? '-' : (val.includes('/') ? '/' : '');
-    if (!delim) return val;
-    const parts = val.split(delim);
-    if (parts.length === 3) {
-        if (parts[0].length === 4) {
-            // YYYY-MM-DD
-            return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
-        } else {
-            // DD-MM-YYYY
-            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
-    }
-    return val;
-}
-
-function formatDateDisplay(val) {
-    if (!val) return "—";
-    const key = normalizeDateKey(val);
-    if (key.length === 10) {
-        const parts = key.split('-');
-        return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-    return String(val);
-}
-
-function populateScheduledDateChips() {
-    const chipContainer = document.getElementById('quickHearingDateChips');
-    if (!chipContainer) return;
-
-    const dateMap = new Map();
-    let totalCnrCases = 0;
-
-    registeredCases.forEach(c => {
-        if (c.CNRNumber && c.CNRNumber.trim().length > 0) {
-            totalCnrCases++;
-            if (c.NextHearingDate) {
-                const key = normalizeDateKey(c.NextHearingDate);
-                if (key) {
-                    if (!dateMap.has(key)) dateMap.set(key, []);
-                    dateMap.get(key).push(c);
-                }
-            }
-        }
-    });
-
-    const btnAllCnr = document.getElementById('btnAllCnrCount');
-    if (btnAllCnr) btnAllCnr.textContent = totalCnrCases;
-
-    let html = '';
-    const sortedKeys = Array.from(dateMap.keys()).sort().reverse();
-    sortedKeys.forEach(k => {
-        const count = dateMap.get(k).length;
-        const dParts = k.split('-');
-        const displayD = `${dParts[2]}-${dParts[1]}-${dParts[0]}`;
-        html += `<button type="button" class="btn btn-outline-danger btn-sm py-0 px-2 extra-small rounded-pill fw-bold shadow-sm" onclick="selectScheduledDate('${displayD}')" title="${count} case(s) scheduled on ${displayD}">
-            <i class="bi bi-calendar-event me-1"></i>${displayD} <span class="badge bg-danger ms-1">${count}</span>
-        </button>`;
-    });
-
-    if (sortedKeys.length === 0) {
-        html = '<span class="extra-small text-muted fst-italic">No upcoming hearing dates saved yet.</span>';
-    }
-
-    chipContainer.innerHTML = html;
-}
-
-function selectScheduledDate(dStr) {
-    const dateInput = document.getElementById('liveDate');
-    if (dateInput) {
-        dateInput.value = dStr;
-        loadHcCourtBenches();
-        fetchLiveHcCauselist();
-    }
-}
-
 function loadHcCourtBenches() {
     const estCode = document.getElementById('liveEstCode').value;
     const date = document.getElementById('liveDate').value;
     const benchSelect = document.getElementById('liveBenchId');
+    if (!benchSelect) return;
 
     benchSelect.innerHTML = '';
     
@@ -623,121 +621,26 @@ function loadHcCourtBenches() {
 
 const registeredCases = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Items));
 
-function showAllSavedCnrCases() {
-    const container = document.getElementById('liveCauselistContainer');
-    const badge = document.getElementById('liveListBadge');
-    const cnrCases = registeredCases.filter(c => c.CNRNumber && c.CNRNumber.trim().length > 0);
-
-    if (cnrCases.length > 0) {
-        badge.className = "badge bg-primary px-3 py-1";
-        badge.textContent = `${cnrCases.length} Total Saved CNR Cases`;
-        renderSavedCnrItemsTable(cnrCases, container, "All High Court Appeals with Saved CNR Numbers", "");
-    } else {
-        badge.className = "badge bg-secondary px-3 py-1";
-        badge.textContent = "0 Saved CNR Cases";
-        container.innerHTML = '<div class="text-center py-5 text-muted"><i class="bi bi-folder-x fs-1 d-block text-secondary mb-2"></i><h5>No saved CNR cases found in the system</h5></div>';
-    }
-}
-
-function renderSavedCnrItemsTable(items, container, headingText, warningNote = "") {
-    const benchId = document.getElementById('liveBenchId').value;
-    let html = `<div class="p-3 bg-primary-subtle border-bottom border-primary d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div class="fw-bold text-primary small">
-            <i class="bi bi-shield-check me-2 fs-6"></i>${headingText}
-            ${warningNote ? `<span class="badge bg-warning text-dark ms-2"><i class="bi bi-info-circle me-1"></i>Scheduled under Dharwad/Kalaburagi Bench</span>` : ''}
-        </div>
-        <span class="badge bg-primary text-white">${items.length} Case${items.length > 1 ? 's' : ''} Listed</span>
-    </div>
-    <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0 small">
-            <thead class="bg-light text-secondary extra-small text-uppercase">
-                <tr>
-                    <th>#</th>
-                    <th>Case Number & Year</th>
-                    <th>Court Hall / Bench</th>
-                    <th>High Court Bench</th>
-                    <th>CNR Number & Actions</th>
-                    <th>Arising MVC & Division</th>
-                    <th>Petitioner vs Respondent</th>
-                    <th>Hearing Date / Stage</th>
-                    <th>Match Status</th>
-                </tr>
-            </thead>
-            <tbody>`;
-
-    items.forEach((item, idx) => {
-        let dtStr = 'Pending';
-        if (item.NextHearingDate) {
-            dtStr = formatDateDisplay(item.NextHearingDate);
-        }
-        const chVal = (item.CourtHall && item.CourtHall !== 'Court Hall 1') ? item.CourtHall : (benchId !== "ALL" ? `Court Hall ${benchId}` : 'Sync Pending');
-        const chBadge = chVal === 'Sync Pending' 
-            ? `<span class="badge bg-light text-muted border extra-small"><i class="bi bi-wifi me-1 text-primary"></i>Sync Pending</span>`
-            : `<span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold"><i class="bi bi-bank2 me-1"></i>${chVal}</span>`;
-
-        const cnr = item.CNRNumber || '';
-
-        html += `<tr class="live-causelist-row corp-match-row" data-is-corp="true" data-is-saved-cnr="true">
-            <td class="fw-bold text-center">${idx + 1}</td>
-            <td>
-                <strong class="text-primary font-monospace fs-6">${item.DisplayMFANo || '—'}</strong>
-                <div class="extra-small text-muted">${item.AppealType || '—'}</div>
-            </td>
-            <td>${chBadge}</td>
-            <td><span class="badge bg-light text-dark border fw-bold">${item.HighCourtBench || 'Dharwad'}</span></td>
-            <td>
-                <div class="font-monospace fw-bold text-dark fs-6 mb-1">${cnr || '—'}</div>
-                <div class="btn-group btn-group-sm">
-                    ${cnr ? `<button class="btn btn-outline-primary btn-sm py-0 px-1.5" type="button" onclick="syncSingleCnr('${item.AppealID}', '${cnr}')" title="Sync live eCourts details">
-                        <i class="bi bi-arrow-repeat"></i> Sync
-                    </button>
-                    <button class="btn btn-outline-info btn-sm py-0 px-1.5" type="button" onclick="openDossierModal('${item.AppealID}', '${cnr}', '${item.DisplayMFANo}')" title="View Orders & Dossier">
-                        <i class="bi bi-journal-text"></i> Dossier
-                    </button>` : ''}
-                    <a href="/Case/Details/${item.CaseID}" class="btn btn-outline-secondary btn-sm py-0 px-1.5" title="View Full Case">
-                        <i class="bi bi-eye"></i> View
-                    </a>
-                </div>
-            </td>
-            <td><strong class="text-dark">MVC ${item.ArisingMVCNo || '—'} / ${item.ArisingMVCYear || ''}</strong><div class="extra-small text-muted">${item.DivisionName || ''}</div></td>
-            <td>
-                <div class="fw-bold text-dark">${item.PetitionerName || '—'}</div>
-                <div class="extra-small text-muted">vs ${item.RespondentName || '—'}</div>
-            </td>
-            <td>
-                <strong class="text-danger font-monospace fs-6 d-block"><i class="bi bi-calendar-event me-1"></i>${dtStr}</strong>
-                <span class="badge bg-light text-primary border">${item.CaseStage || 'Hearing Active'}</span>
-            </td>
-            <td>
-                <span class="badge bg-success text-white px-2 py-1 shadow-sm">
-                    <i class="bi bi-shield-check me-1"></i>Saved CNR Matched
-                </span>
-            </td>
-        </tr>`;
-    });
-
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-}
-
 function fetchLiveHcCauselist() {
-    const estCode = document.getElementById('liveEstCode').value;
-    const dateInputVal = document.getElementById('liveDate').value.trim();
-    const targetKey = normalizeDateKey(dateInputVal);
-    const benchId = document.getElementById('liveBenchId').value;
+    const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
+    const dateInputVal = (document.getElementById('liveDate')?.value || '').trim();
+    const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
     const partyName = (document.getElementById('livePartySearchInput')?.value || 'NWKRTC').trim();
     const container = document.getElementById('liveCauselistContainer');
     const badge = document.getElementById('liveListBadge');
-    const chkOnlyToday = document.getElementById('chkOnlyToday');
-    const todayOnly = chkOnlyToday ? chkOnlyToday.checked : true;
 
-    badge.className = "badge bg-warning text-dark px-3 py-1";
-    badge.textContent = todayOnly ? "Checking Today's Roster..." : "Querying Live Gateway...";
-    container.innerHTML = `<div class="text-center py-5">
-        <div class="spinner-border text-danger" role="status"></div>
-        <p class="mt-2 text-muted fw-bold">Checking official High Court Daily Cause List for '<strong>${partyName || 'NWKRTC'}</strong>' on ${dateInputVal}...</p>
-        <p class="extra-small text-muted mb-0">${todayOnly ? "Filtering strictly to cases scheduled for hearing on " + dateInputVal + " across High Court benches..." : "Cross-referencing Dharwad, Bengaluru, Kalaburagi rosters, designations, and hearing schedules..."}</p>
-    </div>`;
+    if (badge) {
+        badge.className = "badge bg-warning text-dark px-3 py-1";
+        badge.textContent = "Checking Today's Roster...";
+    }
+
+    if (container) {
+        container.innerHTML = `<div class="text-center py-5">
+            <div class="spinner-border text-danger" role="status"></div>
+            <p class="mt-2 text-muted fw-bold">Checking official High Court Daily Cause List for '<strong>${partyName || 'NWKRTC'}</strong>' on ${dateInputVal}...</p>
+            <p class="extra-small text-muted mb-0">Filtering strictly to NWKRTC cases scheduled for hearing on ${dateInputVal} across High Court benches...</p>
+        </div>`;
+    }
 
     let targetBench = "";
     if (estCode === "KAHC01") targetBench = "Bengaluru";
@@ -745,114 +648,82 @@ function fetchLiveHcCauselist() {
     else if (estCode === "KAHC03") targetBench = "Kalaburagi";
     else targetBench = "All Benches";
 
-    // Call GetLiveHighCourtPartyCases with partyName, hearingDate, and todayOnly
-    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || 'NWKRTC')}&hearingDate=${encodeURIComponent(dateInputVal)}&todayOnly=${todayOnly}`;
+    // Strictly query NWKRTC cases scheduled for hearing today
+    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || 'NWKRTC')}&hearingDate=${encodeURIComponent(dateInputVal)}&todayOnly=true&multiAlias=true`;
 
     fetch(partyUrl)
         .then(r => r.json())
         .then(res => {
-            if (res && res.success && res.data && res.data.length > 0) {
-                renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge, res.todayCount, todayOnly);
-            } else if (todayOnly) {
-                // If 0 cases listed for today, show informative empty state with button to browse historical cases
-                renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
+            if (res && res.success) {
+                // Update live KPI cards
+                const kpiToday = document.getElementById('kpiListedTodayVal');
+                const kpiWith = document.getElementById('kpiWithNwkrtcVal');
+                const kpiAgainst = document.getElementById('kpiAgainstNwkrtcVal');
+                if (kpiToday && res.todayCount !== undefined) kpiToday.textContent = res.todayCount;
+                if (kpiWith && res.withCount !== undefined) kpiWith.textContent = res.withCount;
+                if (kpiAgainst && res.againstCount !== undefined) kpiAgainst.textContent = res.againstCount;
+
+                if (res.data && res.data.length > 0) {
+                    renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge);
+                } else {
+                    renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
+                }
             } else {
-                // If live party search returns 0, try causelist details or fallback table
-                renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
+                renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
             }
         })
         .catch(() => {
-            if (todayOnly) {
-                renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
-            } else {
-                renderSavedCnrDateMatchTable(targetKey, dateInputVal, targetBench, container, badge);
-            }
+            renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName);
         });
 }
 
 function renderNoCasesListedTodayView(displayDate, targetBench, container, badge, partyName) {
-    badge.className = "badge bg-secondary px-3 py-1";
-    badge.textContent = `0 Cases Listed on ${displayDate}`;
+    if (badge) {
+        badge.className = "badge bg-secondary px-3 py-1";
+        badge.textContent = `0 Matters Listed on ${displayDate}`;
+    }
 
-    container.innerHTML = `
-    <div class="text-center py-5 px-3">
-        <div class="mb-3">
-            <span class="badge bg-danger-subtle text-danger border border-danger p-3 rounded-circle shadow-sm">
-                <i class="bi bi-calendar-x fs-2"></i>
-            </span>
-        </div>
-        <h5 class="fw-bold text-dark mb-1">No '${partyName || 'NWKRTC'}' Matters Listed for Hearing on ${displayDate}</h5>
-        <p class="text-muted small mb-3">No High Court cases for <strong>${partyName || 'NWKRTC'}</strong> are scheduled on the official Daily Cause List for <strong>${displayDate}</strong> (${targetBench}).</p>
-        
-        <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
-            <button type="button" class="btn btn-primary btn-sm fw-bold px-3 py-1.5 shadow-sm" onclick="toggleTodayOnly(false)">
-                <i class="bi bi-archive me-1"></i>View All Historical / Registered Matters for '${partyName || 'NWKRTC'}'
-            </button>
-            <button type="button" class="btn btn-outline-secondary btn-sm fw-bold px-3 py-1.5" onclick="showAllSavedCnrCases()">
-                <i class="bi bi-card-checklist me-1"></i>Check Saved CNR Scheduled Dates
-            </button>
-        </div>
-        <p class="extra-small text-muted mb-0">High Court cause lists are published daily by the Court Registry. You can change the date above to check other daily rosters.</p>
-    </div>`;
+    if (container) {
+        container.innerHTML = `
+        <div class="text-center py-5 px-3">
+            <div class="mb-3">
+                <span class="badge bg-danger-subtle text-danger border border-danger p-3 rounded-circle shadow-sm">
+                    <i class="bi bi-calendar-x fs-2"></i>
+                </span>
+            </div>
+            <h5 class="fw-bold text-dark mb-1">No '${partyName || 'NWKRTC'}' Matters Listed for Hearing on ${displayDate}</h5>
+            <p class="text-muted small mb-3">No High Court cases for <strong>${partyName || 'NWKRTC'}</strong> are scheduled on the official Daily Cause List for <strong>${displayDate}</strong> (${targetBench}).</p>
+            <p class="extra-small text-muted mb-0">High Court daily cause lists are published by the Court Registry each morning. You can select another hearing date above to check other daily rosters.</p>
+        </div>`;
+    }
 }
 
-function toggleTodayOnly(val) {
-    const chk = document.getElementById('chkOnlyToday');
-    if (chk) chk.checked = val;
-    fetchLiveHcCauselist();
-}
-
-function renderLivePartyCauseList(items, displayDate, targetBench, container, badge, todayCount, isTodayOnly) {
+function renderLivePartyCauseList(items, displayDate, targetBench, container, badge) {
     const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
     const cnrSet = new Set(registeredCases.filter(c => c.CNRNumber).map(c => c.CNRNumber.trim().toUpperCase()));
 
-    badge.className = "badge bg-success px-3 py-1";
-    badge.textContent = isTodayOnly 
-        ? `${items.length} Matter${items.length > 1 ? 's' : ''} Listed on ${displayDate}` 
-        : `${items.length} Live Cases (${todayCount || 0} Listed Today)`;
+    if (badge) {
+        badge.className = "badge bg-success px-3 py-1";
+        badge.textContent = `${items.length} Matter${items.length > 1 ? 's' : ''} Listed on ${displayDate}`;
+    }
 
-    let html = `
+    let headerHtml = `
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-2.5 bg-light border-bottom">
         <div class="d-flex align-items-center gap-2">
-            <span class="badge ${isTodayOnly ? 'bg-danger' : 'bg-primary'} text-white px-2.5 py-1">
-                <i class="bi ${isTodayOnly ? 'bi-bell-fill' : 'bi-broadcast'} me-1"></i>${isTodayOnly ? "Today's Cause List" : "Live eCourts Gateway"}
+            <span class="badge bg-danger text-white px-2.5 py-1">
+                <i class="bi bi-bell-fill me-1"></i>Today's Cause List
             </span>
             <span class="fw-bold text-dark small">
-                ${isTodayOnly 
-                    ? `Found <strong>${items.length}</strong> matter${items.length > 1 ? 's' : ''} listed for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>' on <strong>${displayDate}</strong>`
-                    : `Found <strong>${items.length}</strong> High Court matters for '<strong>${(document.getElementById('livePartySearchInput')?.value || 'NWKRTC')}</strong>'`
-                }
+                Found <strong>${items.length}</strong> NWKRTC matter${items.length > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>
             </span>
-            ${!isTodayOnly && todayCount > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger px-2 py-0.5 fw-bold"><i class="bi bi-calendar-check me-1"></i>${todayCount} Listed on ${displayDate}</span>` : ''}
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <div class="extra-small text-muted font-monospace">
-                Bench: <strong>${targetBench}</strong> | Scheduled Date: <strong>${displayDate}</strong>
-            </div>
-            ${isTodayOnly ? `
-            <button type="button" class="btn btn-outline-secondary btn-sm py-0.5 px-2 extra-small fw-bold" onclick="toggleTodayOnly(false)" title="Show all registered historical matters">
-                <i class="bi bi-archive me-1"></i>View All Registered Matters
-            </button>` : `
-            <button type="button" class="btn btn-outline-danger btn-sm py-0.5 px-2 extra-small fw-bold" onclick="toggleTodayOnly(true)" title="Filter only to today's cause list">
-                <i class="bi bi-calendar-check me-1"></i>Show Only Today's Listed
-            </button>`}
+        <div class="extra-small text-muted font-monospace">
+            Bench: <strong>${targetBench}</strong> | Scheduled Date: <strong>${displayDate}</strong>
         </div>
-    </div>
-    <div class="table-responsive" style="max-height: 580px;">
-        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable">
-            <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom">
-                <tr>
-                    <th style="width: 40px;" class="text-center">#</th>
-                    <th style="min-width: 150px;">Case Number & Year</th>
-                    <th style="min-width: 140px;">Court Hall / Bench</th>
-                    <th style="min-width: 160px;">CNR Number</th>
-                    <th style="min-width: 240px;">Petitioner vs Respondent</th>
-                    <th style="min-width: 140px;">Corporation Role</th>
-                    <th style="min-width: 160px;">Hearing Date & Stage</th>
-                    <th style="min-width: 110px;" class="text-center">Local DB</th>
-                </tr>
-            </thead>
-            <tbody>`;
+    </div>`;
+
+    let desktopRowsHtml = '';
+    let mobileCardsHtml = '';
 
     items.forEach((item, idx) => {
         const sr = idx + 1;
@@ -862,11 +733,8 @@ function renderLivePartyCauseList(items, displayDate, targetBench, container, ba
         const resName = item.respondentName || '—';
         const itemCnr = (item.cnrNumber || '').trim().toUpperCase();
 
-        const isCnrMatched = (itemCnr && cnrSet.has(itemCnr)) || item.isLocalMatch;
-        const isCorpMatch = isCnrMatched || item.nwkrtcRole === 'With NWKRTC' || item.nwkrtcRole === 'Against NWKRTC' ||
+        const isCorpMatch = item.nwkrtcRole === 'With NWKRTC' || item.nwkrtcRole === 'Against NWKRTC' ||
             pet.toUpperCase().includes('NWKRTC') || resName.toUpperCase().includes('NWKRTC');
-
-        const isListedToday = item.isListedToday;
 
         let roleBadge = item.nwkrtcRole === 'With NWKRTC'
             ? '<span class="badge bg-primary text-white px-2 py-1"><i class="bi bi-shield-check me-1"></i>With NWKRTC</span>'
@@ -876,39 +744,18 @@ function renderLivePartyCauseList(items, displayDate, targetBench, container, ba
             roleBadge += `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person-badge me-0.5"></i>${item.matchedDesignation}</div>`;
         }
 
-        let listingBadge = '';
-        if (isListedToday) {
-            listingBadge = `<span class="badge bg-danger text-white px-2 py-1 shadow-sm d-block mb-1"><i class="bi bi-broadcast me-1"></i>Listed Today (${displayDate})</span>`;
-        } else if (item.nextHearingDate) {
-            let dtStr = item.nextHearingDate;
-            if (dtStr.includes('T')) {
-                const parts = dtStr.split('T')[0].split('-');
-                dtStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            }
-            listingBadge = `<strong class="text-primary font-monospace extra-small d-block"><i class="bi bi-calendar-event me-1"></i>${dtStr}</strong>`;
-        } else {
-            listingBadge = `<span class="badge bg-light text-muted border extra-small">Date Awaited / Active</span>`;
-        }
-
+        const listingBadge = `<span class="badge bg-danger text-white px-2 py-1 shadow-sm d-block mb-1"><i class="bi bi-broadcast me-1"></i>Listed Today (${displayDate})</span>`;
         const stageText = item.caseStage || 'Hearing Active';
-
-        let localBadge = '';
-        if (item.isLocalMatch) {
-            localBadge = `<a href="/Case/Details/${item.localCaseId}" class="badge bg-success text-white text-decoration-none px-2 py-1" title="View in Case Registry">
-                <i class="bi bi-check-circle-fill me-1"></i>Saved (${item.localModule || 'Case'})
-            </a>`;
-        } else {
-            localBadge = `<span class="badge bg-light text-secondary border extra-small">Gateway Live</span>`;
-        }
 
         const searchTerms = `${pet} ${resName} ${caseNo} ${courtNo} ${itemCnr} ${stageText} ${item.matchedDesignation || ''} ${item.highCourtBench || ''}`.toLowerCase();
 
-        html += `<tr class="live-causelist-row ${isListedToday ? 'table-warning border-warning' : ''} ${isCorpMatch ? 'corp-match-row' : ''}" 
+        // 1. Desktop Tabular Row
+        desktopRowsHtml += `<tr class="live-causelist-row table-warning border-warning ${isCorpMatch ? 'corp-match-row' : ''}" 
+                     data-appeal-id="${item.regNumber || ''}"
+                     data-cnr="${itemCnr}"
                      data-is-corp="${isCorpMatch}" 
-                     data-is-saved-cnr="${isCnrMatched}" 
-                     data-is-today="${isListedToday}"
+                     data-is-today="true"
                      data-role="${item.nwkrtcRole || ''}"
-                     data-is-local="${item.isLocalMatch ? 'true' : 'false'}"
                      data-search="${searchTerms.replace(/"/g, '&quot;')}">
             <td class="fw-bold text-center text-muted">${sr}</td>
             <td>
@@ -924,11 +771,14 @@ function renderLivePartyCauseList(items, displayDate, targetBench, container, ba
                 <div class="font-monospace fw-bold text-dark extra-small mb-1">${itemCnr || '—'}</div>
                 ${itemCnr ? `
                 <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-primary btn-sm py-0 px-1.5 extra-small" type="button" onclick="syncSingleCnr('${item.localAppealId || item.regNumber}', '${itemCnr}')" title="Sync live status">
+                    <button class="btn btn-outline-primary btn-sm py-0 px-1.5 extra-small" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')" title="Sync live status">
                         <i class="bi bi-arrow-repeat"></i> Sync
                     </button>
-                    <button class="btn btn-outline-info btn-sm py-0 px-1.5 extra-small" type="button" onclick="openDossierModal('${item.localAppealId || item.regNumber}', '${itemCnr}', '${caseNo}')" title="View Dossier">
+                    <button class="btn btn-outline-info btn-sm py-0 px-1.5 extra-small" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')" title="View Dossier">
                         <i class="bi bi-journal-text"></i> Dossier
+                    </button>
+                    <button class="btn btn-outline-warning text-dark btn-sm py-0 px-1.5 extra-small fw-bold" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')" title="View Roznama / Daily Proceedings">
+                        <i class="bi bi-file-earmark-text"></i> Roznama
                     </button>
                 </div>` : ''}
             </td>
@@ -941,221 +791,143 @@ function renderLivePartyCauseList(items, displayDate, targetBench, container, ba
                 ${listingBadge}
                 <span class="badge bg-light text-dark border extra-small">${stageText}</span>
             </td>
-            <td class="text-center">${localBadge}</td>
         </tr>`;
+
+        // 2. Mobile Responsive Card
+        mobileCardsHtml += `<div class="causelist-mobile-card p-3 mb-2.5 bg-white border shadow-sm live-causelist-card ${isCorpMatch ? 'corp-match-card' : ''}"
+            data-appeal-id="${item.regNumber || ''}"
+            data-cnr="${itemCnr}"
+            data-is-corp="${isCorpMatch}"
+            data-is-today="true"
+            data-role="${item.nwkrtcRole || ''}"
+            data-search="${searchTerms.replace(/"/g, '&quot;')}">
+            
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small">#${sr}</span>
+                    <div>
+                        <div class="fw-bold text-primary font-monospace fs-6">${caseNo}</div>
+                        <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
+                    </div>
+                </div>
+                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1">
+                    <i class="bi bi-bank2 me-1"></i>${courtNo}
+                </span>
+            </div>
+
+            <div class="p-2.5 bg-light rounded-2 border mb-2 small">
+                <div class="fw-bold text-dark text-truncate" title="${pet}">
+                    <i class="bi bi-person-fill text-primary me-1"></i>${pet}
+                </div>
+                <div class="text-muted extra-small ps-3 my-0.5">vs</div>
+                <div class="fw-semibold text-secondary text-truncate" title="${resName}">
+                    <i class="bi bi-person text-muted me-1"></i>${resName}
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-2.5">
+                <div>${roleBadge}</div>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="badge bg-danger text-white extra-small"><i class="bi bi-broadcast me-0.5"></i>Listed Today</span>
+                    <span class="badge bg-light text-dark border extra-small">${stageText}</span>
+                </div>
+            </div>
+
+            <div class="pt-2 border-top">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="extra-small text-muted fw-bold">CNR Number:</span>
+                    <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || '—'}</span>
+                </div>
+                ${itemCnr ? `
+                <div class="d-flex gap-1.5 w-100">
+                    <button class="btn btn-outline-primary btn-sm py-1.5 extra-small flex-fill fw-semibold shadow-xs" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')">
+                        <i class="bi bi-arrow-repeat me-1"></i>Sync
+                    </button>
+                    <button class="btn btn-outline-info btn-sm py-1.5 extra-small flex-fill fw-semibold shadow-xs" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')">
+                        <i class="bi bi-journal-text me-1"></i>Dossier
+                    </button>
+                    <button class="btn btn-warning text-dark btn-sm py-1.5 extra-small flex-fill fw-bold shadow-xs" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')">
+                        <i class="bi bi-file-earmark-text me-1"></i>Roznama
+                    </button>
+                </div>` : ''}
+            </div>
+        </div>`;
     });
 
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-    filterLiveCauselistRows();
-}
-
-function renderLiveCauseListWithSavedCnrMatch(items, targetKey, displayDate, targetBench, container, badge) {
-    const benchId = document.getElementById('liveBenchId').value;
-    const cnrSet = new Set(registeredCases.filter(c => c.CNRNumber).map(c => c.CNRNumber.trim().toUpperCase()));
-    const mfaSet = new Set(registeredCases.filter(c => c.MFANumber).map(c => c.MFANumber.trim()));
-
-    badge.className = "badge bg-success px-3 py-1";
-    badge.textContent = `${items.length} Cases Listed`;
-
-    let html = `<div class="table-responsive">
-        <table class="table table-hover align-middle mb-0 small">
-            <thead class="bg-light text-secondary extra-small text-uppercase">
+    const fullHtml = headerHtml + `
+    <!-- Desktop Tabular View (>= 768px) -->
+    <div class="table-responsive d-none d-md-block" style="max-height: 580px;">
+        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable">
+            <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom">
                 <tr>
-                    <th>#</th>
-                    <th>Case Number & Year</th>
-                    <th>Court Hall / Bench</th>
-                    <th>Petitioner vs Respondent</th>
-                    <th>Advocates</th>
-                    <th>Stage / Purpose</th>
-                    <th>Corporation & CNR Match</th>
+                    <th style="width: 40px;" class="text-center">#</th>
+                    <th style="min-width: 150px;">Case Number & Year</th>
+                    <th style="min-width: 140px;">Court Hall / Bench</th>
+                    <th style="min-width: 160px;">CNR Number & Actions</th>
+                    <th style="min-width: 240px;">Petitioner vs Respondent</th>
+                    <th style="min-width: 140px;">Corporation Role</th>
+                    <th style="min-width: 160px;">Hearing Date & Stage</th>
                 </tr>
             </thead>
-            <tbody>`;
+            <tbody>
+                ${desktopRowsHtml}
+            </tbody>
+        </table>
+    </div>
 
-    items.forEach((item, idx) => {
-        const sr = item.sr_no || item.sl_no || item.srno || item.slno || item.item_no || item.serial_no || item.sl_number || (idx + 1);
-        const caseNo = item.case_no || item.case_number || item.cateno || '—';
-        const courtNo = item.court_no || item.court_hall || item.court_no_judge || item.bench_name || item.desgname || item.judge_name || item.judge || (benchId !== "ALL" ? `Court Hall ${benchId}` : 'Sync Pending');
-        const pet = item.pet_name || item.petitioner || item.party_name || '—';
-        const resName = item.res_name || item.respondent || '—';
-        const petAdv = item.pet_adv || item.petitioner_advocate || '—';
-        const resAdv = item.res_adv || item.respondent_advocate || '—';
-        const stage = item.purpose_name || item.stage || '—';
-        const itemCnr = (item.cnr || item.cnr_number || '').trim().toUpperCase();
+    <!-- Mobile Card Feed View (< 768px) -->
+    <div class="d-block d-md-none p-2 bg-light rounded-bottom-3" style="max-height: 70vh; overflow-y: auto;">
+        ${mobileCardsHtml}
+    </div>`;
 
-        const isCnrMatched = (itemCnr && cnrSet.has(itemCnr));
-        const isCorpMatch = isCnrMatched || pet.toUpperCase().includes('NWKRTC') || pet.toUpperCase().includes('KSRTC') || resName.toUpperCase().includes('NWKRTC') || resName.toUpperCase().includes('KSRTC');
-
-        let matchBadge = '<span class="badge bg-light text-muted border">General</span>';
-        if (isCnrMatched) {
-            matchBadge = '<span class="badge bg-primary text-white px-2 py-1"><i class="bi bi-star-fill text-warning me-1"></i>Saved CNR Listed Live!</span>';
-        } else if (isCorpMatch) {
-            matchBadge = '<span class="badge bg-success text-white px-2 py-1"><i class="bi bi-check2 me-1"></i>Corporation Match</span>';
-        }
-
-        const searchTerms = `${pet} ${resName} ${caseNo} ${petAdv} ${resAdv} ${courtNo} ${stage}`.toLowerCase();
-        html += `<tr class="live-causelist-row ${isCorpMatch ? 'corp-match-row' : ''}" data-is-corp="${isCorpMatch}" data-is-saved-cnr="${isCnrMatched}" data-search="${searchTerms.replace(/"/g, '&quot;')}">
-            <td class="fw-bold">${sr}</td>
-            <td><strong class="text-primary font-monospace fs-6">${caseNo}</strong></td>
-            <td><span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold"><i class="bi bi-bank2 me-1"></i>${courtNo}</span></td>
-            <td>
-                <div class="fw-bold text-dark">${pet}</div>
-                <div class="extra-small text-muted">vs ${resName}</div>
-            </td>
-            <td>
-                <div class="extra-small"><strong>Pet:</strong> ${petAdv}</div>
-                <div class="extra-small text-muted"><strong>Res:</strong> ${resAdv}</div>
-            </td>
-            <td><span class="badge bg-light text-dark border">${stage}</span></td>
-            <td>${matchBadge}</td>
-        </tr>`;
-    });
-
-    html += '</tbody></table></div>';
-    container.innerHTML = html;
-    filterLiveCauselistRows();
-}
-
-function renderSavedCnrDateMatchTable(targetKey, displayDate, targetBench, container, badge) {
-    const cnrCases = registeredCases.filter(c => c.CNRNumber && c.CNRNumber.trim().length > 0);
-    let dateMatches = cnrCases.filter(c => normalizeDateKey(c.NextHearingDate) === targetKey);
-
-    let finalMatches = dateMatches;
-    let benchNote = "";
-    if (targetBench && dateMatches.length > 0) {
-        const benchSpecific = dateMatches.filter(c => c.HighCourtBench && (c.HighCourtBench.toLowerCase().includes(targetBench.toLowerCase()) || targetBench.toLowerCase().includes(c.HighCourtBench.toLowerCase())));
-        if (benchSpecific.length > 0) {
-            finalMatches = benchSpecific;
-        } else {
-            benchNote = targetBench;
-            finalMatches = dateMatches; // Still show them so user sees their saved cases!
-        }
-    }
-
-    if (finalMatches.length > 0) {
-        badge.className = "badge bg-success px-3 py-1";
-        badge.textContent = `${finalMatches.length} Saved CNR Case${finalMatches.length > 1 ? 's' : ''} on ${displayDate}`;
-        renderSavedCnrItemsTable(finalMatches, container, `Saved High Court cases with CNR scheduled on hearing date: ${displayDate}`, benchNote);
-    } else {
-        badge.className = "badge bg-secondary px-3 py-1";
-        badge.textContent = `0 Cases on ${displayDate}`;
-
-        let fallbackHtml = `
-            <div class="text-center py-5 px-3">
-                <div class="mb-3">
-                    <span class="badge bg-light text-secondary border p-3 rounded-circle shadow-sm">
-                        <i class="bi bi-calendar-x fs-2 text-danger"></i>
-                    </span>
-                </div>
-                <h5 class="fw-bold text-dark mb-1">No Saved CNR Cases Scheduled on ${displayDate}</h5>
-                <p class="text-muted small mb-3">No High Court appeals with saved CNR numbers have hearing dates scheduled on <strong>${displayDate}</strong>${targetBench ? ` for ${targetBench} Bench` : ''}.</p>
-                
-                <div class="card border border-warning-subtle bg-warning-subtle text-dark mx-auto p-3 mb-4 rounded-3 text-start shadow-sm" style="max-width: 650px;">
-                    <div class="fw-bold small mb-2 text-primary d-flex align-items-center">
-                        <i class="bi bi-calendar-check-fill me-2 text-warning fs-5"></i>Available Hearing Dates for Saved CNR Cases:
-                    </div>
-                    <div class="d-flex flex-wrap gap-2 mb-3">`;
-
-        const dateMap = new Map();
-        cnrCases.forEach(c => {
-            if (c.NextHearingDate) {
-                const k = normalizeDateKey(c.NextHearingDate);
-                if (k) {
-                    if (!dateMap.has(k)) dateMap.set(k, []);
-                    dateMap.get(k).push(c);
-                }
-            }
-        });
-
-        dateMap.forEach((cases, k) => {
-            const parts = k.split('-');
-            const dStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
-            const mfaList = cases.map(c => c.DisplayMFANo).join(', ');
-            fallbackHtml += `<button type="button" class="btn btn-outline-danger btn-sm fw-bold px-3 py-1.5 shadow-sm" onclick="selectScheduledDate('${dStr}')">
-                <i class="bi bi-calendar-event me-1"></i>${dStr} (${cases.length} case${cases.length > 1 ? 's' : ''})
-                <span class="extra-small d-block text-muted">MFA ${mfaList}</span>
-            </button>`;
-        });
-
-        fallbackHtml += `</div>
-                    <div class="text-end pt-2 border-top border-warning-subtle">
-                        <button type="button" class="btn btn-primary btn-sm fw-bold px-3 py-1.5 shadow-sm" onclick="showAllSavedCnrCases()">
-                            <i class="bi bi-list-check me-1"></i>View All ${cnrCases.length} Saved CNR Cases
-                        </button>
-                    </div>
-                </div>
-                <p class="extra-small text-muted mb-0">High Courts publish cause lists daily during court sessions via the eCourts NAPIX Gateway.</p>
-            </div>`;
-        container.innerHTML = fallbackHtml;
-    }
-}
-
-let currentLiveListingFilter = 'ALL';
-
-function setLiveListingFilter(filterType) {
-    currentLiveListingFilter = filterType;
-    ['pillFilterAll', 'pillFilterToday', 'pillFilterWith', 'pillFilterAgainst', 'pillFilterSaved'].forEach(id => {
-        const btn = document.getElementById(id);
-        if (btn) btn.classList.remove('active');
-    });
-
-    if (filterType === 'TODAY') document.getElementById('pillFilterToday')?.classList.add('active');
-    else if (filterType === 'WITH') document.getElementById('pillFilterWith')?.classList.add('active');
-    else if (filterType === 'AGAINST') document.getElementById('pillFilterAgainst')?.classList.add('active');
-    else if (filterType === 'SAVED') document.getElementById('pillFilterSaved')?.classList.add('active');
-    else document.getElementById('pillFilterAll')?.classList.add('active');
-
+    if (container) container.innerHTML = fullHtml;
     filterLiveCauselistRows();
 }
 
 function filterLiveCauselistRows() {
-    const chk = document.getElementById('chkOnlyCorp');
-    const chkToday = document.getElementById('chkOnlyToday');
     const partyInput = (document.getElementById('livePartySearchInput')?.value || '').trim().toLowerCase();
     const benchFilter = (document.getElementById('liveBenchId')?.value || 'ALL').trim();
-    const onlyCorp = chk ? chk.checked : false;
-    const onlyToday = chkToday ? chkToday.checked : false;
     const rows = document.querySelectorAll('.live-causelist-row');
+    const cards = document.querySelectorAll('.live-causelist-card');
     let visibleCount = 0;
 
-    rows.forEach(r => {
-        const isCorp = r.getAttribute('data-is-corp') === 'true';
-        const isToday = r.getAttribute('data-is-today') === 'true';
-        const isSaved = r.getAttribute('data-is-local') === 'true' || r.getAttribute('data-is-saved-cnr') === 'true';
-        const role = r.getAttribute('data-role') || '';
-        const searchTxt = r.getAttribute('data-search') || '';
+    const applyFilter = (el, isCounting) => {
+        const isCorp = el.getAttribute('data-is-corp') === 'true';
+        const isToday = el.getAttribute('data-is-today') === 'true';
+        const searchTxt = el.getAttribute('data-search') || '';
 
-        let matchCorp = !onlyCorp || isCorp;
-        let matchToday = !onlyToday || isToday;
+        // Strictly NWKRTC corporation cases listed today
+        if (!isCorp || !isToday) {
+            el.style.display = 'none';
+            return;
+        }
+
         let matchParty = true;
         if (partyInput) {
             matchParty = searchTxt.includes(partyInput) || (partyInput.includes('nwkrtc') && isCorp);
         }
-
-        let matchPill = true;
-        if (currentLiveListingFilter === 'TODAY') matchPill = isToday;
-        else if (currentLiveListingFilter === 'WITH') matchPill = role.includes('With NWKRTC') || role === 'WITH';
-        else if (currentLiveListingFilter === 'AGAINST') matchPill = role.includes('Against NWKRTC') || role === 'AGAINST';
-        else if (currentLiveListingFilter === 'SAVED') matchPill = isSaved;
 
         let matchBench = true;
         if (benchFilter !== 'ALL') {
             matchBench = searchTxt.includes(`court hall ${benchFilter.toLowerCase()}`) || searchTxt.includes(`bench #${benchFilter.toLowerCase()}`);
         }
 
-        if (matchCorp && matchParty && matchPill && matchBench && matchToday) {
-            r.style.display = '';
-            visibleCount++;
+        if (matchParty && matchBench) {
+            el.style.display = '';
+            if (isCounting) visibleCount++;
         } else {
-            r.style.display = 'none';
+            el.style.display = 'none';
         }
-    });
+    };
+
+    rows.forEach(r => applyFilter(r, true));
+    cards.forEach(c => applyFilter(c, false));
 
     const badge = document.getElementById('liveListBadge');
-    if (badge && rows.length > 0) {
+    if (badge && (rows.length > 0 || cards.length > 0)) {
         badge.className = "badge bg-success px-3 py-1";
-        badge.textContent = `${visibleCount} of ${rows.length} Cases Listed`;
+        const dateInputVal = document.getElementById('liveDate')?.value || '';
+        badge.textContent = `${visibleCount} NWKRTC Matter${visibleCount === 1 ? '' : 's'} Listed Today (${dateInputVal})`;
     }
 }
 
@@ -1163,7 +935,7 @@ function setLivePartyPreset(party) {
     const input = document.getElementById('livePartySearchInput');
     if (input) input.value = party;
 
-    ['chipLiveNwkrtc', 'chipLiveMd', 'chipLiveCpm', 'chipLiveDc', 'chipLiveDm', 'chipLiveAll'].forEach(id => {
+    ['chipLiveNwkrtc', 'chipLiveMd', 'chipLiveCpm', 'chipLiveDc', 'chipLiveDm'].forEach(id => {
         document.getElementById(id)?.classList.remove('active', 'btn-outline-danger');
         document.getElementById(id)?.classList.add('btn-outline-secondary');
     });
@@ -1182,9 +954,6 @@ function setLivePartyPreset(party) {
         if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
     } else if (party === 'DEPOT MANAGER') {
         const c = document.getElementById('chipLiveDm');
-        if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
-    } else if (!party) {
-        const c = document.getElementById('chipLiveAll');
         if (c) { c.classList.add('active', 'btn-outline-danger'); c.classList.remove('btn-outline-secondary'); }
     }
 
@@ -1206,110 +975,7 @@ function syncSingleCnr(appealId, cnr, isBatch = false) {
         .then(res => {
             if (res && res.success && res.data) {
                 const d = res.data;
-
-                // 1. Update Stage
-                if (d.stage) {
-                    const stageEl = document.getElementById('stage_' + appealId);
-                    if (stageEl) {
-                        stageEl.textContent = d.stage;
-                        stageEl.title = d.stage;
-                    }
-                }
-
-                // 2. Update Court Hall
-                const courtHallVal = d.court_no_judge || d.court_no;
-                if (courtHallVal) {
-                    const chEl = document.getElementById('courthall_' + appealId);
-                    if (chEl) {
-                        chEl.className = "badge bg-warning-subtle text-dark border border-warning extra-small text-truncate";
-                        chEl.style.maxWidth = "160px";
-                        chEl.title = courtHallVal;
-                        chEl.innerHTML = '<i class="bi bi-bank2 me-1"></i>' + courtHallVal;
-                    }
-                }
-
-                // 3. Update Next Hearing Date & Status
-                let nextDateDisplay = 'Date Pending';
-                let isListedToday = false;
-                let isUpcomingWeek = false;
-
-                if (d.next_hearing_date && d.next_hearing_date !== 'Disposed' && d.next_hearing_date !== 'Pending') {
-                    let parsedDt = null;
-                    const parts = d.next_hearing_date.split('-');
-                    if (parts.length === 3) {
-                        if (parts[0].length === 4) {
-                            // yyyy-MM-dd
-                            parsedDt = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-                            nextDateDisplay = `${parts[2]}-${parts[1]}-${parts[0]}`;
-                        } else {
-                            // dd-MM-yyyy
-                            parsedDt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-                            nextDateDisplay = d.next_hearing_date;
-                        }
-                    } else {
-                        parsedDt = new Date(d.next_hearing_date);
-                        if (!isNaN(parsedDt.getTime())) {
-                            nextDateDisplay = parsedDt.toLocaleDateString('en-GB').replace(/\//g, '-');
-                        }
-                    }
-
-                    if (parsedDt && !isNaN(parsedDt.getTime())) {
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const hearingDay = new Date(parsedDt.getTime());
-                        hearingDay.setHours(0, 0, 0, 0);
-
-                        const diffDays = Math.round((hearingDay - today) / (1000 * 60 * 60 * 24));
-                        if (diffDays === 0) isListedToday = true;
-                        else if (diffDays > 0 && diffDays <= 7) isUpcomingWeek = true;
-                    }
-                } else if (d.next_hearing_date === 'Disposed') {
-                    nextDateDisplay = 'Disposed';
-                }
-
-                // Update DOM Hearing Date
-                const dtEl = document.getElementById('hearing_dt_' + appealId);
-                if (dtEl) {
-                    if (nextDateDisplay !== 'Date Pending' && nextDateDisplay !== 'Disposed') {
-                        dtEl.outerHTML = `<strong class="text-dark fs-6 d-block" id="hearing_dt_${appealId}"><i class="bi bi-calendar-event me-1 text-primary"></i>${nextDateDisplay}</strong>`;
-                    } else if (nextDateDisplay === 'Disposed') {
-                        dtEl.outerHTML = `<span class="badge bg-secondary" id="hearing_dt_${appealId}">Disposed</span>`;
-                    } else {
-                        dtEl.outerHTML = `<span class="text-muted fst-italic" id="hearing_dt_${appealId}">Date Pending</span>`;
-                    }
-                }
-
-                // Update Status Badge
-                const statusBadgeEl = document.getElementById('status_badge_' + appealId);
-                const rowEl = document.getElementById('row_' + appealId);
-
-                if (statusBadgeEl) {
-                    if (isListedToday) {
-                        statusBadgeEl.className = "badge bg-danger text-white animate-pulse p-2";
-                        statusBadgeEl.textContent = "Listed Today";
-                        if (rowEl) rowEl.classList.add("table-danger");
-                    } else if (isUpcomingWeek) {
-                        statusBadgeEl.className = "badge bg-warning text-dark p-2";
-                        statusBadgeEl.textContent = "Upcoming This Week";
-                        if (rowEl) rowEl.classList.remove("table-danger");
-                    } else if (nextDateDisplay === 'Disposed') {
-                        statusBadgeEl.className = "badge bg-secondary text-white p-2";
-                        statusBadgeEl.textContent = "Disposed";
-                        if (rowEl) rowEl.classList.remove("table-danger");
-                    } else if (nextDateDisplay !== 'Date Pending') {
-                        statusBadgeEl.className = "badge bg-info text-dark p-2";
-                        statusBadgeEl.textContent = "Future Hearing";
-                        if (rowEl) rowEl.classList.remove("table-danger");
-                    } else {
-                        statusBadgeEl.className = "badge bg-secondary text-white p-2";
-                        statusBadgeEl.textContent = "Pending";
-                        if (rowEl) rowEl.classList.remove("table-danger");
-                    }
-                }
-
-                // Update KPI Counters
-                recalculateKpis();
-
+                const nextDateDisplay = d.next_hearing_date || 'Updated';
                 if (!isBatch) {
                     showToast(`CNR Synced (${cnr})`, `Live data updated: ${nextDateDisplay} | ${d.stage || 'Hearing Active'}`, true);
                 }
@@ -1321,7 +987,7 @@ function syncSingleCnr(appealId, cnr, isBatch = false) {
                 return { success: false, cnr };
             }
         })
-        .catch(err => {
+        .catch(() => {
             if (!isBatch) {
                 showToast(`Sync Error (${cnr})`, 'Network error querying eCourts Gateway.', false);
             }
@@ -1338,42 +1004,22 @@ function syncSingleCnr(appealId, cnr, isBatch = false) {
         });
 }
 
-function recalculateKpis() {
-    const rows = document.querySelectorAll('tr[id^="row_"]');
-    let total = rows.length;
-    let todayCount = 0;
-    let weekCount = 0;
-    let cnrCount = 0;
-
-    rows.forEach(r => {
-        const cnr = r.getAttribute('data-cnr');
-        if (cnr && cnr.trim().length > 0) cnrCount++;
-
-        const statusBadge = r.querySelector('[id^="status_badge_"]');
-        if (statusBadge) {
-            const txt = statusBadge.textContent.trim();
-            if (txt === "Listed Today") todayCount++;
-            else if (txt === "Upcoming This Week") weekCount++;
+async function syncAllVisibleCnrs() {
+    const elements = document.querySelectorAll('[data-appeal-id][data-cnr]');
+    const seenCnrs = new Set();
+    const validItems = [];
+    elements.forEach(el => {
+        const cnr = (el.getAttribute('data-cnr') || '').trim();
+        const appealId = el.getAttribute('data-appeal-id') || '';
+        if (cnr.length > 0 && !seenCnrs.has(cnr)) {
+            seenCnrs.add(cnr);
+            validItems.push({ appealId, cnr });
         }
     });
 
-    const kpiTotalEl = document.getElementById('kpiTotal');
-    const kpiTodayEl = document.getElementById('kpiToday');
-    const kpiWeekEl = document.getElementById('kpiWeek');
-    const kpiCnrEl = document.getElementById('kpiCnr');
-
-    if (kpiTotalEl) kpiTotalEl.textContent = total;
-    if (kpiTodayEl) kpiTodayEl.textContent = todayCount;
-    if (kpiWeekEl) kpiWeekEl.textContent = weekCount;
-    if (kpiCnrEl) kpiCnrEl.textContent = cnrCount;
-}
-
-async function syncAllVisibleCnrs() {
-    const rows = document.querySelectorAll('tr[data-appeal-id][data-cnr]');
-    const validRows = Array.from(rows).filter(r => (r.getAttribute('data-cnr') || '').trim().length > 0);
     const masterBtn = document.getElementById('btnSyncAll');
     
-    if (validRows.length === 0) {
+    if (validItems.length === 0) {
         showToast("CNR Sync", "No cases with CNR linked to sync.", false);
         return;
     }
@@ -1386,12 +1032,12 @@ async function syncAllVisibleCnrs() {
 
     let successCount = 0;
     let failCount = 0;
-    const total = validRows.length;
+    const total = validItems.length;
 
     for (let i = 0; i < total; i++) {
-        const row = validRows[i];
-        const appealId = row.getAttribute('data-appeal-id');
-        const cnr = row.getAttribute('data-cnr');
+        const item = validItems[i];
+        const appealId = item.appealId;
+        const cnr = item.cnr;
 
         if (masterBtn) {
             masterBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing ${i + 1} of ${total}...`;
@@ -1408,7 +1054,6 @@ async function syncAllVisibleCnrs() {
             failCount++;
         }
 
-        // Slight interval between requests to be polite to the gateway
         if (i < total - 1) {
             await new Promise(r => setTimeout(r, 600));
         }
@@ -1422,7 +1067,6 @@ async function syncAllVisibleCnrs() {
         }, 3000);
     }
 
-    // ONLY 1 single toast notification at the end of the entire bulk sync
     if (failCount === 0) {
         showToast("Bulk Sync Completed", `All ${successCount} High Court cases synced successfully with live eCourts Gateway.`, true);
     } else {
@@ -1444,8 +1088,11 @@ function openDossierModal(appealId, cnr, mfaNo) {
         .then(r => r.json())
         .then(res => {
             if (res && res.success) {
-                const history = res.history || [];
-                const orders = res.orders || [];
+                const history = (res.history && res.history.length > 0) ? res.history : 
+                                (res.data && res.data.history && res.data.history.length > 0 ? res.data.history : 
+                                (res.data && res.data.case_history ? res.data.case_history : []));
+                const orders = (res.orders && res.orders.length > 0) ? res.orders : 
+                               (res.data && res.data.orders ? res.data.orders : []);
                 const d = res.data || {};
 
                 document.getElementById('mCountHistory').textContent = history.length;
@@ -1457,16 +1104,23 @@ function openDossierModal(appealId, cnr, mfaNo) {
                 } else {
                     let hHtml = '';
                     history.forEach((item, idx) => {
-                        const dt = item.business_date || item.hearing_date || item.date || item.next_date || '—';
-                        const purpose = item.purpose_name || item.stage || item.next_purpose || '—';
-                        const judge = item.judge || item.desgname || item.judge_name || '—';
-                        const business = item.business || item.remarks || item.court_business || '—';
+                        const dt = item.business_date || item.hearing_date || item.date || item.next_date || item.cause_date || '—';
+                        const purpose = item.purpose_name || item.stage || item.next_purpose || item.purpose || item.court_stage || '—';
+                        const judge = item.judge || item.judge_name || item.desgname || item.court_no_judge || item.presiding_officer || '—';
+                        const business = item.business || item.roznama || item.proceedings || item.remarks || item.court_business || '—';
                         hHtml += `<tr>
                             <td class="text-muted fw-bold">${idx + 1}</td>
                             <td class="fw-bold text-dark font-monospace">${dt}</td>
                             <td><span class="badge bg-light text-primary border">${purpose}</span></td>
                             <td>${judge}</td>
-                            <td class="fst-italic text-secondary">${business}</td>
+                            <td>
+                                <div class="d-flex align-items-center justify-content-between gap-1">
+                                    <span class="fst-italic text-secondary text-truncate" style="max-width: 250px;" title="${business}">${business}</span>
+                                    <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1.5 extra-small text-nowrap" onclick="openLiveRoznamaDirect('${cnr}', '${dt}', '${safeJsArg(mfaNo)}', '${safeJsArg(d.petitioner || '')}', '${safeJsArg(d.respondent || '')}')" title="Open Full Roznama Proceedings">
+                                        <i class="bi bi-eye me-0.5"></i>Roznama
+                                    </button>
+                                </div>
+                            </td>
                         </tr>`;
                     });
                     document.getElementById('mTbodyHistory').innerHTML = hHtml;
@@ -1522,10 +1176,135 @@ function openDossierModal(appealId, cnr, mfaNo) {
         });
 }
 
-// Auto-initialize on page load: load benches, populate date chips, and immediately fetch today's live cause list!
+let curRzCnr = '';
+let curRzDate = '';
+let curRzCaseNo = '';
+
+function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
+    curRzCnr = cnr || '';
+    
+    // Fallback date if not provided or empty
+    if (!date || date === '—' || date === 'null' || date === 'undefined') {
+        date = document.getElementById('liveDate')?.value || '';
+        if (!date) {
+            const today = new Date();
+            const dd = String(today.getDate()).padStart(2, '0');
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            date = `${dd}-${mm}-${today.getFullYear()}`;
+        }
+    }
+    curRzDate = date;
+    curRzCaseNo = caseNo || '';
+
+    const elCnr = document.getElementById('rzCnr');
+    const elDate = document.getElementById('rzDate');
+    const elCaseNo = document.getElementById('rzCaseNo');
+    const elParties = document.getElementById('rzParties');
+    const elText = document.getElementById('rzText');
+
+    if (elCnr) elCnr.textContent = cnr || '—';
+    if (elDate) elDate.textContent = date || '—';
+    if (elCaseNo) elCaseNo.textContent = caseNo || '—';
+    if (elParties) elParties.textContent = (pet && res) ? `${pet} vs ${res}` : (caseNo || 'High Court Case Record');
+    if (elText) elText.textContent = `Querying live e-Courts NAPIX showBusiness gateway for CNR ${cnr} on ${date}...`;
+    
+    const badge = document.getElementById('rzLiveBadge');
+    if (badge) {
+        badge.className = 'badge bg-warning text-dark extra-small';
+        badge.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:0.6rem;height:0.6rem;"></span> Checking Live...';
+    }
+    const msg = document.getElementById('rzLiveMsg');
+    if (msg) msg.textContent = `Connecting to official Daily Status gateway for ${date}...`;
+
+    const modalEl = document.getElementById('roznamaModal');
+    if (modalEl) {
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        } else if (typeof $ !== 'undefined') {
+            $('#roznamaModal').modal('show');
+        }
+    }
+
+    reloadCurrentRoznama();
+}
+
+function reloadCurrentRoznama() {
+    if (!curRzCnr || !curRzDate) return;
+    const badge = document.getElementById('rzLiveBadge');
+    const msg = document.getElementById('rzLiveMsg');
+    const rzText = document.getElementById('rzText');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const curModule = urlParams.get('module') || 'MVC';
+
+    fetch(`/ECourts/GetCaseBusiness?cnrNumber=${encodeURIComponent(curRzCnr)}&date=${encodeURIComponent(curRzDate)}&isHighCourt=true&module=${encodeURIComponent(curModule)}`)
+        .then(r => r.json())
+        .then(res => {
+            if (res && res.success) {
+                const isDb = (res.source === 'Database');
+                if (badge) {
+                    badge.className = isDb ? 'badge bg-primary extra-small' : 'badge bg-success extra-small';
+                    badge.innerHTML = isDb ? '<i class="bi bi-database-fill me-1"></i> Database Record' : '<i class="bi bi-broadcast me-1"></i> Live NAPIX Roznama';
+                }
+                if (msg) msg.textContent = isDb ? 'Proceedings loaded from recorded case database history.' : 'Live Daily Status successfully retrieved from e-Courts NAPIX Gateway.';
+
+                const bText = res.business || res.roznama || res.proceedings || (res.data && (res.data.business || res.data.roznama || res.data.proceedings || res.data.court_business)) || '';
+                if (bText && bText.trim().length >= 3) {
+                    if (rzText) rzText.textContent = bText.trim();
+                } else {
+                    if (rzText) rzText.textContent = 'Listing scheduled for ' + curRzDate + '. No verbatim text was returned by e-Courts NJDG for this date.';
+                }
+            } else {
+                if (badge) {
+                    badge.className = 'badge bg-secondary extra-small';
+                    badge.innerHTML = '<i class="bi bi-info-circle me-1"></i> Not Available';
+                }
+                if (msg) msg.textContent = res.message || 'No Daily Status record found on NAPIX gateway for this date.';
+                if (rzText) {
+                    rzText.textContent = '⚠️ Daily proceedings (Roznama) not available on NJDG for this hearing date.\n\n' +
+                        'Hearing Date: ' + curRzDate + '\nCNR: ' + curRzCnr + '\n\n' +
+                        (res.message ? res.message : 'The daily order was not uploaded to e-Courts for this date.');
+                }
+            }
+        })
+        .catch(err => {
+            if (badge) {
+                badge.className = 'badge bg-danger extra-small';
+                badge.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i> Connection Error';
+            }
+            if (msg) msg.textContent = 'Network error contacting eCourts gateway.';
+            if (rzText) rzText.textContent = 'Network error fetching live proceedings: ' + err;
+        });
+}
+
+function copyRoznamaText() {
+    const txt = document.getElementById('rzText')?.innerText || '';
+    if (!txt || txt.includes('Loading verbatim')) {
+        showToast('Notice', 'No roznama text to copy.', false);
+        return;
+    }
+    navigator.clipboard.writeText(txt).then(() => {
+        showToast('Copied', 'Roznama text copied to clipboard.', true);
+    }).catch(() => {
+        showToast('Notice', 'Could not access clipboard.', false);
+    });
+}
+
+// Auto-initialize on page load: load benches and immediately fetch today's live cause list for NWKRTC
 document.addEventListener('DOMContentLoaded', function () {
-    populateScheduledDateChips();
     loadHcCourtBenches();
     fetchLiveHcCauselist();
+
+    // Multi-modal support: Keep body scrollable if dossierModal is still active when roznamaModal is dismissed
+    const rzModalEl = document.getElementById('roznamaModal');
+    if (rzModalEl) {
+        rzModalEl.addEventListener('hidden.bs.modal', function () {
+            const dossier = document.getElementById('dossierModal');
+            if (dossier && (dossier.classList.contains('show') || dossier.style.display === 'block')) {
+                document.body.classList.add('modal-open');
+            }
+        });
+    }
 });
 </script>

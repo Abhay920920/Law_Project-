@@ -202,6 +202,74 @@
     #tab-pettybill-nav.active i {
         color: #ffffff !important;
     }
+
+    /* Mobile Responsive Optimizations for Case Details */
+    .mobile-nav-tabs-scroll {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+        padding-bottom: 4px;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar {
+        display: none !important;
+    }
+    .mobile-nav-tabs-scroll .nav-item {
+        flex: 0 0 auto !important;
+    }
+    .mobile-nav-tabs-scroll .nav-link {
+        white-space: nowrap !important;
+    }
+
+    @@media (max-width: 767.98px) {
+        #fullDetailsTabs {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            padding-bottom: 4px;
+        }
+        #fullDetailsTabs::-webkit-scrollbar {
+            display: none !important;
+        }
+        #fullDetailsTabs .nav-item {
+            flex: 0 0 auto !important;
+        }
+        #fullDetailsTabs .nav-link {
+            white-space: nowrap !important;
+            font-size: 0.78rem !important;
+            padding: 0.45rem 0.75rem !important;
+        }
+        .summary-cards-row {
+            margin-left: -0.25rem !important;
+            margin-right: -0.25rem !important;
+        }
+        .summary-cards-row .card-body {
+            padding: 0.75rem !important;
+        }
+        .summary-cards-row .fs-5 {
+            font-size: 1.05rem !important;
+        }
+        .summary-cards-row .fs-6 {
+            font-size: 0.9rem !important;
+        }
+        #v-pills-tab {
+            width: 100% !important;
+            min-width: 0 !important;
+            flex-direction: row !important;
+            overflow-x: auto !important;
+            white-space: nowrap !important;
+            border-bottom: 1px solid #dee2e6 !important;
+            border-right: none !important;
+        }
+        #v-pills-tab .nav-link {
+            flex: 0 0 auto !important;
+            white-space: nowrap !important;
+            font-size: 0.8rem !important;
+        }
+    }
 </style>
 
 @model MVCCaseManagement.Models.MVCCaseViewModel
@@ -245,7 +313,7 @@
 }
 
 <div class="case-details-content">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4 pb-3 border-bottom d-print-none">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4 pb-3 border-bottom d-print-none case-page-header">
         <div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <h2 class="fw-bold text-primary mb-0"><i class="bi bi-file-earmark-text me-2"></i>@Model.MVCNo / @Model.MVCYear</h2>
@@ -288,7 +356,7 @@
                 }
             </div>
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-center d-print-none">
+        <div class="d-flex flex-wrap gap-2 align-items-center d-print-none case-header-actions w-100 w-md-auto">
             @if(canUpdate)
             {
                 <a asp-controller="Case" asp-action="Edit" asp-route-id="@Model.CaseID" class="btn btn-primary shadow-sm px-3 rounded-pill fw-semibold">
@@ -436,7 +504,7 @@
 
     <!-- TR-18 Details Modal -->
     <div class="modal fade" id="tr18DetailsModal" tabindex="-1" aria-labelledby="tr18ModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-lg-down">
             <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
                 <div class="modal-header bg-primary text-white py-3">
                     <div class="d-flex align-items-center">
@@ -449,9 +517,9 @@
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body bg-light p-0">
-                    <div class="d-flex h-100">
+                    <div class="d-flex flex-column flex-md-row h-100">
                         <!-- Sidebar Navigation for Modal -->
-                        <div class="nav flex-column nav-pills p-3 bg-white border-end" id="v-pills-tab" role="tablist" aria-orientation="vertical" style="width: 220px; min-width: 200px;">
+                        <div class="nav nav-pills p-2 p-md-3 bg-white border-end mobile-nav-tabs-scroll flex-row flex-md-column flex-nowrap" id="v-pills-tab" role="tablist" aria-orientation="vertical">
                             <button class="nav-link active text-start mb-2 rounded-3" id="v-pills-general-tab" data-bs-toggle="pill" data-bs-target="#v-pills-general" type="button" role="tab" aria-selected="true"><i class="bi bi-info-circle me-2"></i>General Info</button>
                             <button class="nav-link text-start mb-2 rounded-3" id="v-pills-driver-tab" data-bs-toggle="pill" data-bs-target="#v-pills-driver" type="button" role="tab" aria-selected="false"><i class="bi bi-person-badge me-2"></i>Crew Details</button>
                             <button class="nav-link text-start mb-2 rounded-3" id="v-pills-vehicle-tab" data-bs-toggle="pill" data-bs-target="#v-pills-vehicle" type="button" role="tab" aria-selected="false"><i class="bi bi-bus-front me-2"></i>Vehicle & Route</button>
@@ -809,7 +877,7 @@
 }
 
     <!-- SUMMARY INFO SECTION -->
-    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
+    <div class="row row-cols-2 row-cols-md-2 row-cols-xl-4 g-2 g-md-3 mb-4 summary-cards-row">
         <!-- 1. Accident & Vehicle Info -->
         <div class="col">
             <div class="card border-0 shadow-sm h-100 @(Model.IsAllegedAccident || Model.AdverseAward?.IsAllegedAccident == true ? "bg-warning text-dark border-2 border-warning" : "bg-success text-white") rounded-3">
@@ -1410,8 +1478,8 @@
                     <small class="text-muted extra-small">Live case tracking from District Court / MACT (NAPIX / NJDG Services)</small>
                 </div>
             </div>
-            <div class="d-flex align-items-center gap-2">
-                <div id="details-cnr-badge" class="d-flex align-items-center gap-2" onclick="event.stopPropagation();">
+            <div class="d-flex flex-wrap align-items-center gap-2 w-100 w-lg-auto justify-content-between justify-content-lg-end mt-1 mt-lg-0">
+                <div id="details-cnr-badge" class="d-flex flex-wrap align-items-center gap-2" onclick="event.stopPropagation();">
                     @if (!string.IsNullOrEmpty(Model.CNRNumber))
                     {
                         <span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
@@ -1565,7 +1633,7 @@
                 @if (!string.IsNullOrEmpty(Model.CNRNumber))
                 {
                     <div class="col-12 border-top mt-2 pt-3">
-                        <ul class="nav nav-pills mb-3 gap-2" id="ecourtsTab" role="tablist">
+                        <ul class="nav nav-pills mb-3 gap-2 mobile-nav-tabs-scroll flex-nowrap" id="ecourtsTab" role="tablist">
                             <li class="nav-item" role="presentation">
                                 <button class="nav-link active btn-sm py-1 px-3 fw-bold" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-pane" type="button" role="tab">
                                     <i class="bi bi-file-earmark-pdf-fill me-1"></i> Court Orders &amp; Judgments 
@@ -1599,11 +1667,11 @@
                         <div class="tab-content" id="ecourtsTabContent">
                             <!-- Orders & Judgments Pane -->
                             <div class="tab-pane fade show active" id="orders-pane" role="tabpanel">
-                                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-2 gap-2">
                                     <small class="text-muted"><i class="bi bi-shield-check text-success me-1"></i>Official Court Orders &amp; Judgments verified by eCourts Gateway</small>
                                     @if (!string.IsNullOrEmpty(Model.CNRNumber))
                                     {
-                                        <div class="d-flex align-items-center gap-2">
+                                        <div class="d-flex flex-wrap align-items-center gap-2 w-100 w-sm-auto justify-content-start justify-content-sm-end">
                                             <button type="button" class="btn btn-sm btn-outline-primary rounded-pill shadow-sm fw-semibold" id="btnRefreshOrdersTab" onclick="refreshCaseOrdersLive('@Model.CNRNumber', @Model.CaseID, this)" title="Refresh court orders, judgments & real-time documents">
                                                 <i class="bi bi-arrow-clockwise me-1" id="iconRefreshOrdersTab"></i> Refresh Orders &amp; Judgments
                                             </button>
@@ -2035,7 +2103,7 @@
                                 <!-- Dossier Tabs Section -->
                                 <div class="col-12 mt-3 pt-2 border-top">
                                     <div class="card border-0 shadow-sm rounded-3 p-3 bg-white">
-                                        <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex flex-wrap gap-1" role="tablist">
+                                        <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex mobile-nav-tabs-scroll flex-nowrap gap-1" role="tablist">
                                             <li class="nav-item">
                                                 <button class="nav-link active fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@appeal.AppealID" type="button">
                                                     <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History
@@ -2463,7 +2531,7 @@
 
                                         <!-- Collapsible Full Dossier Tabs -->
                                         <div class="mt-4 pt-2 border-top">
-                                            <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex flex-wrap gap-1" role="tablist">
+                                            <ul class="nav nav-pills dossier-tab-nav bg-light p-1 rounded-3 border mb-3 d-flex mobile-nav-tabs-scroll flex-nowrap gap-1" role="tablist">
                                                 <li class="nav-item">
                                                     <button class="nav-link active fw-bold small py-2 px-3 rounded-2" data-bs-toggle="tab" data-bs-target="#tabHistory_@(appeal.AppealID)_claimant" type="button">
                                                         <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History
@@ -2921,7 +2989,7 @@
 
 <!-- FULL DETAILS MODAL -->
 <div class="modal fade" id="fullDetailsModal" tabindex="-1" aria-labelledby="fullDetailsModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: min(96vw, 1300px);">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down" style="max-width: min(96vw, 1300px);">
         <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
             <!-- Modal Header -->
             <div class="modal-header border-0 py-3 px-4" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
@@ -2947,7 +3015,7 @@
             <!-- Modal Body -->
             <div class="modal-body p-3 p-md-4" style="background-color: #f8fafc;">
                 <!-- Navigation Tabs -->
-                <ul class="nav nav-pills flex-wrap gap-1 mb-3 p-1 rounded-3 border bg-white shadow-sm" id="fullDetailsTabs" role="tablist">
+                <ul class="nav nav-pills gap-1 mb-3 p-1 rounded-3 border bg-white shadow-sm mobile-nav-tabs-scroll flex-nowrap" id="fullDetailsTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active fw-bold small py-2 px-3 rounded-2" id="tab-general-nav" data-bs-toggle="pill" data-bs-target="#tab-general-content" type="button" role="tab" aria-controls="tab-general-content" aria-selected="true">
                             <i class="bi bi-info-circle-fill me-1 text-primary"></i> General &amp; Accident
@@ -6545,7 +6613,7 @@
 
 <!-- Payment Modal -->
 <div class="modal fade" id="paymentModal" tabindex="-1" aria-labelledby="paymentModalLabel">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="paymentModalLabel">
@@ -6608,7 +6676,7 @@
 <!-- TRANSFER CASE MODAL                                 -->
 <!-- ================================================== -->
 <div class="modal fade" id="transferCaseModal" tabindex="-1" aria-labelledby="transferCaseModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered modal-md">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
 
             <!-- Modal Header -->
@@ -6667,11 +6735,11 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="modal-footer bg-light px-4 py-3 border-top d-flex justify-content-between align-items-center">
-                <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+            <div class="modal-footer bg-light px-3 px-sm-4 py-3 border-top d-flex flex-column-reverse flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-4 w-100 w-sm-auto" data-bs-dismiss="modal">
                     <i class="bi bi-x-circle me-1"></i> Cancel
                 </button>
-                <button type="button" class="btn btn-warning fw-bold rounded-pill px-4 shadow-sm" id="btnConfirmTransfer" onclick="submitTransferForm()">
+                <button type="button" class="btn btn-warning fw-bold rounded-pill px-4 shadow-sm w-100 w-sm-auto" id="btnConfirmTransfer" onclick="submitTransferForm()">
                     <i class="bi bi-send-check me-2"></i> Confirm Transfer
                 </button>
             </div>

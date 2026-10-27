@@ -292,6 +292,33 @@
         transition: all 0.15s;
     }
     .lcp-pdf-btn:hover { background: #dc2626; color: #fff; }
+
+    @@media (max-width: 575.98px) {
+        .lcp-tabs {
+            padding: 8px 8px 0;
+            gap: 2px;
+        }
+        .lcp-tab-btn {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+        }
+        .lcp-content {
+            padding: 12px 8px;
+        }
+        .lcp-row {
+            grid-template-columns: 1fr;
+            gap: 2px;
+            padding: 6px 10px;
+        }
+        .lcp-label {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            text-transform: uppercase;
+        }
+        .lcp-value {
+            font-size: 0.85rem;
+        }
+    }
 </style>
 
 <div class="lcp-wrapper">

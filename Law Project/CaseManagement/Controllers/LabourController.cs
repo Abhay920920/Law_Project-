@@ -42,7 +42,7 @@ namespace MVCCaseManagement.Controllers
         [HttpGet]
         public IActionResult HighCourtCauseList()
         {
-            return View();
+            return RedirectToAction("HighCourtCauseList", "ECourts");
         }
 
 

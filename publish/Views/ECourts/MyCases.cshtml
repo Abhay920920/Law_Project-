@@ -26,19 +26,22 @@
         transform: translateY(-2px);
         box-shadow: 0 8px 20px rgba(0,0,0,0.06) !important;
     }
-    .status-filter-group .btn-check:checked + label {
+    .status-filter-group .btn-check:checked + label,
+    .status-filter-ribbon .btn-check:checked + label {
         background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%) !important;
         color: #ffffff !important;
-        font-weight: 600;
+        font-weight: 700;
         box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
     }
-    .status-filter-group label {
+    .status-filter-group label,
+    .status-filter-ribbon label {
         color: #475569;
         font-size: 0.82rem;
         cursor: pointer;
         transition: all 0.15s ease-in-out;
     }
-    .status-filter-group label:hover {
+    .status-filter-group label:hover,
+    .status-filter-ribbon label:hover {
         background-color: #e2e8f0;
         color: #0f172a;
     }
@@ -61,6 +64,70 @@
     @@keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
+    }
+
+    /* Mobile Case Cards & Urgency Accent Styling */
+    .mobile-case-card {
+        background-color: #ffffff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        overflow: hidden;
+        margin-bottom: 0.85rem;
+    }
+    .mobile-case-card:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+    }
+    .border-urgency-default {
+        border-left: 5px solid #94a3b8 !important;
+    }
+    .border-urgency-today {
+        border-left: 5px solid #ef4444 !important;
+        background: linear-gradient(to right, #fef2f2 0%, #ffffff 40%) !important;
+    }
+    .border-urgency-tomorrow {
+        border-left: 5px solid #f59e0b !important;
+        background: linear-gradient(to right, #fffbeb 0%, #ffffff 40%) !important;
+    }
+    .border-urgency-upcoming {
+        border-left: 5px solid #3b82f6 !important;
+    }
+    .border-urgency-overdue {
+        border-left: 5px solid #dc2626 !important;
+    }
+    .border-urgency-disposed {
+        border-left: 5px solid #10b981 !important;
+    }
+
+    .mobile-card-header {
+        padding: 10px 14px;
+        background-color: #f8fafc;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .mobile-card-body {
+        padding: 12px 14px;
+    }
+    .mobile-card-footer {
+        padding: 10px 14px;
+        background-color: #f8fafc;
+        border-top: 1px solid #f1f5f9;
+    }
+    .mobile-action-btn {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        min-height: 38px;
+        border-radius: 8px;
+    }
+    .mobile-card-drawer {
+        background-color: #f8fafc;
+        border-radius: 8px;
+        padding: 10px;
+        border: 1px dashed #cbd5e1;
     }
 
     /* Table Pagination Styling */
@@ -91,32 +158,159 @@
         cursor: not-allowed;
     }
 
+    .hearing-drawer-card {
+        border-radius: 10px;
+    }
+    .hearing-drawer-card .border-light-subtle {
+        border-color: #e9ecef !important;
+    }
+
+    .mycases-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .header-btn-row-2,
+    .header-btn-row-3 {
+        display: contents;
+    }
+
     @@media (max-width: 991.98px) {
+        .hearing-drawer-row td {
+            padding: 0.5rem 0.5rem !important;
+        }
         .mycases-page {
             padding: 8px 4px !important;
         }
         .mycases-header-gradient {
-            padding: 1.1rem !important;
-            border-radius: 1rem !important;
+            padding: 1.15rem 1rem !important;
+            border-radius: 14px !important;
         }
         .mycases-header-gradient h3 {
             font-size: 1.15rem !important;
+            line-height: 1.35;
+        }
+        .mycases-header-actions {
+            width: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 7px !important;
+            margin-top: 0.85rem;
+        }
+        .header-btn-primary {
+            width: 100% !important;
+            padding: 10px 14px !important;
+            font-size: 0.92rem !important;
+            font-weight: 700 !important;
+            border-radius: 9px !important;
+            letter-spacing: 0.3px;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15) !important;
+        }
+        .header-btn-row-2 {
+            display: flex !important;
+            width: 100% !important;
+            gap: 7px !important;
+        }
+        .header-btn-row-2 .btn {
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+            padding: 8px 10px !important;
+            font-size: 0.82rem !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+        }
+        .header-btn-row-3 {
+            display: flex !important;
+            width: 100% !important;
+            gap: 6px !important;
+        }
+        .header-btn-row-3 .btn,
+        .header-btn-row-3 .btn-group {
+            flex: 1 1 0 !important;
+            min-width: 0 !important;
+            font-size: 0.8rem !important;
+            font-weight: 600 !important;
+            border-radius: 8px !important;
+            justify-content: center;
+        }
+        .header-btn-row-3 .btn {
+            padding: 7px 8px !important;
+        }
+        .header-btn-row-3 .btn-group {
+            display: flex !important;
+        }
+        .header-btn-row-3 .btn-group .btn {
+            border-radius: 0 !important;
+            padding: 7px 8px !important;
+        }
+        .header-btn-row-3 .btn-group .btn:first-child {
+            border-top-left-radius: 8px !important;
+            border-bottom-left-radius: 8px !important;
+            flex: 1 1 auto;
+        }
+        .header-btn-row-3 .btn-group .dropdown-toggle {
+            border-top-right-radius: 8px !important;
+            border-bottom-right-radius: 8px !important;
+            flex: 0 0 auto;
+            padding-left: 6px !important;
+            padding-right: 6px !important;
         }
         .kpi-card-clean {
             border-radius: 0.75rem !important;
-            margin-bottom: 0.25rem;
         }
         .kpi-card-clean .card-body {
-            padding: 0.75rem !important;
+            padding: 0.65rem 0.75rem !important;
         }
         .kpi-card-clean h2 {
             font-size: 1.35rem !important;
         }
-        .status-filter-group {
+        .status-filter-ribbon {
+            width: 100% !important;
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            white-space: nowrap !important;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .status-filter-ribbon::-webkit-scrollbar {
+            display: none;
+        }
+        .status-filter-ribbon label {
+            flex: 1 0 auto !important;
+            text-align: center;
+            font-size: 0.78rem !important;
+            padding: 5px 8px !important;
+            white-space: nowrap !important;
+        }
+        #hearingDatePreset,
+        #caseWorkerFilter {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+        }
+        #customDateRangeInputs {
             width: 100%;
-            overflow-x: auto;
-            white-space: nowrap;
-            padding-bottom: 4px;
+        }
+        #customDateRangeInputs input {
+            flex: 1;
+            width: auto !important;
+        }
+    }
+
+    @@media (max-width: 575.98px) {
+        .kpi-card-clean .card-body {
+            padding: 0.55rem 0.65rem !important;
+        }
+        .kpi-card-clean h2 {
+            font-size: 1.25rem !important;
+        }
+        .pagination .page-link {
+            padding: 0.32rem 0.55rem !important;
+            font-size: 0.76rem !important;
         }
     }
 </style>
@@ -127,10 +321,10 @@
     <div class="mycases-header-gradient p-3 p-md-4 mb-3 mb-md-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2.5">
         <div>
             <div class="d-flex align-items-center gap-2 mb-1.5 flex-wrap">
-                <span class="badge @(isLabour ? "bg-purple text-white" : "bg-primary text-white") font-monospace fw-bold px-2.5 py-1">
+                <span class="badge @(isLabour ? "bg-purple text-white border border-white border-opacity-25" : "bg-primary text-white") font-monospace fw-bold px-2.5 py-1">
                     <i class="bi @(isLabour ? "bi-briefcase-fill" : "bi-truck-front-fill") me-1"></i>@(isLabour ? "LABOUR DISPUTES" : "MVC / MACT CLAIMS")
                 </span>
-                <span class="badge bg-danger text-white font-monospace fw-bold px-2.5 py-1">
+                <span class="badge bg-danger text-white font-monospace fw-bold px-2.5 py-1 border border-white border-opacity-25">
                     <i class="bi bi-broadcast me-1"></i>LIVE E-COURTS GATEWAY
                 </span>
             </div>
@@ -138,79 +332,91 @@
                 <i class="bi bi-folder-check text-warning"></i> My Cases &amp; Live CNR Tracker
             </h3>
             <p class="text-light text-opacity-75 small mb-0 d-none d-sm-block">Central Office Registry — High-fidelity live CNR monitoring, automated proceedings sync, orders & judgements.</p>
+            <div class="extra-small text-light text-opacity-75 d-block d-sm-none mt-0.5">
+                <i class="bi bi-shield-check text-success me-1"></i>Central Office Registry · Live NAPIX Sync
+            </div>
         </div>
-        <div class="d-flex flex-wrap align-items-center gap-2 w-100 w-lg-auto justify-content-start justify-content-lg-end">
-            <button type="button" class="btn btn-warning btn-sm fw-bold shadow-sm px-3 py-2 d-flex align-items-center gap-2 flex-grow-1 flex-sm-grow-0 justify-content-center" data-bs-toggle="modal" data-bs-target="#addCnrModal">
+        <div class="mycases-header-actions">
+            <!-- Tier 1: Primary Action (Full-width on mobile) -->
+            <button type="button" class="btn btn-warning btn-sm fw-bold shadow-sm px-3 py-2 d-flex align-items-center justify-content-center gap-2 header-btn-primary" data-bs-toggle="modal" data-bs-target="#addCnrModal">
                 <i class="bi bi-plus-circle-fill"></i>
                 <span>Add CNR Cases</span>
             </button>
-            <button type="button" class="btn btn-info btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
-                <i class="bi bi-journal-check"></i>
-                <span class="d-none d-md-inline">Sync All Proceedings</span>
-                <span class="d-inline d-md-none">Sync All</span>
-            </button>
-            <button type="button" class="btn btn-danger btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
-                <i class="bi bi-broadcast"></i>
-                <span class="d-none d-md-inline">Check Live Cause Lists</span>
-                <span class="d-inline d-md-none">Cause List</span>
-            </button>
-            <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5" onclick="printCasesReport('filtered')" title="Print judicial report of current cases">
-                <i class="bi bi-printer-fill"></i>
-                <span class="d-none d-sm-inline">Print</span>
-            </button>
-            <!-- Export Excel / CSV Split Button -->
-            <div class="btn-group shadow-sm">
-                <button type="button" class="btn btn-success btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5 fw-semibold" onclick="exportToExcel('filtered')" title="Export filtered cases to Microsoft Excel (.xls)">
-                    <i class="bi bi-file-earmark-excel-fill"></i>
-                    <span class="d-none d-sm-inline">Export</span>
+
+            <!-- Tier 2: Realtime Sync & Cause List Pair (50% / 50% on mobile) -->
+            <div class="header-btn-row-2">
+                <button type="button" class="btn btn-info btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
+                    <i class="bi bi-journal-check"></i>
+                    <span class="d-none d-md-inline">Sync All Proceedings</span>
+                    <span class="d-inline d-md-none">Sync All</span>
                 </button>
-                <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split px-2" data-bs-toggle="dropdown" aria-expanded="false" title="More Export Options">
-                    <span class="visually-hidden">Toggle Dropdown</span>
+                <button type="button" class="btn btn-danger btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5 fw-semibold" onclick="syncAllCauseLists()" title="Query live High Court cause lists for today across Dharwad, Bengaluru, Kalaburagi">
+                    <i class="bi bi-broadcast"></i>
+                    <span class="d-none d-md-inline">Check Live Cause Lists</span>
+                    <span class="d-inline d-md-none">Cause List</span>
                 </button>
-                <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
-                    <li>
-                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
-                            <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
-                            <div>
-                                <div class="fw-bold">Export Current View (.xls)</div>
-                                <div class="extra-small text-muted">Filtered cases with styling & columns</div>
-                            </div>
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
-                            <i class="bi bi-collection-fill text-primary fs-6"></i>
-                            <div>
-                                <div class="fw-bold">Export All Cases (.xls)</div>
-                                <div class="extra-small text-muted">Complete master tracking workbook</div>
-                            </div>
-                        </a>
-                    </li>
-                    <li><hr class="dropdown-divider my-1"></li>
-                    <li>
-                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
-                            <i class="bi bi-filetype-csv text-secondary fs-6"></i>
-                            <div>
-                                <div class="fw-bold">Export Current View to CSV</div>
-                                <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
-                            </div>
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
-                            <i class="bi bi-file-earmark-spreadsheet text-secondary fs-6"></i>
-                            <div>
-                                <div class="fw-bold">Export All Cases to CSV</div>
-                                <div class="extra-small text-muted">Complete UTF-8 CSV master dataset</div>
-                            </div>
-                        </a>
-                    </li>
-                </ul>
             </div>
-            <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center gap-1.5" onclick="loadTrackedCases(true)" title="Refresh table data">
-                <i class="bi bi-arrow-clockwise" id="refreshBtnIcon"></i>
-                <span class="d-none d-sm-inline">Refresh</span>
-            </button>
+
+            <!-- Tier 3: Utilities - Print, Export, Refresh (33% / 33% / 33% on mobile) -->
+            <div class="header-btn-row-3">
+                <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5" onclick="printCasesReport('filtered')" title="Print judicial report of current cases">
+                    <i class="bi bi-printer-fill"></i>
+                    <span>Print</span>
+                </button>
+                <!-- Export Excel / CSV Split Button -->
+                <div class="btn-group shadow-sm">
+                    <button type="button" class="btn btn-success btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5 fw-semibold" onclick="exportToExcel('filtered')" title="Export filtered cases to Microsoft Excel (.xls)">
+                        <i class="bi bi-file-earmark-excel-fill"></i>
+                        <span>Export</span>
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm dropdown-toggle dropdown-toggle-split px-2" data-bs-toggle="dropdown" aria-expanded="false" title="More Export Options">
+                        <span class="visually-hidden">Toggle Dropdown</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-2" style="min-width: 250px;">
+                        <li>
+                            <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('filtered')">
+                                <i class="bi bi-file-earmark-excel-fill text-success fs-6"></i>
+                                <div>
+                                    <div class="fw-bold">Export Current View (.xls)</div>
+                                    <div class="extra-small text-muted">Filtered cases with styling &amp; columns</div>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToExcel('all')">
+                                <i class="bi bi-collection-fill text-primary fs-6"></i>
+                                <div>
+                                    <div class="fw-bold">Export All Cases (.xls)</div>
+                                    <div class="extra-small text-muted">Complete master tracking workbook</div>
+                                </div>
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider my-1"></li>
+                        <li>
+                            <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('filtered')">
+                                <i class="bi bi-filetype-csv text-secondary fs-6"></i>
+                                <div>
+                                    <div class="fw-bold">Export Current View to CSV</div>
+                                    <div class="extra-small text-muted">Standard UTF-8 comma-separated file</div>
+                                </div>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item small py-2 d-flex align-items-center gap-2" href="javascript:void(0)" onclick="exportToCsv('all')">
+                                <i class="bi bi-file-earmark-spreadsheet text-secondary fs-6"></i>
+                                <div>
+                                    <div class="fw-bold">Export All Cases to CSV</div>
+                                    <div class="extra-small text-muted">Complete UTF-8 CSV master dataset</div>
+                                </div>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <button type="button" class="btn btn-outline-light btn-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5" onclick="loadTrackedCases(true)" title="Refresh table data">
+                    <i class="bi bi-arrow-clockwise" id="refreshBtnIcon"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -2006,19 +2212,19 @@
         let recentHearingsSnippet = "";
         if (c.proceedingsHistory && Array.isArray(c.proceedingsHistory) && c.proceedingsHistory.length > 0) {
             const recent = c.proceedingsHistory.slice(0, 3);
-            recentHearingsSnippet = `<div class="d-flex flex-column gap-1 mt-1">` + recent.map((rh, idx) => {
+            recentHearingsSnippet = `<div class="d-flex flex-column gap-1.5 mt-1">` + recent.map((rh, idx) => {
                 const rDt = rh.hearing_date || rh.business_date || rh.next_date || "—";
                 const rPurp = rh.purpose_of_listing || rh.purpose || rh.next_purpose || rh.stage || "Listing";
                 const rBiz = (rh.business || rh.roznama || rh.proceeding || "").trim();
                 return `
-                <div class="extra-small p-1.5 bg-white rounded border d-flex justify-content-between align-items-center gap-2">
-                    <span class="font-monospace fw-bold text-primary">${escapeHtml(rDt)}</span>
-                    <span class="text-truncate text-dark fw-semibold" style="max-width: 140px;" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
-                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
+                <div class="extra-small p-1.5 px-2 bg-white rounded border d-flex justify-content-between align-items-center gap-1.5">
+                    <span class="font-monospace fw-bold text-primary text-nowrap">${escapeHtml(rDt)}</span>
+                    <span class="text-truncate text-dark fw-semibold flex-grow-1 text-center" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
+                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success flex-shrink-0" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
                 </div>`;
             }).join("") + `</div>`;
         } else {
-            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
+            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic p-2 bg-white rounded border text-center mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
         }
 
         const isTodayListed = c.hearingUrgency === "TODAY";
@@ -2123,17 +2329,17 @@
         
         <!-- Expandable Hearing History & Daily Status Drawer Row -->
         <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClass ? `group-row-${groupClass}` : ''}">
-            <td colspan="9" class="p-3 ps-4 pe-4">
-                <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white">
-                    <div class="card-header bg-dark text-white py-2.5 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <div class="d-flex align-items-center gap-2">
+            <td colspan="9" class="p-2 p-md-3 ps-md-4 pe-md-4">
+                <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hearing-drawer-card">
+                    <div class="card-header bg-dark text-white py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="badge bg-warning text-dark font-monospace fw-bold">${escapeHtml(getDisplayCaseType(c))}</span>
                             <span class="font-monospace fw-bold text-white small">${escapeHtml(c.cnrNumber)}</span>
                             <span class="badge ${isTodayListed ? 'bg-danger text-white' : (isTomorrowListed ? 'bg-warning text-dark' : 'bg-primary-subtle text-primary')} extra-small">
                                 ${escapeHtml(c.hearingUrgency || 'SCHEDULED')}
                             </span>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
+                        <div class="d-flex align-items-center gap-1.5 flex-wrap ms-auto ms-sm-0">
                             <button type="button" class="btn btn-xs btn-outline-light rounded-pill px-2.5 py-1 extra-small" onclick="openDailyProceedingsModal(${c.trackedID})">
                                 <i class="bi bi-journal-text me-1"></i>Full Roznama Timeline
                             </button>
@@ -2145,92 +2351,102 @@
                             </button>
                         </div>
                     </div>
-                    <div class="card-body p-3">
+                    <div class="card-body p-2.5 p-md-3">
                         <div class="row g-3">
                             <!-- Column 1: Daily Status & Court Listing -->
-                            <div class="col-12 col-md-4 border-end-md">
-                                <div class="extra-small text-uppercase fw-bold text-primary mb-1">
-                                    <i class="bi bi-broadcast me-1"></i>Daily Status & Court Listing
+                            <div class="col-12 col-lg-4 d-flex flex-column">
+                                <div class="extra-small text-uppercase fw-bold text-primary mb-1.5 d-flex align-items-center gap-1">
+                                    <i class="bi bi-broadcast"></i>
+                                    <span>Daily Status &amp; Court Listing</span>
                                 </div>
-                                <div class="p-2.5 rounded-3 bg-light border">
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Court Hall:</span>
-                                        <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">${escapeHtml(c.courtNo || 'Awaited')}</span>
+                                <div class="p-2.5 p-md-3 rounded-3 bg-light border h-100 d-flex flex-column justify-content-between">
+                                    <div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-bank2 me-1 text-secondary"></i>Court Hall:</span>
+                                            <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">${escapeHtml(c.courtNo || 'Awaited')}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-list-ol me-1 text-secondary"></i>Serial / Item #:</span>
+                                            <span class="font-monospace fw-bold text-dark small">${c.itemNo ? escapeHtml(c.itemNo) : '—'}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-diagram-3 me-1 text-secondary"></i>Bench Roster:</span>
+                                            <span class="extra-small fw-semibold text-truncate text-end" style="max-width: 60%;" title="${escapeHtml(c.benchName || '')}">${escapeHtml(c.benchName || (isHc ? 'Single Bench' : 'Court'))}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-person-badge me-1 text-secondary"></i>Coram / Judge:</span>
+                                            <span class="extra-small fw-semibold text-truncate text-secondary text-end" style="max-width: 60%;" title="${escapeHtml(c.judgeDesignation || '')}">${escapeHtml(c.judgeDesignation || 'Hon\'ble Court')}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-calendar-event me-1 text-secondary"></i>Next Listing:</span>
+                                            <span class="font-monospace fw-bold ${c.nextHearingDate ? 'text-primary' : 'text-muted'}">${c.nextHearingDate ? c.nextHearingDate.split('T')[0] : 'Date Awaited'}</span>
+                                        </div>
                                     </div>
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Serial / Item #:</span>
-                                        <span class="font-monospace fw-bold text-dark small">${c.itemNo ? escapeHtml(c.itemNo) : '—'}</span>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Bench Roster:</span>
-                                        <span class="extra-small fw-semibold text-truncate" style="max-width: 170px;" title="${escapeHtml(c.benchName || '')}">${escapeHtml(c.benchName || (isHc ? 'Single Bench' : 'Court'))}</span>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Coram / Judge:</span>
-                                        <span class="extra-small fw-semibold text-truncate text-secondary" style="max-width: 170px;" title="${escapeHtml(c.judgeDesignation || '')}">${escapeHtml(c.judgeDesignation || 'Hon\'ble Court')}</span>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top">
-                                        <span class="extra-small text-muted">Next Listing Date:</span>
-                                        <span class="font-monospace fw-bold ${c.nextHearingDate ? 'text-primary' : 'text-muted'}">${c.nextHearingDate ? c.nextHearingDate.split('T')[0] : 'Date Awaited'}</span>
-                                    </div>
-                                    <div class="extra-small text-dark fw-semibold mt-1 text-truncate" title="${escapeHtml(c.stagePurpose || '')}">
-                                        <i class="bi bi-bookmark-fill text-warning me-1"></i>Stage: ${escapeHtml(c.stagePurpose || 'Regular Listing')}
+                                    <div class="d-flex justify-content-between align-items-center pt-2 mt-1">
+                                        <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-bookmark-fill me-1 text-warning"></i>Stage:</span>
+                                        <span class="extra-small text-dark fw-bold text-truncate text-end" style="max-width: 65%;" title="${escapeHtml(c.stagePurpose || '')}">${escapeHtml(c.stagePurpose || 'Regular Listing')}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Column 2: Last Concluded Proceeding & Roznama -->
-                            <div class="col-12 col-md-5 border-end-md">
-                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                    <span class="extra-small text-uppercase fw-bold text-success">
-                                        <i class="bi bi-file-earmark-text me-1"></i>Last Concluded Proceeding (Roznama)
+                            <div class="col-12 col-lg-4 d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-center mb-1.5">
+                                    <span class="extra-small text-uppercase fw-bold text-success d-flex align-items-center gap-1">
+                                        <i class="bi bi-file-earmark-text"></i>
+                                        <span>Last Roznama Proceeding</span>
                                     </span>
-                                    <span class="extra-small text-muted">${c.daysSinceLastHearing != null ? c.daysSinceLastHearing + ' days ago' : ''}</span>
+                                    <span class="badge bg-secondary-subtle text-secondary extra-small">${c.daysSinceLastHearing != null ? c.daysSinceLastHearing + ' days ago' : ''}</span>
                                 </div>
-                                <div class="p-2.5 rounded-3 bg-light border h-100 d-flex flex-column justify-content-between">
+                                <div class="p-2.5 p-md-3 rounded-3 bg-light border h-100 d-flex flex-column justify-content-between">
                                     <div>
-                                        <div class="d-flex justify-content-between align-items-center mb-1.5">
-                                            <span class="extra-small text-muted">Listing Date: <strong class="text-dark font-monospace">${escapeHtml(c.lastHearingDate || '—')}</strong></span>
-                                            <span class="extra-small text-muted">Coram: <strong class="text-dark text-truncate" style="max-width: 120px;">${escapeHtml(c.lastHearingJudge || '—')}</strong></span>
+                                        <div class="d-flex justify-content-between align-items-center py-1 mb-2 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted"><i class="bi bi-calendar-check me-1 text-success"></i>Date: <strong class="text-dark font-monospace">${escapeHtml(c.lastHearingDate || '—')}</strong></span>
+                                            <span class="extra-small text-muted text-truncate ms-2" style="max-width: 50%;" title="${escapeHtml(c.lastHearingJudge || '')}"><i class="bi bi-person me-0.5"></i>${escapeHtml(c.lastHearingJudge || '—')}</span>
                                         </div>
-                                        <div class="p-2 bg-white rounded border text-dark font-monospace extra-small" style="max-height: 85px; overflow-y: auto; line-height: 1.4;">
+                                        <div class="p-2 bg-white rounded border text-dark font-monospace extra-small flex-grow-1" style="min-height: 85px; max-height: 120px; overflow-y: auto; line-height: 1.45;">
                                             ${lastBiz ? escapeHtml(lastBiz) : '<span class="text-muted fst-italic">No offline roznama text stored. Click below to query live from eCourts.</span>'}
                                         </div>
                                     </div>
-                                    <div class="mt-2 d-flex justify-content-between align-items-center">
-                                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1 extra-small"
+                                    <div class="mt-2.5 pt-1 d-flex justify-content-between align-items-center gap-2">
+                                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1.5 extra-small flex-fill text-nowrap d-flex align-items-center justify-content-center gap-1"
                                                 onclick="fetchLiveHearingRoznama('${escapeJs(c.cnrNumber)}', '${escapeJs(c.lastHearingDate || '')}', ${isHc}, null)">
-                                            <i class="bi bi-broadcast me-1"></i>Fetch Live Roznama
+                                            <i class="bi bi-broadcast"></i>
+                                            <span>Fetch Live</span>
                                         </button>
-                                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 extra-small"
+                                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2.5 py-1.5 extra-small flex-fill text-nowrap d-flex align-items-center justify-content-center gap-1"
                                                 onclick="openDailyProceedingsModal(${c.trackedID})">
-                                            All ${c.totalHearings || 0} Proceedings &raquo;
+                                            <span>All ${c.totalHearings || 0} Proceedings</span>
+                                            <i class="bi bi-chevron-right extra-small"></i>
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Column 3: Hearing Velocity & Recent Hearings -->
-                            <div class="col-12 col-md-3">
-                                <div class="extra-small text-uppercase fw-bold text-dark mb-1">
-                                    <i class="bi bi-clock-history me-1 text-info"></i>Hearing Velocity & Timeline
+                            <div class="col-12 col-lg-4 d-flex flex-column">
+                                <div class="extra-small text-uppercase fw-bold text-dark mb-1.5 d-flex align-items-center gap-1">
+                                    <i class="bi bi-clock-history text-info"></i>
+                                    <span>Hearing Velocity &amp; Timeline</span>
                                 </div>
-                                <div class="p-2.5 rounded-3 bg-light border">
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Total Hearings:</span>
-                                        <span class="badge bg-info text-dark font-monospace fw-bold">${c.totalHearings || 0} Listed</span>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">Avg Interval:</span>
-                                        <span class="extra-small fw-bold text-dark">${c.avgDaysBetweenHearings ? `~${c.avgDaysBetweenHearings} days` : '—'}</span>
-                                    </div>
-                                    <div class="d-flex justify-content-between align-items-center mb-1">
-                                        <span class="extra-small text-muted">First Listed:</span>
-                                        <span class="extra-small font-monospace text-secondary">${escapeHtml(c.firstHearingDate || '—')}</span>
-                                    </div>
-                                    <div class="mt-2 pt-1 border-top">
-                                        <span class="extra-small fw-bold text-muted text-uppercase">Recent Hearings:</span>
-                                        ${recentHearingsSnippet}
+                                <div class="p-2.5 p-md-3 rounded-3 bg-light border h-100 d-flex flex-column justify-content-between">
+                                    <div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap"><i class="bi bi-hash me-1 text-secondary"></i>Total Hearings:</span>
+                                            <span class="badge bg-info text-dark font-monospace fw-bold">${c.totalHearings || 0} Listed</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap"><i class="bi bi-speedometer2 me-1 text-secondary"></i>Avg Interval:</span>
+                                            <span class="extra-small fw-bold text-dark">${c.avgDaysBetweenHearings ? `~${c.avgDaysBetweenHearings} days` : '—'}</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap"><i class="bi bi-calendar-minus me-1 text-secondary"></i>First Listed:</span>
+                                            <span class="extra-small font-monospace text-secondary">${escapeHtml(c.firstHearingDate || '—')}</span>
+                                        </div>
+                                        <div class="mt-2 pt-1">
+                                            <span class="extra-small fw-bold text-muted text-uppercase d-block mb-1"><i class="bi bi-clock-history me-1"></i>Recent Hearings:</span>
+                                            ${recentHearingsSnippet}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2357,14 +2573,14 @@
                 const rPurp = rh.purpose_of_listing || rh.purpose || rh.next_purpose || rh.stage || "Listing";
                 const rBiz = (rh.business || rh.roznama || rh.proceeding || "").trim();
                 return `
-                <div class="extra-small p-2 bg-white rounded border d-flex justify-content-between align-items-center gap-1.5">
-                    <span class="font-monospace fw-bold text-primary">${escapeHtml(rDt)}</span>
-                    <span class="text-truncate text-dark fw-semibold" style="max-width: 140px;" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
-                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
+                <div class="extra-small p-1.5 px-2 bg-white rounded border d-flex justify-content-between align-items-center gap-1.5">
+                    <span class="font-monospace fw-bold text-primary text-nowrap">${escapeHtml(rDt)}</span>
+                    <span class="text-truncate text-dark fw-semibold flex-grow-1 text-center" title="${escapeHtml(rPurp)}">${escapeHtml(rPurp)}</span>
+                    ${rBiz ? '<span class="badge bg-success-subtle text-success extra-small border border-success flex-shrink-0" title="' + escapeHtml(rBiz) + '">Roznama</span>' : ''}
                 </div>`;
             }).join("") + `</div>`;
         } else {
-            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
+            recentHearingsSnippet = `<div class="extra-small text-muted fst-italic p-2 bg-white rounded border text-center mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
         }
 
         return `

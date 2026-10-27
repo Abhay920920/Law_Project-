@@ -145,7 +145,71 @@ namespace MVCCaseManagement.Controllers
         public async Task<IActionResult> HighCourtCauseList(string? bench = null, string? division = null, string? appealType = null, string? q = null, DateTime? date = null)
         {
             var rawItems = await _ecourtsRepo.GetHighCourtCauseListAsync();
-            var itemsList = rawItems.ToList();
+            var itemsList = rawItems.Where(i => !string.IsNullOrWhiteSpace(i.CNRNumber) && i.CNRNumber.Trim() != "-").ToList();
+
+            // Include authentic High Court cases from ECOURTS_TRACKED_CASES
+            try
+            {
+                using var dbConn = _db.GetConnection();
+                var trackedHc = await dbConn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedModule, AddedBy, NextHearingDate, CourtNo, StagePurpose, 
+                           JudgeDesignation, Petitioner, Respondent
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE CNRNumber IS NOT NULL AND RTRIM(LTRIM(CNRNumber)) <> ''
+                      AND (CNRNumber LIKE 'KAHC%' OR EstCode LIKE 'KAHC%')");
+
+                var existingCnrs = new HashSet<string>(itemsList.Select(i => i.CNRNumber.Trim().ToUpperInvariant()), StringComparer.OrdinalIgnoreCase);
+
+                foreach (var tc in trackedHc)
+                {
+                    string cnrClean = tc.CNRNumber!.Trim().ToUpperInvariant();
+                    if (existingCnrs.Contains(cnrClean))
+                    {
+                        var exItem = itemsList.First(i => i.CNRNumber.Trim().Equals(cnrClean, StringComparison.OrdinalIgnoreCase));
+                        if (!exItem.NextHearingDate.HasValue && tc.NextHearingDate.HasValue) exItem.NextHearingDate = tc.NextHearingDate;
+                        if (string.IsNullOrEmpty(exItem.CourtHall) && !string.IsNullOrEmpty(tc.CourtNo)) exItem.CourtHall = tc.CourtNo;
+                        if (string.IsNullOrEmpty(exItem.CaseStage) && !string.IsNullOrEmpty(tc.StagePurpose)) exItem.CaseStage = tc.StagePurpose;
+                        continue;
+                    }
+
+                    string tcBench = tc.EstCode switch
+                    {
+                        "KAHC01" => "Principal Bench (Bengaluru)",
+                        "KAHC02" => "Dharwad Bench",
+                        "KAHC03" => "Kalaburagi Bench",
+                        _ => cnrClean.StartsWith("KAHC02") ? "Dharwad Bench" : (cnrClean.StartsWith("KAHC01") ? "Principal Bench (Bengaluru)" : (cnrClean.StartsWith("KAHC03") ? "Kalaburagi Bench" : "High Court of Karnataka"))
+                    };
+
+                    var roleRes = NwkrtcPartyMatcher.DetectRole(tc.Petitioner ?? "", tc.Respondent ?? "");
+                    string role = roleRes.Role == "Non-Corporation" ? "With NWKRTC" : roleRes.Role;
+
+                    itemsList.Add(new HighCourtCauseListItem
+                    {
+                        AppealID = tc.TrackedID,
+                        CaseID = 0,
+                        AppealType = tc.CaseTypeCode ?? "High Court Case",
+                        MFANumber = tc.CaseNumber ?? "",
+                        MFAYear = tc.CaseYear > 0 ? tc.CaseYear : null,
+                        CNRNumber = cnrClean,
+                        HighCourtBench = tcBench,
+                        CourtHall = !string.IsNullOrEmpty(tc.CourtNo) ? tc.CourtNo : "Court Hall",
+                        NextHearingDate = tc.NextHearingDate,
+                        CaseStage = tc.StagePurpose ?? "Hearing Active",
+                        PetitionerName = tc.Petitioner ?? "—",
+                        RespondentName = tc.Respondent ?? "—",
+                        NwkrtcRole = role,
+                        MatchedDesignation = roleRes.MatchedDesignation,
+                        CaseCategory = "High Court Writ / Appeal",
+                        ModuleSource = tc.RelatedModule ?? "High Court"
+                    });
+                    existingCnrs.Add(cnrClean);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[HighCourtCauseList] Error loading tracked cases.");
+            }
 
             var vm = new HighCourtCauseListViewModel
             {
@@ -236,7 +300,9 @@ namespace MVCCaseManagement.Controllers
                 : new[] { DateTime.Today.Year.ToString(), (DateTime.Today.Year - 1).ToString(), (DateTime.Today.Year - 2).ToString() };
 
             string effectiveParty = string.IsNullOrWhiteSpace(partyName) ? "NWKRTC" : partyName.Trim();
-            bool isMulti = multiAlias || string.Equals(effectiveParty, "ALL", StringComparison.OrdinalIgnoreCase) || string.Equals(effectiveParty, "MULTI", StringComparison.OrdinalIgnoreCase);
+            bool isMulti = multiAlias || string.Equals(effectiveParty, "ALL", StringComparison.OrdinalIgnoreCase) || 
+                           string.Equals(effectiveParty, "MULTI", StringComparison.OrdinalIgnoreCase) || 
+                           string.Equals(effectiveParty, "NWKRTC", StringComparison.OrdinalIgnoreCase);
 
             var list = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
             var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -292,20 +358,7 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // Pure dynamic NAPIX Party API cases only - no hardcoded injection and no local DB insertion
-            // 1. Cross-reference with local database (reference only)
-            var localCases = (await _ecourtsRepo.GetHighCourtCauseListAsync()).ToList();
-            var cnrMap = localCases
-                .Where(c => !string.IsNullOrEmpty(c.CNRNumber))
-                .GroupBy(c => c.CNRNumber!.Trim().ToUpperInvariant())
-                .ToDictionary(g => g.Key, g => g.First());
-
-            var regMap = localCases
-                .Where(c => !string.IsNullOrEmpty(c.MFANumber))
-                .GroupBy(c => c.MFANumber!.Trim().ToUpperInvariant())
-                .ToDictionary(g => g.Key, g => g.First());
-
-            // 2. Cross-reference with tracked cases in ECOURTS_TRACKED_CASES
+            // 1. Cross-reference with tracked High Court cases synced from NAPIX
             List<MVCCaseManagement.Models.TrackedCaseModel> trackedCases = new();
             try
             {
@@ -314,7 +367,8 @@ namespace MVCCaseManagement.Controllers
                     SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
                            RelatedModule, AddedBy, NextHearingDate, CourtNo, StagePurpose, 
                            JudgeDesignation, Petitioner, Respondent
-                    FROM admin_Law.ECOURTS_TRACKED_CASES")).ToList();
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE CNRNumber IS NOT NULL AND RTRIM(LTRIM(CNRNumber)) <> ''")).ToList();
             }
             catch (Exception ex)
             {
@@ -322,46 +376,15 @@ namespace MVCCaseManagement.Controllers
             }
 
             var trackedCnrMap = trackedCases
-                .Where(tc => !string.IsNullOrEmpty(tc.CNRNumber))
+                .Where(tc => !string.IsNullOrWhiteSpace(tc.CNRNumber))
                 .GroupBy(tc => tc.CNRNumber!.Trim().ToUpperInvariant())
                 .ToDictionary(g => g.Key, g => g.First());
 
-            // 3. Enrich existing API cases with local & tracked data, hearing dates, and court halls
+            // 2. Enrich live API cases with their synced CNR hearing dates, court halls, and stages
             foreach (var item in list)
             {
-                MVCCaseManagement.Models.HighCourtCauseListItem? matched = null;
-                if (!string.IsNullOrEmpty(item.CNRNumber) && cnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out matched))
+                if (!string.IsNullOrWhiteSpace(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
                 {
-                }
-                else if (!string.IsNullOrEmpty(item.RegNumber) && regMap.TryGetValue(item.RegNumber.Trim().ToUpperInvariant(), out matched))
-                {
-                }
-
-                if (matched != null)
-                {
-                    item.IsLocalMatch = true;
-                    item.LocalCaseId = matched.CaseID;
-                    item.LocalAppealId = matched.AppealID;
-                    item.LocalModule = matched.ModuleSource;
-                    if (!item.NextHearingDate.HasValue && matched.NextHearingDate.HasValue)
-                    {
-                        item.NextHearingDate = matched.NextHearingDate;
-                    }
-                    if (string.IsNullOrEmpty(item.CourtHall) && !string.IsNullOrEmpty(matched.CourtHall))
-                    {
-                        item.CourtHall = matched.CourtHall;
-                    }
-                    if (string.IsNullOrEmpty(item.CaseStage) && !string.IsNullOrEmpty(matched.CaseStage))
-                    {
-                        item.CaseStage = matched.CaseStage;
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
-                {
-                    item.IsTrackedInMyCases = true;
-                    item.TrackedId = tc.TrackedID;
-                    item.AssignedWorker = tc.AddedBy;
                     if (!item.NextHearingDate.HasValue && tc.NextHearingDate.HasValue)
                     {
                         item.NextHearingDate = tc.NextHearingDate;
@@ -382,19 +405,24 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // 4. Ensure any tracked case scheduled for hearing on targetDate is included
-            foreach (var tc in trackedCases.Where(t => t.NextHearingDate.HasValue && t.NextHearingDate.Value.Date == targetDate))
+            // 3. Ensure any High Court case with a valid official CNR scheduled for hearing on targetDate is included
+            foreach (var tc in trackedCases.Where(t => t.NextHearingDate.HasValue && t.NextHearingDate.Value.Date == targetDate && !string.IsNullOrWhiteSpace(t.CNRNumber)))
             {
-                string tcCnr = (tc.CNRNumber ?? "").Trim();
-                if (!string.IsNullOrEmpty(tcCnr) && seenCnrs.Contains(tcCnr))
+                string tcCnr = tc.CNRNumber!.Trim();
+                if (seenCnrs.Contains(tcCnr))
                     continue;
+
+                // Only genuine High Court CNRs (KAHC... or High Court EstCode)
+                bool isHc = tcCnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || 
+                            (tc.EstCode != null && tc.EstCode.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase));
+                if (!isHc) continue;
 
                 string tcBench = tc.EstCode switch
                 {
                     "KAHC01" => "Principal Bench (Bengaluru)",
                     "KAHC02" => "Dharwad Bench",
                     "KAHC03" => "Kalaburagi Bench",
-                    _ => "High Court of Karnataka"
+                    _ => tcCnr.StartsWith("KAHC02") ? "Dharwad Bench" : (tcCnr.StartsWith("KAHC01") ? "Principal Bench (Bengaluru)" : (tcCnr.StartsWith("KAHC03") ? "Kalaburagi Bench" : "High Court of Karnataka"))
                 };
 
                 var roleResult = NwkrtcPartyMatcher.DetectRole(tc.Petitioner ?? "", tc.Respondent ?? "");
@@ -415,55 +443,17 @@ namespace MVCCaseManagement.Controllers
                     CourtHall = !string.IsNullOrEmpty(tc.CourtNo) ? tc.CourtNo : "Court Hall",
                     EstablishmentName = tcBench,
                     HighCourtBench = tcBench,
-                    IsListedToday = true,
-                    IsTrackedInMyCases = true,
-                    TrackedId = tc.TrackedID,
-                    AssignedWorker = tc.AddedBy,
-                    IsLocalMatch = true,
-                    LocalModule = tc.RelatedModule ?? "MVC"
+                    IsListedToday = true
                 };
 
-                if (!string.IsNullOrEmpty(tcCnr)) seenCnrs.Add(tcCnr);
+                seenCnrs.Add(tcCnr);
                 list.Add(item);
             }
 
-            // 5. Ensure any local DB case scheduled for hearing on targetDate is included
-            foreach (var lc in localCases.Where(c => c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == targetDate))
-            {
-                string lcCnr = (lc.CNRNumber ?? "").Trim();
-                if (!string.IsNullOrEmpty(lcCnr) && seenCnrs.Contains(lcCnr))
-                    continue;
+            // 4. Strictly exclude any case without a valid official CNR (no dummy/internal DB cases without CNR)
+            list = list.Where(x => !string.IsNullOrWhiteSpace(x.CNRNumber) && x.CNRNumber.Trim() != "-").ToList();
 
-                var roleResult = NwkrtcPartyMatcher.DetectRole(lc.PetitionerName ?? "", lc.RespondentName ?? "");
-                string role = roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
-
-                var item = new MVCCaseManagement.Models.PartyCaseSearchResultItem
-                {
-                    CNRNumber = lcCnr,
-                    CaseType = lc.AppealType ?? "MFA",
-                    RegNumber = lc.MFANumber ?? "",
-                    RegYear = lc.MFAYear?.ToString() ?? "",
-                    PetitionerName = lc.PetitionerName ?? "—",
-                    RespondentName = lc.RespondentName ?? "—",
-                    NwkrtcRole = role,
-                    MatchedDesignation = roleResult.MatchedDesignation,
-                    NextHearingDate = lc.NextHearingDate,
-                    CaseStage = lc.CaseStage ?? "Hearing Active",
-                    CourtHall = !string.IsNullOrEmpty(lc.CourtHall) ? lc.CourtHall : "Court Hall",
-                    EstablishmentName = lc.HighCourtBench ?? "Dharwad Bench",
-                    HighCourtBench = lc.HighCourtBench ?? "Dharwad Bench",
-                    IsListedToday = true,
-                    IsLocalMatch = true,
-                    LocalCaseId = lc.CaseID,
-                    LocalAppealId = lc.AppealID,
-                    LocalModule = lc.ModuleSource
-                };
-
-                if (!string.IsNullOrEmpty(lcCnr)) seenCnrs.Add(lcCnr);
-                list.Add(item);
-            }
-
-            // 6. If todayOnly is requested, strictly filter to cases scheduled for hearing on targetDate
+            // 5. If todayOnly is requested, strictly filter to cases scheduled for hearing on targetDate
             if (todayOnly)
             {
                 list = list.Where(x => x.IsListedToday).ToList();
@@ -595,9 +585,9 @@ namespace MVCCaseManagement.Controllers
             return Json(new { success = false, message = "Unable to fetch High Court Cause List." });
         }
 
-        // GET: /ECourts/GetCaseBusiness?cnrNumber=...&date=...&isHighCourt=false
+        // GET: /ECourts/GetCaseBusiness?cnrNumber=...&date=...&isHighCourt=false&module=...
         [HttpGet]
-        public async Task<IActionResult> GetCaseBusiness(string cnrNumber, string date, bool isHighCourt = false)
+        public async Task<IActionResult> GetCaseBusiness(string cnrNumber, string date, bool isHighCourt = false, string? module = null)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber))
             {
@@ -610,14 +600,20 @@ namespace MVCCaseManagement.Controllers
                 isHighCourt = true;
             }
 
-            string effectiveModule = isHighCourt ? "HC" : "MVC";
+            if (string.IsNullOrWhiteSpace(module))
+            {
+                var referer = Request.Headers["Referer"].ToString();
+                module = referer.Contains("/Labour", StringComparison.OrdinalIgnoreCase) ? "Labour" :
+                         (referer.Contains("/OtherCourts", StringComparison.OrdinalIgnoreCase) || referer.Contains("/Home/Other", StringComparison.OrdinalIgnoreCase)) ? "OtherCourts" : "MVC";
+            }
+            string norm = NapixQuotaService.NormalizeModule(module);
 
             try
             {
-                var result = await _napixService.GetCaseBusinessAsync(clean, date, isHighCourt, effectiveModule);
+                var result = await _napixService.GetCaseBusinessAsync(clean, date, isHighCourt, norm);
                 if (result.HasValue && IsValidJsonData(result))
                 {
-                    return Json(new { success = true, data = result.Value });
+                    return Json(new { success = true, data = result.Value, source = "NAPIX" });
                 }
             }
             catch (Exception ex)
@@ -625,7 +621,54 @@ namespace MVCCaseManagement.Controllers
                 _logger.LogWarning(ex, "Live NAPIX GetCaseBusiness failed for CNR {CNR} on date {Date}", clean, date);
             }
 
-            var lastErr = _napixService.GetLastModuleError(effectiveModule);
+            // Database Fallback: Check CASE_HEARINGS_HISTORY for saved roznama
+            try
+            {
+                using var conn = _db.GetConnection();
+                DateTime? targetDate = null;
+                if (TryParseFlexibleDate(date, out var pDt) && pDt.Year >= 1970 && pDt.Year <= 2050)
+                {
+                    targetDate = pDt;
+                }
+
+                if (targetDate.HasValue)
+                {
+                    var saved = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                        SELECT TOP 1 HearingDate, BusinessTransacted, NextHearingDate, NextStage 
+                        FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                        WHERE CNRNumber = @clean AND CAST(HearingDate AS DATE) = @hDate AND BusinessTransacted IS NOT NULL AND LEN(BusinessTransacted) > 0",
+                        new { clean, hDate = targetDate.Value.Date });
+
+                    if (saved != null && !string.IsNullOrWhiteSpace((string)saved.BusinessTransacted))
+                    {
+                        string bText = (string)saved.BusinessTransacted;
+                        string? nDtStr = saved.NextHearingDate != null ? Convert.ToDateTime(saved.NextHearingDate).ToString("dd-MM-yyyy") : null;
+                        string? stg = (string?)saved.NextStage;
+                        return Json(new { 
+                            success = true, 
+                            data = new {
+                                business = bText,
+                                roznama = bText,
+                                proceedings = bText,
+                                next_date = nDtStr,
+                                purpose_of_listing = stg,
+                                purpose = stg,
+                                business_date = targetDate.Value.ToString("dd-MM-yyyy")
+                            },
+                            business = bText,
+                            roznama = bText,
+                            proceedings = bText,
+                            source = "Database"
+                        });
+                    }
+                }
+            }
+            catch (Exception exDb)
+            {
+                _logger.LogWarning(exDb, "DB fallback check failed in GetCaseBusiness for CNR {CNR} on date {Date}", clean, date);
+            }
+
+            var lastErr = _napixService.GetLastModuleError(norm);
             string msg = !string.IsNullOrWhiteSpace(lastErr)
                 ? $"eCourts NAPIX Live API: {lastErr}"
                 : $"No live court proceedings returned by eCourts NAPIX API for date {date}.";
@@ -1715,6 +1758,158 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
+            // Enrich or populate historyList from CASE_HEARINGS_HISTORY and cached ECOURTS_TRACKED_CASES
+            try
+            {
+                using var conn = _db.GetConnection();
+
+                // 1. If historyList is empty, attempt to recover history from cached RawJson in ECOURTS_TRACKED_CASES
+                if (historyList.Count == 0)
+                {
+                    var tcRaw = conn.QueryFirstOrDefault<string>(@"
+                        SELECT RawJson FROM admin_Law.ECOURTS_TRACKED_CASES 
+                        WHERE REPLACE(REPLACE(CNRNumber, '-', ''), ' ', '') = @cleanCnr AND RawJson IS NOT NULL", new { cleanCnr });
+                    if (!string.IsNullOrWhiteSpace(tcRaw))
+                    {
+                        try
+                        {
+                            using var doc = JsonDocument.Parse(tcRaw);
+                            var cachedHist = ExtractHistoryArray(doc.RootElement);
+                            if (cachedHist != null && cachedHist.Count > 0)
+                            {
+                                historyList.AddRange(cachedHist);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+
+                // 2. Fetch all recorded hearings & roznamas from CASE_HEARINGS_HISTORY
+                var dbHearings = (conn.Query<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
+                    SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
+                    FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                    WHERE CNRNumber = @cleanCnr
+                    ORDER BY HearingDate DESC", new { cleanCnr })).ToList();
+
+                if (dbHearings.Count > 0)
+                {
+                    if (historyList.Count == 0)
+                    {
+                        // Populate all hearings directly from CASE_HEARINGS_HISTORY
+                        foreach (var dh in dbHearings)
+                        {
+                            string dtStr = dh.HearingDate.ToString("dd-MM-yyyy");
+                            string nextStr = dh.NextHearingDate?.ToString("dd-MM-yyyy") ?? "";
+                            string stage = !string.IsNullOrWhiteSpace(dh.NextStage) ? dh.NextStage : "Hearing Active";
+                            string judge = "—";
+                            string biz = dh.BusinessTransacted ?? "";
+
+                            historyList.Add(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                { "business_date", dtStr },
+                                { "hearing_date", dtStr },
+                                { "date", dtStr },
+                                { "next_date", nextStr },
+                                { "purpose_name", stage },
+                                { "stage", stage },
+                                { "next_purpose", stage },
+                                { "judge", judge },
+                                { "judge_name", judge },
+                                { "business", !string.IsNullOrWhiteSpace(biz) ? biz : stage },
+                                { "roznama", biz },
+                                { "proceedings", biz },
+                                { "remarks", biz }
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // Merge saved Roznama proceedings into existing NAPIX history rows
+                        foreach (var h in historyList)
+                        {
+                            string existingBiz = h.GetValueOrDefault("business") ?? h.GetValueOrDefault("roznama") ?? "";
+                            if (string.IsNullOrWhiteSpace(existingBiz) || existingBiz.Equals("—") || existingBiz.StartsWith("Case listed"))
+                            {
+                                string hDateStr = h.GetValueOrDefault("business_date") ?? h.GetValueOrDefault("hearing_date") ?? h.GetValueOrDefault("date") ?? "";
+                                if (TryParseFlexibleDate(hDateStr, out var parsedHDate))
+                                {
+                                    var match = dbHearings.FirstOrDefault(dh => dh.HearingDate.Date == parsedHDate.Date);
+                                    if (match != null && !string.IsNullOrWhiteSpace(match.BusinessTransacted))
+                                    {
+                                        h["business"] = match.BusinessTransacted;
+                                        h["roznama"] = match.BusinessTransacted;
+                                        h["proceedings"] = match.BusinessTransacted;
+                                        h["remarks"] = match.BusinessTransacted;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 3. Fallback: If historyList is still empty, populate from ECOURTS_TRACKED_CASES metadata
+                if (historyList.Count == 0)
+                {
+                    var tc = conn.QueryFirstOrDefault(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               NextHearingDate, CourtNo, StagePurpose, JudgeDesignation, Petitioner, Respondent
+                        FROM admin_Law.ECOURTS_TRACKED_CASES 
+                        WHERE REPLACE(REPLACE(CNRNumber, '-', ''), ' ', '') = @cleanCnr", new { cleanCnr });
+
+                    if (tc != null)
+                    {
+                        var sObj = parsed as CnrSummaryModel;
+                        if (sObj == null || string.IsNullOrWhiteSpace(sObj.petitioner))
+                        {
+                            sObj ??= new CnrSummaryModel();
+                            sObj.cnr_number = cleanCnr;
+                            sObj.petitioner = Convert.ToString(tc.Petitioner) ?? "—";
+                            sObj.respondent = Convert.ToString(tc.Respondent) ?? "—";
+                            sObj.case_type = Convert.ToString(tc.CaseTypeCode) ?? "";
+                            sObj.case_number = Convert.ToString(tc.CaseNumber) ?? "";
+                            sObj.court_no = Convert.ToString(tc.CourtNo) ?? "";
+                            sObj.stage = Convert.ToString(tc.StagePurpose) ?? "Hearing Active";
+                            sObj.judge = Convert.ToString(tc.JudgeDesignation) ?? "";
+                            if (tc.NextHearingDate != null)
+                            {
+                                sObj.next_hearing_date = Convert.ToDateTime(tc.NextHearingDate).ToString("dd-MM-yyyy");
+                            }
+                            parsed = sObj;
+                        }
+
+                        if (tc.NextHearingDate != null)
+                        {
+                            DateTime nhd = Convert.ToDateTime(tc.NextHearingDate);
+                            string dtStr = nhd.ToString("dd-MM-yyyy");
+                            string stg = Convert.ToString(tc.StagePurpose) ?? "Hearing Active";
+                            string crt = Convert.ToString(tc.CourtNo) ?? "";
+                            string jdg = Convert.ToString(tc.JudgeDesignation) ?? crt;
+
+                            historyList.Add(new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                { "business_date", dtStr },
+                                { "hearing_date", dtStr },
+                                { "date", dtStr },
+                                { "next_date", dtStr },
+                                { "purpose_name", stg },
+                                { "stage", stg },
+                                { "next_purpose", stg },
+                                { "judge", jdg },
+                                { "judge_name", jdg },
+                                { "business", "Case listed for hearing on official daily cause list" },
+                                { "roznama", "Case listed for hearing on official daily cause list" },
+                                { "proceedings", "Case listed for hearing on official daily cause list" },
+                                { "remarks", "Case listed for hearing on official daily cause list" }
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[GetCnrDetails] Database fallback history extraction for {CNR}", cleanCnr);
+            }
+
             CnrSummaryModel? summaryObj = parsed as CnrSummaryModel;
             bool hasValidSummaryData = summaryObj != null &&
                 (!string.IsNullOrWhiteSpace(summaryObj.petitioner) ||
@@ -2692,6 +2887,48 @@ namespace MVCCaseManagement.Controllers
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Live NAPIX GetCaseBusiness failed for CNR {CNR} on date {Date}", clean, validDateStr);
+            }
+
+            // Database Fallback: Check CASE_HEARINGS_HISTORY for saved roznama
+            try
+            {
+                using var conn = _db.GetConnection();
+                var dbSaved = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                    SELECT TOP 1 HearingDate, BusinessTransacted, NextHearingDate, NextStage 
+                    FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                    WHERE CNRNumber = @clean AND CAST(HearingDate AS DATE) = @hDate AND BusinessTransacted IS NOT NULL AND LEN(BusinessTransacted) > 0",
+                    new { clean, hDate = resolvedTargetDate.Value.Date });
+
+                if (dbSaved != null && !string.IsNullOrWhiteSpace((string)dbSaved.BusinessTransacted))
+                {
+                    string bText = (string)dbSaved.BusinessTransacted;
+                    string? nDtStr = dbSaved.NextHearingDate != null ? Convert.ToDateTime(dbSaved.NextHearingDate).ToString("dd-MM-yyyy") : null;
+                    string? stg = (string?)dbSaved.NextStage;
+                    return Json(new { 
+                        success = true, 
+                        data = new {
+                            business = bText,
+                            roznama = bText,
+                            proceedings = bText,
+                            next_date = nDtStr,
+                            purpose_of_listing = stg,
+                            purpose = stg,
+                            business_date = validDateStr
+                        },
+                        business = bText,
+                        roznama = bText,
+                        proceedings = bText,
+                        nextDate = nDtStr,
+                        purpose = stg,
+                        cnr = clean,
+                        date = validDateStr,
+                        source = "Database"
+                    });
+                }
+            }
+            catch (Exception exDb)
+            {
+                _logger.LogWarning(exDb, "DB fallback check failed in FetchLiveHearingProceeding for CNR {CNR}", clean);
             }
 
             var lastErr = _napixService.GetLastModuleError(effectiveModule);
@@ -5049,17 +5286,36 @@ namespace MVCCaseManagement.Controllers
             var result = new List<Dictionary<string, string?>>();
             string[] histKeys = {
                 "historyofcasehearing", "history", "history_details", "case_history", "hearing_history",
-                "hist_details", "causelist_history", "hearings", "businessDetails",
-                "case_hearings", "caseHistory", "CaseHistory", "HistoryDetails",
-                "business_details", "hist", "hearing_dates", "case_dates",
-                "case_business", "cases_business"
+                "hist_details", "causelist_history", "hearings", "businessdetails",
+                "case_hearings", "casehistory", "case_hearing", "hearing_details", "hearings_details",
+                "business_details", "hist", "hearing_dates", "case_dates", "hearing_orders",
+                "case_business", "cases_business", "roznama", "listing_history", "listing_details",
+                "daily_business", "court_business", "business"
             };
 
             void ExtractFromItem(JsonElement item)
             {
+                if (item.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var sub in item.EnumerateArray()) ExtractFromItem(sub);
+                    return;
+                }
+
                 if (item.ValueKind == JsonValueKind.Object)
                 {
-                    var row = new Dictionary<string, string?>();
+                    // Handle CIS XML-to-JSON wrappers like { "row": [ ... ] } or { "row": { ... } }
+                    if (item.TryGetProperty("row", out var rowProp))
+                    {
+                        ExtractFromItem(rowProp);
+                        return;
+                    }
+                    if (item.TryGetProperty("data", out var dataProp) && (dataProp.ValueKind == JsonValueKind.Array || dataProp.ValueKind == JsonValueKind.Object))
+                    {
+                        ExtractFromItem(dataProp);
+                        return;
+                    }
+
+                    var row = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
                     foreach (var p in item.EnumerateObject())
                     {
                         string val = p.Value.ValueKind == JsonValueKind.String
@@ -5071,14 +5327,21 @@ namespace MVCCaseManagement.Controllers
                                    row.GetValueOrDefault("cause_date") ?? 
                                    row.GetValueOrDefault("dt_business") ?? 
                                    row.GetValueOrDefault("hist_date") ?? 
-                                   row.GetValueOrDefault("srno_date") ?? "";
+                                   row.GetValueOrDefault("srno_date") ?? 
+                                   row.GetValueOrDefault("date") ?? 
+                                   row.GetValueOrDefault("hearing_date") ?? 
+                                   row.GetValueOrDefault("businessDate") ?? 
+                                   row.GetValueOrDefault("action_date") ?? "";
 
                     string nDate = row.GetValueOrDefault("hearing_date") ?? 
                                    row.GetValueOrDefault("next_date") ?? 
                                    row.GetValueOrDefault("next_hearing_date") ?? 
                                    row.GetValueOrDefault("nxt_date") ?? 
                                    row.GetValueOrDefault("date_next_list") ?? 
-                                   row.GetValueOrDefault("next_date_of_hearing") ?? "";
+                                   row.GetValueOrDefault("next_date_of_hearing") ?? 
+                                   row.GetValueOrDefault("nextDate") ?? 
+                                   row.GetValueOrDefault("nextHearingDate") ?? 
+                                   row.GetValueOrDefault("nxt_hearing_date") ?? "";
 
                     string pPose = row.GetValueOrDefault("purpose_of_listing") ?? 
                                    row.GetValueOrDefault("next_purpose") ?? 
@@ -5086,28 +5349,75 @@ namespace MVCCaseManagement.Controllers
                                    row.GetValueOrDefault("purpose") ?? 
                                    row.GetValueOrDefault("court_stage") ?? 
                                    row.GetValueOrDefault("stage") ?? 
-                                   row.GetValueOrDefault("purpose_of_hearing") ?? "";
+                                   row.GetValueOrDefault("stage_name") ?? 
+                                   row.GetValueOrDefault("purpose_of_hearing") ?? 
+                                   row.GetValueOrDefault("hearing_purpose") ?? 
+                                   row.GetValueOrDefault("purposeName") ?? "";
 
                     string bNess = row.GetValueOrDefault("business") ??
-                                   row.GetValueOrDefault("business_details") ??
-                                   row.GetValueOrDefault("proceedings") ??
                                    row.GetValueOrDefault("roznama") ??
-                                   row.GetValueOrDefault("order_business") ?? "";
+                                   row.GetValueOrDefault("proceedings") ??
+                                   row.GetValueOrDefault("business_details") ??
+                                   row.GetValueOrDefault("order_business") ?? 
+                                   row.GetValueOrDefault("court_business") ?? 
+                                   row.GetValueOrDefault("short_order_det") ??
+                                   row.GetValueOrDefault("short_order") ??
+                                   row.GetValueOrDefault("order_text") ??
+                                   row.GetValueOrDefault("business_transacted") ??
+                                   row.GetValueOrDefault("court_order") ??
+                                   row.GetValueOrDefault("daily_order") ??
+                                   row.GetValueOrDefault("order") ??
+                                   row.GetValueOrDefault("proceeding") ??
+                                   row.GetValueOrDefault("proceedings_details") ??
+                                   row.GetValueOrDefault("hearing_proceedings") ??
+                                   row.GetValueOrDefault("hearing_business") ??
+                                   row.GetValueOrDefault("remarks") ?? 
+                                   row.GetValueOrDefault("action_taken") ?? "";
 
                     string jName = row.GetValueOrDefault("desgname") ?? 
                                    row.GetValueOrDefault("court_no_judge") ?? 
                                    row.GetValueOrDefault("judge_name") ?? 
                                    row.GetValueOrDefault("presiding_officer") ?? 
                                    row.GetValueOrDefault("court_judge") ?? 
+                                   row.GetValueOrDefault("judicial_officer") ?? 
+                                   row.GetValueOrDefault("coram") ?? 
                                    row.GetValueOrDefault("judge") ?? "";
 
-                    if (!string.IsNullOrEmpty(bDate)) row["business_date"] = bDate;
+                    string finalDate = !string.IsNullOrEmpty(bDate) ? bDate : nDate;
+                    if (!string.IsNullOrEmpty(finalDate))
+                    {
+                        row["business_date"] = finalDate;
+                        row["hearing_date"] = finalDate;
+                        row["date"] = finalDate;
+                    }
                     if (!string.IsNullOrEmpty(nDate)) row["next_date"] = nDate;
-                    if (!string.IsNullOrEmpty(pPose)) row["next_purpose"] = pPose;
-                    if (!string.IsNullOrEmpty(bNess)) row["business"] = bNess;
-                    if (!string.IsNullOrEmpty(jName)) row["judge"] = jName;
+                    if (!string.IsNullOrEmpty(pPose))
+                    {
+                        row["purpose_name"] = pPose;
+                        row["stage"] = pPose;
+                        row["next_purpose"] = pPose;
+                    }
+                    if (!string.IsNullOrEmpty(bNess))
+                    {
+                        row["business"] = bNess;
+                        row["roznama"] = bNess;
+                        row["proceedings"] = bNess;
+                        row["remarks"] = bNess;
+                    }
+                    if (!string.IsNullOrEmpty(jName))
+                    {
+                        row["judge"] = jName;
+                        row["judge_name"] = jName;
+                        row["desgname"] = jName;
+                    }
 
-                    if (row.Count > 0) result.Add(row);
+                    if (row.Count > 0 && (!string.IsNullOrEmpty(finalDate) || !string.IsNullOrEmpty(pPose) || !string.IsNullOrEmpty(bNess)))
+                    {
+                        bool isDup = result.Any(e =>
+                            string.Equals(e.GetValueOrDefault("business_date"), finalDate, StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(e.GetValueOrDefault("purpose_name"), pPose, StringComparison.OrdinalIgnoreCase));
+                        if (!isDup) result.Add(row);
+                    }
                 }
                 else if (item.ValueKind == JsonValueKind.String)
                 {
@@ -5117,10 +5427,7 @@ namespace MVCCaseManagement.Controllers
                         try
                         {
                             using var doc = JsonDocument.Parse(str);
-                            if (doc.RootElement.ValueKind == JsonValueKind.Array)
-                                foreach (var sub in doc.RootElement.EnumerateArray()) ExtractFromItem(sub);
-                            else if (doc.RootElement.ValueKind == JsonValueKind.Object)
-                                ExtractFromItem(doc.RootElement);
+                            ExtractFromItem(doc.RootElement);
                         }
                         catch { }
                     }
@@ -5129,28 +5436,17 @@ namespace MVCCaseManagement.Controllers
 
             void ScanElement(System.Text.Json.JsonElement elem, int depth)
             {
-                if (depth > 10) return;
+                if (depth > 12) return;
                 if (elem.ValueKind == JsonValueKind.Object)
                 {
                     foreach (var prop in elem.EnumerateObject())
                     {
                         string pName = prop.Name.ToLowerInvariant();
                         bool isHistKey = Array.Exists(histKeys, k => pName == k || pName.Contains(k)) ||
-                                         pName.Contains("hist") || pName.Contains("hearing") || pName.Contains("business");
+                                         pName.Contains("hist") || pName.Contains("hearing") || pName.Contains("business") || pName.Contains("proceeding") || pName.Contains("roznama");
                         if (isHistKey)
                         {
-                            if (prop.Value.ValueKind == JsonValueKind.Array)
-                            {
-                                foreach (var item in prop.Value.EnumerateArray()) ExtractFromItem(item);
-                            }
-                            else if (prop.Value.ValueKind == JsonValueKind.Object)
-                            {
-                                foreach (var child in prop.Value.EnumerateObject()) ExtractFromItem(child.Value);
-                            }
-                            else if (prop.Value.ValueKind == JsonValueKind.String)
-                            {
-                                ExtractFromItem(prop.Value);
-                            }
+                            ExtractFromItem(prop.Value);
                         }
                         else
                         {
@@ -5204,22 +5500,30 @@ namespace MVCCaseManagement.Controllers
                                 {
                                     if (item.ValueKind == JsonValueKind.Object)
                                     {
-                                        var row = new Dictionary<string, string?>();
+                                        var row = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
                                         foreach (var p in item.EnumerateObject())
                                         {
                                             row[p.Name] = p.Value.ValueKind == JsonValueKind.String
                                                 ? p.Value.GetString() : p.Value.ToString();
                                             string kl = p.Name.ToLowerInvariant();
-                                            if (kl is "business_date" or "next_date" or "next_purpose" or "srno" or "sr_no" or "cause_date" or "purpose_name" or "hearing_date")
+                                            if (kl is "business_date" or "next_date" or "next_purpose" or "srno" or "sr_no" or "cause_date" or "purpose_name" or "hearing_date" or "court_stage" or "stage")
                                                 looksLikeHistory = true;
                                         }
                                         candidates.Add(row);
                                     }
                                 }
                                 if (looksLikeHistory && candidates.Count > 0)
-                                    result.AddRange(candidates);
+                                {
+                                    foreach (var c in candidates)
+                                    {
+                                        using var candDoc = JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(c));
+                                        ExtractFromItem(candDoc.RootElement);
+                                    }
+                                }
                                 else
+                                {
                                     ScanFallback(prop.Value, depth + 1);
+                                }
                             }
                         }
                     }

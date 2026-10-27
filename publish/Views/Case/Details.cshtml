@@ -571,7 +571,7 @@
 
 <!-- UPDATE CNR NUMBER MODAL -->
 <div class="modal fade" id="updateCnrModal" tabindex="-1" aria-labelledby="updateCnrModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header bg-primary text-white py-3 px-4">
                 <h5 class="modal-title fw-bold" id="updateCnrModalLabel">
@@ -606,13 +606,13 @@
                     </div>
                 </form>
             </div>
-            <div class="modal-footer bg-light px-4 py-3 border-top d-flex justify-content-between">
-                <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3" onclick="unlinkCnrNumber()">
+            <div class="modal-footer bg-light px-3 px-sm-4 py-3 border-top d-flex flex-column-reverse flex-sm-row justify-content-between gap-2">
+                <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 w-100 w-sm-auto" onclick="unlinkCnrNumber()">
                     <i class="bi bi-trash3 me-1"></i> Unlink CNR
                 </button>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" id="btnSaveCnr" onclick="submitUpdateCnr()">
+                <div class="d-flex gap-2 w-100 w-sm-auto justify-content-end">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3 flex-fill flex-sm-grow-0" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm flex-fill flex-sm-grow-0" id="btnSaveCnr" onclick="submitUpdateCnr()">
                         <i class="bi bi-check2-circle me-1"></i> Save & Link CNR
                     </button>
                 </div>
@@ -671,6 +671,118 @@
             text-align: center !important;
             padding: 0.45rem 0.75rem !important;
             font-size: 0.82rem !important;
+        }
+
+        /* ============================================================
+           MOBILE-OPTIMIZED ALIGNMENT & RESPONSIVENESS
+           ============================================================ */
+        .mobile-nav-tabs-scroll {
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch !important;
+            scrollbar-width: none !important;
+            -ms-overflow-style: none !important;
+            padding-bottom: 4px;
+        }
+        .mobile-nav-tabs-scroll::-webkit-scrollbar {
+            display: none !important;
+        }
+        .mobile-nav-tabs-scroll .nav-item {
+            flex: 0 0 auto !important;
+        }
+        .mobile-nav-tabs-scroll .nav-link {
+            white-space: nowrap !important;
+        }
+
+        @@media (max-width: 991.98px) {
+            .case-page-header {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 1rem !important;
+            }
+            .case-header-actions {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 0.5rem !important;
+                width: 100% !important;
+            }
+            .case-header-actions .btn {
+                flex: 1 1 calc(50% - 0.5rem) !important;
+                justify-content: center !important;
+                padding: 0.45rem 0.6rem !important;
+                font-size: 0.8rem !important;
+            }
+        }
+
+        @@media (max-width: 767.98px) {
+            .summary-cards-row {
+                margin-left: -0.25rem !important;
+                margin-right: -0.25rem !important;
+            }
+            .summary-cards-row .card-body {
+                padding: 0.75rem !important;
+            }
+            .summary-cards-row .fs-5 {
+                font-size: 1.05rem !important;
+            }
+            .summary-cards-row .fs-6 {
+                font-size: 0.9rem !important;
+            }
+            .dossier-tab-nav {
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                scrollbar-width: none !important;
+                padding-bottom: 4px;
+            }
+            .dossier-tab-nav::-webkit-scrollbar {
+                display: none !important;
+            }
+            .dossier-tab-nav .nav-item {
+                flex: 0 0 auto !important;
+            }
+            .dossier-tab-nav .nav-link {
+                white-space: nowrap !important;
+                font-size: 0.78rem !important;
+                padding: 0.4rem 0.75rem !important;
+            }
+            #fullDetailsTabs {
+                display: flex !important;
+                flex-wrap: nowrap !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                scrollbar-width: none !important;
+                padding-bottom: 4px;
+            }
+            #fullDetailsTabs::-webkit-scrollbar {
+                display: none !important;
+            }
+            #fullDetailsTabs .nav-item {
+                flex: 0 0 auto !important;
+            }
+            #fullDetailsTabs .nav-link {
+                white-space: nowrap !important;
+                font-size: 0.78rem !important;
+                padding: 0.45rem 0.75rem !important;
+            }
+        }
+
+        @@media (max-width: 575.98px) {
+            .container-fluid {
+                padding-left: 0.6rem !important;
+                padding-right: 0.6rem !important;
+            }
+            .card-header, .card-body {
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+            .case-header-actions .btn {
+                flex: 1 1 100% !important;
+            }
+            .input-group.input-group-sm {
+                min-width: 100% !important;
+            }
         }
 
         /* PRINT STYLES */

@@ -2432,7 +2432,7 @@ function openHearingDetailsModal(source, index, appealId, explicitDate) {
                 if (v && typeof v === 'string') {
                     var t = v.trim();
                     // Reject: too short, known placeholder strings, or looks like a pure date
-                    if (t.length < 10) continue;
+                    if (t.length < 3) continue;
                     if (BAD_ROZNAMA_VALUES.test(t)) continue;
                     if (/^\d{2,4}[\-\/]\d{1,2}[\-\/]\d{1,4}$/.test(t)) continue; // date-only string
                     return t;
@@ -2441,8 +2441,8 @@ function openHearingDetailsModal(source, index, appealId, explicitDate) {
         }
         return null;
     }
-    var roznamaExact = getExactProp(item, ['business', 'roznama', 'proceedings', 'court_business', 'business_details', 'order_business', 'order_details', 'short_order', 'short_order_det', 'order_text', 'court_order', 'daily_order']);
-    var roznama = (roznamaExact && roznamaExact.trim().length > 5)
+    var roznamaExact = getExactProp(item, ['business', 'roznama', 'proceedings', 'court_business', 'business_details', 'order_business', 'order_details', 'short_order', 'short_order_det', 'order_text', 'court_order', 'daily_order', 'hearing_proceedings', 'remarks']);
+    var roznama = (roznamaExact && roznamaExact.trim().length >= 3)
         ? roznamaExact.trim()
         : null; // will show structured placeholder below
 
@@ -2591,37 +2591,39 @@ function fetchLiveDailyStatus(source, cnr, queryDate) {
     }
     if (msg) msg.innerText = 'Querying live showBusiness gateway for CNR ' + cnr + ' on ' + queryDate + '...';
 
-    var isHc = (source === 'HC');
-    var url = '/ECourts/GetCaseBusiness?cnrNumber=' + encodeURIComponent(cnr) + '&date=' + encodeURIComponent(queryDate) + '&isHighCourt=' + isHc;
+    var isHc = (source === 'HC') || (cnr && (cnr.indexOf('HC') !== -1 || cnr.startsWith('KAHC')));
+    var curMod = (typeof currentModule !== 'undefined' && currentModule) ? currentModule : (window.currentModule || '');
+    var url = '/ECourts/GetCaseBusiness?cnrNumber=' + encodeURIComponent(cnr) + '&date=' + encodeURIComponent(queryDate) + '&isHighCourt=' + (isHc ? 'true' : 'false') + (curMod ? '&module=' + encodeURIComponent(curMod) : '');
 
     fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(res) {
             if (rawPre) rawPre.innerText = JSON.stringify(res, null, 2);
 
-            if (res && res.success && res.data) {
-                var d = res.data;
+            if (res && res.success && (res.data || res.business || res.roznama)) {
+                var d = res.data || {};
+                var isFromDb = (res.source === 'Database');
                 if (badge) {
-                    badge.className = 'badge bg-success px-2 py-1 extra-small';
-                    badge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Live NAPIX Synced';
+                    badge.className = isFromDb ? 'badge bg-primary px-2 py-1 extra-small' : 'badge bg-success px-2 py-1 extra-small';
+                    badge.innerHTML = isFromDb ? '<i class="bi bi-database-check me-1"></i> Recorded in Case History' : '<i class="bi bi-check-circle-fill me-1"></i> Live NAPIX Synced';
                 }
-                if (msg) msg.innerText = 'Live Daily Status successfully retrieved from e-Courts NAPIX Gateway.';
+                if (msg) msg.innerText = isFromDb ? 'Daily proceedings loaded from recorded case database history.' : 'Live Daily Status successfully retrieved from e-Courts NAPIX Gateway.';
 
                 // Extract verbatim roznama / business — deep scan all nested objects/arrays
                 function deepFindBusiness(obj, depth, fromKey) {
                     if (!obj || depth > 8) return null;
-                    var keys = ['business', 'roznama', 'business_details', 'proceedings', 'court_business', 'order_business', 'order_details', 'short_order', 'short_order_det', 'order_text'];
+                    var keys = ['business', 'roznama', 'business_details', 'proceedings', 'court_business', 'order_business', 'order_details', 'short_order', 'short_order_det', 'order_text', 'court_order', 'daily_order', 'remarks', 'hearing_proceedings'];
                     // Only return a string if we got here from a known key or it's a long meaningful text
                     if (typeof obj === 'string') {
                         var t = obj.trim();
-                        if (fromKey && t.length > 5) return t; // from a known key, any length OK
-                        if (t.length >= 30) return t; // long text likely is roznama content
+                        if (fromKey && t.length >= 3) return t; // from a known key, any length OK
+                        if (t.length >= 25) return t; // long text likely is roznama content
                         return null;
                     }
                     if (Array.isArray(obj)) {
                         for (var i2 = 0; i2 < obj.length; i2++) {
                             var r2 = deepFindBusiness(obj[i2], depth + 1, fromKey);
-                            if (r2 && r2.trim().length > 5) return r2;
+                            if (r2 && r2.trim().length >= 3) return r2;
                         }
                         return null;
                     }
@@ -2639,28 +2641,30 @@ function fetchLiveDailyStatus(source, cnr, queryDate) {
                             }
                             if (found !== null && found !== undefined) {
                                 var result = deepFindBusiness(found, depth + 1, true);
-                                if (result && result.trim().length > 5) return result;
+                                if (result && result.trim().length >= 3) return result;
                             }
                         }
                         // Second pass: recurse into ALL sub-objects (but not as fromKey)
                         for (var a = 0; a < objKeys.length; a++) {
                             if (typeof obj[objKeys[a]] === 'object') {
                                 var sub = deepFindBusiness(obj[objKeys[a]], depth + 1, false);
-                                if (sub && sub.trim().length > 5) return sub;
+                                if (sub && sub.trim().length >= 3) return sub;
                             }
                         }
                     }
                     return null;
                 }
-                var liveRoznama = deepFindBusiness(d, 0, false) ||
+                var liveRoznama = (typeof res.business === 'string' && res.business.trim().length >= 3 ? res.business : null) ||
+                                  (typeof res.roznama === 'string' && res.roznama.trim().length >= 3 ? res.roznama : null) ||
+                                  deepFindBusiness(d, 0, false) ||
                                   (res.raw ? deepFindBusiness(res.raw, 0, false) : null);
 
                 if (liveRoznama && liveRoznama.trim().length > 0) {
                     var cleanRoznama = decodeHtmlEntities(liveRoznama.trim());
                     if (roznamaText) roznamaText.innerText = cleanRoznama;
                     if (srcBadge) {
-                        srcBadge.className = 'badge bg-success extra-small';
-                        srcBadge.innerHTML = '<i class="bi bi-broadcast me-1"></i> Live NAPIX Roznama';
+                        srcBadge.className = isFromDb ? 'badge bg-primary extra-small' : 'badge bg-success extra-small';
+                        srcBadge.innerHTML = isFromDb ? '<i class="bi bi-database-fill me-1"></i> Database Roznama' : '<i class="bi bi-broadcast me-1"></i> Live NAPIX Roznama';
                     }
                 }
 
