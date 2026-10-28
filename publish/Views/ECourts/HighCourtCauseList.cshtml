@@ -767,14 +767,16 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
                           pet.includes('NWKSRTC') || resName.includes('NWKSRTC') ||
                           pet.includes('NORTH WEST') || resName.includes('NORTH WEST');
 
-        const hasOtherRtc = pet.includes('KSRTC') || resName.includes('KSRTC') ||
+        const hasOtherRtc = (pet.includes('KSRTC') || resName.includes('KSRTC') ||
                             pet.includes('KKRTC') || resName.includes('KKRTC') ||
                             pet.includes('BMTC') || resName.includes('BMTC') ||
                             pet.includes('NEKRTC') || resName.includes('NEKRTC') ||
+                            pet.includes('NEKSRTC') || resName.includes('NEKSRTC') ||
+                            pet.includes('KEKSRTC') || resName.includes('KEKSRTC') ||
                             pet.includes('BANGALORE METROPOLITAN') || resName.includes('BANGALORE METROPOLITAN') ||
-                            pet.includes('KALYANA KARNATAKA') || resName.includes('KALYANA KARNATAKA');
+                            pet.includes('KALYANA KARNATAKA') || resName.includes('KALYANA KARNATAKA')) && !hasNwkrtc;
 
-        if (hasOtherRtc && !hasNwkrtc) return false;
+        if (hasOtherRtc) return false;
         if (!hasNwkrtc && role !== 'With NWKRTC' && role !== 'Against NWKRTC') return false;
 
         return true;
@@ -800,19 +802,19 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
             <span class="badge ${currentViewMode === 'today' ? 'bg-danger text-white' : 'bg-primary text-white'} px-2.5 py-1">
                 <i class="bi bi-${currentViewMode === 'today' ? 'broadcast' : 'collection-fill'} me-1"></i>${currentViewMode === 'today' ? "Today's Cause List" : "All " + defaultOrgShortName + " High Court Matters"}
             </span>
-            <span class="fw-bold text-dark small">
+            <span class="fw-bold text-dark small" id="liveHeaderSummary">
                 ${currentViewMode === 'today' 
-                    ? `Found <strong>${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
-                    : `Displaying <strong>${items.length}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
+                    ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
+                    : `Displaying <strong id="liveHeaderCount">${items.length}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
             </span>
         </div>
         <div class="d-flex align-items-center gap-2">
             <div class="btn-group btn-group-sm">
-                <button type="button" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('all')">
-                    All Matters (${res?.allCount || items.length})
+                <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('all')">
+                    All Matters (<span id="tabCountAll">${items.length}</span>)
                 </button>
-                <button type="button" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('today')">
-                    Scheduled on Date (${res?.todayCount ?? 0})
+                <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('today')">
+                    Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
                 </button>
             </div>
             <div class="extra-small text-muted font-monospace d-none d-md-inline ms-1">
@@ -835,6 +837,8 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
         const isCorpMatch = item.nwkrtcRole === 'With NWKRTC' || item.nwkrtcRole === 'Against NWKRTC' ||
             (item.nwkrtcRole && item.nwkrtcRole.includes(defaultOrgShortName)) ||
             pet.toUpperCase().includes('NWKRTC') || resName.toUpperCase().includes('NWKRTC') ||
+            pet.toUpperCase().includes('NWKSRTC') || resName.toUpperCase().includes('NWKSRTC') ||
+            pet.toUpperCase().includes('NKWRTC') || resName.toUpperCase().includes('NKWRTC') ||
             pet.toUpperCase().includes(defaultOrgShortName.toUpperCase()) || resName.toUpperCase().includes(defaultOrgShortName.toUpperCase());
 
         let roleBadge = (item.nwkrtcRole === 'With NWKRTC' || (item.nwkrtcRole && item.nwkrtcRole.includes('With')))
@@ -1012,16 +1016,16 @@ function filterLiveCauselistRows() {
         }
 
         const searchUpper = searchTxt.toUpperCase();
-        const hasOtherRtc = (searchUpper.includes('KSRTC') || searchUpper.includes('KKRTC') || searchUpper.includes('BMTC') || searchUpper.includes('NEKRTC')) &&
-                            !searchUpper.includes('NWKRTC') && !searchUpper.includes('NKWRTC') && !searchUpper.includes('NORTH WEST');
+        const hasNwkrtcInSearch = searchUpper.includes('NWKRTC') || searchUpper.includes('NKWRTC') || searchUpper.includes('NWKSRTC') || searchUpper.includes('NORTH WEST');
+        const hasOtherRtc = (searchUpper.includes('KSRTC') || searchUpper.includes('KKRTC') || searchUpper.includes('BMTC') || searchUpper.includes('NEKRTC') || searchUpper.includes('NEKSRTC') || searchUpper.includes('KEKSRTC')) && !hasNwkrtcInSearch;
         if (hasOtherRtc) {
             el.style.display = 'none';
             return;
         }
 
         let matchParty = true;
-        if (partyInput) {
-            matchParty = searchTxt.includes(partyInput) || (partyInput.includes('nwkrtc') && isCorp);
+        if (partyInput && partyInput !== defaultOrgShortName.toLowerCase() && partyInput !== 'nwkrtc') {
+            matchParty = searchTxt.includes(partyInput);
         }
 
         let matchBench = true;
@@ -1050,6 +1054,20 @@ function filterLiveCauselistRows() {
             badge.className = "badge bg-primary px-3 py-1 shadow-sm";
             badge.textContent = `${visibleCount} Active ${defaultOrgShortName} Matters Loaded`;
         }
+    }
+
+    // Synchronize header text count
+    const headerCount = document.getElementById('liveHeaderCount');
+    if (headerCount) {
+        headerCount.textContent = visibleCount;
+    }
+
+    // Synchronize tab button count and KPI total card when in 'all' view mode
+    if (currentViewMode === 'all' && (!partyInput || partyInput === defaultOrgShortName.toLowerCase() || partyInput === 'nwkrtc') && benchFilter === 'ALL') {
+        const tabCountAll = document.getElementById('tabCountAll');
+        if (tabCountAll) tabCountAll.textContent = visibleCount;
+        const kpiTotal = document.getElementById('kpiTotalNwkrtcVal');
+        if (kpiTotal) kpiTotal.textContent = visibleCount;
     }
 }
 

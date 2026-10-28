@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -34,7 +34,7 @@ namespace MVCCaseManagement.Utils
 
         // 3. Other Karnataka RTC co-organizations that must be strictly excluded from NWKRTC cause lists
         private static readonly Regex OtherCoOrganizationsRegex = new(
-            @"\b(K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|K\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|B\s*\.?\s*M\s*\.?\s*T\s*\.?\s*C\.?|KARNATAKA\s+(STATE\s+)?ROAD\s+TRANSPORT|KALYANA\s+KARNATAKA|NORTH\s*[- ]?EAST(ERN)?\s+KARNATAKA|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN)\b",
+            @"\b(K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|K\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|K\s*\.?\s*E\s*\.?\s*K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C\.?|B\s*\.?\s*M\s*\.?\s*T\s*\.?\s*C\.?|KARNATAKA\s+(STATE\s+)?ROAD\s+TRANSPORT|KALYANA\s+KARNATAKA|NORTH\s*[- ]?EAST(ERN)?\s+KARNATAKA|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // 4. Non-transport corporate/commercial/government entities commonly appearing with generic designations (e.g. Managing Director)
