@@ -11,7 +11,7 @@
                 <h4 class="fw-bold text-dark mb-1">
                     <i class="bi bi-file-earmark-plus text-primary me-2"></i>New O.S (Claimant) Registration
                 </h4>
-                <p class="text-secondary small mb-0">Original Suit filed against NWKRTC by Private Claimant | @User.FindFirst("DivisionName")?.Value</p>
+                <p class="text-secondary small mb-0">Original Suit filed against @(OrgService.GetCurrentSettings().OrganizationShortName) by Private Claimant | @User.FindFirst("DivisionName")?.Value</p>
             </div>
             <a href="@Url.Action("OSClaimant", "Home")" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm">
                 <i class="bi bi-arrow-left me-1"></i> Back to Dashboard

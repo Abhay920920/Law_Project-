@@ -504,10 +504,10 @@
 <div class="d-none d-print-block p-4" id="printSection">
     <div class="text-center mb-4">
         <div class="d-flex justify-content-center align-items-center mb-2 text-dark">
-            <h4 class="fw-bold mb-0">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ</h4>
+            <h4 class="fw-bold mb-0">@OrgService.GetCurrentSettings().OrganizationNameKannada</h4>
         </div>
-        <h5 class="fw-bold mb-1 text-dark">North Western Karnataka Road Transport Corporation</h5>
-        <h6 class="mb-0 text-dark">ಕೇಂದ್ರ ಕಛೇರಿ : ಹುಬ್ಬಳ್ಳಿ / Central Office : Hubballi</h6>
+        <h5 class="fw-bold mb-1 text-dark">@OrgService.GetCurrentSettings().OrganizationNameEnglish</h5>
+        <h6 class="mb-0 text-dark">@(OrgService.GetCurrentSettings().Address ?? "ಕೇಂದ್ರ ಕಛೇರಿ : ಹುಬ್ಬಳ್ಳಿ / Central Office : Hubballi")</h6>
         <div class="border-bottom border-2 border-dark mt-2 mb-3"></div>
         <h5 class="fw-bold text-decoration-underline text-dark text-uppercase">GRATUITY CASE DETAILS</h5>
     </div>

@@ -140,7 +140,7 @@
                                 {
                                     <div class="fw-bold text-dark fs-6">
                                         <i class="bi bi-building text-primary me-2"></i>
-                                        @(Model.DivisionName ?? "North Western Karnataka Road Transport Corporation")
+                                        @(Model.DivisionName ?? OrgService.GetCurrentSettings().OrganizationNameEnglish)
                                     </div>
                                     <div class="text-muted small mt-1">Corporation (Plaintiff / Petitioner)</div>
                                 }
@@ -181,9 +181,9 @@
                                 {
                                     <div class="fw-bold text-dark fs-6">
                                         <i class="bi bi-building text-secondary me-2"></i>
-                                        @(Model.DivisionName ?? "North Western Karnataka Road Transport Corporation")
+                                        @(Model.DivisionName ?? OrgService.GetCurrentSettings().OrganizationNameEnglish)
                                     </div>
-                                    <div class="text-muted small mt-1">Respondent: <strong>Corporation (NWKRTC)</strong></div>
+                                    <div class="text-muted small mt-1">Respondent: <strong>Corporation (@(OrgService.GetCurrentSettings().OrganizationShortName))</strong></div>
                                     @if (!string.IsNullOrEmpty(Model.RespondentName) && Model.RespondentName != "NWKRTC / Corporation")
                                     {
                                         <div class="text-dark small mt-2 border-top pt-2">

@@ -493,8 +493,8 @@
                 <i class="bi bi-shield-check fs-5"></i>
             </div>
             <div>
-                <h6 class="mb-0 fw-bold text-primary">NWKRTC FIR DETAILS</h6>
-                <div class="small text-muted">Accident data synced from NWKRTC Accident Mgmt System</div>
+                <h6 class="mb-0 fw-bold text-primary">@(OrgService.GetCurrentSettings().OrganizationShortName) FIR DETAILS</h6>
+                <div class="small text-muted">Accident data synced from @(OrgService.GetCurrentSettings().OrganizationShortName) Accident Mgmt System</div>
             </div>
         </div>
         <button type="button" class="btn btn-primary btn-sm px-4 rounded-pill fw-semibold shadow-sm transition-all" data-bs-toggle="modal" data-bs-target="#tr18DetailsModal">
@@ -1587,7 +1587,7 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Respondent</small>
-                        <div class="fw-semibold text-dark" id="live-respondent" style="word-break: break-word;">@(Model.Respondents?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.RespondentName))?.RespondentName ?? (!string.IsNullOrEmpty(Model.DivisionName) ? Model.DivisionName : "NWKRTC"))</div>
+                        <div class="fw-semibold text-dark" id="live-respondent" style="word-break: break-word;">@(Model.Respondents?.FirstOrDefault(r => !string.IsNullOrWhiteSpace(r.RespondentName))?.RespondentName ?? (!string.IsNullOrEmpty(Model.DivisionName) ? Model.DivisionName : OrgService.GetCurrentSettings().OrganizationShortName))</div>
                     </div>
                     <div class="col-12 col-md-6">
                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Insurance / Extra Parties</small>
@@ -6107,7 +6107,7 @@
             <!-- Modal Footer -->
             <div class="modal-footer border-0 px-4 py-2" style="background: #f1f5f9;">
                 <small class="text-muted me-auto" style="font-size: 0.75rem;">
-                    <i class="bi bi-shield-check me-1 text-primary"></i>NWKRTC Law Management System &bull; Verified Data Integrity
+                    <i class="bi bi-shield-check me-1 text-primary"></i>@(OrgService.GetCurrentSettings().OrganizationShortName) Law Management System &bull; Verified Data Integrity
                 </small>
                 <button type="button" class="btn btn-outline-primary rounded-pill px-4 py-2 fw-semibold" onclick="window.print()">
                     <i class="bi bi-printer me-1"></i> Print Case Dossier

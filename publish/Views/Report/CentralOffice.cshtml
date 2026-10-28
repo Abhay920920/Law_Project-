@@ -508,7 +508,7 @@
                                 </tr>
                                 <tr>
                                     <td class="text-center fw-semibold">d</td>
-                                    <td class="ps-4">No. of Cases disposed of NWKRTC</td>
+                                    <td class="ps-4">No. of Cases disposed of @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                     <td class="text-center fw-bold">@Model.HighCourtData.LabourWpCases.TotalDisposed</td>
                                 </tr>
                                 <tr>
@@ -549,7 +549,7 @@
                                 </tr>
                                 <tr>
                                     <td class="text-center fw-semibold">d</td>
-                                    <td class="ps-4">No. of Cases disposed of NWKRTC</td>
+                                    <td class="ps-4">No. of Cases disposed of @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                     <td class="text-center fw-bold">@Model.HighCourtData.LabourWaCases.TotalDisposed</td>
                                 </tr>
                                 <tr>
@@ -898,7 +898,7 @@ else
 
                             <!-- 3. Disposed off in favour of NWKRTC -->
                             <tr>
-                                <td class="particulars-col ps-3">No. of Cases disposed off in favour of NWKRTC</td>
+                                <td class="particulars-col ps-3">No. of Cases disposed off in favour of @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-success fw-semibold">@div.DisposedFavorCount</td>
@@ -908,7 +908,7 @@ else
 
                             <!-- 4. Disposed off against NWKRTC -->
                             <tr>
-                                <td class="particulars-col ps-3">No. of cases disposed off against NWKRTC</td>
+                                <td class="particulars-col ps-3">No. of cases disposed off against @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-danger fw-semibold">@div.DisposedAgainstCount</td>
@@ -952,7 +952,7 @@ else
 
                             <!-- 3. Disposed off in favour of NWKRTC -->
                             <tr>
-                                <td class="particulars-col ps-3">No. of Cases disposed off in favour of NWKRTC</td>
+                                <td class="particulars-col ps-3">No. of Cases disposed off in favour of @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-success fw-semibold">@div.DisposedFavorCount</td>
@@ -962,7 +962,7 @@ else
 
                             <!-- 4. Disposed off against NWKRTC -->
                             <tr>
-                                <td class="particulars-col ps-3">No. of cases disposed off against NWKRTC</td>
+                                <td class="particulars-col ps-3">No. of cases disposed off against @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-danger fw-semibold">@div.DisposedAgainstCount</td>
@@ -1042,7 +1042,7 @@ else
 
                             <!-- 3. Disposed in favour -->
                             <tr>
-                                <td class="particulars-col ps-3">3. No. of Cases disposed off in favour of NWKRTC</td>
+                                <td class="particulars-col ps-3">3. No. of Cases disposed off in favour of @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-success fw-semibold">@div.DisposedFavorCount</td>
@@ -1052,7 +1052,7 @@ else
 
                             <!-- 4. Disposed against -->
                             <tr>
-                                <td class="particulars-col ps-3">4. No. of Cases disposed off against NWKRTC</td>
+                                <td class="particulars-col ps-3">4. No. of Cases disposed off against @(OrgService.GetCurrentSettings().OrganizationShortName)</td>
                                 @foreach (var div in Model.Divisions)
                                 {
                                     <td class="text-danger fw-semibold">@div.DisposedAgainstCount</td>

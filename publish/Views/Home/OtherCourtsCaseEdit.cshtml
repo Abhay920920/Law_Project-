@@ -180,7 +180,7 @@
                                 <label class="form-label">Vehicle Type</label>
                                 <select class="form-select" name="VehicleType">
                                     <option value="">-- Choose Type --</option>
-                                    <option value="Corporation" selected="@(Model.VehicleType == "Corporation")">Corporation (NWKRTC)</option>
+                                    <option value="Corporation" selected="@(Model.VehicleType == "Corporation")">Corporation (@(OrgService.GetCurrentSettings().OrganizationShortName))</option>
                                     <option value="Private" selected="@(Model.VehicleType == "Private")">Private / Hired / Other</option>
                                 </select>
                             </div>

@@ -1,0 +1,239 @@
+@model MVCCaseManagement.Models.OrganizationSettings
+@{
+    ViewData["Title"] = "Organization Branding & Identity Setup";
+    ViewData["HidePageHeader"] = true;
+}
+
+<div class="container mt-4">
+    <!-- Breadcrumb / Header Navigation -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1 small">
+                    <li class="breadcrumb-item"><a asp-action="Index" class="text-decoration-none">Systems Setup</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Organization Branding</li>
+                </ol>
+            </nav>
+            <h2 class="fw-bold mb-0 text-dark">
+                <i class="bi bi-palette2 text-primary me-2"></i>Organization Branding &amp; Identity
+            </h2>
+            <p class="text-muted small mb-0">Configure the organization name in English and Kannada, short acronym, and corporate logo for all headers, documents, and reports.</p>
+        </div>
+        <div>
+            <a asp-action="Index" class="btn btn-outline-secondary btn-sm px-3">
+                <i class="bi bi-arrow-left me-1"></i>Back to Systems Setup
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["SuccessMessage"] != null)
+    {
+        <div class="alert alert-success alert-dismissible fade show shadow-sm border-0 d-flex align-items-center" role="alert">
+            <i class="bi bi-check-circle-fill fs-5 me-2"></i>
+            <div>@TempData["SuccessMessage"]</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    @if (TempData["ErrorMessage"] != null)
+    {
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm border-0 d-flex align-items-center" role="alert">
+            <i class="bi bi-exclamation-triangle-fill fs-5 me-2"></i>
+            <div>@TempData["ErrorMessage"]</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <form asp-action="UpdateOrganizationSettings" method="post" enctype="multipart/form-data" class="needs-validation">
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="Id" />
+        <input type="hidden" asp-for="LogoPath" id="existingLogoPath" />
+        <input type="hidden" asp-for="FaviconPath" id="existingFaviconPath" />
+
+        <div class="row g-4">
+            <!-- Left Column: Primary Identity -->
+            <div class="col-lg-8">
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-white py-3 border-bottom">
+                        <h5 class="card-title fw-bold mb-0 text-dark">
+                            <i class="bi bi-building me-2 text-primary"></i>Organization Names &amp; Acronym
+                        </h5>
+                    </div>
+                    <div class="card-body p-4">
+                        <div class="mb-3">
+                            <label asp-for="OrganizationNameEnglish" class="form-label fw-bold small text-dark">
+                                Organization Name (English) <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="OrganizationNameEnglish" class="form-control form-control-lg fw-semibold" 
+                                   placeholder="e.g. North Western Karnataka Road Transport Corporation" required />
+                            <span asp-validation-for="OrganizationNameEnglish" class="text-danger small"></span>
+                            <div class="form-text extra-small">Used as the official title on print letterheads, report exports, and English views.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label asp-for="OrganizationNameKannada" class="form-label fw-bold small text-dark">
+                                Organization Name (Kannada) <span class="text-danger">*</span>
+                            </label>
+                            <input asp-for="OrganizationNameKannada" class="form-control form-control-lg fw-bold font-kannada" 
+                                   placeholder="e.g. ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ" required />
+                            <span asp-validation-for="OrganizationNameKannada" class="text-danger small"></span>
+                            <div class="form-text extra-small">Used in bilingual banners, Kannada official letterheads, and navigation headers.</div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label asp-for="OrganizationShortName" class="form-label fw-bold small text-dark">
+                                    Short Name / Acronym <span class="text-danger">*</span>
+                                </label>
+                                <input asp-for="OrganizationShortName" class="form-control fw-bold text-uppercase" 
+                                       placeholder="e.g. NWKRTC" maxlength="50" required />
+                                <span asp-validation-for="OrganizationShortName" class="text-danger small"></span>
+                                <div class="form-text extra-small">Used in navigation titles, mobile headers, and table prefixes.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="ContactPhone" class="form-label fw-bold small text-dark">
+                                    Contact Phone / Helpline
+                                </label>
+                                <input asp-for="ContactPhone" class="form-control" placeholder="e.g. 0836-2337700" />
+                                <span asp-validation-for="ContactPhone" class="text-danger small"></span>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
+                            <div class="col-md-6">
+                                <label asp-for="ContactEmail" class="form-label fw-bold small text-dark">
+                                    Official Legal Email
+                                </label>
+                                <input asp-for="ContactEmail" type="email" class="form-control" placeholder="e.g. clo@nwkrtc.in" />
+                                <span asp-validation-for="ContactEmail" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label asp-for="Address" class="form-label fw-bold small text-dark">
+                                    Central Office Address
+                                </label>
+                                <input asp-for="Address" class="form-control" placeholder="e.g. Central Office, Gokul Road, Hubballi — 580030" />
+                                <span asp-validation-for="Address" class="text-danger small"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Header Preview Card -->
+                <div class="card shadow-sm border-0 rounded-3">
+                    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                        <h6 class="card-title fw-bold mb-0 text-dark">
+                            <i class="bi bi-eye me-2 text-info"></i>Live Navigation Bar Preview
+                        </h6>
+                        <span class="badge bg-light text-secondary border">Simulated Header</span>
+                    </div>
+                    <div class="card-body p-4 bg-light">
+                        <div class="p-3 bg-white rounded-3 shadow-sm border d-flex align-items-center gap-3">
+                            <img src="@Model.LogoPath" id="previewLogoHeader" alt="Logo" class="rounded border" style="width: 48px; height: 48px; object-fit: contain; background: #fff;" onerror="this.src='/images/logo.jpg'" />
+                            <div>
+                                <div class="fw-bold text-dark fs-6" id="previewNameKn">@(Model.OrganizationNameKannada ?? "ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ")</div>
+                                <div class="text-muted extra-small text-uppercase fw-semibold" id="previewNameEn">@(Model.OrganizationNameEnglish ?? "North Western Karnataka Road Transport Corporation")</div>
+                                <div class="text-primary fw-bold" style="font-size: 10px;" id="previewShort">[@(Model.OrganizationShortName ?? "NWKRTC") Central Legal Cell]</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Logo & Favicon Assets -->
+            <div class="col-lg-4">
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-white py-3 border-bottom">
+                        <h5 class="card-title fw-bold mb-0 text-dark">
+                            <i class="bi bi-image me-2 text-primary"></i>Official Logo Asset
+                        </h5>
+                    </div>
+                    <div class="card-body p-4 text-center">
+                        <div class="mb-3 p-3 bg-light rounded-3 border d-inline-block shadow-inner" style="min-width: 140px; min-height: 140px;">
+                            <img src="@Model.LogoPath" id="previewLogoMain" alt="Corporate Logo" 
+                                 class="img-fluid rounded" style="max-height: 120px; max-width: 160px; object-fit: contain;" 
+                                 onerror="this.src='/images/logo.jpg'" />
+                        </div>
+                        <div class="small text-muted mb-2 font-monospace extra-small" id="logoPathText">@Model.LogoPath</div>
+
+                        <div class="mb-3 text-start">
+                            <label class="form-label fw-bold small text-dark">Upload New Logo</label>
+                            <input type="file" name="logoFile" id="logoFileInput" class="form-control form-control-sm" 
+                                   accept=".png,.jpg,.jpeg,.svg,.webp" onchange="previewUpload(this, 'previewLogoMain', 'previewLogoHeader')" />
+                            <div class="form-text extra-small">Max size: 2MB. Formats: PNG, JPG, SVG, WebP. Verified via magic-byte inspection.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0 rounded-3 mb-4">
+                    <div class="card-header bg-white py-3 border-bottom">
+                        <h5 class="card-title fw-bold mb-0 text-dark">
+                            <i class="bi bi-browser-chrome me-2 text-primary"></i>Favicon Asset
+                        </h5>
+                    </div>
+                    <div class="card-body p-4 text-center">
+                        <div class="mb-3 p-2 bg-light rounded border d-inline-block">
+                            <img src="@(Model.FaviconPath ?? Model.LogoPath)" id="previewFavicon" alt="Favicon" 
+                                 style="width: 32px; height: 32px; object-fit: contain;" 
+                                 onerror="this.src='/images/logo.jpg'" />
+                        </div>
+                        <div class="small text-muted mb-2 font-monospace extra-small">@(Model.FaviconPath ?? "Default Logo")</div>
+
+                        <div class="mb-2 text-start">
+                            <label class="form-label fw-bold small text-dark">Upload New Favicon</label>
+                            <input type="file" name="faviconFile" id="faviconFileInput" class="form-control form-control-sm" 
+                                   accept=".ico,.png,.jpg,.jpeg" onchange="previewUpload(this, 'previewFavicon')" />
+                            <div class="form-text extra-small">Max size: 512KB. Formats: ICO, PNG.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button Card -->
+                <div class="card shadow-sm border-0 rounded-3">
+                    <div class="card-body p-4">
+                        <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm">
+                            <i class="bi bi-cloud-arrow-up-fill me-2"></i>Save Branding Settings
+                        </button>
+                        <div class="text-muted extra-small text-center mt-2">
+                            <i class="bi bi-shield-check text-success me-1"></i>Instantly applies to all layouts, headers, exports, and document letterheads.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+    function previewUpload(input, ...imgElementIds) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imgElementIds.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.src = e.target.result;
+                });
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    // Dynamic text preview listeners
+    document.getElementById('OrganizationNameEnglish')?.addEventListener('input', function(e) {
+        const el = document.getElementById('previewNameEn');
+        if (el) el.textContent = e.target.value || "Organization Name";
+    });
+
+    document.getElementById('OrganizationNameKannada')?.addEventListener('input', function(e) {
+        const el = document.getElementById('previewNameKn');
+        if (el) el.textContent = e.target.value || "ಸಂಸ್ಥೆಯ ಹೆಸರು";
+    });
+
+    document.getElementById('OrganizationShortName')?.addEventListener('input', function(e) {
+        const el = document.getElementById('previewShort');
+        if (el) el.textContent = `[${e.target.value || "CORP"} Central Legal Cell]`;
+    });
+</script>
+}

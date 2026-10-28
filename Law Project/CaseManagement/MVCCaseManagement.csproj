@@ -14,4 +14,8 @@
     <PackageReference Include="PdfPig" Version="0.1.9" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Update="Views\**\*.cshtml" CopyToPublishDirectory="Always" />
+    <Content Update="wwwroot\**\*" CopyToPublishDirectory="Always" />
+  </ItemGroup>
 </Project>
