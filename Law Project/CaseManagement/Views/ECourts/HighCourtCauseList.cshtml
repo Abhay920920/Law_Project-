@@ -326,7 +326,39 @@
                     <i class="bi bi-bell-fill me-1"></i>Today's Listed @OrgService.GetCurrentSettings().OrganizationShortName Matters Only
                 </span>
             </div>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <div class="btn-group">
+                    <button type="button" class="btn btn-sm btn-outline-success fw-bold shadow-sm py-1 px-2.5" onclick="exportCauseListToExcel('visible')" title="Export current cause list view to Excel">
+                        <i class="bi bi-file-earmark-excel-fill text-success me-1"></i> Export to Excel
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle dropdown-toggle-split shadow-sm" data-bs-toggle="dropdown" aria-expanded="false">
+                        <span class="visually-hidden">Toggle Dropdown</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
+                        <li><h6 class="dropdown-header text-uppercase extra-small fw-bold text-muted"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel Export Options</h6></li>
+                        <li>
+                            <a class="dropdown-item py-1.5" href="javascript:void(0)" onclick="exportCauseListToExcel('visible')">
+                                <i class="bi bi-funnel-fill text-primary me-2"></i>Export Current Filtered List (<span id="exportCountVisible">0</span>)
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-1.5" href="javascript:void(0)" onclick="exportCauseListToExcel('today')">
+                                <i class="bi bi-calendar-check-fill text-danger me-2"></i>Export Today's Listed Cases (<span id="exportCountToday">0</span>)
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-1.5" href="javascript:void(0)" onclick="exportCauseListToExcel('all')">
+                                <i class="bi bi-collection-fill text-success me-2"></i>Export All Active NWKRTC Matters (<span id="exportCountAll">0</span>)
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li>
+                            <a class="dropdown-item py-1.5" href="javascript:void(0)" onclick="downloadServerExcel()">
+                                <i class="bi bi-cloud-arrow-down-fill text-secondary me-2"></i>Download Direct from Server (.xls)
+                            </a>
+                        </li>
+                    </ul>
+                </div>
                 <span id="liveListBadge" class="badge bg-secondary px-3 py-1">Loading Today's Cause List...</span>
             </div>
         </div>
@@ -782,9 +814,17 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
         return true;
     });
 
+    window.__currentHcCauselistItems = items;
     const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
     const cnrSet = new Set(registeredCases.filter(c => c.CNRNumber).map(c => c.CNRNumber.trim().toUpperCase()));
     const listedCount = res?.todayCount ?? items.filter(i => i.isListedToday).length;
+
+    const countAllEl = document.getElementById('exportCountAll');
+    if (countAllEl) countAllEl.textContent = items.length;
+    const countTodayEl = document.getElementById('exportCountToday');
+    if (countTodayEl) countTodayEl.textContent = listedCount;
+    const countVisEl = document.getElementById('exportCountVisible');
+    if (countVisEl) countVisEl.textContent = items.length;
 
     if (badge) {
         if (currentViewMode === 'today') {
@@ -817,6 +857,9 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
                     Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
                 </button>
             </div>
+            <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 extra-small fw-bold shadow-sm" onclick="exportCauseListToExcel('visible')" title="Export all details to Excel">
+                <i class="bi bi-file-earmark-excel-fill text-success me-1"></i> Export Excel
+            </button>
             <div class="extra-small text-muted font-monospace d-none d-md-inline ms-1">
                 Bench: <strong>${targetBench}</strong>
             </div>
@@ -1061,6 +1104,9 @@ function filterLiveCauselistRows() {
     if (headerCount) {
         headerCount.textContent = visibleCount;
     }
+
+    const countVisEl = document.getElementById('exportCountVisible');
+    if (countVisEl) countVisEl.textContent = visibleCount;
 
     // Synchronize tab button count and KPI total card when in 'all' view mode
     if (currentViewMode === 'all' && (!partyInput || partyInput === defaultOrgShortName.toLowerCase() || partyInput === 'nwkrtc') && benchFilter === 'ALL') {
@@ -1447,4 +1493,169 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 });
+
+function downloadServerExcel() {
+    const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
+    const regYear = document.getElementById('liveRegYear')?.value || 'RECENT';
+    const caseStatus = document.getElementById('liveCaseStatus')?.value || 'P';
+    const hearingDate = (document.getElementById('liveDate')?.value || '').trim();
+    const partyName = (document.getElementById('livePartySearchInput')?.value || defaultOrgShortName).trim();
+    const isTodayOnly = (currentViewMode === 'today');
+
+    const url = `/ECourts/ExportHighCourtCauseListToExcel?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName)}&regYear=${encodeURIComponent(regYear)}&pendDisp=${encodeURIComponent(caseStatus)}&hearingDate=${encodeURIComponent(hearingDate)}&todayOnly=${isTodayOnly}`;
+    window.location.href = url;
+}
+
+function exportCauseListToExcel(scope = 'visible') {
+    const allItems = window.__currentHcCauselistItems || [];
+    if (!allItems || allItems.length === 0) {
+        showToast('Notice', 'No High Court cases loaded to export.', false);
+        return;
+    }
+
+    const hearingDateVal = (document.getElementById('liveDate')?.value || '').trim();
+    const estCodeVal = document.getElementById('liveEstCode')?.value || 'ALL';
+    let targetBench = estCodeVal === "KAHC01" ? "Bengaluru" : (estCodeVal === "KAHC02" ? "Dharwad" : (estCodeVal === "KAHC03" ? "Kalaburagi" : "All Benches"));
+
+    let exportItems = [];
+    if (scope === 'today') {
+        exportItems = allItems.filter(x => x.isListedToday === true);
+    } else if (scope === 'all') {
+        exportItems = allItems;
+    } else { // 'visible'
+        const visibleRows = Array.from(document.querySelectorAll('.live-causelist-row'))
+            .filter(r => r.style.display !== 'none');
+        
+        if (visibleRows.length > 0) {
+            const visibleCnrs = new Set(visibleRows.map(r => (r.getAttribute('data-cnr') || '').trim().toUpperCase()).filter(Boolean));
+            exportItems = allItems.filter(x => visibleCnrs.has((x.cnrNumber || '').trim().toUpperCase()));
+        } else {
+            exportItems = allItems;
+        }
+    }
+
+    if (exportItems.length === 0) {
+        showToast('Notice', 'No matching cases found for the selected export option.', false);
+        return;
+    }
+
+    const orgName = '@OrgService.GetCurrentSettings().OrganizationNameEnglish';
+    const orgShort = defaultOrgShortName;
+    const nowStr = new Date().toLocaleString();
+
+    let html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<!--[if gte mso 9]>
+<xml>
+ <x:ExcelWorkbook>
+  <x:ExcelWorksheets>
+   <x:ExcelWorksheet>
+    <x:Name>High Court Cause List</x:Name>
+    <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+   </x:ExcelWorksheet>
+  </x:ExcelWorksheets>
+ </x:ExcelWorkbook>
+</xml>
+<![endif]-->
+<style>
+  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; }
+  table { border-collapse: collapse; width: 100%; }
+  .title-header { background-color: #991b1b; color: #ffffff; font-size: 14pt; font-weight: bold; text-align: center; padding: 12px; }
+  .sub-header { background-color: #f8fafc; color: #334155; font-size: 10pt; text-align: center; padding: 6px; border: 1px solid #cbd5e1; }
+  th { background-color: #1e293b; color: #ffffff; font-weight: bold; font-size: 10.5pt; text-align: left; padding: 8px 10px; border: 1px solid #94a3b8; }
+  td { font-size: 10pt; padding: 6px 10px; border: 1px solid #cbd5e1; vertical-align: top; }
+  .row-even { background-color: #ffffff; }
+  .row-odd { background-color: #f8fafc; }
+  .text-fmt { mso-number-format: "\\@@"; }
+  .center { text-align: center; }
+  .badge-with { color: #0284c7; font-weight: bold; }
+  .badge-against { color: #d97706; font-weight: bold; }
+  .badge-today { color: #dc2626; font-weight: bold; }
+</style>
+</head>
+<body>
+<table>
+  <tr><td colspan="16" class="title-header">${escapeHtml(orgName.toUpperCase())} (${escapeHtml(orgShort)})</td></tr>
+  <tr><td colspan="16" class="sub-header"><strong>HIGH COURT CAUSE LIST &amp; ACTIVE MATTERS ROSTER</strong> | Bench: ${escapeHtml(targetBench)} | Hearing Date: ${escapeHtml(hearingDateVal)} | Scope: ${scope.toUpperCase()} | Total Records: ${exportItems.length} | Exported: ${escapeHtml(nowStr)}</td></tr>
+  <tr>
+    <th class="center" style="width: 45px;">#</th>
+    <th>Case Number &amp; Year</th>
+    <th>High Court Bench</th>
+    <th>Court Hall / Bench</th>
+    <th>Judge Name</th>
+    <th>CNR Number</th>
+    <th>Petitioner Name</th>
+    <th>Respondent Name</th>
+    <th>Corporation Role</th>
+    <th>Matched Designation / Unit</th>
+    <th>Next Hearing Date</th>
+    <th>Hearing Stage / Purpose</th>
+    <th>Cause List Type</th>
+    <th>Item No</th>
+    <th>Listing Status</th>
+    <th>Tracked in Registry?</th>
+  </tr>`;
+
+    exportItems.forEach((item, idx) => {
+        const rowClass = (idx % 2 === 0) ? 'row-even' : 'row-odd';
+        const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
+        let hearingDateDisplay = item.nextHearingDate ? (typeof item.nextHearingDate === 'string' ? item.nextHearingDate.substring(0, 10) : '') : '-';
+        if (hearingDateDisplay.startsWith('5000')) hearingDateDisplay = '-';
+        const roleClass = (item.nwkrtcRole === 'With NWKRTC' || (item.nwkrtcRole && item.nwkrtcRole.includes('With'))) ? 'badge-with' : 'badge-against';
+        const isToday = item.isListedToday === true;
+        const listingStatus = isToday ? `Listed Today (${hearingDateVal})` : (hearingDateDisplay !== '-' ? `Next: ${hearingDateDisplay}` : 'Hearing Active');
+
+        html += `
+  <tr class="${rowClass}">
+    <td class="center">${idx + 1}</td>
+    <td class="text-fmt"><strong>${escapeHtml(caseNo)}</strong></td>
+    <td>${escapeHtml(item.highCourtBench || item.establishmentName || '-')}</td>
+    <td>${escapeHtml(item.courtHall || '-')}</td>
+    <td>${escapeHtml(item.judgeName || '-')}</td>
+    <td class="text-fmt font-monospace">${escapeHtml(item.cnrNumber || '-')}</td>
+    <td>${escapeHtml(item.petitionerName || '-')}</td>
+    <td>${escapeHtml(item.respondentName || '-')}</td>
+    <td class="${roleClass}">${escapeHtml(item.nwkrtcRole || '-')}</td>
+    <td>${escapeHtml(item.matchedDesignation || '-')}</td>
+    <td class="center">${escapeHtml(hearingDateDisplay)}</td>
+    <td>${escapeHtml(item.caseStage || '-')}</td>
+    <td>${escapeHtml(item.causeListType || '-')}</td>
+    <td class="center text-fmt">${escapeHtml(item.causeListItemNo || '-')}</td>
+    <td>${isToday ? `<span class="badge-today">${escapeHtml(listingStatus)}</span>` : escapeHtml(listingStatus)}</td>
+    <td>${item.isTrackedInMyCases ? 'Yes (Tracked)' : 'Live e-Courts Discovery'}</td>
+  </tr>`;
+    });
+
+    html += `</table></body></html>`;
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+    const link = document.createElement("a");
+    const scopeLabel = scope === 'today' ? 'TodayListed' : (scope === 'all' ? 'AllActive' : 'Filtered');
+    const fileName = `${orgShort}_HighCourt_CauseList_${scopeLabel}_${new Date().toISOString().slice(0,10)}.xls`;
+    
+    if (navigator.msSaveBlob) {
+        navigator.msSaveBlob(blob, fileName);
+    } else {
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+    }
+
+    showToast('Export Complete', `Exported ${exportItems.length} matters to ${fileName}.`, true);
+}
+
 </script>

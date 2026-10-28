@@ -644,6 +644,135 @@ namespace MVCCaseManagement.Controllers
             return await GetLiveHighCourtPartyCases(estCode, partyName, regYear, pendDisp, multiAlias, hearingDate: null, todayOnly: false);
         }
 
+        // GET: /ECourts/ExportHighCourtCauseListToExcel?estCode=ALL&partyName=NWKRTC&regYear=RECENT&pendDisp=P&hearingDate=28-10-2026&todayOnly=false
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> ExportHighCourtCauseListToExcel(
+            string estCode = "ALL", 
+            string partyName = "NWKRTC", 
+            string? regYear = null, 
+            string pendDisp = "P", 
+            string? hearingDate = null,
+            bool todayOnly = false)
+        {
+            var res = await GetLiveHighCourtPartyCases(
+                estCode: estCode, 
+                partyName: partyName, 
+                regYear: regYear, 
+                pendDisp: pendDisp, 
+                multiAlias: true, 
+                hearingDate: hearingDate, 
+                todayOnly: todayOnly);
+
+            List<MVCCaseManagement.Models.PartyCaseSearchResultItem> cases = new();
+            if (res is JsonResult jr && jr.Value != null)
+            {
+                var valType = jr.Value.GetType();
+                cases = valType.GetProperty("data")?.GetValue(jr.Value) as List<MVCCaseManagement.Models.PartyCaseSearchResultItem> ?? new();
+            }
+
+            var orgTitle = _orgSettings?.GetCurrentSettings()?.OrganizationNameEnglish ?? "NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION";
+            var orgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+            string dateStr = string.IsNullOrWhiteSpace(hearingDate) ? DateTime.Today.ToString("dd-MM-yyyy") : hearingDate.Trim();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("<!DOCTYPE html>");
+            sb.AppendLine("<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\" xmlns=\"http://www.w3.org/TR/REC-html40\">");
+            sb.AppendLine("<head>");
+            sb.AppendLine("<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\" />");
+            sb.AppendLine("<!--[if gte mso 9]>");
+            sb.AppendLine("<xml>");
+            sb.AppendLine(" <x:ExcelWorkbook>");
+            sb.AppendLine("  <x:ExcelWorksheets>");
+            sb.AppendLine("   <x:ExcelWorksheet>");
+            sb.AppendLine("    <x:Name>High Court Cause List</x:Name>");
+            sb.AppendLine("    <x:WorksheetOptions>");
+            sb.AppendLine("      <x:DisplayGridlines/>");
+            sb.AppendLine("    </x:WorksheetOptions>");
+            sb.AppendLine("   </x:ExcelWorksheet>");
+            sb.AppendLine("  </x:ExcelWorksheets>");
+            sb.AppendLine(" </x:ExcelWorkbook>");
+            sb.AppendLine("</xml>");
+            sb.AppendLine("<![endif]-->");
+            sb.AppendLine("<style>");
+            sb.AppendLine("  body { font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 11pt; }");
+            sb.AppendLine("  table { border-collapse: collapse; width: 100%; }");
+            sb.AppendLine("  .title-header { background-color: #991b1b; color: #ffffff; font-size: 14pt; font-weight: bold; text-align: center; padding: 12px; }");
+            sb.AppendLine("  .sub-header { background-color: #f8fafc; color: #334155; font-size: 10pt; text-align: center; padding: 6px; border: 1px solid #cbd5e1; }");
+            sb.AppendLine("  th { background-color: #1e293b; color: #ffffff; font-weight: bold; font-size: 10.5pt; text-align: left; padding: 8px 10px; border: 1px solid #94a3b8; }");
+            sb.AppendLine("  td { font-size: 10pt; padding: 6px 10px; border: 1px solid #cbd5e1; vertical-align: top; }");
+            sb.AppendLine("  .row-even { background-color: #ffffff; }");
+            sb.AppendLine("  .row-odd { background-color: #f8fafc; }");
+            sb.AppendLine("  .text-fmt { mso-number-format: \"\\@\"; }");
+            sb.AppendLine("  .center { text-align: center; }");
+            sb.AppendLine("  .badge-with { color: #0284c7; font-weight: bold; }");
+            sb.AppendLine("  .badge-against { color: #d97706; font-weight: bold; }");
+            sb.AppendLine("  .badge-today { color: #dc2626; font-weight: bold; }");
+            sb.AppendLine("</style>");
+            sb.AppendLine("</head>");
+            sb.AppendLine("<body>");
+            sb.AppendLine("<table>");
+            sb.AppendLine($"<tr><td colspan=\"16\" class=\"title-header\">{System.Net.WebUtility.HtmlEncode(orgTitle.ToUpperInvariant())} ({System.Net.WebUtility.HtmlEncode(orgShort)})</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"16\" class=\"sub-header\"><strong>HIGH COURT CAUSE LIST &amp; ACTIVE MATTERS ROSTER</strong> | Bench: {System.Net.WebUtility.HtmlEncode(estCode)} | Hearing Date: {System.Net.WebUtility.HtmlEncode(dateStr)} | Total Records: {cases.Count} | Exported: {DateTime.Now:dd-MMM-yyyy hh:mm tt}</td></tr>");
+            sb.AppendLine("<tr>");
+            sb.AppendLine("<th class=\"center\" style=\"width: 45px;\">#</th>");
+            sb.AppendLine("<th>Case Number &amp; Year</th>");
+            sb.AppendLine("<th>High Court Bench</th>");
+            sb.AppendLine("<th>Court Hall / Bench</th>");
+            sb.AppendLine("<th>Judge Name</th>");
+            sb.AppendLine("<th>CNR Number</th>");
+            sb.AppendLine("<th>Petitioner Name</th>");
+            sb.AppendLine("<th>Respondent Name</th>");
+            sb.AppendLine("<th>Corporation Role</th>");
+            sb.AppendLine("<th>Matched Designation / Unit</th>");
+            sb.AppendLine("<th>Next Hearing Date</th>");
+            sb.AppendLine("<th>Hearing Stage / Purpose</th>");
+            sb.AppendLine("<th>Cause List Type</th>");
+            sb.AppendLine("<th>Item No</th>");
+            sb.AppendLine("<th>Listing Status</th>");
+            sb.AppendLine("<th>Tracked in Registry?</th>");
+            sb.AppendLine("</tr>");
+
+            int slNo = 1;
+            foreach (var item in cases)
+            {
+                string rowClass = (slNo % 2 == 0) ? "row-even" : "row-odd";
+                string caseNo = $"{item.CaseType} {item.RegNumber}/{item.RegYear}".Trim();
+                string hearingDateDisplay = item.NextHearingDate.HasValue && item.NextHearingDate.Value.Year < 5000 
+                    ? item.NextHearingDate.Value.ToString("dd-MMM-yyyy") 
+                    : "-";
+                string roleClass = item.NwkrtcRole == "With NWKRTC" ? "badge-with" : "badge-against";
+                string listingStatus = item.IsListedToday ? $"Listed Today ({dateStr})" : (!string.IsNullOrEmpty(hearingDateDisplay) && hearingDateDisplay != "-" ? $"Next: {hearingDateDisplay}" : "Hearing Active");
+
+                sb.AppendLine($"<tr class=\"{rowClass}\">");
+                sb.AppendLine($"<td class=\"center\">{slNo++}</td>");
+                sb.AppendLine($"<td class=\"text-fmt\"><strong>{System.Net.WebUtility.HtmlEncode(caseNo)}</strong></td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.HighCourtBench ?? item.EstablishmentName ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.CourtHall ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.JudgeName ?? "-")}</td>");
+                sb.AppendLine($"<td class=\"text-fmt font-monospace\">{System.Net.WebUtility.HtmlEncode(item.CNRNumber ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.PetitionerName ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.RespondentName ?? "-")}</td>");
+                sb.AppendLine($"<td class=\"{roleClass}\">{System.Net.WebUtility.HtmlEncode(item.NwkrtcRole ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.MatchedDesignation ?? "-")}</td>");
+                sb.AppendLine($"<td class=\"center\">{System.Net.WebUtility.HtmlEncode(hearingDateDisplay)}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.CaseStage ?? "-")}</td>");
+                sb.AppendLine($"<td>{System.Net.WebUtility.HtmlEncode(item.CauseListType ?? "-")}</td>");
+                sb.AppendLine($"<td class=\"center text-fmt\">{System.Net.WebUtility.HtmlEncode(item.CauseListItemNo ?? "-")}</td>");
+                sb.AppendLine($"<td>{(item.IsListedToday ? $"<span class=\"badge-today\">{listingStatus}</span>" : listingStatus)}</td>");
+                sb.AppendLine($"<td>{(item.IsTrackedInMyCases ? "Yes (Tracked)" : "Live e-Courts Discovery")}</td>");
+                sb.AppendLine("</tr>");
+            }
+
+            sb.AppendLine("</table>");
+            sb.AppendLine("</body>");
+            sb.AppendLine("</html>");
+
+            string scope = todayOnly ? "TodayListed" : "ActiveMatters";
+            string fileName = $"NWKRTC_HighCourt_CauseList_{scope}_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+            return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "application/vnd.ms-excel", fileName);
+        }
+
         // GET: /ECourts/GetTodayNwkrtcCauseListAlerts?causelistDate=dd-MM-yyyy&module=MVC
         [HttpGet]
         public async Task<IActionResult> GetTodayNwkrtcCauseListAlerts(string? causelistDate = null, string module = "MVC")
