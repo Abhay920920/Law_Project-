@@ -73,13 +73,24 @@
             </div>
 
             <!-- User Profile Widget -->
-            <div class="user-profile-widget me-2 me-sm-3 shadow-sm" title="@User.FindFirst("FullName")?.Value (@User.FindFirst("DivisionName")?.Value)">
-                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 30px; height: 30px; font-size: 0.8rem; font-weight: 700;">
-                    @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
+            @{
+                bool isAdminUser = User.IsInRole("Admin") || 
+                                   string.Equals(User.Identity?.Name, "admin", System.StringComparison.OrdinalIgnoreCase) ||
+                                   string.Equals(User.FindFirst("Role")?.Value, "Admin", System.StringComparison.OrdinalIgnoreCase);
+                string userDeptLabel = isAdminUser ? "Admin" : (User.FindFirst("DivisionName")?.Value ?? "Central Office");
+                string userAvatarInitial = isAdminUser ? "A" : (!string.IsNullOrEmpty(userDeptLabel) ? userDeptLabel.Substring(0, 1).ToUpper() : "C");
+                string userDeptIcon = isAdminUser ? "bi-shield-check" : "bi-building";
+            }
+            <div class="user-profile-widget me-2 me-sm-3" title="@userDeptLabel">
+                <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0">
+                    <span>@userAvatarInitial</span>
+                    <span class="user-status-indicator position-absolute bottom-0 end-0 rounded-circle" title="Active"></span>
                 </div>
-                <div class="text-start leading-tight d-none d-md-block ms-2">
-                    <div class="fw-bold text-dark small text-truncate" style="max-width: 130px;">@User.FindFirst("FullName")?.Value</div>
-                    <div class="text-muted text-truncate" style="font-size: 0.7rem; max-width: 130px;">@User.FindFirst("DivisionName")?.Value</div>
+                <div class="user-profile-info text-start d-none d-md-block ms-2">
+                    <div class="user-dept fw-bold text-dark text-truncate d-flex align-items-center gap-1.5" style="max-width: 150px;">
+                        <i class="bi @userDeptIcon text-primary opacity-75" style="font-size: 0.75rem;"></i>
+                        <span>@userDeptLabel</span>
+                    </div>
                 </div>
             </div>
 
@@ -107,12 +118,16 @@
             <!-- User Status Card in Mobile Menu -->
             <div class="p-2.5 mb-2 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
                 <div class="d-flex align-items-center gap-2.5">
-                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700;">
-                        @(!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1) : "?")
+                    <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700;">
+                        <span>@(isAdminUser ? "A" : (!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1).ToUpper() : "?"))</span>
+                        <span class="user-status-indicator position-absolute bottom-0 end-0 rounded-circle" title="Active"></span>
                     </div>
                     <div class="min-w-0 text-truncate">
-                        <div class="fw-bold text-white small text-truncate">@User.FindFirst("FullName")?.Value</div>
-                        <div class="text-white-50 small text-truncate" style="font-size: 0.72rem;">@User.FindFirst("DivisionName")?.Value</div>
+                        <div class="fw-bold text-white small text-truncate">@(isAdminUser ? "Admin" : User.FindFirst("FullName")?.Value)</div>
+                        <div class="text-white-50 small text-truncate d-flex align-items-center gap-1" style="font-size: 0.72rem;">
+                            <i class="bi @(isAdminUser ? "bi-shield-check" : "bi-building") extra-small"></i>
+                            <span>@userDeptLabel</span>
+                        </div>
                     </div>
                 </div>
             </div>

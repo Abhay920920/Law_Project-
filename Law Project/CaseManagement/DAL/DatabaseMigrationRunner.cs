@@ -1618,6 +1618,88 @@ namespace MVCCaseManagement.DAL
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_3_MacAddressMigrationId, migTimer15.ElapsedMilliseconds);
                     }
+
+                    // 20. Migration: ORGANIZATION_SETTINGS table and baseline seed for configurable branding
+                    const string v1_2_4_OrgSettingsMigrationId = "20261028_v1_2_4_Organization_Settings_Branding";
+                    bool isV124Applied = false;
+                    using (var checkCmd16 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd16.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_4_OrgSettingsMigrationId });
+                        isV124Applied = (int)(checkCmd16.ExecuteScalar() ?? 0) > 0;
+                    }
+
+                    if (!isV124Applied)
+                    {
+                        logger.LogInformation("Applying migration {MigrationId}...", v1_2_4_OrgSettingsMigrationId);
+                        var migTimer16 = Stopwatch.StartNew();
+
+                        string orgSettingsSql = @"
+                            IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ORGANIZATION_SETTINGS')
+                            BEGIN
+                                CREATE TABLE [dbo].[ORGANIZATION_SETTINGS] (
+                                    [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                                    [OrganizationNameEnglish] NVARCHAR(250) NOT NULL,
+                                    [OrganizationNameKannada] NVARCHAR(250) NOT NULL,
+                                    [OrganizationShortName] NVARCHAR(50) NOT NULL,
+                                    [LogoPath] NVARCHAR(500) NOT NULL DEFAULT '/images/logo.jpg',
+                                    [FaviconPath] NVARCHAR(500) NULL DEFAULT '/favicon.ico',
+                                    [Address] NVARCHAR(500) NULL,
+                                    [ContactEmail] NVARCHAR(150) NULL,
+                                    [ContactPhone] NVARCHAR(50) NULL,
+                                    [UpdatedAt] DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+                                    [UpdatedBy] NVARCHAR(100) NULL,
+                                    [RowVersion] ROWVERSION NOT NULL
+                                );
+                            END
+
+                            IF NOT EXISTS (SELECT 1 FROM [dbo].[ORGANIZATION_SETTINGS])
+                            BEGIN
+                                INSERT INTO [dbo].[ORGANIZATION_SETTINGS] (
+                                    [OrganizationNameEnglish],
+                                    [OrganizationNameKannada],
+                                    [OrganizationShortName],
+                                    [LogoPath],
+                                    [FaviconPath],
+                                    [Address],
+                                    [ContactEmail],
+                                    [ContactPhone],
+                                    [UpdatedAt],
+                                    [UpdatedBy]
+                                )
+                                VALUES (
+                                    N'North Western Karnataka Road Transport Corporation',
+                                    N'ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ',
+                                    N'NWKRTC',
+                                    N'/images/logo.jpg',
+                                    N'/favicon.ico',
+                                    N'Central Office, Gokul Road, Hubballi - 580030',
+                                    N'clo@nwkrtc.in',
+                                    N'0836-2237200',
+                                    SYSUTCDATETIME(),
+                                    N'SYSTEM_INITIAL_SEED'
+                                );
+                            END";
+
+                        using (var orgCmd = new SqlCommand(orgSettingsSql, conn))
+                        {
+                            orgCmd.CommandTimeout = 60;
+                            orgCmd.ExecuteNonQuery();
+                        }
+
+                        migTimer16.Stop();
+
+                        string recordSql16 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd16 = new SqlCommand(recordSql16, conn))
+                        {
+                            recordCmd16.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_4_OrgSettingsMigrationId });
+                            recordCmd16.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Create ORGANIZATION_SETTINGS table with Unicode Kannada support and seed default NWKRTC branding" });
+                            recordCmd16.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer16.ElapsedMilliseconds });
+                            recordCmd16.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_4_OrgSettingsMigrationId, migTimer16.ElapsedMilliseconds);
+                    }
                 }
                 finally
                 {

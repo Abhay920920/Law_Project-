@@ -712,7 +712,7 @@
                                     <div class="col-6 col-md-3"><small class="text-muted text-uppercase fw-bold d-block" style="font-size:.63rem">Next Hearing Date</small><div class="fw-bold text-primary" id="aa_live_next_claimant_wp">—</div></div>
                                     <div class="col-6 col-md-3"><small class="text-muted text-uppercase fw-bold d-block" style="font-size:.63rem">Case Stage</small><div class="fw-bold text-dark" id="aa_live_stage_claimant_wp">—</div></div>
                                     <div class="col-12 col-md-6"><small class="text-muted text-uppercase fw-bold d-block" style="font-size:.63rem">Petitioner / Claimant</small><div class="fw-semibold text-dark" id="aa_live_pet_claimant_wp">@(Model.PetitionerName ?? "—")</div></div>
-                                    <div class="col-12 col-md-6"><small class="text-muted text-uppercase fw-bold d-block" style="font-size:.63rem">Respondent</small><div class="fw-semibold text-dark" id="aa_live_res_claimant_wp">NWKRTC / @(Model.DivisionName ?? "—")</div></div>
+                                    <div class="col-12 col-md-6"><small class="text-muted text-uppercase fw-bold d-block" style="font-size:.63rem">Respondent</small><div class="fw-semibold text-dark" id="aa_live_res_claimant_wp">@(OrgService.GetCurrentSettings().OrganizationShortName) / @(Model.DivisionName ?? "—")</div></div>
                                 </div>
                                 <div class="border-top mt-3 pt-3">
                                     <ul class="nav nav-pills mb-2 gap-2" role="tablist">
@@ -1175,7 +1175,7 @@
             </div>
             <!-- Modal Footer -->
             <div class="modal-footer border-0 px-4 py-2" style="background: #f1f5f9;">
-                <small class="text-muted me-auto" style="font-size:0.72rem;"><i class="bi bi-shield-check me-1 text-primary"></i>Data from NWKRTC Law Module</small>
+                <small class="text-muted me-auto" style="font-size:0.72rem;"><i class="bi bi-shield-check me-1 text-primary"></i>Data from @(OrgService.GetCurrentSettings().OrganizationShortName) Law Module</small>
                 <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" style="font-size:0.82rem;" onclick="window.print()">
                     <i class="bi bi-printer me-1"></i> Print
                 </button>
@@ -1204,7 +1204,7 @@
 
     <!-- Official Corporation Letterhead Header -->
     <div class="print-header text-center mb-3 pb-2 border-bottom border-2 border-dark">
-        <h4 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px; font-size: 14pt;">North Western Karnataka Road Transport Corporation</h4>
+        <h4 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px; font-size: 14pt;">@OrgService.GetCurrentSettings().OrganizationNameEnglish</h4>
         <h5 class="fw-bold mb-1 text-uppercase text-secondary" style="font-size: 11pt;">
             @(string.IsNullOrEmpty(Model.DivisionName) ? "Central Office" : Model.DivisionName.ToUpper() + " Division") — Law Section
         </h5>
@@ -1626,24 +1626,24 @@
             <div class="col-4">
                 <div class="print-sig-col">
                     <p class="fw-bold mb-1">Law Officer / ALO</p>
-                    <p class="small text-muted mb-0">NWKRTC, @(Model.DivisionName ?? "Central Office")</p>
+                    <p class="small text-muted mb-0">@(OrgService.GetCurrentSettings().OrganizationShortName), @(Model.DivisionName ?? "Central Office")</p>
                 </div>
             </div>
             <div class="col-4">
                 <div class="print-sig-col">
                     <p class="fw-bold mb-1">Divisional Controller / Dy. CLO</p>
-                    <p class="small text-muted mb-0">NWKRTC, @(Model.DivisionName ?? "Central Office")</p>
+                    <p class="small text-muted mb-0">@(OrgService.GetCurrentSettings().OrganizationShortName), @(Model.DivisionName ?? "Central Office")</p>
                 </div>
             </div>
             <div class="col-4">
                 <div class="print-sig-col">
                     <p class="fw-bold mb-1">Chief Law Officer / MD</p>
-                    <p class="small text-muted mb-0">NWKRTC, Central Office, Hubballi</p>
+                    <p class="small text-muted mb-0">@(OrgService.GetCurrentSettings().OrganizationShortName), Central Office, Hubballi</p>
                 </div>
             </div>
         </div>
         <div class="text-center mt-3 pt-2 border-top text-muted" style="font-size: 7.5pt;">
-            <span>This is an official departmental case record generated from the NWKRTC Law Project Management Information System.</span>
+            <span>This is an official departmental case record generated from the @(OrgService.GetCurrentSettings().OrganizationShortName) Law Project Management Information System.</span>
         </div>
     </div>
 </div>

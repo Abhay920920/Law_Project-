@@ -1,6 +1,6 @@
 @model MVCCaseManagement.Models.DashboardStatsViewModel
 @{
-    ViewData["Title"] = "NWKRTC Legal Management";
+    ViewData["Title"] = $"{OrgService.GetCurrentSettings().OrganizationShortName} Legal Management";
     
     var timeOfDay = DateTime.Now.Hour;
     var greeting = "Good Morning";
@@ -37,7 +37,7 @@
                     <div class="nav-center-hub">
                         <div class="hub-content">
                             <i class="bi bi-bank display-4 text-primary opacity-50"></i>
-                            <h6 class="m-0 fw-bold text-dark mt-2">NWKRTC</h6>
+                            <h6 class="m-0 fw-bold text-dark mt-2">@OrgService.GetCurrentSettings().OrganizationShortName</h6>
                             <small class="text-uppercase fw-bold text-muted" style="font-size: 0.65rem;">NYAYA PATHA</small>
                         </div>
                         <div class="hub-ripple"></div>

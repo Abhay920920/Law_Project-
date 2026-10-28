@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
@@ -809,24 +809,24 @@ namespace MVCCaseManagement.Utils
                 string action   = isHighCourt ? "partyname"        : "partyName";
                 string y = string.IsNullOrWhiteSpace(regYear) ? DateTime.Today.Year.ToString() : regYear.Trim();
                 string p = string.IsNullOrWhiteSpace(pendDisp) ? "P" : pendDisp.Trim();
+                string cleanParty = partyName.Replace("|", " ").Replace("\r", "").Replace("\n", "").Trim();
+                while (cleanParty.Contains("  ")) cleanParty = cleanParty.Replace("  ", " ");
 
-                string paramsStr = isHighCourt
-                    ? $"est_code={estCode.Trim()}|petres_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}|pend_disp={p}"
-                    : $"est_code={estCode.Trim()}|pend_disp={p}|litigant_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}";
+                if (cleanParty.Length < 3)
+                {
+                    _logger.LogWarning("[DiscoverCnrByParty] Litigant name '{Party}' has fewer than 3 characters required by eCourts API. Skipping.", cleanParty);
+                    return null;
+                }
+
+                // Official eCourts v1.3 §5.8 and High Court v1.0 §6.7:
+                // request_str = encrypted(est_code=value|pend_disp=value|litigant_name=value|reg_year=value)
+                string paramsStr = $"est_code={estCode.Trim()}|pend_disp={p}|litigant_name={cleanParty}|reg_year={y}";
 
                 _logger.LogInformation("[DiscoverCnrByParty] Querying {Base}/{Action}: {Params} ({Module})", basePath, action, paramsStr, module);
 
                 var result = await QueryApiAsync(basePath, action, paramsStr, module: module);
                 string? cnr = ExtractCnrFromElement(result);
                 if (!string.IsNullOrEmpty(cnr)) return cnr;
-
-                // Fallback for DC if backend accepts petres_name
-                if (!isHighCourt)
-                {
-                    string altParams = $"est_code={estCode.Trim()}|petres_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}|pend_disp={p}";
-                    var altRes = await QueryApiAsync(basePath, action, altParams, module: module);
-                    return ExtractCnrFromElement(altRes);
-                }
 
                 return null;
             }
@@ -849,25 +849,31 @@ namespace MVCCaseManagement.Utils
                 string action   = isHighCourt ? "partyname"        : "partyName";
                 string y = string.IsNullOrWhiteSpace(regYear) ? DateTime.Today.Year.ToString() : regYear.Trim();
                 string p = string.IsNullOrWhiteSpace(pendDisp) ? "P" : pendDisp.Trim();
+                string cleanParty = partyName.Replace("|", " ").Replace("\r", "").Replace("\n", "").Trim();
+                while (cleanParty.Contains("  ")) cleanParty = cleanParty.Replace("  ", " ");
 
-                // eCourts v1.3 §5.8 and High Court v1.0 §6.7 define litigant_name
-                string paramsStr = $"est_code={estCode.Trim()}|pend_disp={p}|litigant_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}";
+                if (cleanParty.Length < 3)
+                {
+                    _logger.LogWarning("[SearchCasesByPartyName] Litigant name '{Party}' has fewer than 3 characters required by eCourts API. Skipping.", cleanParty);
+                    return list;
+                }
+
+                string partyCacheKey = $"napix_party_cache_{estCode.Trim()}_{cleanParty}_{y}_{p}_{isHighCourt}".ToUpperInvariant();
+                if (_cache.TryGetValue(partyCacheKey, out List<MVCCaseManagement.Models.PartyCaseSearchResultItem>? cachedResults) && cachedResults != null)
+                {
+                    return cachedResults;
+                }
+
+                // Official eCourts v1.3 §5.8 and High Court v1.0 §6.7:
+                // request_str = encrypted(est_code=value|pend_disp=value|litigant_name=value|reg_year=value)
+                // Note: Raw string with spaces is AES encrypted; do NOT percent-encode which triggers 610 INVALID_LITIGANT_NAME.
+                string paramsStr = $"est_code={estCode.Trim()}|pend_disp={p}|litigant_name={cleanParty}|reg_year={y}";
 
                 _logger.LogInformation("[SearchCasesByPartyName] Querying {Base}/{Action}: {Params} ({Module})", basePath, action, paramsStr, module);
 
                 var result = await QueryApiAsync(basePath, action, paramsStr, module: module);
                 if (!result.HasValue || IsErrorJson(result.Value, module))
-                {
-                    // Fallback using petres_name in case court gateway expects petres_name
-                    string altParams = $"est_code={estCode.Trim()}|petres_name={Uri.EscapeDataString(partyName.Trim())}|reg_year={y}|pend_disp={p}";
-                    var altRes = await QueryApiAsync(basePath, action, altParams, module: module);
-                    if (altRes.HasValue && !IsErrorJson(altRes.Value, module))
-                    {
-                        result = altRes;
-                    }
-                }
-
-                if (!result.HasValue) return list;
+                    return list;
 
                 var root = result.Value;
                 string estName = "";
@@ -919,6 +925,10 @@ namespace MVCCaseManagement.Utils
                     }
                 }
 
+                if (list.Count > 0)
+                {
+                    _cache.Set(partyCacheKey, list, TimeSpan.FromMinutes(45));
+                }
                 return list;
             }
             catch (Exception ex)
@@ -933,34 +943,38 @@ namespace MVCCaseManagement.Utils
         {
             var aliases = (customAliases != null && customAliases.Count > 0)
                 ? customAliases
-                : NwkrtcPartyMatcher.GetDefaultSearchAliases();
+                : NwkrtcPartyMatcher.GetDefaultSearchAliases(estCode);
 
             var combined = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
             var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenRegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var syncLock = new object();
 
-            foreach (var alias in aliases)
+            var tasks = aliases.Select(async alias =>
             {
                 try
                 {
                     var items = await SearchCasesByPartyNameAsync(estCode, alias, regYear, pendDisp, isHighCourt, module);
                     if (items != null && items.Count > 0)
                     {
-                        foreach (var item in items)
+                        lock (syncLock)
                         {
-                            string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
-                            string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
+                            foreach (var item in items)
+                            {
+                                string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
+                                string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
 
-                            if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
-                                continue;
+                                if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
+                                    continue;
 
-                            if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
-                                continue;
+                                if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
+                                    continue;
 
-                            if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
-                            if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
+                                if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
+                                if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
 
-                            combined.Add(item);
+                                combined.Add(item);
+                            }
                         }
                     }
                 }
@@ -968,8 +982,9 @@ namespace MVCCaseManagement.Utils
                 {
                     _logger.LogWarning(ex, "[SearchNwkrtcMultiAliasAsync] Error querying alias {Alias}", alias);
                 }
-            }
+            });
 
+            await Task.WhenAll(tasks);
             return combined;
         }
 
@@ -1006,7 +1021,7 @@ namespace MVCCaseManagement.Utils
 
             // Use NwkrtcPartyMatcher for rigorous multi-designation role detection
             var roleResult = NwkrtcPartyMatcher.DetectRole(petName, resName);
-            string role = roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
+            string role = roleResult.Role;
 
             return new MVCCaseManagement.Models.PartyCaseSearchResultItem
             {

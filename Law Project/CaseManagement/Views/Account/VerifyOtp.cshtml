@@ -20,7 +20,7 @@
     <div class="login-portal">
         <div class="portal-header">
             <div class="mb-3">
-                <img src="~/images/logo.jpg" alt="NWKRTC Logo" class="branding-logo" asp-append-version="true" />
+                <img src="@OrgService.GetCurrentSettings().LogoPath" alt="@(OrgService.GetCurrentSettings().OrganizationShortName) Logo" class="branding-logo" asp-append-version="true" onerror="this.onerror=null;this.src='/images/logo.jpg';" />
             </div>
             <div class="portal-branding">
                 <h2 class="mb-0">Verify OTP</h2>

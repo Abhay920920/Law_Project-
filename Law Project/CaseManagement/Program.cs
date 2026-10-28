@@ -71,6 +71,7 @@ builder.Services.AddScoped<IOtherCourtsRepository, OtherCourtsRepository>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<IECourtsRepository, ECourtsRepository>();
 builder.Services.AddScoped<ICaseNotingRepository, CaseNotingRepository>();
+builder.Services.AddScoped<MVCCaseManagement.Services.IOrganizationSettingsService, MVCCaseManagement.Services.OrganizationSettingsService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<MVCCaseManagement.Services.Audit.ICaseActivityLogger, MVCCaseManagement.Services.Audit.CaseActivityLogger>();
 builder.Services.AddHostedService<MVCCaseManagement.Services.NotificationBackgroundService>();

@@ -1,9 +1,16 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using Microsoft.AspNetCore.Authorization;
 using MVCCaseManagement.Common; // For PasswordHelper
+using MVCCaseManagement.Services;
 using MVCCaseManagement.Services.Audit;
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -13,12 +20,21 @@ namespace MVCCaseManagement.Controllers
         private readonly IMasterRepository _masterRepo;
         private readonly IUserRepository _userRepo;
         private readonly ICaseActivityLogger _activityLogger;
+        private readonly IOrganizationSettingsService? _orgSettingsService;
+        private readonly IWebHostEnvironment? _env;
 
-        public MasterController(IMasterRepository masterRepo, IUserRepository userRepo, ICaseActivityLogger activityLogger)
+        public MasterController(
+            IMasterRepository masterRepo,
+            IUserRepository userRepo,
+            ICaseActivityLogger activityLogger,
+            IOrganizationSettingsService? orgSettingsService = null,
+            IWebHostEnvironment? env = null)
         {
             _masterRepo = masterRepo;
             _userRepo = userRepo;
             _activityLogger = activityLogger;
+            _orgSettingsService = orgSettingsService;
+            _env = env;
         }
 
         public IActionResult Index()
@@ -621,6 +637,158 @@ namespace MVCCaseManagement.Controllers
             }
 
             return RedirectToAction("DeleteCase");
+        }
+
+        // --- ORGANIZATION BRANDING SETTINGS ---
+        [HttpGet]
+        public async Task<IActionResult> OrganizationSettings()
+        {
+            var settings = _orgSettingsService != null 
+                ? await _orgSettingsService.GetSettingsAsync()
+                : new OrganizationSettings();
+            return View(settings);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateOrganizationSettings(OrganizationSettings model, IFormFile? logoFile, IFormFile? faviconFile)
+        {
+            if (string.IsNullOrWhiteSpace(model.OrganizationNameEnglish))
+            {
+                ModelState.AddModelError("OrganizationNameEnglish", "English Organization Name is required.");
+            }
+            if (string.IsNullOrWhiteSpace(model.OrganizationNameKannada))
+            {
+                ModelState.AddModelError("OrganizationNameKannada", "Kannada Organization Name is required.");
+            }
+            if (string.IsNullOrWhiteSpace(model.OrganizationShortName))
+            {
+                ModelState.AddModelError("OrganizationShortName", "Short Name / Acronym is required.");
+            }
+
+            // Handle logo upload
+            if (logoFile != null && logoFile.Length > 0)
+            {
+                var (isValid, errorMsg, savedPath) = await ProcessUploadedAsset(logoFile, "logo", 2 * 1024 * 1024);
+                if (!isValid)
+                {
+                    ModelState.AddModelError("LogoPath", errorMsg!);
+                }
+                else
+                {
+                    model.LogoPath = savedPath;
+                }
+            }
+
+            // Handle favicon upload
+            if (faviconFile != null && faviconFile.Length > 0)
+            {
+                var (isValid, errorMsg, savedPath) = await ProcessUploadedAsset(faviconFile, "favicon", 512 * 1024);
+                if (!isValid)
+                {
+                    ModelState.AddModelError("FaviconPath", errorMsg!);
+                }
+                else
+                {
+                    model.FaviconPath = savedPath;
+                }
+            }
+
+            if (!ModelState.IsValid)
+            {
+                return View("OrganizationSettings", model);
+            }
+
+            try
+            {
+                string updatedBy = User?.Identity?.Name ?? "ADMIN";
+                if (_orgSettingsService != null)
+                {
+                    await _orgSettingsService.UpdateSettingsAsync(model, updatedBy);
+                }
+
+                _ = _activityLogger.LogCaseCreatedAsync("ADMIN", 0, "SYSTEM-BRANDING", null, null, new {
+                    model.OrganizationNameEnglish,
+                    model.OrganizationNameKannada,
+                    model.OrganizationShortName,
+                    model.LogoPath
+                }, $"Updated Organization Branding settings by {updatedBy}");
+
+                if (TempData != null)
+                {
+                    TempData["SuccessMessage"] = "Organization branding settings updated successfully!";
+                }
+            }
+            catch (Exception ex)
+            {
+                if (TempData != null)
+                {
+                    TempData["ErrorMessage"] = "Failed to update branding settings: " + ex.Message;
+                }
+            }
+
+            return RedirectToAction("OrganizationSettings");
+        }
+
+        private async Task<(bool isValid, string? error, string? savedPath)> ProcessUploadedAsset(IFormFile file, string prefix, long maxSizeBytes)
+        {
+            if (file.Length > maxSizeBytes)
+            {
+                return (false, $"File size exceeds maximum allowed ({maxSizeBytes / 1024} KB).", null);
+            }
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var allowedExtensions = new[] { ".png", ".jpg", ".jpeg", ".ico", ".webp" };
+            if (!allowedExtensions.Contains(ext))
+            {
+                return (false, "Invalid file format. Allowed formats: PNG, JPG, JPEG, ICO, WEBP.", null);
+            }
+
+            // Magic byte verification
+            byte[] header = new byte[8];
+            using (var stream = file.OpenReadStream())
+            {
+                int bytesToRead = (int)Math.Min((long)header.Length, stream.Length);
+                if (bytesToRead < 4) return (false, "File is too small to be a valid image.", null);
+                await stream.ReadExactlyAsync(header, 0, bytesToRead);
+            }
+
+            bool signatureMatch = false;
+            if (ext == ".png" && header[0] == 0x89 && header[1] == 0x50 && header[2] == 0x4E && header[3] == 0x47)
+                signatureMatch = true;
+            else if ((ext == ".jpg" || ext == ".jpeg") && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF)
+                signatureMatch = true;
+            else if (ext == ".webp" && header[0] == 0x52 && header[1] == 0x49 && header[2] == 0x46 && header[3] == 0x46)
+                signatureMatch = true;
+            else if (ext == ".ico" && header[0] == 0x00 && header[1] == 0x00 && header[2] == 0x01 && header[3] == 0x00)
+                signatureMatch = true;
+
+            if (!signatureMatch)
+            {
+                return (false, "File content does not match its claimed image format extension (magic byte verification failed).", null);
+            }
+
+            if (_env == null || string.IsNullOrEmpty(_env.WebRootPath))
+            {
+                return (false, "Server web root environment is not accessible.", null);
+            }
+
+            string brandingDir = Path.Combine(_env.WebRootPath, "images", "branding");
+            if (!Directory.Exists(brandingDir))
+            {
+                Directory.CreateDirectory(brandingDir);
+            }
+
+            string safeFileName = $"{prefix}_{Guid.NewGuid():N}{ext}";
+            string physicalPath = Path.Combine(brandingDir, safeFileName);
+
+            using (var targetStream = new FileStream(physicalPath, FileMode.Create))
+            {
+                await file.CopyToAsync(targetStream);
+            }
+
+            string webPath = $"/images/branding/{safeFileName}";
+            return (true, null, webPath);
         }
     }
 }

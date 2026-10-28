@@ -4,6 +4,7 @@ using MVCCaseManagement.Common;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.Models.Audit;
+using MVCCaseManagement.Services;
 using MVCCaseManagement.Services.Audit;
 using System.Security.Claims;
 using System.Text;
@@ -24,8 +25,9 @@ namespace MVCCaseManagement.Controllers
         private readonly ICaseActivityLogger _activityLogger;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<LabourController> _logger;
+        private readonly IOrganizationSettingsService? _orgSettings;
 
-        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, ICaseActivityLogger activityLogger, IWebHostEnvironment env, ILogger<LabourController> logger)
+        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, ICaseActivityLogger activityLogger, IWebHostEnvironment env, ILogger<LabourController> logger, IOrganizationSettingsService? orgSettings = null)
         {
             _labourRepo = labourRepo;
             _labourEPRepo = labourEPRepo;
@@ -37,6 +39,7 @@ namespace MVCCaseManagement.Controllers
             _activityLogger = activityLogger;
             _env = env;
             _logger = logger;
+            _orgSettings = orgSettings;
         }
 
         [HttpGet]
@@ -388,8 +391,10 @@ namespace MVCCaseManagement.Controllers
             sb.AppendLine("</head>");
             sb.AppendLine("<body>");
 
+            var orgTitle = _orgSettings?.GetCurrentSettings()?.OrganizationNameEnglish ?? "NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION";
+            var orgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
             sb.AppendLine("<table>");
-            sb.AppendLine("<tr><td colspan=\"21\" class=\"title-header\">NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION (NWKRTC)</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"21\" class=\"title-header\">{WebUtility.HtmlEncode(orgTitle.ToUpperInvariant())} ({WebUtility.HtmlEncode(orgShort)})</td></tr>");
             sb.AppendLine($"<tr><td colspan=\"21\" class=\"sub-header\"><strong>LABOUR CASE REGISTRY</strong> | Filter: <strong>{WebUtility.HtmlEncode(statusDisplay)}</strong> | Search: <strong>{WebUtility.HtmlEncode(searchDisplay)}</strong> | Exported: <strong>{timestamp}</strong> | Total Records: <strong>{count}</strong></td></tr>");
             sb.AppendLine("<tr><td colspan=\"21\" style=\"height: 10px;\"></td></tr>");
 
@@ -515,8 +520,10 @@ namespace MVCCaseManagement.Controllers
             sb.AppendLine("</head>");
             sb.AppendLine("<body>");
 
+            var arisingOrgTitle = _orgSettings?.GetCurrentSettings()?.OrganizationNameEnglish ?? "NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION";
+            var arisingOrgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
             sb.AppendLine("<table>");
-            sb.AppendLine("<tr><td colspan=\"12\" class=\"title-header\">NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION (NWKRTC)</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"12\" class=\"title-header\">{WebUtility.HtmlEncode(arisingOrgTitle.ToUpperInvariant())} ({WebUtility.HtmlEncode(arisingOrgShort)})</td></tr>");
             sb.AppendLine($"<tr><td colspan=\"12\" class=\"sub-header\"><strong>LABOUR ARISING APPLICATIONS</strong> | Search: <strong>{WebUtility.HtmlEncode(searchDisplay)}</strong> | Exported: <strong>{timestamp}</strong> | Total Records: <strong>{count}</strong></td></tr>");
             sb.AppendLine("<tr><td colspan=\"12\" style=\"height: 10px;\"></td></tr>");
 

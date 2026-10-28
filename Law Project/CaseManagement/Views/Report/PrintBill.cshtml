@@ -140,10 +140,10 @@
 
     <!-- Header -->
     <div class="header">
-        N.W.K.R.T.C. @(Model.DivisionName?.ToUpper() ?? "HAVERI") DIVISION @(Model.DivisionName?.ToUpper() ?? "HAVERI")
+        @(OrgService.GetCurrentSettings().OrganizationShortName) @(Model.DivisionName?.ToUpper() ?? "HAVERI") DIVISION @(Model.DivisionName?.ToUpper() ?? "HAVERI")
     </div>
     <div class="sub-header">
-        <span>No: @(Model.FileRefNo ?? "NWKRT/______/LAW/")</span>
+        <span>No: @(Model.FileRefNo ?? $"{OrgService.GetCurrentSettings().OrganizationShortName}/______/LAW/")</span>
         <span>Date. - @(Model.BillDate?.ToString("dd-MM-yyyy") ?? DateTime.Now.ToString("dd-MM-yyyy"))</span>
     </div>
 
@@ -286,12 +286,12 @@
     <div class="signatures">
         <div class="sig-block">
             Law Officer<br>
-            NWKRTC @(Model.DivisionName) Division<br>
+            @(OrgService.GetCurrentSettings().OrganizationShortName) @(Model.DivisionName) Division<br>
             @(Model.DivisionName)
         </div>
         <div class="sig-block">
             Divisional Controller<br>
-            NWKRTC @(Model.DivisionName) Division<br>
+            @(OrgService.GetCurrentSettings().OrganizationShortName) @(Model.DivisionName) Division<br>
             @(Model.DivisionName)<br>
             <i>(Sanctioning authority)</i>
         </div>

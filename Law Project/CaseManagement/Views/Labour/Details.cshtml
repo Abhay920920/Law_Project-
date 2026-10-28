@@ -503,7 +503,7 @@
                 <div class="col-6 col-md-3">
                     <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Respondent / Management</small>
                     <div class="fw-semibold text-dark" id="live-respondent" style="word-break: break-word;">
-                        @(!string.IsNullOrEmpty(Model.DivisionName) ? Model.DivisionName + " (NWKRTC)" : "NWKRTC")
+                        @(!string.IsNullOrEmpty(Model.DivisionName) ? Model.DivisionName + " (" + OrgService.GetCurrentSettings().OrganizationShortName + ")" : OrgService.GetCurrentSettings().OrganizationShortName)
                     </div>
                 </div>
                 <div class="col-12 col-md-6">
@@ -1078,7 +1078,7 @@
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner / Appellant</small>
                                         <div class="fw-bold text-dark" id="live_petitioner_corp_wp" style="word-break: break-word;">
-                                            The Managing Director, NWKRTC
+                                            The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName
                                         </div>
                                     </div>
                                     <div class="col-6 col-md-3">
@@ -1197,7 +1197,7 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-primary border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-person-badge-fill text-primary me-1"></i> Petitioner / Appellant</div>
-                                                            <div id="fullPetitioner_corp_wp" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, NWKRTC</div>
+                                                            <div id="fullPetitioner_corp_wp" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName</div>
                                                             <div class="extra-small text-muted"><i class="bi bi-person-gear me-1"></i>Advocate: <span id="fullPetAdv_corp_wp" class="fw-semibold text-dark">@(Model.CO_WP_AdvocateName ?? "—")</span></div>
                                                         </div>
                                                     </div>
@@ -1430,7 +1430,7 @@
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner / Appellant</small>
                                         <div class="fw-bold text-dark" id="live_petitioner_corp_wa" style="word-break: break-word;">
-                                            The Managing Director, NWKRTC
+                                            The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName
                                         </div>
                                     </div>
                                     <div class="col-6 col-md-3">
@@ -1549,7 +1549,7 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-danger border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-person-badge-fill text-danger me-1"></i> Petitioner / Appellant</div>
-                                                            <div id="fullPetitioner_corp_wa" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, NWKRTC</div>
+                                                            <div id="fullPetitioner_corp_wa" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName</div>
                                                             <div class="extra-small text-muted"><i class="bi bi-person-gear me-1"></i>Advocate: <span id="fullPetAdv_corp_wa" class="fw-semibold text-dark">@(Model.CO_WA_AdvocateName ?? "—")</span></div>
                                                         </div>
                                                     </div>
@@ -1782,7 +1782,7 @@
                                     <div class="col-6 col-md-3">
                                         <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Respondent (Corporation)</small>
                                         <div class="fw-bold text-dark" id="live_respondent_claimant_wp" style="word-break: break-word;">
-                                            The Managing Director, NWKRTC
+                                            The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName
                                         </div>
                                     </div>
                                     <div class="col-6 col-md-3">
@@ -1896,7 +1896,7 @@
                                                     <div class="col-md-6">
                                                         <div class="p-3 bg-light border-start border-secondary border-4 rounded-3 shadow-sm h-100">
                                                             <div class="text-muted extra-small text-uppercase fw-bold mb-1"><i class="bi bi-building-fill text-secondary me-1"></i> Respondent (Corporation)</div>
-                                                            <div id="fullRespondent_claimant_wp" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, NWKRTC</div>
+                                                            <div id="fullRespondent_claimant_wp" class="fw-bold text-dark fs-6 mb-1" style="word-break: break-word;">The Managing Director, @OrgService.GetCurrentSettings().OrganizationShortName</div>
                                                             <div class="extra-small text-muted"><i class="bi bi-person-gear me-1"></i>Advocate: <span id="fullResAdv_claimant_wp" class="fw-semibold text-dark">@(Model.CO_Claimant_AdvocateName ?? "—")</span></div>
                                                         </div>
                                                     </div>
@@ -2534,7 +2534,7 @@
             </div>
             <!-- Modal Footer -->
             <div class="modal-footer border-0 px-3 px-sm-4 py-2 flex-wrap gap-2" style="background: #f1f5f9;">
-                <small class="text-muted me-auto" style="font-size:0.72rem;"><i class="bi bi-shield-check me-1 text-primary"></i>Data from NWKRTC Law Module</small>
+                <small class="text-muted me-auto" style="font-size:0.72rem;"><i class="bi bi-shield-check me-1 text-primary"></i>Data from @(OrgService.GetCurrentSettings().OrganizationShortName) Law Module</small>
                 <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-bold" style="font-size:0.82rem;" onclick="window.print()">
                     <i class="bi bi-printer me-1"></i> Print
                 </button>
@@ -2549,7 +2549,7 @@
 <!-- Print-only View -->
 <div class="d-none d-print-block print-container">
     <div class="text-center mb-4">
-        <h5 class="fw-bold mb-0">NORTH WESTERN KARNATAKA ROAD TRANSPORT CORPORATION</h5>
+        <h5 class="fw-bold mb-0">@OrgService.GetCurrentSettings().OrganizationNameEnglish.ToUpper()</h5>
         <h6 class="fw-bold mb-0">@Model.DivisionName?.ToUpper() DIVISION, @Model.DivisionName?.ToUpper() (LAW SECTION)</h6>
         <hr class="mt-2 mb-3" style="border-top: 2px solid #000;" />
     </div>
@@ -2598,11 +2598,11 @@
     <div class="row mt-5 pt-5">
         <div class="col-6 text-center">
             <p class="fw-bold mb-0">Law Officer</p>
-            <p class="small">NWKRTC, @Model.DivisionName Division</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @Model.DivisionName Division</p>
         </div>
         <div class="col-6 text-center">
             <p class="fw-bold mb-0">Divisional Controller</p>
-            <p class="small">NWKRTC, @Model.DivisionName Division</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @Model.DivisionName Division</p>
         </div>
     </div>
 </div>

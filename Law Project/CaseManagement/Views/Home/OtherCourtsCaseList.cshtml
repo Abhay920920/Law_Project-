@@ -160,12 +160,13 @@
                                     </td>
                                     <td>
                                         @{
+                                            var shortOrg = OrgService.GetCurrentSettings().OrganizationShortName;
                                             string pDisplay = !string.IsNullOrWhiteSpace(item.PetitionerName) 
                                                 ? item.PetitionerName 
-                                                : (item.LitigantType == "Corporation" ? "NWKRTC / Corporation" : "Claimant");
+                                                : (item.LitigantType == "Corporation" ? $"{shortOrg} / Corporation" : "Claimant");
                                             string rDisplay = !string.IsNullOrWhiteSpace(item.RespondentName) 
                                                 ? item.RespondentName 
-                                                : (item.LitigantType == "Claimant" ? "NWKRTC / Corporation" : "Opposite Party");
+                                                : (item.LitigantType == "Claimant" ? $"{shortOrg} / Corporation" : "Opposite Party");
                                         }
                                         <div class="small text-dark fw-bold text-truncate" style="max-width: 220px;" title="@pDisplay">
                                             <span class="text-primary me-1">P:</span>@pDisplay

@@ -66,7 +66,23 @@ You are NYAYA PATHA AI (ನ್ಯಾಯ ಪಥ), the official AI Legal Research 
    - Never expose physical filesystem paths.
 ";
 
-        public string GetSystemPrompt() => SystemPromptText.Trim();
+        private readonly MVCCaseManagement.Services.IOrganizationSettingsService? _orgSettings;
+
+        public PromptManagementService(MVCCaseManagement.Services.IOrganizationSettingsService? orgSettings = null)
+        {
+            _orgSettings = orgSettings;
+        }
+
+        public string GetSystemPrompt()
+        {
+            var orgName = _orgSettings?.GetCurrentSettings()?.OrganizationNameEnglish ?? "North Western Karnataka Road Transport Corporation";
+            var orgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+            return SystemPromptText
+                .Replace("North Western Karnataka Road Transport Corporation", orgName)
+                .Replace("(NWKRTC)", $"({orgShort})")
+                .Replace("NWKRTC", orgShort)
+                .Trim();
+        }
 
         public string BuildDossierContextXml(CaseDossier dossier)
         {

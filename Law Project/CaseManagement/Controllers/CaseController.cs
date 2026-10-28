@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.DAL;
+using MVCCaseManagement.Services;
 using MVCCaseManagement.Utils;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
@@ -26,6 +27,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IPettyBillRepository _pettyBillRepo;
         private readonly MVCCaseManagement.Services.Audit.ICaseActivityLogger _activityLogger;
         private readonly ILogger<CaseController> _logger;
+        private readonly IOrganizationSettingsService? _orgSettings;
 
         public CaseController(
             IMasterRepository masterRepo,
@@ -39,7 +41,8 @@ namespace MVCCaseManagement.Controllers
             ICaseNotingRepository notingRepo,
             IPettyBillRepository pettyBillRepo,
             MVCCaseManagement.Services.Audit.ICaseActivityLogger activityLogger,
-            ILogger<CaseController> logger)
+            ILogger<CaseController> logger,
+            IOrganizationSettingsService? orgSettings = null)
         {
             _masterRepo = masterRepo;
             _caseRepo = caseRepo;
@@ -53,6 +56,7 @@ namespace MVCCaseManagement.Controllers
             _pettyBillRepo = pettyBillRepo;
             _activityLogger = activityLogger;
             _logger = logger;
+            _orgSettings = orgSettings;
         }
 
         [HttpGet]
@@ -185,8 +189,10 @@ namespace MVCCaseManagement.Controllers
             sb.AppendLine("</head>");
             sb.AppendLine("<body>");
 
+            var orgTitle = _orgSettings?.GetCurrentSettings()?.OrganizationNameEnglish ?? "NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION";
+            var orgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
             sb.AppendLine("<table>");
-            sb.AppendLine("<tr><td colspan=\"17\" class=\"title-header\">NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION (NWKRTC)</td></tr>");
+            sb.AppendLine($"<tr><td colspan=\"17\" class=\"title-header\">{WebUtility.HtmlEncode(orgTitle.ToUpperInvariant())} ({WebUtility.HtmlEncode(orgShort)})</td></tr>");
             sb.AppendLine($"<tr><td colspan=\"17\" class=\"sub-header\"><strong>DIGITAL MVC CASE REGISTRY</strong> | Filter: <strong>{WebUtility.HtmlEncode(statusDisplay)}</strong> | Search: <strong>{WebUtility.HtmlEncode(searchDisplay)}</strong> | Exported: <strong>{timestamp}</strong> | Total Records: <strong>{count}</strong></td></tr>");
             sb.AppendLine("<tr><td colspan=\"17\" style=\"height: 10px;\"></td></tr>");
 

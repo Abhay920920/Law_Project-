@@ -12,6 +12,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using MVCCaseManagement.Models.Audit;
+using MVCCaseManagement.Services;
 using MVCCaseManagement.Utils;
 
 namespace MVCCaseManagement.Services.Audit
@@ -35,16 +36,20 @@ namespace MVCCaseManagement.Services.Audit
             "ClaimsPrincipal", "Action", "Controller", "ReturnUrl"
         };
 
+        private readonly IOrganizationSettingsService? _orgSettings;
+
         public CaseActivityLogger(
             IConfiguration configuration,
             IHttpContextAccessor httpContextAccessor,
-            ILogger<CaseActivityLogger> logger)
+            ILogger<CaseActivityLogger> logger,
+            IOrganizationSettingsService? orgSettings = null)
         {
             _connectionString = configuration.GetConnectionString("MVCCaseDB")
                 ?? configuration.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Connection string 'MVCCaseDB' or 'DefaultConnection' not configured in appsettings.json.");
             _httpContextAccessor = httpContextAccessor;
             _logger = logger;
+            _orgSettings = orgSettings;
         }
 
         private (int? userId, string username, string fullName, string role, int? divisionId, string divisionName, string ipAddress, string? macAddress) GetCurrentActor()
@@ -78,7 +83,8 @@ namespace MVCCaseManagement.Services.Audit
                     divisionId = parsedDivId;
                 }
 
-                divisionName = user.FindFirstValue("DivisionName") ?? (divisionId == 5 ? "Central Office" : "NWKRTC Division");
+                var defaultDivPrefix = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+                divisionName = user.FindFirstValue("DivisionName") ?? (divisionId == 5 ? "Central Office" : $"{defaultDivPrefix} Division");
             }
 
             return (userId, username, fullName, role, divisionId, divisionName, ipAddress, macAddress);

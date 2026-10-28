@@ -7,6 +7,61 @@
 }
 
 <style>
+            .case-section-scroll {
+        overflow-x: scroll !important;
+        overflow-y: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: #2563eb #e2e8f0;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+    }
+    .case-section-scroll::-webkit-scrollbar {
+        height: 10px;
+    }
+    .case-section-scroll::-webkit-scrollbar-track {
+        background: #e2e8f0;
+        border-radius: 5px;
+    }
+    .case-section-scroll::-webkit-scrollbar-thumb {
+        background: #2563eb;
+        border-radius: 5px;
+    }
+    .case-section-scroll::-webkit-scrollbar-thumb:hover {
+        background: #1d4ed8;
+    }
+    .hearing-drawer-card {
+        position: sticky;
+        left: 12px;
+        width: calc(100vw - 370px);
+        max-width: calc(100vw - 370px);
+        box-sizing: border-box;
+    }
+    .btn-xs {
+        padding: 0.2rem 0.45rem;
+        font-size: 0.75rem;
+        line-height: 1.2;
+        border-radius: 0.25rem;
+    }
+    .table-top-scroll-banner {
+        position: sticky;
+        top: 66px;
+        z-index: 10;
+        background: #f8fafc;
+    }
+    .table-top-scrollbar::-webkit-scrollbar {
+        height: 6px;
+    }
+    .table-top-scrollbar::-webkit-scrollbar-track {
+        background: #e2e8f0;
+        border-radius: 3px;
+    }
+    .table-top-scrollbar::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 3px;
+    }
+    .table-top-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+    }
     .mycases-page {
         width: 100%;
         max-width: 100%;
@@ -435,7 +490,7 @@
                         <span class="badge bg-warning text-dark font-monospace fw-bold d-none" id="alertBannerUntrackedBadge">0 Untracked</span>
                     </div>
                     <div class="extra-small text-dark mt-0.5" id="alertBannerMessageText">
-                        Checking official High Court daily rosters for NWKRTC cases...
+                        Checking official High Court daily rosters for @OrgService.GetCurrentSettings().OrganizationShortName cases...
                     </div>
                 </div>
             </div>
@@ -721,20 +776,46 @@
             </div>
         </div>
 
+        <!-- Top Synchronized Horizontal Scrollbar & Table Controls -->
+        <div class="table-top-scroll-banner d-none d-lg-block border-bottom bg-light px-3 py-1.5" id="tableTopScrollWrapper" style="display: none;">
+            <div class="d-flex align-items-center justify-content-between gap-3">
+                <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                    <span class="badge bg-secondary-subtle text-dark border extra-small fw-bold d-flex align-items-center gap-1">
+                        <i class="bi bi-arrows-expand-vertical" style="transform: rotate(90deg);"></i>
+                        <span>Side Scroll</span>
+                    </span>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-outline-secondary btn-xs py-0.5 px-2" onclick="scrollTableHorizontally(-300)" title="Scroll Table Left">
+                            <i class="bi bi-chevron-left"></i>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-xs py-0.5 px-2" onclick="scrollTableHorizontally(300)" title="Scroll Table Right">
+                            <i class="bi bi-chevron-right"></i>
+                        </button>
+                    </div>
+                    <span class="extra-small text-muted d-none d-xl-inline">
+                        (or Shift + Scroll with mouse wheel)
+                    </span>
+                </div>
+                <div class="table-top-scrollbar flex-grow-1" id="tableTopScrollbar" style="overflow-x: auto; height: 12px; margin-bottom: -4px;">
+                    <div id="tableTopScrollbarInner" style="height: 1px; width: 100%;"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Cases Desktop Table (Visible on lg and up) -->
-        <div class="table-responsive d-none d-lg-block" style="min-height: 380px;">
+        <div class="table-responsive d-none d-lg-block" id="myCasesTableResponsive" style="min-height: 380px;">
             <table class="table table-hover align-middle mb-0 table-cases" id="myCasesTable">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th style="width: 50px;" class="ps-4">#</th>
-                        <th style="min-width: 170px;">CNR Number</th>
-                        <th style="min-width: 150px;">Case No &amp; Type</th>
-                        <th style="min-width: 190px;">Court Hall &amp; Bench</th>
-                        <th style="min-width: 220px; max-width: 280px;">Parties (Petitioner vs Respondent)</th>
-                        <th style="min-width: 160px;">Next Hearing / Stage</th>
-                        <th style="min-width: 110px;">Status</th>
-                        <th style="min-width: 130px;">Last Synced</th>
-                        <th style="min-width: 210px;" class="text-end pe-4">Actions</th>
+                        <th style="width: 45px;" class="ps-3">#</th>
+                        <th style="min-width: 155px;">CNR Number</th>
+                        <th style="min-width: 130px;">Case No &amp; Type</th>
+                        <th style="min-width: 175px;">Court Hall &amp; Bench</th>
+                        <th style="min-width: 190px; max-width: 250px;">Parties</th>
+                        <th style="min-width: 140px;">Next Hearing / Stage</th>
+                        <th style="min-width: 95px;">Status</th>
+                        <th style="min-width: 95px;">Last Synced</th>
+                        <th style="min-width: 165px;" class="text-end pe-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="myCasesTbody">
@@ -936,7 +1017,7 @@
                                         <i class="bi bi-bank2 text-primary me-1"></i>High Court Bench:
                                     </label>
                                     <select id="partySearchBenchSelect" class="form-select form-select-sm fw-semibold">
-                                        <option value="KAHC02" selected>Dharwad Bench (KAHC02 — NWKRTC Hub)</option>
+                                        <option value="KAHC02" selected>Dharwad Bench (KAHC02 — @OrgService.GetCurrentSettings().OrganizationShortName Hub)</option>
                                         <option value="KAHC01">Principal Bench Bengaluru (KAHC01)</option>
                                         <option value="KAHC03">Kalaburagi Bench (KAHC03)</option>
                                         <option value="ALL">All High Court Benches (Simultaneous Scan)</option>
@@ -972,7 +1053,7 @@
                                     </label>
                                     <div class="input-group input-group-sm">
                                         <input type="text" id="partySearchInput" class="form-control fw-bold" 
-                                               value="NWKRTC" placeholder="Enter party name (e.g. NWKRTC, Managing Director, Suresh Patil)..." 
+                                               value="@OrgService.GetCurrentSettings().OrganizationShortName" placeholder="Enter party name (e.g. @OrgService.GetCurrentSettings().OrganizationShortName, Managing Director, Suresh Patil)..." 
                                                onkeyup="if(event.key==='Enter') executeHighCourtPartySearch()" />
                                         <button class="btn btn-primary px-3 fw-bold" type="button" id="btnExecutePartySearch" onclick="executeHighCourtPartySearch()">
                                             <i class="bi bi-search me-1"></i>Search Cases
@@ -981,7 +1062,7 @@
                                     <!-- Quick Litigant Preset Tags -->
                                     <div class="mt-2 d-flex flex-wrap align-items-center gap-1 extra-small">
                                         <span class="text-muted fw-bold me-1">Presets:</span>
-                                        <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('NWKRTC')">NWKRTC</button>
+                                        <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('@OrgService.GetCurrentSettings().OrganizationShortName')">@OrgService.GetCurrentSettings().OrganizationShortName</button>
                                         <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('MANAGING DIRECTOR')">Managing Director</button>
                                         <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('DIVISIONAL CONTROLLER')">Divisional Controller</button>
                                         <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 extra-small rounded-pill" onclick="setPartySearchPreset('CHIEF PERSONNEL MANAGER')">CPM</button>
@@ -1023,7 +1104,7 @@
                         <i class="bi bi-broadcast fs-5 text-white"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0" id="nwkrtcDailyAlertsModalLabel">High Court Cause List — NWKRTC Cases Listed Today</h5>
+                        <h5 class="modal-title fw-bold mb-0" id="nwkrtcDailyAlertsModalLabel">High Court Cause List — @OrgService.GetCurrentSettings().OrganizationShortName Cases Listed Today</h5>
                         <div class="extra-small text-white-50" id="nwkrtcDailyAlertsSubtitle">Official High Court Gateway Rosters (Dharwad, Bengaluru, Kalaburagi)</div>
                     </div>
                 </div>
@@ -1680,6 +1761,9 @@
 
 @section Scripts {
 <script>
+    const defaultOrgShortName = "@OrgService.GetCurrentSettings().OrganizationShortName";
+    const defaultOrgNameEnglish = "@OrgService.GetCurrentSettings().OrganizationNameEnglish";
+    const defaultOrgNameKannada = "@OrgService.GetCurrentSettings().OrganizationNameKannada";
     const currentModule = "@module";
     let allCasesData = [];
     let currentDossierTrackedId = null;
@@ -1729,6 +1813,7 @@
         }
         loadTrackedCases();
         checkNwkrtcDailyCauseListAlerts();
+        initTableScrollSync();
     });
 
     // ==========================================
@@ -2300,29 +2385,29 @@
             <td>
                 <div class="extra-small text-muted">${syncedStr}</div>
             </td>
-            <td class="text-end pe-4">
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-info btn-sm px-2.5" title="Daily Proceedings & Hearing Date Analysis" onclick="openDailyProceedingsModal(${c.trackedID})">
-                        <i class="bi bi-journal-text me-1"></i><span class="d-none d-xl-inline">Proceedings</span>
+            <td class="text-end pe-3">
+                <div class="d-inline-flex align-items-center gap-1">
+                    <button type="button" class="btn btn-outline-primary btn-xs px-2 py-1 fw-semibold d-inline-flex align-items-center gap-1 shadow-none" title="View Full Case Dossier" onclick="openCaseDossier(${c.trackedID})">
+                        <i class="bi bi-file-earmark-medical"></i><span>Dossier</span>
                     </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm px-2" title="Check Live High Court Cause List & Court Hall" id="btnCl_${c.trackedID}" onclick="checkLiveCauseList(${c.trackedID}, '${c.cnrNumber}')">
+                    <button type="button" class="btn btn-outline-info btn-xs px-1.5 py-1 shadow-none" title="Daily Proceedings Timeline" onclick="openDailyProceedingsModal(${c.trackedID})">
+                        <i class="bi bi-journal-text"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-xs px-1.5 py-1 shadow-none" title="Check Live High Court Cause List" id="btnCl_${c.trackedID}" onclick="checkLiveCauseList(${c.trackedID}, '${c.cnrNumber}')">
                         <i class="bi bi-broadcast"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-primary btn-sm px-2.5 py-1" title="View Full Case Dossier" onclick="openCaseDossier(${c.trackedID})">
-                        <i class="bi bi-file-earmark-medical me-1"></i> Dossier
-                    </button>
-                    <button type="button" class="btn btn-outline-dark btn-sm px-2" title="Print Case Dossier" onclick="printSingleCase(${c.trackedID})">
-                        <i class="bi bi-printer"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm px-2" title="Reassign Case Worker" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')">
-                        <i class="bi bi-person-gear"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm px-2" title="Sync live with eCourts" id="btnSync_${c.trackedID}" onclick="syncCaseLive(${c.trackedID})">
-                        <i class="bi bi-arrow-clockwise"></i>
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm px-2" title="Remove from My Cases" onclick="removeCase(${c.trackedID}, '${c.cnrNumber}')">
-                        <i class="bi bi-trash"></i>
-                    </button>
+                    <div class="dropdown d-inline-block">
+                        <button type="button" class="btn btn-outline-secondary btn-xs px-1.5 py-1 dropdown-toggle shadow-none" data-bs-toggle="dropdown" aria-expanded="false" title="More Actions">
+                            <i class="bi bi-three-dots-vertical"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-1 small">
+                            <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printSingleCase(${c.trackedID})"><i class="bi bi-printer text-dark"></i>Print Dossier</a></li>
+                            <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')"><i class="bi bi-person-gear text-primary"></i>Reassign Worker</a></li>
+                            <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" id="btnSync_${c.trackedID}" onclick="syncCaseLive(${c.trackedID})"><i class="bi bi-arrow-clockwise text-success"></i>Sync Live eCourts</a></li>
+                            <li><hr class="dropdown-divider my-1"></li>
+                            <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2 text-danger" href="javascript:void(0)" onclick="removeCase(${c.trackedID}, '${c.cnrNumber}')"><i class="bi bi-trash"></i>Untrack Case</a></li>
+                        </ul>
+                    </div>
                 </div>
             </td>
         </tr>
@@ -2330,7 +2415,7 @@
         <!-- Expandable Hearing History & Daily Status Drawer Row -->
         <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClass ? `group-row-${groupClass}` : ''}">
             <td colspan="9" class="p-2 p-md-3 ps-md-4 pe-md-4">
-                <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hearing-drawer-card">
+                <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hearing-drawer-card" style="position: sticky; left: 12px; width: calc(100vw - 370px); max-width: calc(100vw - 370px); box-sizing: border-box;">
                     <div class="card-header bg-dark text-white py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
                             <span class="badge bg-warning text-dark font-monospace fw-bold">${escapeHtml(getDisplayCaseType(c))}</span>
@@ -2340,6 +2425,17 @@
                             </span>
                         </div>
                         <div class="d-flex align-items-center gap-1.5 flex-wrap ms-auto ms-sm-0">
+                            <!-- In-Case Section Horizontal Scroll Buttons -->
+                            <div class="d-inline-flex align-items-center gap-1.5 me-2 bg-white bg-opacity-10 px-2.5 py-1 rounded-pill border border-white border-opacity-20">
+                                <i class="bi bi-arrows-expand-vertical text-warning" style="transform: rotate(90deg); font-size: 0.75rem;"></i>
+                                <span class="extra-small text-white fw-bold me-1">Scroll Section:</span>
+                                <button type="button" class="btn btn-xs btn-primary py-0 px-2 text-white fw-bold shadow-none" onclick="scrollCaseDrawer(${c.trackedID}, -340)" title="Scroll Left">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <button type="button" class="btn btn-xs btn-primary py-0 px-2 text-white fw-bold shadow-none" onclick="scrollCaseDrawer(${c.trackedID}, 340)" title="Scroll Right">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                            </div>
                             <button type="button" class="btn btn-xs btn-outline-light rounded-pill px-2.5 py-1 extra-small" onclick="openDailyProceedingsModal(${c.trackedID})">
                                 <i class="bi bi-journal-text me-1"></i>Full Roznama Timeline
                             </button>
@@ -2351,10 +2447,10 @@
                             </button>
                         </div>
                     </div>
-                    <div class="card-body p-2.5 p-md-3">
-                        <div class="row g-3">
+                    <div class="card-body p-2.5 p-md-3 case-section-scroll" id="drawer_scroll_${c.trackedID}">
+                        <div class="d-flex flex-nowrap gap-3 pb-2" style="min-width: 1100px; width: max-content;">
                             <!-- Column 1: Daily Status & Court Listing -->
-                            <div class="col-12 col-lg-4 d-flex flex-column">
+                            <div class="case-section-column flex-shrink-0 d-flex flex-column" style="width: 350px; min-width: 350px;">
                                 <div class="extra-small text-uppercase fw-bold text-primary mb-1.5 d-flex align-items-center gap-1">
                                     <i class="bi bi-broadcast"></i>
                                     <span>Daily Status &amp; Court Listing</span>
@@ -2390,7 +2486,7 @@
                             </div>
 
                             <!-- Column 2: Last Concluded Proceeding & Roznama -->
-                            <div class="col-12 col-lg-4 d-flex flex-column">
+                            <div class="case-section-column flex-shrink-0 d-flex flex-column" style="width: 370px; min-width: 370px;">
                                 <div class="d-flex justify-content-between align-items-center mb-1.5">
                                     <span class="extra-small text-uppercase fw-bold text-success d-flex align-items-center gap-1">
                                         <i class="bi bi-file-earmark-text"></i>
@@ -2424,7 +2520,7 @@
                             </div>
 
                             <!-- Column 3: Hearing Velocity & Recent Hearings -->
-                            <div class="col-12 col-lg-4 d-flex flex-column">
+                            <div class="case-section-column flex-shrink-0 d-flex flex-column" style="width: 350px; min-width: 350px;">
                                 <div class="extra-small text-uppercase fw-bold text-dark mb-1.5 d-flex align-items-center gap-1">
                                     <i class="bi bi-clock-history text-info"></i>
                                     <span>Hearing Velocity &amp; Timeline</span>
@@ -2452,6 +2548,21 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Bottom Scroll Helper Footer -->
+                    <div class="d-flex justify-content-between align-items-center px-3 py-1.5 bg-light border-top extra-small text-muted">
+                        <div>
+                            <i class="bi bi-arrows-expand-vertical me-1 text-primary" style="transform: rotate(90deg);"></i>
+                            <span>Horizontal Scrollbar: Drag the blue bar above or use buttons:</span>
+                        </div>
+                        <div class="d-flex align-items-center gap-1.5">
+                            <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-2" onclick="scrollCaseDrawer(${c.trackedID}, -340)">
+                                <i class="bi bi-chevron-left me-0.5"></i>Left
+                            </button>
+                            <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-2" onclick="scrollCaseDrawer(${c.trackedID}, 340)">
+                                Right<i class="bi bi-chevron-right ms-0.5"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </td>
         </tr>`;
@@ -2460,13 +2571,60 @@
     // ==========================================
     // Toggle Inline Hearing Drawer
     // ==========================================
+    function adjustDrawerWidth(trackedId) {
+        const container = document.getElementById("myCasesTableResponsive");
+        if (!container) return;
+        const visibleWidth = container.clientWidth;
+        if (!visibleWidth || visibleWidth <= 0) return;
+
+        const targetWidth = Math.max(300, visibleWidth - 28);
+        const card = document.querySelector("#drawer_row_" + trackedId + " .hearing-drawer-card");
+        if (card) {
+            card.style.width = targetWidth + "px";
+            card.style.maxWidth = targetWidth + "px";
+            card.style.position = "sticky";
+            card.style.left = "12px";
+        }
+
+        const scrollEl = document.getElementById("drawer_scroll_" + trackedId);
+        if (scrollEl) {
+            scrollEl.style.width = "100%";
+            scrollEl.style.maxWidth = "100%";
+        }
+    }
+
+    function adjustAllOpenDrawers() {
+        const openRows = document.querySelectorAll(".hearing-drawer-row:not(.d-none)");
+        openRows.forEach(row => {
+            const id = row.id ? row.id.replace("drawer_row_", "") : null;
+            if (id) adjustDrawerWidth(id);
+        });
+    }
+
+    function attachCaseScrollWheel(trackedId) {
+        const scrollEl = document.getElementById("drawer_scroll_" + trackedId);
+        if (scrollEl && !scrollEl.dataset.wheelAttached) {
+            scrollEl.dataset.wheelAttached = "true";
+            scrollEl.addEventListener("wheel", function (e) {
+                if (Math.abs(e.deltaX) === 0 && Math.abs(e.deltaY) > 0) {
+                    scrollEl.scrollLeft += e.deltaY;
+                    e.preventDefault();
+                }
+            }, { passive: false });
+        }
+    }
+
     function toggleHearingDrawer(trackedId) {
-        const row = document.getElementById(`drawer_row_${trackedId}`);
-        const icon = document.getElementById(`drawer_icon_${trackedId}`);
+        const row = document.getElementById("drawer_row_" + trackedId);
+        const icon = document.getElementById("drawer_icon_" + trackedId);
         if (!row) return;
         if (row.classList.contains("d-none")) {
             row.classList.remove("d-none");
             if (icon) icon.className = "bi bi-chevron-down fs-6 fw-bold text-primary";
+            setTimeout(() => {
+                adjustDrawerWidth(trackedId);
+                attachCaseScrollWheel(trackedId);
+            }, 30);
         } else {
             row.classList.add("d-none");
             if (icon) icon.className = "bi bi-chevron-right fs-6 fw-bold text-secondary";
@@ -2995,6 +3153,7 @@
 
             if (tbody) tbody.innerHTML = groupHtml;
             if (cardsContainer) cardsContainer.innerHTML = groupCardsHtml;
+            updateTableScrollSync();
             return;
         }
 
@@ -3008,6 +3167,84 @@
 
         if (tbody) tbody.innerHTML = html;
         if (cardsContainer) cardsContainer.innerHTML = cardsHtml;
+        updateTableScrollSync();
+    }
+
+    // ==========================================
+    // Synchronized Horizontal Table Scrolling
+    // ==========================================
+        function scrollCaseDrawer(trackedId, delta) {
+        const el = document.getElementById('drawer_scroll_' + trackedId);
+        if (el) {
+            el.scrollBy({ left: delta, behavior: "smooth" });
+        }
+    }
+
+    function scrollTableHorizontally(delta) {
+        const tableContainer = document.getElementById("myCasesTableResponsive");
+        if (tableContainer) {
+            tableContainer.scrollBy({ left: delta, behavior: "smooth" });
+        }
+    }
+
+    function updateTableScrollSync() {
+        const tableContainer = document.getElementById("myCasesTableResponsive");
+        const topScrollbar = document.getElementById("tableTopScrollbar");
+        const topScrollInner = document.getElementById("tableTopScrollbarInner");
+        const topScrollWrapper = document.getElementById("tableTopScrollWrapper");
+        const table = document.getElementById("myCasesTable");
+
+        if (!tableContainer || !topScrollbar || !topScrollInner || !table) return;
+
+        setTimeout(() => {
+            const scrollW = table.scrollWidth;
+            const clientW = tableContainer.clientWidth;
+            topScrollInner.style.width = scrollW + "px";
+            if (scrollW > clientW + 15) {
+                if (topScrollWrapper) topScrollWrapper.style.display = "block";
+            } else {
+                if (topScrollWrapper) topScrollWrapper.style.display = "none";
+            }
+        }, 50);
+    }
+
+    function initTableScrollSync() {
+        const tableContainer = document.getElementById("myCasesTableResponsive");
+        const topScrollbar = document.getElementById("tableTopScrollbar");
+        if (!tableContainer || !topScrollbar) return;
+
+        let isSyncingTop = false;
+        let isSyncingBottom = false;
+
+        topScrollbar.addEventListener("scroll", function () {
+            if (isSyncingTop) return;
+            isSyncingBottom = true;
+            tableContainer.scrollLeft = topScrollbar.scrollLeft;
+            requestAnimationFrame(() => { isSyncingBottom = false; });
+        }, { passive: true });
+
+        tableContainer.addEventListener("scroll", function () {
+            if (isSyncingBottom) return;
+            isSyncingTop = true;
+            topScrollbar.scrollLeft = tableContainer.scrollLeft;
+            requestAnimationFrame(() => { isSyncingTop = false; });
+        }, { passive: true });
+
+        tableContainer.addEventListener("wheel", function (e) {
+            if (e.deltaX === 0 && e.shiftKey) {
+                tableContainer.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+                window.addEventListener("resize", function () {
+            updateTableScrollSync();
+            adjustAllOpenDrawers();
+        });
+        tableContainer.addEventListener("scroll", function () {
+            adjustAllOpenDrawers();
+        }, { passive: true });
+        updateTableScrollSync();
     }
 
     function filterCasesTable() {
@@ -3279,7 +3516,7 @@
 <body>
     <table>
         <tr>
-            <td colspan="24" class="hdr-title">North Western Karnataka Road Transport Corporation (NWKRTC)</td>
+            <td colspan="24" class="hdr-title">${escapeHtml(defaultOrgNameEnglish)} (${escapeHtml(defaultOrgShortName)})</td>
         </tr>
         <tr>
             <td colspan="24" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
@@ -3327,7 +3564,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `NWKRTC_MyCases_${currentModule}_${todayStr}.xls`;
+        link.download = `${defaultOrgShortName}_MyCases_${currentModule}_${todayStr}.xls`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -3398,7 +3635,7 @@
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `NWKRTC_MyCases_${currentModule}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.download = `${defaultOrgShortName}_MyCases_${currentModule}_${new Date().toISOString().split('T')[0]}.csv`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -5486,8 +5723,8 @@
         const bodyHtml = `
         <div class="official-header">
             <div>
-                <div class="corp-kannada">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ - ಕೇಂದ್ರೀಯ ಕಚೇರಿ, ಕಾನೂನು ಕೋಶ</div>
-                <h1 class="corp-title">North Western Karnataka Road Transport Corporation</h1>
+                <div class="corp-kannada">${escapeHtml(defaultOrgNameKannada)} - ಕೇಂದ್ರೀಯ ಕಚೇರಿ, ಕಾನೂನು ಕೋಶ</div>
+                <h1 class="corp-title">${escapeHtml(defaultOrgNameEnglish)}</h1>
                 <div class="doc-title">Central Law Cell — eCourts Judicial CNR Tracker & Cause List Register</div>
             </div>
             <div class="text-end">
@@ -5535,12 +5772,12 @@
             </div>
             <div class="sig-block">
                 <div>Law Officer / Registry In-charge</div>
-                <div style="font-size: 8.5px; font-weight: normal; margin-top: 2px;">Central Office, NWKRTC, Hubballi</div>
+                <div style="font-size: 8.5px; font-weight: normal; margin-top: 2px;">Central Office, ${escapeHtml(defaultOrgShortName)}, Hubballi</div>
             </div>
         </div>
         `;
 
-        executePrintHtml(`NWKRTC_MyCases_${currentModule}_Report`, bodyHtml, 'landscape');
+        executePrintHtml(`${defaultOrgShortName}_MyCases_${currentModule}_Report`, bodyHtml, 'landscape');
     }
 
     // ==========================================
@@ -5753,8 +5990,8 @@
         const bodyHtml = `
         <div class="official-header">
             <div>
-                <div class="corp-kannada">ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ - ಕಾನೂನು ಶಾಖೆ</div>
-                <h1 class="corp-title">North Western Karnataka Road Transport Corporation</h1>
+                <div class="corp-kannada">${escapeHtml(defaultOrgNameKannada)} - ಕಾನೂನು ಶಾಖೆ</div>
+                <h1 class="corp-title">${escapeHtml(defaultOrgNameEnglish)}</h1>
                 <div class="doc-title">Central Law Cell — Official Judicial Case Dossier</div>
             </div>
             <div class="text-end">
@@ -5994,7 +6231,7 @@
             </div>
             <div class="sig-block">
                 <div>Law Officer / Registry In-charge</div>
-                <div style="font-size: 8.5px; font-weight: normal; margin-top: 2px;">Central Office, NWKRTC, Hubballi</div>
+                <div style="font-size: 8.5px; font-weight: normal; margin-top: 2px;">Central Office, ${escapeHtml(defaultOrgShortName)}, Hubballi</div>
             </div>
         </div>
         `;
@@ -6068,7 +6305,7 @@
                     let benchText = (data.byBench && data.byBench.length > 0) 
                         ? data.byBench.map(b => `${b.bench} (${b.count})`).join(", ") 
                         : "High Court Benches";
-                    msgText.innerHTML = `<strong>${data.totalListed} NWKRTC matter(s)</strong> detected across: <em>${escapeHtml(benchText)}</em>. ${data.untrackedCount > 0 ? `<strong>${data.untrackedCount} untracked case(s)</strong> require appearance/advocate allocation.` : 'All cases are currently tracked in registry.'}`;
+                    msgText.innerHTML = `<strong>${data.totalListed} ${escapeHtml(defaultOrgShortName)} matter(s)</strong> detected across: <em>${escapeHtml(benchText)}</em>. ${data.untrackedCount > 0 ? `<strong>${data.untrackedCount} untracked case(s)</strong> require appearance/advocate allocation.` : 'All cases are currently tracked in registry.'}`;
                 }
 
                 const btnBadge = document.getElementById("alertBtnBadge");
@@ -6104,8 +6341,8 @@
             container.innerHTML = `
                 <div class="text-center py-5 text-muted">
                     <i class="bi bi-calendar-check fs-1 text-success d-block mb-2"></i>
-                    <h5 class="fw-bold text-dark">No NWKRTC Cases Listed Today</h5>
-                    <p class="small mb-0">High Court rosters for today have no listed hearings under NWKRTC or its designations.</p>
+                    <h5 class="fw-bold text-dark">No ${escapeHtml(defaultOrgShortName)} Cases Listed Today</h5>
+                    <p class="small mb-0">High Court rosters for today have no listed hearings under ${escapeHtml(defaultOrgShortName)} or its designations.</p>
                 </div>`;
             return;
         }
@@ -6145,9 +6382,9 @@
         alerts.forEach((c, idx) => {
             const isTrk = c.isTrackedInMyCases || c.isLocalMatch;
             const cnr = c.cnrNumber || "—";
-            const roleBadge = c.nwkrtcRole === "With NWKRTC"
-                ? `<span class="badge bg-primary text-white"><i class="bi bi-shield-check me-1"></i>With NWKRTC</span>`
-                : `<span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-shield-exclamation text-danger me-1"></i>Against NWKRTC</span>`;
+            const roleBadge = (c.nwkrtcRole === "With NWKRTC" || (c.nwkrtcRole && c.nwkrtcRole.includes("With")))
+                ? `<span class="badge bg-primary text-white"><i class="bi bi-shield-check me-1"></i>With ${escapeHtml(defaultOrgShortName)}</span>`
+                : `<span class="badge bg-warning-subtle text-dark border border-warning"><i class="bi bi-shield-exclamation text-danger me-1"></i>Against ${escapeHtml(defaultOrgShortName)}</span>`;
 
             html += `
                 <tr class="${!isTrk ? 'table-warning' : ''}">
@@ -6256,7 +6493,7 @@
         const btn = document.getElementById("btnExecutePartySearch");
 
         if (!partyName) {
-            showToast("Party Name Required", "Please enter a litigant party name to search (e.g. NWKRTC, Suresh Patil).", false);
+            showToast("Party Name Required", `Please enter a litigant party name to search (e.g. ${defaultOrgShortName}, Suresh Patil).`, false);
             return;
         }
 
@@ -6271,7 +6508,7 @@
         }
 
         try {
-            const isMulti = (partyName.toUpperCase() === "NWKRTC");
+            const isMulti = (partyName.toUpperCase() === defaultOrgShortName.toUpperCase() || partyName.toUpperCase() === "NWKRTC");
             const url = `/ECourts/SearchHighCourtByPartyName?estCode=${encodeURIComponent(bench)}&partyName=${encodeURIComponent(partyName)}&regYear=${encodeURIComponent(year)}&pendDisp=${encodeURIComponent(status)}&multiAlias=${isMulti}`;
             
             const res = await fetch(url);

@@ -828,7 +828,7 @@
                         </div>
                         <div class="d-flex justify-content-between align-items-center mt-1.5 px-1">
                             <small class="text-muted" style="font-size: 0.68rem;">
-                                <i class="bi bi-shield-lock-fill text-success me-1"></i>Confidential NWKRTC Legal Data • Qwen 2.5 Local Intelligence (Zero Cloud Cost)
+                                <i class="bi bi-shield-lock-fill text-success me-1"></i>Confidential @OrgService.GetCurrentSettings().OrganizationShortName Legal Data • Qwen 2.5 Local Intelligence (Zero Cloud Cost)
                             </small>
                             <small class="text-muted" style="font-size: 0.68rem;">
                                 <i class="bi bi-keyboard me-1"></i><kbd class="bg-light text-muted border px-1">Enter</kbd> to send
@@ -1676,9 +1676,9 @@
             const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
             const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
             const now = new Date();
-            const memoRefCode = 'NWKRTC/CO-LEG/NP-AI/' + now.getFullYear() + '/' + Math.floor(100000 + Math.random() * 900000);
+            const memoRefCode = '@OrgService.GetCurrentSettings().OrganizationShortName/CO-LEG/NP-AI/' + now.getFullYear() + '/' + Math.floor(100000 + Math.random() * 900000);
 
-            const logoUrl = window.location.origin + '/images/logo.jpg';
+            const logoUrl = window.location.origin + '@OrgService.GetCurrentSettings().LogoPath';
             const printWindow = window.open('', '_blank', 'width=980,height=880');
             if (!printWindow) {
                 alert('Please allow popups to open the official printable memorandum.');
@@ -1690,7 +1690,7 @@
                 <html lang="en">
                 <head>
                     <meta charset="utf-8" />
-                    <title>NWKRTC Official Legal Memorandum — ${meta.caseRef}</title>
+                    <title>@OrgService.GetCurrentSettings().OrganizationShortName Official Legal Memorandum — ${meta.caseRef}</title>
                     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
                     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@700;800&display=swap" rel="stylesheet" />
                     <style>
@@ -1905,16 +1905,16 @@
 
                     <div class="official-header d-flex justify-content-between align-items-center">
                         <div class="d-flex align-items-center" style="gap:14px;">
-                            <img src="${logoUrl}" alt="NWKRTC" class="logo-box" onerror="this.style.display='none'" />
+                            <img src="${logoUrl}" alt="@OrgService.GetCurrentSettings().OrganizationShortName" class="logo-box" onerror="this.style.display='none'" />
                             <div>
-                                <div class="corp-title">North Western Karnataka Road Transport Corporation</div>
+                                <div class="corp-title">@OrgService.GetCurrentSettings().OrganizationNameEnglish</div>
                                 <div class="corp-subtitle">Central Legal Directorate & Nyaya Patha Intelligence Center, Hubballi — 580030</div>
                             </div>
                         </div>
                         <div class="text-end">
                             <span class="memo-badge">Official Legal Memo</span>
                             <div><span class="memo-category-badge">${meta.matterCategory}</span></div>
-                            <div class="small text-muted mt-1" style="font-size: 9.5px;">Confidential // NWKRTC Official Legal Record</div>
+                            <div class="small text-muted mt-1" style="font-size: 9.5px;">Confidential // @OrgService.GetCurrentSettings().OrganizationShortName Official Legal Record</div>
                         </div>
                     </div>
 
@@ -1970,7 +1970,7 @@
 
                     <div class="sign-off-section d-flex justify-content-between align-items-end text-muted small">
                         <div>
-                            <div><strong>Grounding Attestation:</strong> Grounded in NWKRTC Central Case Records & Binding High Court / Supreme Court Precedents.</div>
+                            <div><strong>Grounding Attestation:</strong> Grounded in @OrgService.GetCurrentSettings().OrganizationShortName Central Case Records & Binding High Court / Supreme Court Precedents.</div>
                             <div class="hash-badge">Nyaya Patha AI Engine // System Digest: ${memoRefCode} // Timestamp: ${now.toISOString()}</div>
                         </div>
                         <div class="d-flex gap-4">
@@ -1982,7 +1982,7 @@
                             <div class="text-center" style="min-width: 170px;">
                                 <div style="border-bottom: 1px solid #475569; height: 35px; margin-bottom: 4px;"></div>
                                 <div class="fw-bold text-dark" style="font-size: 10.5px;">Chief Law Officer / In-Charge</div>
-                                <div style="font-size: 9.5px;">NWKRTC Central Office, Hubballi</div>
+                                <div style="font-size: 9.5px;">@OrgService.GetCurrentSettings().OrganizationShortName Central Office, Hubballi</div>
                             </div>
                         </div>
                     </div>
@@ -2055,7 +2055,7 @@
             // ---------------------------------------------------------
             // 2. EXTRACT OPERATING DIVISION / UNIT
             // ---------------------------------------------------------
-            let divisionEntity = 'NWKRTC Central / All Operating Divisions';
+            let divisionEntity = '@OrgService.GetCurrentSettings().OrganizationShortName Central / All Operating Divisions';
             const divisionMap = [
                 { name: 'Uttara Kannada Division (NKD)', keywords: ['nkd', 'uttara kannada', 'karwar', 'sirsi', 'kumta', 'ankola', 'bhatkal', 'yellapur', 'ka-30', 'ka-31', 'ka-47'] },
                 { name: 'Belagavi Division (BGM)', keywords: ['bgm', 'belagavi', 'belgaum', 'khanapur', 'bailhongal', 'ka-22'] },
@@ -2130,7 +2130,7 @@
             } else if (p.includes('mvc') || p.includes('mact') || r.includes('mact')) {
                 jurisdiction = 'Motor Accident Claims Tribunal (MACT)';
             } else if (isGreeting) {
-                jurisdiction = 'NWKRTC Central Legal Directorate, Hubballi';
+                jurisdiction = '@OrgService.GetCurrentSettings().OrganizationShortName Central Legal Directorate, Hubballi';
             }
 
             // ---------------------------------------------------------
@@ -2208,7 +2208,7 @@
 
             let statutoryRef = statutoryList.length > 0 
                 ? statutoryList.join(' | ') 
-                : (isGreeting ? 'NWKRTC Legal Standing Orders & Corporation Regulations' : 'Constitution of India, MV Act 1988 & Procedural Codes');
+                : (isGreeting ? '@OrgService.GetCurrentSettings().OrganizationShortName Legal Standing Orders & Corporation Regulations' : 'Constitution of India, MV Act 1988 & Procedural Codes');
 
             // ---------------------------------------------------------
             // 6. DYNAMIC MATTER CATEGORY & SUBJECT

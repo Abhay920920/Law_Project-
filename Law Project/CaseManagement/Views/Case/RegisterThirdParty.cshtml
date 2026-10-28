@@ -102,7 +102,7 @@
                              <label class="form-label d-block fw-bold text-secondary small text-uppercase">Vehicle Type</label>
                              <div class="form-check form-check-inline mt-1">
                                  <input class="form-check-input" type="radio" asp-for="VehicleType" value="Corporation" id="vtCorp" checked>
-                                 <label class="form-check-label" for="vtCorp">Corporation (NWKRTC)</label>
+                                 <label class="form-check-label" for="vtCorp">Corporation (@(OrgService.GetCurrentSettings().OrganizationShortName))</label>
                              </div>
                              <div class="form-check form-check-inline mt-1">
                                  <input class="form-check-input" type="radio" asp-for="VehicleType" value="Private" id="vtPrivate">

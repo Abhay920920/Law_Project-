@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models.Audit;
+using MVCCaseManagement.Services;
 using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
@@ -18,15 +19,18 @@ namespace MVCCaseManagement.Controllers
         private readonly ICaseActivityLogger _activityLogger;
         private readonly IMasterRepository _masterRepo;
         private readonly ILogger<ActivityLogController> _logger;
+        private readonly IOrganizationSettingsService? _orgSettings;
 
         public ActivityLogController(
             ICaseActivityLogger activityLogger,
             IMasterRepository masterRepo,
-            ILogger<ActivityLogController> logger)
+            ILogger<ActivityLogController> logger,
+            IOrganizationSettingsService? orgSettings = null)
         {
             _activityLogger = activityLogger;
             _masterRepo = masterRepo;
             _logger = logger;
+            _orgSettings = orgSettings;
         }
 
         public async Task<IActionResult> Index(ActivityLogFilter filter, CancellationToken cancellationToken)
@@ -103,7 +107,8 @@ namespace MVCCaseManagement.Controllers
             }
 
             byte[] bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            string fileName = $"NWKRTC_Case_Activity_Logs_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+            var orgShort = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+            string fileName = $"{orgShort}_Case_Activity_Logs_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
             return File(bytes, "text/csv; charset=utf-8", fileName);
         }
 

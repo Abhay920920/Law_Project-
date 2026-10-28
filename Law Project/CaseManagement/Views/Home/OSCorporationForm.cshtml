@@ -57,7 +57,7 @@
                 <h4 class="fw-bold text-dark mb-1">
                     <i class="bi bi-file-earmark-plus text-primary me-2"></i>New O.S (Corporation) Registration
                 </h4>
-                <p class="text-secondary small mb-0">Original Suit filed by NWKRTC as Plaintiff | @User.FindFirst("DivisionName")?.Value</p>
+                <p class="text-secondary small mb-0">Original Suit filed by @(OrgService.GetCurrentSettings().OrganizationShortName) as Plaintiff | @User.FindFirst("DivisionName")?.Value</p>
             </div>
             <a href="@Url.Action("OSCorporation", "Home")" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm">
                 <i class="bi bi-arrow-left me-1"></i> Back to Dashboard

@@ -208,6 +208,10 @@ namespace MVCCaseManagement.Controllers
 
         private async Task SignInUser(User user)
         {
+            bool isUserAdmin = user.RoleName.Equals("Admin", StringComparison.OrdinalIgnoreCase) || 
+                              user.Username.Equals("admin", StringComparison.OrdinalIgnoreCase);
+            string userDivName = user.DivisionName ?? (isUserAdmin ? "Admin" : "Central Office");
+
             // Create Claims for Identity
             var claims = new List<Claim>
             {
@@ -218,7 +222,7 @@ namespace MVCCaseManagement.Controllers
                 new Claim(ClaimTypes.Role, user.RoleName),
                 new Claim("Role", user.RoleName),
                 new Claim("DivisionID", user.DivisionID?.ToString() ?? "0"),
-                new Claim("DivisionName", user.DivisionName ?? "Central Office")
+                new Claim("DivisionName", userDivName)
             };
 
             if (user.RoleName.Equals("Division Controller", StringComparison.OrdinalIgnoreCase) || 
@@ -256,6 +260,10 @@ namespace MVCCaseManagement.Controllers
             {
                 HttpContext.Session.SetInt32(SessionKeys.DivisionID, user.DivisionID.Value);
                 HttpContext.Session.SetString(SessionKeys.DivisionName, user.DivisionName ?? string.Empty);
+            }
+            else if (isUserAdmin)
+            {
+                HttpContext.Session.SetString(SessionKeys.DivisionName, "Admin");
             }
 
             // Update last login

@@ -12,7 +12,7 @@
     
     <!-- Main Header -->
     <div class="text-center mb-4 fw-bold">
-        <h4 class="mb-0 text-uppercase">NWKRTC - @Model.DivisionName</h4>
+        <h4 class="mb-0 text-uppercase">@(OrgService.GetCurrentSettings().OrganizationShortName) - @Model.DivisionName</h4>
     </div>
 
     <div class="mb-3 text-center"><strong><u>DETAILS OF THE CASE</u></strong></div>

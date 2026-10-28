@@ -16,7 +16,7 @@
             </div>
             <div class="d-inline-flex align-items-center bg-white p-2 px-3 rounded-pill shadow-sm border">
                 <i class="bi bi-shield-check text-primary me-2"></i>
-                <span class="small fw-bold text-dark">NWKRTC Legal Division</span>
+                <span class="small fw-bold text-dark">@(OrgService.GetCurrentSettings().OrganizationShortName) Legal Division</span>
             </div>
         </div>
     </div>
@@ -36,7 +36,7 @@
                     </div>
                 </div>
                 <p class="text-muted small flex-grow-1">
-                    Original Suits instituted <strong>by NWKRTC</strong> for property damage, contract recoveries, land encroachment, and corporate disputes.
+                    Original Suits instituted <strong>by @(OrgService.GetCurrentSettings().OrganizationShortName)</strong> for property damage, contract recoveries, land encroachment, and corporate disputes.
                 </p>
                 <div class="d-flex gap-2 pt-3 border-top mt-2">
                     <a href="@Url.Action("OSCorporation", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
@@ -62,7 +62,7 @@
                     </div>
                 </div>
                 <p class="text-muted small flex-grow-1">
-                    Original Suits filed <strong>against NWKRTC</strong> by private contractors, land owners, vendors, and commercial third parties.
+                    Original Suits filed <strong>against @(OrgService.GetCurrentSettings().OrganizationShortName)</strong> by private contractors, land owners, vendors, and commercial third parties.
                 </p>
                 <div class="d-flex gap-2 pt-3 border-top mt-2">
                     <a href="@Url.Action("OSClaimant", "Home")" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1 fw-bold">
