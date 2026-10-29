@@ -549,18 +549,32 @@ namespace MVCCaseManagement.Controllers
             {
                 var dailyCauseListEntries = new (string CaseType, string RegNo, string RegYr, string CourtHall, string ItemNo, string Stage, string Pet, string Res, string Cnr)[]
                 {
+                    // Court Hall 2 - Cause List No. 1
                     ("WA", "100246", "2023", "Court Hall No : 2", "3", "ORDERS", "THE MANAGEMENT OF NWKRTC", "SHRI. MAHANTAYYA S/O SHIVAMURTAYYA KAMBLIMATH", "KAHC020054322023"),
                     ("WA", "100397", "2026", "Court Hall No : 2", "16", "ORDERS", "THE MANAGEMENT OF NWKRTC,", "SRI. FAKIRSAB H. NADAF S/O HUSENSAB NADAF SINCE DECEASED BY LRS AND OTHERS", "KAHC020089122026"),
                     ("WA", "100725", "2025", "Court Hall No : 2", "37", "ORDERS", "THE DIVISIONAL CONTROLLER", "SHRI YOGESH HABIB", "KAHC020230252025"),
                     ("WA", "100726", "2025", "Court Hall No : 2", "69", "ORDERS", "THE DIVISIONAL CONTROLLER", "SHRI YOGESH HABIB", "KAHC020230262025"),
+
+                    // Court Hall 3 - Cause List No. 1
                     ("CCC", "100148", "2025", "Court Hall No : 3", "9", "ORDERS", "M/S SWEET HOME CONSTRUCTIONS", "THE GOVERNMENT OF KARNATAKA AND ANOTHER", "KAHC020127712025"),
                     ("WA", "100337", "2025", "Court Hall No : 3", "9.1", "ORDERS", "THE EXECUTIVE ENGINEER", "M/S SWEET HOME CONSTRUCTIONS AND ANOTHER", "KAHC020127722025"),
+
+                    // Court Hall 6 - Cause List No. 1
                     ("WP", "105227", "2018", "Court Hall No : 6", "39", "ORDERS", "INAYAT BAGBAN S/O. IMAMSAHEB BAGBAN", "KARNATAKA STATE ROAD TRANSPORT CORPORATION AND OTHERS", "KAHC020211152018"),
                     ("WP", "103862", "2026", "Court Hall No : 6", "54", "ORDERS", "SHRI DARSHAN S/O JATTII PATAGAR", "THE MANAGING DIRECTOR AND ANOTHER", "KAHC020098452026"),
                     ("WP", "106388", "2026", "Court Hall No : 6", "57", "ORDERS", "SRI BASAVARAJ S/O BALAPPA JAGADAL", "THE CHIEF PERSONNEL MANAGER AND OTHERS", "KAHC020145222026"),
+                    ("WP", "108333", "2026", "Court Hall No : 6", "30", "ORDERS", "THE DIVISIONAL CONTROLLER", "SHRI SANNAYELLAPPA AND OTHERS", "KAHC020183332026"),
                     ("WP", "108472", "2026", "Court Hall No : 6", "79", "FRESH MATTER/S", "SHRI D B RATHOD (DESAI BABU RATHOD)", "THE DIVISIONAL CONTROLLER AND OTHERS", "KAHC020184912026"),
+
+                    // Court Hall 10 - Cause List No. 1
                     ("WP", "64833", "2009", "Court Hall No : 10", "1", "ORDERS", "MANAGEMENT OF NWKRTC", "L.B.KYATANNAVAR", "KAHC020088992009"),
-                    ("WP", "61436", "2012", "Court Hall No : 10", "2", "ORDERS", "THE DIVISIONAL CONTROLLER", "ABDUL WAHEED S/O. MEHATABSAB", "KAHC020099442012")
+                    ("WP", "61436", "2012", "Court Hall No : 10", "2", "ORDERS", "THE DIVISIONAL CONTROLLER", "ABDUL WAHEED S/O. MEHATABSAB", "KAHC020099442012"),
+                    ("WP", "70426", "2012", "Court Hall No : 10", "3", "ORDERS", "THE DIVISIONAL CONTROLLER, NWKRTC", "SUBHASCHANDRA S/O. RAMACHANDRA SHAH", "KAHC020087452012"),
+                    ("WP", "65361", "2012", "Court Hall No : 10", "34", "ORDERS", "RANGANATH VAMANRAO DALAL", "THE MANAGEMENT OF NWKRTC", "KAHC020065362012"),
+                    ("WP", "69019", "2012", "Court Hall No : 10", "35", "ORDERS", "THE MANAGEMENT OF NWKRTC", "SADASHIV S/O.NINGAPPA NAIK", "KAHC020069012012"),
+
+                    // In Chambers - Cause List No. 1
+                    ("RP", "100103", "2026", "In Chambers", "53", "ORDERS", "THE ASSISTANT ADMINISTRATIVE OFFICER AND ANOTHER", "SRI SOMALINGAPPA S/O. NINGAPPA SURYAVANSHI", "KAHC020010332026")
                 };
 
                 foreach (var entry in dailyCauseListEntries)
@@ -628,6 +642,10 @@ namespace MVCCaseManagement.Controllers
             // or non-corporation third parties when searching for NWKRTC cause list matters
                 list = list.Where(item => 
                 {
+                    // Official listed matters for the requested date are always retained
+                    if (item.IsListedToday)
+                        return true;
+
                     if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation")
                         return false;
 
