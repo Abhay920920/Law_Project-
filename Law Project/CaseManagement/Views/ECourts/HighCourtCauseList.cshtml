@@ -42,6 +42,50 @@
 
     }
 
+        /* Modal stabilization: prevent background table distortion and layout shift */
+    body.modal-open {
+        padding-right: 0 !important;
+        overflow-y: hidden !important;
+    }
+
+    #dossierModal.modal,
+    #roznamaModal.modal {
+        background: rgba(15, 23, 42, 0.45);
+        backdrop-filter: blur(2px);
+    }
+
+    #dossierModal .modal-dialog,
+    #roznamaModal .modal-dialog {
+        transition: transform 0.25s ease-out;
+        margin: 1.75rem auto;
+    }
+
+    #dossierModal .modal-content,
+    #roznamaModal .modal-content {
+        border-radius: 16px;
+        box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+        border: none;
+        overflow: hidden;
+    }
+
+    #dossierModal .table th {
+        font-weight: 700;
+        font-size: 11.5px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        background-color: #f8fafc;
+    }
+
+    #dossierModal .table td {
+        vertical-align: middle;
+        padding: 9px 12px;
+    }
+
+    #dossierModal #mTbodyHistory tr td:nth-child(2),
+    #dossierModal #mTbodyOrders tr td:nth-child(2) {
+        white-space: nowrap !important;
+    }
+
     .kpi-card:hover {
 
         transform: translateY(-2px);
@@ -752,22 +796,22 @@
 
 <!-- Full e-Courts Dossier Modal -->
 
-<div class="modal fade" id="dossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true">
-
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-
+<div class="modal fade" id="dossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down" style="max-width: min(95vw, 1160px);">
         <div class="modal-content border-0 shadow-lg">
-
-            <div class="modal-header bg-primary text-white py-3">
-
-                <h5 class="modal-title fw-bold" id="dossierModalLabel">
-
-                    <i class="bi bi-journal-richtext me-2"></i>e-Courts Full Dossier — <span id="modalMfaNo" class="font-monospace"></span>
-
-                </h5>
-
+            <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
+                <div class="d-flex align-items-center gap-2.5">
+                    <div class="bg-white bg-opacity-25 rounded-circle p-2 d-flex align-items-center justify-content-center text-white" style="width: 36px; height: 36px;">
+                        <i class="bi bi-journal-richtext fs-5"></i>
+                    </div>
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0 text-white" id="dossierModalLabel">
+                            e-Courts Full Dossier — <span id="modalMfaNo" class="font-monospace text-warning fw-bold"></span>
+                        </h5>
+                        <div class="extra-small text-white-50">High Court of Karnataka • Live Judicial Case Record</div>
+                    </div>
+                </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-
             </div>
 
             <div class="modal-body p-3 p-md-4">
@@ -829,27 +873,16 @@
                     <!-- History Tab -->
 
                     <div class="tab-pane fade show active" id="mTabHistory">
-
-                        <div class="table-responsive" style="max-height: 350px;">
-
-                            <table class="table table-sm table-hover align-middle extra-small border mb-0">
-
-                                <thead class="bg-light sticky-top">
-
+                        <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
+                            <table class="table table-sm table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
+                                <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-
-                                        <th>#</th>
-
-                                        <th>Date</th>
-
-                                        <th>Stage / Purpose</th>
-
-                                        <th>Bench / Judge</th>
-
-                                        <th>Business On Date / Remarks</th>
-
+                                        <th style="width: 50px; text-align: center;">#</th>
+                                        <th style="width: 130px; white-space: nowrap;">Hearing Date</th>
+                                        <th style="width: 260px;">Stage / Purpose</th>
+                                        <th style="width: 250px;">Bench / Judge</th>
+                                        <th style="min-width: 260px;">Business On Date / Remarks</th>
                                     </tr>
-
                                 </thead>
 
                                 <tbody id="mTbodyHistory">
@@ -869,27 +902,16 @@
                     <!-- Orders Tab -->
 
                     <div class="tab-pane fade" id="mTabOrders">
-
-                        <div class="table-responsive" style="max-height: 350px;">
-
-                            <table class="table table-sm table-hover align-middle extra-small border mb-0">
-
-                                <thead class="bg-light sticky-top">
-
+                        <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
+                            <table class="table table-sm table-hover align-middle mb-0" style="min-width: 780px; width: 100%;">
+                                <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-
-                                        <th>#</th>
-
-                                        <th>Order Date</th>
-
-                                        <th>Type / Details</th>
-
-                                        <th>Judge</th>
-
-                                        <th>Action</th>
-
+                                        <th style="width: 50px; text-align: center;">#</th>
+                                        <th style="width: 130px; white-space: nowrap;">Order Date</th>
+                                        <th style="min-width: 230px;">Type / Details</th>
+                                        <th style="min-width: 220px;">Judge</th>
+                                        <th style="width: 170px; text-align: center;">Action</th>
                                     </tr>
-
                                 </thead>
 
                                 <tbody id="mTbodyOrders">
@@ -950,24 +972,18 @@
 
 <!-- Live Roznama / Daily Status Modal -->
 
-<div class="modal fade" id="roznamaModal" tabindex="-1" aria-hidden="true" style="z-index: 1065;">
-
-    <div class="modal-dialog modal-lg modal-dialog-scrollable modal-fullscreen-sm-down">
-
+<div class="modal fade" id="roznamaModal" tabindex="-1" aria-hidden="true" style="z-index: 1070;">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down" style="max-width: min(92vw, 920px);">
         <div class="modal-content border-0 shadow-lg">
-
-            <div class="modal-header bg-dark text-white py-2.5 px-3">
-
-                <div class="d-flex align-items-center gap-2">
-
-                    <span class="badge bg-warning text-dark font-monospace fw-bold" id="rzModalBadge">ROZNAMA</span>
-
-                    <h6 class="modal-title fw-bold text-white mb-0" id="rzModalTitle">Daily Court Proceedings</h6>
-
+            <div class="modal-header py-3 px-4 text-white" style="background: linear-gradient(135deg, #111827 0%, #1f2937 100%);">
+                <div class="d-flex align-items-center gap-2.5">
+                    <span class="badge bg-warning text-dark font-monospace fw-bold px-2 py-1" id="rzModalBadge">ROZNAMA</span>
+                    <div>
+                        <h6 class="modal-title fw-bold text-white mb-0" id="rzModalTitle">Daily Court Proceedings</h6>
+                        <div class="extra-small text-white-50">High Court of Karnataka • Live Proceedings Record</div>
+                    </div>
                 </div>
-
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-
             </div>
 
             <div class="modal-body p-3">
@@ -2726,8 +2742,11 @@ function openDossierModal(appealId, cnr, mfaNo) {
 
 
 
-    const modal = new bootstrap.Modal(document.getElementById('dossierModal'));
-
+    const modalEl = document.getElementById('dossierModal');
+    if (modalEl && modalEl.parentElement !== document.body) {
+        document.body.appendChild(modalEl);
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 
 
@@ -2781,31 +2800,18 @@ function openDossierModal(appealId, cnr, mfaNo) {
                         const business = item.business || item.roznama || item.proceedings || item.remarks || item.court_business || '—';
 
                         hHtml += `<tr>
-
-                            <td class="text-muted fw-bold">${idx + 1}</td>
-
-                            <td class="fw-bold text-dark font-monospace">${dt}</td>
-
-                            <td><span class="badge bg-light text-primary border">${purpose}</span></td>
-
-                            <td>${judge}</td>
-
+                            <td class="text-center text-muted fw-bold">${idx + 1}</td>
+                            <td class="fw-bold text-dark font-monospace text-nowrap" style="white-space: nowrap !important;">${dt}</td>
+                            <td><span class="badge bg-light text-primary border text-wrap text-start" style="font-size: 11.5px; line-height: 1.4; padding: 5px 8px;">${purpose}</span></td>
+                            <td class="fw-semibold text-secondary" style="font-size: 12px; line-height: 1.4;">${judge}</td>
                             <td>
-
-                                <div class="d-flex align-items-center justify-content-between gap-1">
-
-                                    <span class="fst-italic text-secondary text-truncate" style="max-width: 250px;" title="${business}">${business}</span>
-
-                                    <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1.5 extra-small text-nowrap" onclick="openLiveRoznamaDirect('${cnr}', '${dt}', '${safeJsArg(mfaNo)}', '${safeJsArg(d.petitioner || '')}', '${safeJsArg(d.respondent || '')}')" title="Open Full Roznama Proceedings">
-
-                                        <i class="bi bi-eye me-0.5"></i>Roznama
-
+                                <div class="d-flex align-items-center justify-content-between gap-2">
+                                    <span class="fst-italic text-secondary text-truncate" style="max-width: 280px; font-size: 12px;" title="${business}">${business}</span>
+                                    <button type="button" class="btn btn-xs btn-outline-primary py-1 px-2 extra-small text-nowrap shadow-xs fw-semibold" onclick="openLiveRoznamaDirect('${cnr}', '${dt}', '${safeJsArg(mfaNo)}', '${safeJsArg(d.petitioner || '')}', '${safeJsArg(d.respondent || '')}')" title="Open Full Roznama Proceedings">
+                                        <i class="bi bi-file-earmark-text me-1"></i>Roznama
                                     </button>
-
                                 </div>
-
                             </td>
-
                         </tr>`;
 
                     });
@@ -2997,9 +3003,10 @@ function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
 
 
     const modalEl = document.getElementById('roznamaModal');
-
+    if (modalEl && modalEl.parentElement !== document.body) {
+        document.body.appendChild(modalEl);
+    }
     if (modalEl) {
-
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
 
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
@@ -3149,10 +3156,18 @@ function copyRoznamaText() {
 // Auto-initialize on page load: load benches and immediately fetch today's live cause list for NWKRTC
 
 document.addEventListener('DOMContentLoaded', function () {
-
     loadHcCourtBenches();
-
     fetchLiveHcCauselist();
+
+    // Ensure modals are mounted to document.body to prevent flex overflow clipping and background scroll jumping
+    const dModal = document.getElementById('dossierModal');
+    if (dModal && dModal.parentElement !== document.body) {
+        document.body.appendChild(dModal);
+    }
+    const rzModal = document.getElementById('roznamaModal');
+    if (rzModal && rzModal.parentElement !== document.body) {
+        document.body.appendChild(rzModal);
+    }
 
 
 
