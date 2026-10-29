@@ -813,163 +813,358 @@
 
 
 
-<!-- Full e-Courts Dossier Modal -->
-
+<!-- Full Comprehensive e-Courts Dossier Modal -->
 <div class="modal fade" id="dossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true" style="z-index: 1060;">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down" style="max-width: min(95vw, 1160px);">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white py-3 px-4" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
-                <div class="d-flex align-items-center gap-2.5">
-                    <div class="bg-white bg-opacity-25 rounded-circle p-2 d-flex align-items-center justify-content-center text-white" style="width: 36px; height: 36px;">
-                        <i class="bi bi-journal-richtext fs-5"></i>
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down" style="max-width: min(96vw, 1200px);">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+            <!-- Modal Header -->
+            <div class="modal-header py-3 px-4 text-white" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border-bottom: 1px solid rgba(255,255,255,0.15);">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-white bg-opacity-20 rounded-circle p-2.5 d-flex align-items-center justify-content-center text-white flex-shrink-0" style="width: 42px; height: 42px;">
+                        <i class="bi bi-journal-richtext fs-4"></i>
                     </div>
                     <div>
-                        <h5 class="modal-title fw-bold mb-0 text-white" id="dossierModalLabel">
-                            e-Courts Full Dossier — <span id="modalMfaNo" class="font-monospace text-warning fw-bold"></span>
-                        </h5>
-                        <div class="extra-small text-white-50">High Court of Karnataka • Live Judicial Case Record</div>
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <h5 class="modal-title fw-bold mb-0 text-white" id="modalCaseHeading">Case Dossier — <span id="modalMfaNo" class="font-monospace text-warning"></span></h5>
+                            <span class="badge bg-warning text-dark font-monospace fw-bold" id="modalCnrBadge">CNR: —</span>
+                            <span class="badge bg-success" id="modalStatusBadge">Pending</span>
+                        </div>
+                        <div class="extra-small text-white-50 mt-0.5" id="modalSubtitle">
+                            High Court of Karnataka • Live Judicial Case Record • NAPIX Gateway
+                        </div>
                     </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1.5" onclick="printHighCourtDossier()" title="Print full comprehensive legal dossier">
+                        <i class="bi bi-printer-fill"></i>
+                        <span class="d-none d-sm-inline">Print Dossier</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 d-flex align-items-center gap-1.5" id="btnRefreshDossier" onclick="reFetchDossier()" title="Refresh live case data from e-Courts">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        <span class="d-none d-sm-inline">Sync Live</span>
+                    </button>
+                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
             </div>
 
-            <div class="modal-body p-3 p-md-4">
+            <!-- Tab Navigation (Clean Horizontal Scroll) -->
+            <div class="bg-light border-bottom px-3 pt-2">
+                <ul class="nav nav-tabs border-0 flex-nowrap overflow-x-auto dossier-nav-tabs" id="dossierNavTabs" role="tablist" style="scrollbar-width: none;">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold small text-primary" data-bs-toggle="tab" data-bs-target="#mTabOverview" type="button" role="tab">
+                            <i class="bi bi-info-circle me-1"></i> Overview & Status
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabParties" type="button" role="tab">
+                            <i class="bi bi-people me-1 text-info"></i> Parties & Advocates
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabHistory" type="button" role="tab">
+                            <i class="bi bi-clock-history me-1 text-success"></i> Hearing History (<span id="mCountHistory">0</span>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabOrders" type="button" role="tab">
+                            <i class="bi bi-file-earmark-pdf me-1 text-danger"></i> Orders & Judgments (<span id="mCountOrders">0</span>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabIA" type="button" role="tab">
+                            <i class="bi bi-paperclip me-1 text-warning"></i> IA Filings (<span id="mCountIA">0</span>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabProcess" type="button" role="tab">
+                            <i class="bi bi-envelope-paper me-1 text-secondary"></i> Process Issued (<span id="mCountProcess">0</span>)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabActs" type="button" role="tab">
+                            <i class="bi bi-bank me-1 text-dark"></i> Acts & Sections (<span id="mCountActs">0</span>)
+                        </button>
+                    </li>
+                </ul>
+            </div>
 
-                <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <!-- Modal Body Content -->
+            <div class="modal-body p-3 p-md-4" style="min-height: 420px; background: #fdfdfd;">
+                <div class="tab-content" id="dossierTabContent">
+                    
+                    <!-- TAB 1: OVERVIEW & STATUS -->
+                    <div class="tab-pane fade show active" id="mTabOverview" role="tabpanel">
+                        <!-- Top 3 Key Metric Cards -->
+                        <div class="row g-3 mb-3">
+                            <!-- Card 1: Registration -->
+                            <div class="col-md-6 col-lg-4">
+                                <div class="p-3 rounded-3 border bg-white shadow-xs h-100 border-start border-4 border-primary">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="text-muted extra-small text-uppercase fw-bold"><i class="bi bi-file-earmark-text me-1 text-primary"></i>Case Registration</span>
+                                        <span class="badge bg-primary-subtle text-primary extra-small" id="dCaseTypeBadge">High Court Matter</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-2" id="dCaseNo">—</div>
+                                    <div class="small text-secondary mb-1">Filing No: <span id="dFilNo" class="text-dark fw-semibold font-monospace">—</span></div>
+                                    <div class="small text-secondary mb-1">Filing Date: <span id="dFilDate" class="text-dark fw-semibold font-monospace">—</span></div>
+                                    <div class="small text-secondary">Registration Date: <span id="dRegDate" class="text-dark fw-semibold font-monospace">—</span></div>
+                                </div>
+                            </div>
+                            <!-- Card 2: Listing & Next Hearing -->
+                            <div class="col-md-6 col-lg-4">
+                                <div class="p-3 rounded-3 border bg-white shadow-xs h-100 border-start border-4 border-warning">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="text-muted extra-small text-uppercase fw-bold"><i class="bi bi-calendar-check me-1 text-warning"></i>Listing & Hearing</span>
+                                        <span class="badge bg-warning-subtle text-dark border extra-small" id="dStatusPill">Active</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark font-monospace mb-2" id="dNextHearing">—</div>
+                                    <div class="small text-secondary mb-1">Stage: <span id="dStage" class="badge bg-light text-primary border text-wrap">—</span></div>
+                                    <div class="small text-secondary mb-1">First Listed: <span id="dFirstHearing" class="text-dark fw-semibold font-monospace">—</span></div>
+                                    <div class="small text-secondary">Disposal Date: <span id="dDisposalDate" class="text-dark fw-semibold font-monospace">—</span></div>
+                                </div>
+                            </div>
+                            <!-- Card 3: Court & Bench -->
+                            <div class="col-md-12 col-lg-4">
+                                <div class="p-3 rounded-3 border bg-white shadow-xs h-100 border-start border-4 border-info">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <span class="text-muted extra-small text-uppercase fw-bold"><i class="bi bi-building me-1 text-info"></i>Court & Bench</span>
+                                        <span class="badge bg-info-subtle text-info extra-small" id="dBenchType">Single Bench</span>
+                                    </div>
+                                    <div class="fs-6 fw-bold text-dark mb-2" id="dCourtName">—</div>
+                                    <div class="small text-secondary mb-1">Judge / Coram: <span id="dJudgeName" class="text-dark fw-semibold">—</span></div>
+                                    <div class="small text-secondary mb-1">Court Hall / Room: <span id="dCourtNo" class="text-dark fw-semibold">—</span></div>
+                                    <div class="small text-secondary">Jurisdiction: <span id="dStateDist" class="text-dark fw-semibold">High Court of Karnataka</span></div>
+                                </div>
+                            </div>
+                        </div>
 
-                    <div>
-
-                        <strong>CNR Number:</strong> <span id="modalCnr" class="font-monospace fw-bold fs-6 ms-1"></span>
-
+                        <!-- Categorization & Linked Case Data -->
+                        <div class="card border rounded-3 shadow-xs">
+                            <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex align-items-center justify-content-between">
+                                <span class="fw-bold small text-dark"><i class="bi bi-tag-fill me-1.5 text-primary"></i>Comprehensive Case Metadata & Cross-References</span>
+                                <span class="badge bg-light text-muted border extra-small">e-Courts Registry Data</span>
+                            </div>
+                            <div class="card-body p-3">
+                                <div class="row g-3 small">
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Nature of Disposal</div>
+                                        <div id="dNatureDisposal" class="fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Judicial Branch</div>
+                                        <div id="dJudicialBranch" class="fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Cause List Type</div>
+                                        <div id="dCauselistType" class="fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Main Matter CNR</div>
+                                        <div id="dMainMatterCnr" class="font-monospace text-primary fw-semibold mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Lower Court Name</div>
+                                        <div id="dLowerCourt" class="fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Lower Court Case No</div>
+                                        <div id="dLowerCourtCaseNo" class="font-monospace fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Transferred From</div>
+                                        <div id="dTransferEst" class="fw-semibold text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Transfer Date</div>
+                                        <div id="dTransferDate" class="font-monospace text-dark mt-0.5">—</div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Connected / Linked Cases</div>
+                                        <div id="dConnectedCases" class="font-monospace text-dark mt-0.5">—</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <span id="modalLastUpdated" class="badge bg-white text-info fw-bold">Live Data</span>
+                    <!-- TAB 2: PARTIES & ADVOCATES -->
+                    <div class="tab-pane fade" id="mTabParties" role="tabpanel">
+                        <div class="row g-3">
+                            <!-- Petitioners Card -->
+                            <div class="col-md-6">
+                                <div class="border rounded-3 h-100 p-3 bg-white shadow-xs border-top border-3 border-primary">
+                                    <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
+                                        <div class="bg-primary bg-opacity-10 text-primary p-2 rounded-circle">
+                                            <i class="bi bi-person-fill fs-5"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="fw-bold mb-0 text-primary">Petitioner(s)</h6>
+                                            <div class="extra-small text-muted">Primary party / Appellant initiating matter</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Primary Petitioner</div>
+                                        <div class="fs-6 fw-bold text-dark mt-1" id="mPetName">—</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Petitioner Advocate(s)</div>
+                                        <div class="small fw-semibold text-dark mt-1" id="mPetAdv">—</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Additional Petitioners</div>
+                                        <div class="small text-muted mt-1 p-2 bg-light rounded" id="mPetExtra">None</div>
+                                    </div>
+                                </div>
+                            </div>
 
-                </div>
+                            <!-- Respondents Card -->
+                            <div class="col-md-6">
+                                <div class="border rounded-3 h-100 p-3 bg-white shadow-xs border-top border-3 border-danger">
+                                    <div class="d-flex align-items-center gap-2 mb-3 pb-2 border-bottom">
+                                        <div class="bg-danger bg-opacity-10 text-danger p-2 rounded-circle">
+                                            <i class="bi bi-person-badge-fill fs-5"></i>
+                                        </div>
+                                        <div>
+                                            <h6 class="fw-bold mb-0 text-danger">Respondent(s)</h6>
+                                            <div class="extra-small text-muted">Defending party / NWKRTC Corporation</div>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Primary Respondent</div>
+                                        <div class="fs-6 fw-bold text-dark mt-1" id="mResName">—</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Respondent Advocate(s)</div>
+                                        <div class="small fw-semibold text-dark mt-1" id="mResAdv">—</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-muted extra-small fw-bold text-uppercase">Additional Respondents</div>
+                                        <div class="small text-muted mt-1 p-2 bg-light rounded" id="mResExtra">None</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-
-
-                <!-- Tabs -->
-
-                <ul class="nav nav-tabs nav-fill mb-3 dossier-nav-tabs" role="tablist">
-
-                    <li class="nav-item">
-
-                        <button class="nav-link active fw-bold small" data-bs-toggle="tab" data-bs-target="#mTabHistory">
-
-                            <i class="bi bi-clock-history me-1 text-primary"></i> Hearing History (<span id="mCountHistory">0</span>)
-
-                        </button>
-
-                    </li>
-
-                    <li class="nav-item">
-
-                        <button class="nav-link fw-bold small" data-bs-toggle="tab" data-bs-target="#mTabOrders">
-
-                            <i class="bi bi-file-earmark-pdf me-1 text-danger"></i> Orders & Judgments (<span id="mCountOrders">0</span>)
-
-                        </button>
-
-                    </li>
-
-                    <li class="nav-item">
-
-                        <button class="nav-link fw-bold small" data-bs-toggle="tab" data-bs-target="#mTabParties">
-
-                            <i class="bi bi-info-circle me-1 text-info"></i> Case Details
-
-                        </button>
-
-                    </li>
-
-                </ul>
-
-
-
-                <div class="tab-content">
-
-                    <!-- History Tab -->
-
-                    <div class="tab-pane fade show active" id="mTabHistory">
-                        <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
-                            <table class="table table-sm table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
+                    <!-- TAB 3: HEARING HISTORY -->
+                    <div class="tab-pane fade" id="mTabHistory" role="tabpanel">
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 860px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
                                         <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 130px; white-space: nowrap;">Hearing Date</th>
-                                        <th style="width: 260px;">Stage / Purpose</th>
-                                        <th style="width: 250px;">Bench / Judge</th>
+                                        <th style="width: 120px; white-space: nowrap;">Hearing Date</th>
+                                        <th style="width: 250px;">Stage / Purpose</th>
+                                        <th style="width: 220px;">Bench / Judge</th>
                                         <th style="min-width: 260px;">Business On Date / Remarks</th>
                                     </tr>
                                 </thead>
-
                                 <tbody id="mTbodyHistory">
-
-                                    <tr><td colspan="5" class="text-center text-muted py-3">Loading history...</td></tr>
-
+                                    <tr><td colspan="5" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading hearing history...</td></tr>
                                 </tbody>
-
                             </table>
-
                         </div>
-
                     </div>
 
-
-
-                    <!-- Orders Tab -->
-
-                    <div class="tab-pane fade" id="mTabOrders">
-                        <div class="table-responsive border rounded" style="max-height: 420px; overflow-y: auto;">
-                            <table class="table table-sm table-hover align-middle mb-0" style="min-width: 780px; width: 100%;">
+                    <!-- TAB 4: ORDERS & JUDGMENTS -->
+                    <div class="tab-pane fade" id="mTabOrders" role="tabpanel">
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
                                         <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 130px; white-space: nowrap;">Order Date</th>
-                                        <th style="min-width: 230px;">Type / Details</th>
-                                        <th style="min-width: 220px;">Judge</th>
-                                        <th style="width: 170px; text-align: center;">Action</th>
+                                        <th style="width: 120px; white-space: nowrap;">Order Date</th>
+                                        <th style="width: 100px;">Order No</th>
+                                        <th style="min-width: 240px;">Order Type / Details</th>
+                                        <th style="min-width: 200px;">Judge / Coram</th>
+                                        <th style="width: 150px; text-align: center;">Document</th>
                                     </tr>
                                 </thead>
-
                                 <tbody id="mTbodyOrders">
-
-                                    <tr><td colspan="5" class="text-center text-muted py-3">Loading orders...</td></tr>
-
+                                    <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-danger me-2"></div>Loading court orders...</td></tr>
                                 </tbody>
-
                             </table>
-
                         </div>
-
                     </div>
 
-
-
-                    <!-- Parties Tab -->
-
-                    <div class="tab-pane fade" id="mTabParties">
-
-                        <div class="row g-3 small">
-
-                            <div class="col-md-6 border-bottom pb-2"><strong>Petitioner(s):</strong> <div id="mPetitioner" class="fw-bold text-dark">—</div></div>
-
-                            <div class="col-md-6 border-bottom pb-2"><strong>Respondent(s):</strong> <div id="mRespondent" class="fw-bold text-dark">—</div></div>
-
-                            <div class="col-md-6 border-bottom pb-2"><strong>Petitioner Advocate:</strong> <div id="mPetAdv">—</div></div>
-
-                            <div class="col-md-6 border-bottom pb-2"><strong>Respondent Advocate:</strong> <div id="mResAdv">—</div></div>
-
-                            <div class="col-md-4"><strong>Filing Date:</strong> <div id="mFilingDate">—</div></div>
-
-                            <div class="col-md-4"><strong>Registration Date:</strong> <div id="mRegDate">—</div></div>
-
-                            <div class="col-md-4"><strong>Disposal Date:</strong> <div id="mDisposalDate">—</div></div>
-
+                    <!-- TAB 5: IA FILINGS -->
+                    <div class="tab-pane fade" id="mTabIA" role="tabpanel">
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
+                                <thead class="table-light sticky-top" style="z-index: 2;">
+                                    <tr>
+                                        <th style="width: 50px; text-align: center;">#</th>
+                                        <th style="width: 130px;">IA Number</th>
+                                        <th style="width: 120px; white-space: nowrap;">Filing Date</th>
+                                        <th>Applicant / Party</th>
+                                        <th style="min-width: 260px;">Prayer / Relief Sought</th>
+                                        <th style="width: 110px; text-align: center;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mTbodyIA">
+                                    <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-warning me-2"></div>Loading IA filings...</td></tr>
+                                </tbody>
+                            </table>
                         </div>
-
                     </div>
+
+                    <!-- TAB 6: PROCESS ISSUED -->
+                    <div class="tab-pane fade" id="mTabProcess" role="tabpanel">
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 780px; width: 100%;">
+                                <thead class="table-light sticky-top" style="z-index: 2;">
+                                    <tr>
+                                        <th style="width: 50px; text-align: center;">#</th>
+                                        <th style="width: 120px;">Process ID</th>
+                                        <th style="min-width: 220px;">Notice / Process Title</th>
+                                        <th style="width: 120px; white-space: nowrap;">Issue Date</th>
+                                        <th style="width: 120px; white-space: nowrap;">Return Date</th>
+                                        <th style="width: 110px; text-align: center;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mTbodyProcess">
+                                    <tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-secondary me-2"></div>Loading process notices...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- TAB 7: ACTS & SECTIONS -->
+                    <div class="tab-pane fade" id="mTabActs" role="tabpanel">
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 650px; width: 100%;">
+                                <thead class="table-light sticky-top" style="z-index: 2;">
+                                    <tr>
+                                        <th style="width: 50px; text-align: center;">#</th>
+                                        <th style="min-width: 320px;">Act Name</th>
+                                        <th style="min-width: 240px;">Section(s) Invoked</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="mTbodyActs">
+                                    <tr><td colspan="3" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-dark me-2"></div>Loading acts and sections...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="modal-footer py-2.5 px-4 bg-light border-top d-flex justify-content-between align-items-center">
+                <div class="extra-small text-muted d-flex align-items-center gap-1.5">
+                    <i class="bi bi-shield-check text-primary"></i>
+                    <span>Official Verified e-Courts Judicial Record • NWKRTC Legal Department</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3 rounded-pill" onclick="printHighCourtDossier()">
+                        <i class="bi bi-printer me-1"></i> Print Dossier
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary px-4 rounded-pill fw-semibold" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
                 </div>
 
@@ -2747,20 +2942,64 @@ async function syncAllVisibleCnrs() {
 
 
 
+let currentHighCourtDossier = null;
+let currentDossierCnr = '';
+let currentDossierAppealId = '';
+let currentDossierCaseNo = '';
+
 function openDossierModal(appealId, cnr, mfaNo) {
+    currentDossierCnr = cnr || '';
+    currentDossierAppealId = appealId || '';
+    currentDossierCaseNo = mfaNo || '';
 
-    document.getElementById('modalMfaNo').textContent = mfaNo;
+    document.getElementById('modalMfaNo').textContent = mfaNo || cnr || '—';
+    document.getElementById('modalCnrBadge').textContent = 'CNR: ' + (cnr || '—');
+    document.getElementById('modalStatusBadge').textContent = 'Querying Live...';
+    document.getElementById('modalStatusBadge').className = 'badge bg-secondary';
 
-    document.getElementById('modalCnr').textContent = cnr;
+    // Reset Overview & Tab counts
+    document.getElementById('dCaseNo').textContent = mfaNo || '—';
+    document.getElementById('dFilNo').textContent = '—';
+    document.getElementById('dFilDate').textContent = '—';
+    document.getElementById('dRegDate').textContent = '—';
+    document.getElementById('dNextHearing').textContent = '—';
+    document.getElementById('dStage').textContent = '—';
+    document.getElementById('dFirstHearing').textContent = '—';
+    document.getElementById('dDisposalDate').textContent = '—';
+    document.getElementById('dCourtName').textContent = 'High Court of Karnataka';
+    document.getElementById('dJudgeName').textContent = '—';
+    document.getElementById('dCourtNo').textContent = '—';
+    document.getElementById('dBenchType').textContent = 'High Court Bench';
+    document.getElementById('dNatureDisposal').textContent = '—';
+    document.getElementById('dJudicialBranch').textContent = '—';
+    document.getElementById('dCauselistType').textContent = '—';
+    document.getElementById('dMainMatterCnr').textContent = '—';
+    document.getElementById('dLowerCourt').textContent = '—';
+    document.getElementById('dLowerCourtCaseNo').textContent = '—';
+    document.getElementById('dTransferEst').textContent = '—';
+    document.getElementById('dTransferDate').textContent = '—';
+    document.getElementById('dConnectedCases').textContent = '—';
 
-    
+    document.getElementById('mPetName').textContent = '—';
+    document.getElementById('mPetAdv').textContent = '—';
+    document.getElementById('mPetExtra').textContent = 'None';
+    document.getElementById('mResName').textContent = '—';
+    document.getElementById('mResAdv').textContent = '—';
+    document.getElementById('mResExtra').textContent = 'None';
 
-    document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-primary me-2"></div>Loading hearing history from NAPIX...</td></tr>';
+    document.getElementById('mCountHistory').textContent = '0';
+    document.getElementById('mCountOrders').textContent = '0';
+    document.getElementById('mCountIA').textContent = '0';
+    document.getElementById('mCountProcess').textContent = '0';
+    document.getElementById('mCountActs').textContent = '0';
 
-    document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm text-danger me-2"></div>Loading orders from NAPIX...</td></tr>';
+    document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-success me-2"></div>Loading hearing history from NAPIX...</td></tr>';
+    document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-danger me-2"></div>Loading orders from NAPIX...</td></tr>';
+    document.getElementById('mTbodyIA').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-warning me-2"></div>Loading IA filings from NAPIX...</td></tr>';
+    document.getElementById('mTbodyProcess').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-secondary me-2"></div>Loading process notices from NAPIX...</td></tr>';
+    document.getElementById('mTbodyActs').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4"><div class="spinner-border spinner-border-sm text-dark me-2"></div>Loading acts and sections from NAPIX...</td></tr>';
 
-
-
+    // Show modal immediately
     const modalEl = document.getElementById('dossierModal');
     if (modalEl && modalEl.parentElement !== document.body) {
         document.body.appendChild(modalEl);
@@ -2768,54 +3007,108 @@ function openDossierModal(appealId, cnr, mfaNo) {
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
 
-
+    // Reset to first tab
+    const firstTabBtn = document.querySelector('#dossierNavTabs button[data-bs-target="#mTabOverview"]');
+    if (firstTabBtn && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+        bootstrap.Tab.getOrCreateInstance(firstTabBtn).show();
+    }
 
     fetch(`/ECourts/GetCnrDetails?cnrNumber=${encodeURIComponent(cnr)}&isHighCourt=true&appealId=${encodeURIComponent(appealId)}`)
-
         .then(r => r.json())
-
         .then(res => {
-
+            currentHighCourtDossier = res;
             if (res && res.success) {
-
-                const history = (res.history && res.history.length > 0) ? res.history : 
-
-                                (res.data && res.data.history && res.data.history.length > 0 ? res.data.history : 
-
-                                (res.data && res.data.case_history ? res.data.case_history : []));
-
-                const orders = (res.orders && res.orders.length > 0) ? res.orders : 
-
-                               (res.data && res.data.orders ? res.data.orders : []);
-
                 const d = res.data || {};
+                const raw = res.raw || {};
 
+                // Subtitle
+                const estName = d.establishment_name || raw.court_est_name || raw.est_name || 'High Court of Karnataka';
+                document.getElementById('modalSubtitle').textContent = `${estName} • Live Judicial Case Record • NAPIX Gateway`;
 
+                // Status Badge
+                const statusStr = (d.case_status || raw.case_status || '').trim();
+                const isDisposed = statusStr.toLowerCase().includes('dispos');
+                const sBadge = document.getElementById('modalStatusBadge');
+                sBadge.className = isDisposed ? 'badge bg-success' : 'badge bg-warning text-dark';
+                sBadge.textContent = statusStr || (isDisposed ? 'Disposed' : 'Pending');
 
+                const sPill = document.getElementById('dStatusPill');
+                sPill.className = isDisposed ? 'badge bg-success-subtle text-success border border-success extra-small' : 'badge bg-warning-subtle text-dark border border-warning extra-small';
+                sPill.textContent = statusStr || (isDisposed ? 'Disposed' : 'Active');
+
+                // 1. Overview Card - Registration
+                const caseType = d.case_type || raw.type_name_reg || raw.type_name || '';
+                document.getElementById('dCaseTypeBadge').textContent = caseType || 'High Court Matter';
+                document.getElementById('dCaseNo').textContent = `${caseType ? caseType + ' ' : ''}${d.case_number || mfaNo || '—'}`;
+                document.getElementById('dFilNo').textContent = raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ''}` : (d.filing_date || '—');
+                document.getElementById('dFilDate').textContent = d.filing_date || raw.date_of_filing || '—';
+                document.getElementById('dRegDate').textContent = d.registration_date || raw.dt_regis || '—';
+
+                // Overview Card - Listing & Hearing
+                document.getElementById('dNextHearing').textContent = d.next_hearing_date || '—';
+                document.getElementById('dStage').textContent = d.stage || raw.purpose_name || '—';
+                document.getElementById('dFirstHearing').textContent = d.first_hearing_date || raw.date_first_list || '—';
+                document.getElementById('dDisposalDate').textContent = d.decision_date || raw.date_of_decision || '—';
+
+                // Overview Card - Court & Bench
+                document.getElementById('dCourtName').textContent = estName;
+                document.getElementById('dJudgeName').textContent = raw.coram || d.court_no_judge || d.judge || '—';
+                document.getElementById('dCourtNo').textContent = d.court_no || raw.court_no || '—';
+                const benchDesc = raw.bench_name || (raw.bench_type == 1 ? 'Single Bench' : raw.bench_type == 2 ? 'Division Bench' : raw.bench_type == 3 ? 'Full Bench' : 'High Court Bench');
+                document.getElementById('dBenchType').textContent = benchDesc;
+                document.getElementById('dStateDist').textContent = `${raw.state_name || 'Karnataka'}${raw.dist_name ? ', ' + raw.dist_name : ''}`;
+
+                // Overview Card - Metadata
+                document.getElementById('dNatureDisposal').textContent = d.nature_of_disposal || raw.disposal_type || '—';
+                document.getElementById('dJudicialBranch').textContent = raw.judicial_branch || '—';
+                document.getElementById('dCauselistType').textContent = raw.causelist_type || 'Daily Cause List';
+                document.getElementById('dMainMatterCnr').textContent = raw.main_matter_cino || '—';
+                document.getElementById('dLowerCourt').textContent = raw.lower_court_name || '—';
+                document.getElementById('dLowerCourtCaseNo').textContent = raw.lower_court_caseno ? `${raw.lower_court_caseno}${raw.lower_court_dec_dt ? ' (Decided: ' + raw.lower_court_dec_dt + ')' : ''}` : (d.lower_court_caseno || '—');
+                document.getElementById('dTransferEst').textContent = d.transfer_est || raw.transfer_est || '—';
+                document.getElementById('dTransferDate').textContent = d.transfer_date || raw.transfer_date || '—';
+
+                let linkedStr = '—';
+                if (res.linked_cases && res.linked_cases.length > 0) {
+                    linkedStr = res.linked_cases.map(lc => lc.case_number || lc.cino || lc.reg_no || JSON.stringify(lc)).join(', ');
+                } else if (raw.connected_cases || raw.connected_case) {
+                    linkedStr = typeof raw.connected_cases === 'string' ? raw.connected_cases : JSON.stringify(raw.connected_cases);
+                }
+                document.getElementById('dConnectedCases').textContent = linkedStr;
+
+                // 2. Parties & Advocates
+                function formatExtraParties(val) {
+                    if (!val) return "None";
+                    if (typeof val === 'string') return val;
+                    if (typeof val === 'object') {
+                        const arr = Object.values(val).filter(v => typeof v === 'string' && v.trim().length > 0);
+                        return arr.length > 0 ? arr.join(", ") : "None";
+                    }
+                    return String(val);
+                }
+
+                document.getElementById('mPetName').textContent = d.petitioner || raw.pet_name || '—';
+                document.getElementById('mPetAdv').textContent = d.petitioner_advocate || raw.pet_adv || 'Not Assigned / In Person';
+                document.getElementById('mPetExtra').textContent = formatExtraParties(raw.pet_extra_party);
+
+                document.getElementById('mResName').textContent = d.respondent || raw.res_name || '—';
+                document.getElementById('mResAdv').textContent = d.respondent_advocate || raw.res_adv || 'Not Assigned / In Person';
+                document.getElementById('mResExtra').textContent = formatExtraParties(raw.res_extra_party || d.extra_party);
+
+                // 3. Proceedings History
+                const history = (res.history && res.history.length > 0) ? res.history : 
+                                (res.data && res.data.history && res.data.history.length > 0 ? res.data.history : 
+                                (res.data && res.data.case_history ? res.data.case_history : []));
                 document.getElementById('mCountHistory').textContent = history.length;
 
-                document.getElementById('mCountOrders').textContent = orders.length;
-
-
-
-                // Render History
-
                 if (history.length === 0) {
-
-                    document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No hearing history returned by e-Courts Gateway.</td></tr>';
-
+                    document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No proceedings records found in e-Courts payload.</td></tr>';
                 } else {
-
                     let hHtml = '';
-
                     history.forEach((item, idx) => {
-
                         const dt = item.business_date || item.hearing_date || item.date || item.next_date || item.cause_date || '—';
-
                         const purpose = item.purpose_name || item.stage || item.next_purpose || item.purpose || item.court_stage || '—';
-
                         const judge = item.judge || item.judge_name || item.desgname || item.court_no_judge || item.presiding_officer || '—';
-
                         const business = item.business || item.roznama || item.proceedings || item.remarks || item.court_business || '—';
 
                         hHtml += `<tr>
@@ -2832,122 +3125,293 @@ function openDossierModal(appealId, cnr, mfaNo) {
                                 </div>
                             </td>
                         </tr>`;
-
                     });
-
                     document.getElementById('mTbodyHistory').innerHTML = hHtml;
-
                 }
 
-
-
-                // Render Orders
+                // 4. Orders & Judgments
+                const orders = (res.orders && res.orders.length > 0) ? res.orders : 
+                               (res.data && res.data.orders ? res.data.orders : []);
+                document.getElementById('mCountOrders').textContent = orders.length;
 
                 if (orders.length === 0) {
-
-                    document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">No orders or judgments published for this case.</td></tr>';
-
+                    document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No formal court orders uploaded yet.</td></tr>';
                 } else {
-
                     let oHtml = '';
-
                     orders.forEach((item, idx) => {
-
                         const dt = item.order_date || item.orderDate || item.date || '—';
+                        const oNo = item.order_number || item.order_no || `#${idx + 1}`;
+                        const type = item.order_type || item.title || item.order_details || 'Order / Judgment';
+                        const judge = item.judge || item.desgname || item.judge_name || '—';
+                        const pdfUrl = item.pdf_url || item.order_link || item.link || item.pdf || item.order_pdf_url || '';
 
-                        const type = item.order_type || item.order_number || item.title || item.order_details || 'Order / Judgment';
-
-                        const judge = item.judge || item.desgname || '—';
-
-                        const pdfUrl = item.pdf_url || item.order_link || item.link || item.pdf || '';
-
-
-
-                        let actionBtn = `<a href="/ECourts/ViewOrderPdf?cnr=${encodeURIComponent(cnr)}" target="_blank" class="btn btn-sm btn-outline-danger py-0 px-2 fw-bold"><i class="bi bi-file-pdf-fill me-1"></i> View Order PDF</a>`;
-
+                        let actionBtn = `<a href="/ECourts/ViewOrderPdf?cnr=${encodeURIComponent(cnr)}" target="_blank" class="btn btn-sm btn-outline-danger py-1 px-2.5 extra-small fw-bold"><i class="bi bi-file-pdf-fill me-1"></i>View PDF</a>`;
                         if (pdfUrl) {
-
                             let targetUrl = pdfUrl;
-
                             if (!pdfUrl.startsWith('/ECourts/ViewOrderPdf')) {
-
                                 targetUrl = `/ECourts/ViewOrderPdf?url=${encodeURIComponent(pdfUrl)}&cnr=${encodeURIComponent(cnr)}`;
-
                             }
-
-                            actionBtn = `<a href="${targetUrl}" target="_blank" class="btn btn-sm btn-danger py-0 px-2 text-white fw-bold shadow-sm"><i class="bi bi-file-pdf-fill me-1"></i> Open Order PDF</a>`;
-
+                            actionBtn = `<a href="${targetUrl}" target="_blank" class="btn btn-sm btn-danger py-1 px-2.5 text-white extra-small fw-bold shadow-xs"><i class="bi bi-file-pdf-fill me-1"></i>Open PDF</a>`;
                         }
 
-
-
                         oHtml += `<tr>
-
-                            <td class="text-muted fw-bold">${idx + 1}</td>
-
-                            <td class="fw-bold text-dark font-monospace">${dt}</td>
-
+                            <td class="text-center text-muted fw-bold">${idx + 1}</td>
+                            <td class="fw-bold text-dark font-monospace text-nowrap">${dt}</td>
+                            <td class="font-monospace fw-bold text-primary">${oNo}</td>
                             <td><strong>${type}</strong></td>
-
-                            <td>${judge}</td>
-
-                            <td>${actionBtn}</td>
-
+                            <td class="text-secondary small">${judge}</td>
+                            <td class="text-center">${actionBtn}</td>
                         </tr>`;
-
                     });
-
                     document.getElementById('mTbodyOrders').innerHTML = oHtml;
-
                 }
 
+                // 5. IA Filings
+                let rawIa = res.ia_filings;
+                if (!rawIa || (Array.isArray(rawIa) && rawIa.length === 0)) {
+                    rawIa = raw.iafiling || raw.ia_filing || raw.ia_filings || raw.ia_details || raw.ias || raw.interim_application || [];
+                }
+                let iaList = [];
+                if (Array.isArray(rawIa)) {
+                    iaList = rawIa;
+                } else if (typeof rawIa === 'object' && rawIa !== null) {
+                    iaList = Object.values(rawIa);
+                }
+                document.getElementById('mCountIA').textContent = iaList.length;
 
+                if (iaList.length === 0) {
+                    document.getElementById('mTbodyIA').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No interim applications recorded in e-Courts payload.</td></tr>';
+                } else {
+                    let iaHtml = '';
+                    iaList.forEach((ia, idx) => {
+                        let iaNo = ia.ia_number || ia.ia_no || ia.no || ia.ianumber || ia.ia_num || `IA #${idx + 1}`;
+                        let classification = ia.classification || ia.ia_prayer || ia.prayer || ia.purpose || '';
+                        if (typeof iaNo === 'string') {
+                            const classMatch = iaNo.match(/(?:<b>\s*)?classification\s*:\s*(?:<\/b>\s*)?([^<]+)/i);
+                            if (classMatch && classMatch[1] && !classification) classification = classMatch[1].trim();
+                            iaNo = iaNo.replace(/<\/?b>/gi, '').replace(/<\/?br\s*\/?>/gi, ' - ').replace(/classification\s*:\s*.*$/i, '').trim();
+                            if (iaNo.endsWith('-')) iaNo = iaNo.slice(0, -1).trim();
+                        }
+                        const filingDate = ia.date_of_filing || ia.filing_date || ia.date || ia.filingdate || '—';
+                        const party = ia.ia_pet_name || ia.party_name || ia.applicant || ia.party || ia.petitioner || '—';
+                        const st = (ia.ia_pend_disp || ia.status || ia.ia_status || '').trim().toUpperCase();
+                        let badge = '<span class="badge bg-secondary-subtle text-secondary border extra-small">Recorded</span>';
+                        if (st === 'P' || st.includes('PEND')) {
+                            badge = '<span class="badge bg-warning-subtle text-dark border border-warning extra-small">Pending</span>';
+                        } else if (st === 'D' || st.includes('DISPOS')) {
+                            badge = '<span class="badge bg-success-subtle text-success border border-success extra-small">Disposed</span>';
+                        } else if (st.includes('ALLOW')) {
+                            badge = '<span class="badge bg-primary-subtle text-primary border border-primary extra-small">Allowed</span>';
+                        } else if (st.includes('DISMISS') || st.includes('REJECT')) {
+                            badge = '<span class="badge bg-danger-subtle text-danger border border-danger extra-small">Dismissed</span>';
+                        }
 
-                // Render Details
+                        iaHtml += `<tr>
+                            <td class="text-center fw-bold text-muted">${idx + 1}</td>
+                            <td class="font-monospace fw-bold text-primary">${iaNo}</td>
+                            <td class="font-monospace">${filingDate}</td>
+                            <td><div class="fw-semibold text-dark">${party}</div></td>
+                            <td><div class="small text-secondary">${classification || '—'}</div></td>
+                            <td class="text-center">${badge}</td>
+                        </tr>`;
+                    });
+                    document.getElementById('mTbodyIA').innerHTML = iaHtml;
+                }
 
-                document.getElementById('mPetitioner').textContent = d.petitioner || '—';
+                // 6. Process Issued
+                let rawProc = res.processes;
+                if (!rawProc || (Array.isArray(rawProc) && rawProc.length === 0)) {
+                    rawProc = raw.processes || raw.case_processes || raw.process || raw.process_details || raw.notice_details || raw.notices || raw.notice || [];
+                }
+                let procList = [];
+                if (Array.isArray(rawProc)) {
+                    procList = rawProc;
+                } else if (typeof rawProc === 'object' && rawProc !== null) {
+                    procList = Object.values(rawProc);
+                }
+                document.getElementById('mCountProcess').textContent = procList.length;
 
-                document.getElementById('mRespondent').textContent = d.respondent || '—';
+                if (procList.length === 0) {
+                    document.getElementById('mTbodyProcess').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No process notices recorded in e-Courts payload.</td></tr>';
+                } else {
+                    let procHtml = '';
+                    procList.forEach((p, idx) => {
+                        const procId = p.process_id || p.process_no || p.id || p.sr_no || `P-${idx + 1}`;
+                        const pTitle = p.process_title || p.title || p.process_name || p.name || p.notice_title || 'Notice / Process';
+                        const pParty = p.party_name || p.recipient || p.issued_to || p.pet_name || p.res_name || '';
+                        const pDate = p.issue_date || p.process_date || p.date || p.issued_date || '—';
+                        const rDate = p.return_date || p.next_date || '';
+                        const nType = p.notice_type || p.type || p.process_type || p.status || 'Process Issued';
 
-                document.getElementById('mPetAdv').textContent = d.petitioner_advocate || d.pet_adv || '—';
+                        procHtml += `<tr>
+                            <td class="text-center fw-bold text-muted">${idx + 1}</td>
+                            <td class="font-monospace fw-bold text-primary">${procId}</td>
+                            <td>
+                                <div class="fw-semibold text-dark">${pTitle}</div>
+                                ${pParty ? `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person me-1"></i>Issued To: <strong>${pParty}</strong></div>` : ''}
+                            </td>
+                            <td class="font-monospace">${pDate}</td>
+                            <td class="font-monospace">${rDate || '—'}</td>
+                            <td class="text-center"><span class="badge bg-light text-dark border extra-small">${nType}</span></td>
+                        </tr>`;
+                    });
+                    document.getElementById('mTbodyProcess').innerHTML = procHtml;
+                }
 
-                document.getElementById('mResAdv').textContent = d.respondent_advocate || d.res_adv || '—';
+                // 7. Acts & Sections
+                const acts = res.acts || raw.acts || [];
+                document.getElementById('mCountActs').textContent = acts.length;
 
-                document.getElementById('mFilingDate').textContent = d.filing_date || '—';
-
-                document.getElementById('mRegDate').textContent = d.dt_regis || '—';
-
-                document.getElementById('mDisposalDate').textContent = d.date_of_decision || '—';
+                if (acts.length === 0) {
+                    document.getElementById('mTbodyActs').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No specific acts or sections recorded in e-Courts payload.</td></tr>';
+                } else {
+                    let actsHtml = '';
+                    acts.forEach((a, idx) => {
+                        actsHtml += `<tr>
+                            <td class="text-center fw-bold text-muted">${idx + 1}</td>
+                            <td class="fw-semibold text-dark">${a.act || a.act_name || '—'}</td>
+                            <td class="font-monospace text-primary fw-bold">${a.section || '—'}</td>
+                        </tr>`;
+                    });
+                    document.getElementById('mTbodyActs').innerHTML = actsHtml;
+                }
 
             } else {
-
-                document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Could not load eCourts history.</td></tr>';
-
-                document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Could not load eCourts orders.</td></tr>';
-
+                document.getElementById('modalStatusBadge').textContent = 'Offline / Error';
+                document.getElementById('modalStatusBadge').className = 'badge bg-danger';
+                document.getElementById('mTbodyHistory').innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">${res?.message || 'Could not load e-Courts history.'}</td></tr>`;
+                document.getElementById('mTbodyOrders').innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">${res?.message || 'Could not load e-Courts orders.'}</td></tr>`;
+                document.getElementById('mTbodyIA').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No records.</td></tr>';
+                document.getElementById('mTbodyProcess').innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No records.</td></tr>';
+                document.getElementById('mTbodyActs').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No records.</td></tr>';
             }
-
         })
-
-        .catch(() => {
-
-            document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Network error fetching dossier.</td></tr>';
-
-            document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Network error fetching dossier.</td></tr>';
-
+        .catch(err => {
+            document.getElementById('modalStatusBadge').textContent = 'Network Error';
+            document.getElementById('modalStatusBadge').className = 'badge bg-danger';
+            document.getElementById('mTbodyHistory').innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Network error connecting to e-Courts Gateway.</td></tr>';
+            document.getElementById('mTbodyOrders').innerHTML = '<tr><td colspan="6" class="text-center text-danger py-4">Network error connecting to e-Courts Gateway.</td></tr>';
         });
-
 }
 
+function reFetchDossier() {
+    if (currentDossierCnr) {
+        openDossierModal(currentDossierAppealId, currentDossierCnr, currentDossierCaseNo);
+    }
+}
 
+function printHighCourtDossier() {
+    if (!currentHighCourtDossier) {
+        showToast('Print Notice', 'Please wait for case dossier to finish loading before printing.', false);
+        return;
+    }
+    const d = currentHighCourtDossier.data || {};
+    const raw = currentHighCourtDossier.raw || {};
+    const cnr = currentDossierCnr || d.cnr_number || '—';
+    const caseNo = currentDossierCaseNo || d.case_number || '—';
+    const est = d.establishment_name || raw.court_est_name || 'High Court of Karnataka';
 
-let curRzCnr = '';
+    const pWin = window.open('', '_blank', 'width=900,height=800');
+    if (!pWin) {
+        alert('Please allow popups to print the dossier.');
+        return;
+    }
 
-let curRzDate = '';
+    const historyRows = (currentHighCourtDossier.history || []).map((h, i) => `
+        <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td>${h.business_date || h.hearing_date || h.date || '—'}</td>
+            <td>${h.purpose_name || h.stage || h.purpose || '—'}</td>
+            <td>${h.judge || h.judge_name || '—'}</td>
+            <td>${h.business || h.roznama || h.remarks || '—'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;">No history recorded</td></tr>';
 
-let curRzCaseNo = '';
+    const orderRows = (currentHighCourtDossier.orders || []).map((o, i) => `
+        <tr>
+            <td style="text-align:center;">${i + 1}</td>
+            <td>${o.order_date || o.date || '—'}</td>
+            <td>${o.order_number || o.order_no || `#${i+1}`}</td>
+            <td>${o.order_type || o.order_details || '—'}</td>
+            <td>${o.judge_name || o.judge || '—'}</td>
+        </tr>
+    `).join('') || '<tr><td colspan="5" style="text-align:center;">No orders recorded</td></tr>';
 
+    pWin.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Case Dossier - ${caseNo}</title>
+            <style>
+                body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; padding: 24px; margin: 0; }
+                .header { text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 20px; }
+                .org { font-size: 14pt; font-weight: bold; color: #1e3a8a; }
+                .sub { font-size: 10pt; color: #64748b; margin-top: 4px; }
+                .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+                .meta-table td { padding: 6px 10px; border: 1px solid #cbd5e1; font-size: 10pt; }
+                .meta-table td.label { background: #f8fafc; font-weight: bold; width: 22%; color: #334155; }
+                table.data { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+                table.data th { background: #1e293b; color: #fff; font-size: 9.5pt; text-align: left; padding: 7px 10px; border: 1px solid #64748b; }
+                table.data td { padding: 6px 10px; border: 1px solid #cbd5e1; font-size: 9pt; }
+                .sec-title { font-size: 11pt; font-weight: bold; color: #1e3a8a; border-bottom: 1.5px solid #cbd5e1; padding-bottom: 4px; margin: 18px 0 10px; }
+                @@media print { body { padding: 0; } }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div class="org">NORTH WESTERN KARNATAKA ROAD TRANSPORT CORPORATION</div>
+                <div class="sub">LEGAL DEPARTMENT • COMPREHENSIVE e-COURTS CASE DOSSIER</div>
+            </div>
+            <table class="meta-table">
+                <tr>
+                    <td class="label">Case Number</td><td><strong>${caseNo}</strong></td>
+                    <td class="label">CNR Number</td><td><strong>${cnr}</strong></td>
+                </tr>
+                <tr>
+                    <td class="label">Court / Bench</td><td>${est}</td>
+                    <td class="label">Case Status</td><td>${d.case_status || 'Pending'}</td>
+                </tr>
+                <tr>
+                    <td class="label">Petitioner</td><td>${d.petitioner || raw.pet_name || '—'} (Adv: ${d.petitioner_advocate || raw.pet_adv || '—'})</td>
+                    <td class="label">Respondent</td><td>${d.respondent || raw.res_name || '—'} (Adv: ${d.respondent_advocate || raw.res_adv || '—'})</td>
+                </tr>
+                <tr>
+                    <td class="label">Next Hearing Date</td><td><strong>${d.next_hearing_date || '—'}</strong></td>
+                    <td class="label">Stage / Purpose</td><td>${d.stage || raw.purpose_name || '—'}</td>
+                </tr>
+                <tr>
+                    <td class="label">Filing Date</td><td>${d.filing_date || raw.date_of_filing || '—'}</td>
+                    <td class="label">Registration Date</td><td>${d.registration_date || raw.dt_regis || '—'}</td>
+                </tr>
+            </table>
 
+            <div class="sec-title">Hearing History & Daily Proceedings</div>
+            <table class="data">
+                <thead>
+                    <tr><th style="width:30px;">#</th><th style="width:90px;">Date</th><th style="width:160px;">Stage / Purpose</th><th style="width:150px;">Judge</th><th>Business On Date</th></tr>
+                </thead>
+                <tbody>${historyRows}</tbody>
+            </table>
+
+            <div class="sec-title">Court Orders & Judgments</div>
+            <table class="data">
+                <thead>
+                    <tr><th style="width:30px;">#</th><th style="width:90px;">Order Date</th><th style="width:80px;">Order No</th><th>Order Type / Details</th><th>Judge / Coram</th></tr>
+                </thead>
+                <tbody>${orderRows}</tbody>
+            </table>
+
+            <div style="margin-top: 30px; text-align: right; font-size: 8.5pt; color: #94a3b8;">
+                Generated on: ${new Date().toLocaleString()} | e-Courts Gateway Data
+            </div>
+            <script>
+                window.onload = function() { window.print(); };
+            <\/script>
+        </body>
+        </html>
+    `);
+    pWin.document.close();
+}
 
 function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
 
