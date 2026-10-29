@@ -1761,9 +1761,27 @@
 
 @section Scripts {
 <script>
-    const defaultOrgShortName = "@OrgService.GetCurrentSettings().OrganizationShortName";
-    const defaultOrgNameEnglish = "@OrgService.GetCurrentSettings().OrganizationNameEnglish";
-    const defaultOrgNameKannada = "@OrgService.GetCurrentSettings().OrganizationNameKannada";
+    function decodeHtml(str) {
+        if (!str) return "";
+        try {
+            const txt = document.createElement("textarea");
+            txt.innerHTML = str;
+            return txt.value;
+        } catch {
+            return String(str);
+        }
+    }
+
+    @{
+        var currentOrg = OrgService.GetCurrentSettings();
+        var safeOrgShort = System.Net.WebUtility.HtmlDecode(currentOrg?.OrganizationShortName ?? "NWKRTC");
+        var safeOrgEng = System.Net.WebUtility.HtmlDecode(currentOrg?.OrganizationNameEnglish ?? "North Western Karnataka Road Transport Corporation");
+        var safeOrgKn = System.Net.WebUtility.HtmlDecode(currentOrg?.OrganizationNameKannada ?? "ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ");
+        var jsonRelaxed = new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    }
+    const defaultOrgShortName = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(safeOrgShort, jsonRelaxed));
+    const defaultOrgNameEnglish = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(safeOrgEng, jsonRelaxed));
+    const defaultOrgNameKannada = decodeHtml(@Html.Raw(System.Text.Json.JsonSerializer.Serialize(safeOrgKn, jsonRelaxed)));
     const currentModule = "@module";
     let allCasesData = [];
     let currentDossierTrackedId = null;
@@ -5235,6 +5253,7 @@
             font-weight: 700;
             color: #1e3a8a;
             margin-bottom: 2px;
+            font-family: 'Noto Sans Kannada', 'Tunga', 'Kedage', 'Segoe UI', system-ui, sans-serif;
         }
         .corp-title {
             font-size: 15px;
@@ -5714,7 +5733,7 @@
         const bodyHtml = `
         <div class="official-header">
             <div>
-                <div class="corp-kannada">${escapeHtml(defaultOrgNameKannada)} - ಕೇಂದ್ರೀಯ ಕಚೇರಿ, ಕಾನೂನು ಕೋಶ</div>
+                <div class="corp-kannada">${escapeHtml(decodeHtml(defaultOrgNameKannada))} - ಕೇಂದ್ರೀಯ ಕಚೇರಿ, ಕಾನೂನು ಕೋಶ</div>
                 <h1 class="corp-title">${escapeHtml(defaultOrgNameEnglish)}</h1>
                 <div class="doc-title">Central Law Cell — eCourts Judicial CNR Tracker & Cause List Register</div>
             </div>
@@ -5981,7 +6000,7 @@
         const bodyHtml = `
         <div class="official-header">
             <div>
-                <div class="corp-kannada">${escapeHtml(defaultOrgNameKannada)} - ಕಾನೂನು ಶಾಖೆ</div>
+                <div class="corp-kannada">${escapeHtml(decodeHtml(defaultOrgNameKannada))} - ಕಾನೂನು ಶಾಖೆ</div>
                 <h1 class="corp-title">${escapeHtml(defaultOrgNameEnglish)}</h1>
                 <div class="doc-title">Central Law Cell — Official Judicial Case Dossier</div>
             </div>

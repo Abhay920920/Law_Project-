@@ -251,5 +251,26 @@ namespace MVCCaseManagement.Tests
                 }
             }
         }
+
+        [Fact]
+        public void OrganizationNameKannada_HtmlEntityDecoding_AndJsonRelaxedEscaping_PreservesUnicodeKannada()
+        {
+            // Simulates raw or entity-encoded Kannada organization name from database or views
+            const string entityEncoded = "&#xCB5;&#xCBE;&#xCAF;&#xCB5;&#xCCD;&#xCAF; &#xC95;&#xCB0;&#xCCD;&#xCA8;&#xCBE;&#xC9F;&#xC95; &#xCB0;&#xCB8;&#xCCD;&#xCA4;&#xCC6; &#xCB8;&#xCBE;&#xCB0;&#xCBF;&#xC97;&#xCC6; &#xCB8;&#xC82;&#xCB8;&#xCCD;&#xCA5;&#xCC6;";
+            const string expectedKannada = "ವಾಯವ್ಯ ಕರ್ನಾಟಕ ರಸ್ತೆ ಸಾರಿಗೆ ಸಂಸ್ಥೆ";
+
+            string decoded = System.Net.WebUtility.HtmlDecode(entityEncoded);
+            Assert.Equal(expectedKannada, decoded);
+
+            // Verify System.Text.Json with UnsafeRelaxedJsonEscaping outputs authentic UTF-8 Kannada characters (not \u0CB5 or &#xCB5;)
+            var opt = new System.Text.Json.JsonSerializerOptions 
+            { 
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
+            };
+            string serialized = System.Text.Json.JsonSerializer.Serialize(decoded, opt);
+            Assert.Equal($"\"{expectedKannada}\"", serialized);
+            Assert.DoesNotContain("&#x", serialized);
+            Assert.DoesNotContain("\\u", serialized);
+        }
     }
 }
