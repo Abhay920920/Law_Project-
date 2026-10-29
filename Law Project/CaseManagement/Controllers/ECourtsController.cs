@@ -7374,7 +7374,14 @@ namespace MVCCaseManagement.Controllers
 
                     if (rawPdfPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                     {
-                        candidateUrls.Insert(0, rawPdfPath);
+                        if (UrlSecurityValidator.IsSafeExternalUrl(rawPdfPath, out var safeUri) && safeUri != null)
+                        {
+                            candidateUrls.Insert(0, safeUri.AbsoluteUri);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("[ViewOrderPdf] Rejected unsafe external PDF URL: {Url}", rawPdfPath);
+                        }
                     }
                     else if (isHcCase)
                     {
@@ -7879,7 +7886,14 @@ namespace MVCCaseManagement.Controllers
 
             if (pdfPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
-                candidateUrls.Add(pdfPath);
+                if (UrlSecurityValidator.IsSafeExternalUrl(pdfPath, out var safeUri) && safeUri != null)
+                {
+                    candidateUrls.Add(safeUri.AbsoluteUri);
+                }
+                else
+                {
+                    _logger.LogWarning("[DownloadOrderPdf] Rejected unsafe external PDF URL: {Url}", pdfPath);
+                }
             }
             else if (isHc)
             {

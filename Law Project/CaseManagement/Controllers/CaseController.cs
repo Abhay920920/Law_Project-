@@ -727,6 +727,14 @@ namespace MVCCaseManagement.Controllers
             bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
                                    || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
                                    || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : -1;
+            if (!isCentralOffice && model.DivisionID != userDivId)
+            {
+                _logger.LogWarning("IDOR attempt: User DivisionID={UserDiv} tried to view CaseID={CaseID} (DivisionID={CaseDiv})",
+                    userDivId, id, model.DivisionID);
+                return Forbid();
+            }
             
             ViewBag.IsCentralOffice = isCentralOffice;
             ViewBag.IsCLO = User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO");

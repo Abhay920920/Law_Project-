@@ -1150,8 +1150,12 @@ namespace MVCCaseManagement.Controllers
             if (model == null) return NotFound();
 
             // Division ownership guard — prevent cross-division tampering
-            int myDiv = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0;
-            bool isCO = (myDiv == 0 || myDiv == 5);
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCO = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                        || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                        || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+            int myDiv = int.TryParse(divIdString, out int parsedId) ? parsedId : -1;
             if (!isCO && model.DivisionID != myDiv)
             {
                 TempData["ErrorMessage"] = "Access Denied: You can only edit cases from your own division.";
@@ -3530,11 +3534,30 @@ namespace MVCCaseManagement.Controllers
                 return View(model);
             }
         }
+        private bool CanAccessLabourCase(int caseId, out LabourCase? labourCase)
+        {
+            labourCase = _labourRepo.GetCaseById(caseId);
+            if (labourCase == null) return false;
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCO = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                        || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                        || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+            int userDivId = int.TryParse(divIdString, out int parsedId) ? parsedId : -1;
+
+            return isCO || labourCase.DivisionID == userDivId;
+        }
+
         [HttpPost]
         public IActionResult UploadReinstatementDocument(int caseId, string documentName, IFormFile documentFile)
         {
             try
             {
+                if (!CanAccessLabourCase(caseId, out _))
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot upload documents for another division's case." });
+                }
                 if (documentFile == null || documentFile.Length == 0)
                 {
                     return Json(new { success = false, message = "Please select a file." });
@@ -3571,6 +3594,10 @@ namespace MVCCaseManagement.Controllers
         {
             try
             {
+                if (!CanAccessLabourCase(caseId, out _))
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot upload documents for another division's case." });
+                }
                 if (documentFiles == null || !documentFiles.Any())
                 {
                     return Json(new { success = false, message = "Please select at least one document to upload." });
@@ -3619,10 +3646,9 @@ namespace MVCCaseManagement.Controllers
         {
             try
             {
-                var caseObj = _labourRepo.GetCaseById(caseId);
-                if (caseObj == null)
+                if (!CanAccessLabourCase(caseId, out var caseObj) || caseObj == null)
                 {
-                    return Json(new { success = false, message = "Case not found." });
+                    return Json(new { success = false, message = "Access Denied or Case not found." });
                 }
 
                 int count = 0;
@@ -3693,6 +3719,11 @@ namespace MVCCaseManagement.Controllers
                 if (caseId <= 0)
                 {
                     return Json(new { success = false, message = "Invalid case ID." });
+                }
+
+                if (!CanAccessLabourCase(caseId, out _))
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot upload documents for another division's case." });
                 }
 
                 if (documentFile == null || documentFile.Length == 0)

@@ -53,6 +53,7 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
+        [Authorize(Policy = "CentralOfficeAccess")]
         public IActionResult CentralOffice(int? month, int? year, string? module, string? caseType, string? view)
         {
             if (User.Identity?.IsAuthenticated != true)

@@ -235,13 +235,17 @@ else
 app.UseResponseCompression();
 
 // Serve standard public static assets (CSS, JS, images, favicon) with client-side caching headers
-app.UseStaticFiles(new StaticFileOptions
+// Security: Exclude /uploads from direct static serving so UploadsController handles auth & tenant isolation
+app.UseWhen(context => !context.Request.Path.StartsWithSegments("/uploads", StringComparison.OrdinalIgnoreCase), appBuilder =>
 {
-    OnPrepareResponse = ctx =>
+    appBuilder.UseStaticFiles(new StaticFileOptions
     {
-        // Cache static assets for 7 days to eliminate redundant downloads and maximize page load speeds
-        ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=604800");
-    }
+        OnPrepareResponse = ctx =>
+        {
+            // Cache static assets for 7 days to eliminate redundant downloads and maximize page load speeds
+            ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=604800");
+        }
+    });
 });
 
 app.UseRouting();

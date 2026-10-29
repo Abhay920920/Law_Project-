@@ -48,7 +48,8 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
-        [HttpPost, HttpGet]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
         [Route("Notification/MarkAsRead/{id:int?}")]
         public IActionResult MarkAsRead(int id)
         {

@@ -10,6 +10,9 @@ namespace MVCCaseManagement.Controllers
     [Authorize]
     public class AppealController : Controller
     {
+        private static readonly HashSet<string> _allowedExtensions =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png", ".tiff", ".bmp" };
         private readonly ICaseRepository _caseRepo;
         private readonly IAppealRepository _appealRepo;
         private readonly IMasterRepository _masterRepo;
@@ -807,10 +810,25 @@ namespace MVCCaseManagement.Controllers
         {
             if (file == null || file.Length == 0) return null;
 
+            // Security: validate extension against whitelist
+            string ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (!_allowedExtensions.Contains(ext))
+            {
+                throw new InvalidOperationException($"File type '{ext}' is not allowed. Only PDF, Word, and image files are permitted.");
+            }
+
+            // Security: 20 MB limit
+            const long maxBytes = 20 * 1024 * 1024;
+            if (file.Length > maxBytes)
+            {
+                throw new InvalidOperationException("File size exceeds the 20 MB limit.");
+            }
+
             var uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads", folder);
             if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
 
-            var uniqueFileName = $"{Guid.NewGuid()}_{file.FileName}";
+            // GUID + extension only — no original filename (prevents path traversal and script execution)
+            var uniqueFileName = $"{Guid.NewGuid()}{ext}";
             var filePath = Path.Combine(uploadsFolder, uniqueFileName);
 
             using (var fileStream = new FileStream(filePath, FileMode.Create))
@@ -826,6 +844,18 @@ namespace MVCCaseManagement.Controllers
         {
             try 
             {
+                var caseDetails = _caseRepo.GetCaseById(caseId);
+                if (caseDetails != null)
+                {
+                    var divIdString = User.FindFirst("DivisionID")?.Value;
+                    int userDivisionId = int.TryParse(divIdString, out int pId) ? pId : 0;
+                    bool isCentralOffice = userDivisionId == 0 || userDivisionId == 5 || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("CO");
+                    if (!isCentralOffice && caseDetails.DivisionID != userDivisionId)
+                    {
+                        return Json(new { success = false, message = "Access Denied: You cannot modify compliance for another division's case." });
+                    }
+                }
+
                 var appeal = _appealRepo.GetAppealByCaseId(caseId);
                 if (appeal == null)
                 {
