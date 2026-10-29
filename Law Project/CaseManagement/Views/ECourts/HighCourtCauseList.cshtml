@@ -561,7 +561,7 @@
 
             <div class="row g-2 align-items-end">
 
-                <div class="col-12 col-md-4 col-lg-3">
+                <div class="col-12 col-md-4 col-lg-2">
 
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-bank me-1 text-danger"></i>High Court Bench</label>
 
@@ -637,13 +637,35 @@
 
 
 
-                <div class="col-6 col-md-6 col-lg-3">
+                <div class="col-6 col-md-6 col-lg-2">
 
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall</label>
 
                     <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
 
                         <option value="ALL">All Benches / Halls</option>
+
+                    </select>
+
+                </div>
+
+
+
+                <div class="col-6 col-md-6 col-lg-2">
+
+                    <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-card-checklist me-1 text-danger"></i>Cause List No</label>
+
+                    <select id="liveCauseListNo" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
+
+                        <option value="ALL" selected>All Cause Lists</option>
+
+                        <option value="1">Cause List No. 1</option>
+
+                        <option value="2">Cause List No. 2</option>
+
+                        <option value="3">Cause List No. 3</option>
+
+                        <option value="4">Cause List No. 4</option>
 
                     </select>
 
@@ -932,6 +954,7 @@
                                     <div class="fs-6 fw-bold text-dark mb-2" id="dCourtName">—</div>
                                     <div class="small text-secondary mb-1">Judge / Coram: <span id="dJudgeName" class="text-dark fw-semibold">—</span></div>
                                     <div class="small text-secondary mb-1">Court Hall / Room: <span id="dCourtNo" class="text-dark fw-semibold">—</span></div>
+                                    <div class="small text-secondary mb-1">Cause List No: <span id="dCauseListNo" class="text-primary fw-bold font-monospace">—</span></div>
                                     <div class="small text-secondary">Jurisdiction: <span id="dStateDist" class="text-dark fw-semibold">High Court of Karnataka</span></div>
                                 </div>
                             </div>
@@ -2002,7 +2025,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
                     <th style="min-width: 150px;">Case Number & Year</th>
 
-                    <th style="min-width: 140px;">Court Hall / Bench</th>
+                    <th style="min-width: 160px;">Court Hall / Bench / Cause List No</th>
 
                     <th style="min-width: 160px;">CNR Number & Actions</th>
 
@@ -2055,6 +2078,8 @@ function filterLiveCauselistRows() {
     const partyInput = (document.getElementById('livePartySearchInput')?.value || '').trim().toLowerCase();
 
     const benchFilter = (document.getElementById('liveBenchId')?.value || 'ALL').trim();
+
+    const causeListFilter = (document.getElementById('liveCauseListNo')?.value || 'ALL').trim();
 
     const allItems = window.__currentHcCauselistItems || [];
 
@@ -2116,9 +2141,19 @@ function filterLiveCauselistRows() {
 
         }
 
+        let matchCauseList = true;
+
+        if (causeListFilter !== 'ALL') {
+
+            const itemCl = (item.causeListNo || (item.causeListType ? item.causeListType.match(/\d+/)?.[0] : '') || (item.isListedToday ? '1' : '')).toString();
+
+            matchCauseList = itemCl === causeListFilter || searchTerms.includes(`cause list no. ${causeListFilter}`) || searchTerms.includes(`cause list no : ${causeListFilter}`);
+
+        }
 
 
-        return matchParty && matchBench;
+
+        return matchParty && matchBench && matchCauseList;
 
     });
 
@@ -2257,6 +2292,7 @@ function renderHcCauselistPage() {
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 
         const courtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
+        const clNo = item.causeListNo || (item.causeListType ? (item.causeListType.match(/(?:No\.?|#)\s*(\d+)/i)?.[1] || (item.causeListType.includes('No. 1') ? '1' : '')) : (isThisListedToday ? '1' : ''));
 
         const pet = item.petitionerName || '—';
 
@@ -2324,11 +2360,29 @@ function renderHcCauselistPage() {
 
             <td>
 
-                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
+                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block mb-1">
 
                     <i class="bi bi-bank2 me-1"></i>${courtNo}
 
                 </span>
+
+                ${clNo ? `
+
+                <div class="extra-small text-dark fw-bold mb-0.5">
+
+                    <span class="badge bg-primary-subtle text-primary border border-primary font-monospace extra-small">
+
+                        <i class="bi bi-card-checklist me-1"></i>Cause List No: ${clNo}
+
+                    </span>
+
+                </div>` : ''}
+
+                <div class="extra-small text-muted">
+
+                    <i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}
+
+                </div>
 
             </td>
 
@@ -2414,11 +2468,17 @@ function renderHcCauselistPage() {
 
                 </div>
 
-                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1">
+                <div class="d-flex flex-column align-items-end gap-1">
 
-                    <i class="bi bi-bank2 me-1"></i>${courtNo}
+                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1">
 
-                </span>
+                        <i class="bi bi-bank2 me-1"></i>${courtNo}
+
+                    </span>
+
+                    ${clNo ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small font-monospace"><i class="bi bi-card-checklist me-1"></i>CL No: ${clNo}</span>` : ''}
+
+                </div>
 
             </div>
 
@@ -2969,6 +3029,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
     document.getElementById('dCourtName').textContent = 'High Court of Karnataka';
     document.getElementById('dJudgeName').textContent = '—';
     document.getElementById('dCourtNo').textContent = '—';
+    const dClReset = document.getElementById('dCauseListNo'); if (dClReset) dClReset.textContent = '—';
     document.getElementById('dBenchType').textContent = 'High Court Bench';
     document.getElementById('dNatureDisposal').textContent = '—';
     document.getElementById('dJudicialBranch').textContent = '—';
@@ -3054,6 +3115,12 @@ function openDossierModal(appealId, cnr, mfaNo) {
                 document.getElementById('dCourtName').textContent = estName;
                 document.getElementById('dJudgeName').textContent = raw.coram || d.court_no_judge || d.judge || '—';
                 document.getElementById('dCourtNo').textContent = d.court_no || raw.court_no || '—';
+                const dCauseListNoEl = document.getElementById('dCauseListNo');
+                if (dCauseListNoEl) {
+                    const matchedItem = (window.__allHcCauselistItems || []).find(x => (x.cnrNumber && x.cnrNumber.toUpperCase() === cnr.toUpperCase()) || (x.regNumber && x.regNumber === appealId));
+                    const clNoVal = (matchedItem && (matchedItem.causeListNo || (matchedItem.causeListType ? matchedItem.causeListType.match(/No\.?\s*(\d+)/i)?.[1] : null))) || raw.causelist_no || raw.cause_list_no || (raw.causelist_type ? raw.causelist_type.match(/No\.?\s*(\d+)/i)?.[1] : null) || (matchedItem && matchedItem.isListedToday ? '1' : '');
+                    dCauseListNoEl.textContent = clNoVal ? `Cause List No. ${clNoVal}` : '—';
+                }
                 const benchDesc = raw.bench_name || (raw.bench_type == 1 ? 'Single Bench' : raw.bench_type == 2 ? 'Division Bench' : raw.bench_type == 3 ? 'Full Bench' : 'High Court Bench');
                 document.getElementById('dBenchType').textContent = benchDesc;
                 document.getElementById('dStateDist').textContent = `${raw.state_name || 'Karnataka'}${raw.dist_name ? ', ' + raw.dist_name : ''}`;

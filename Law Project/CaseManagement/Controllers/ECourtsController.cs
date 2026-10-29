@@ -590,6 +590,7 @@ namespace MVCCaseManagement.Controllers
                         match.NextHearingDate = targetDate;
                         match.CourtHall = $"{entry.CourtHall} (Serial No. {entry.ItemNo})";
                         match.CaseStage = entry.Stage;
+                        match.CauseListNo = "1";
                         match.CauseListItemNo = entry.ItemNo;
                         match.CauseListType = "Daily Cause List No. 1";
                         if (string.IsNullOrEmpty(match.PetitionerName)) match.PetitionerName = entry.Pet;
@@ -611,6 +612,7 @@ namespace MVCCaseManagement.Controllers
                             NextHearingDate = targetDate,
                             CaseStage = entry.Stage,
                             CourtHall = $"{entry.CourtHall} (Serial No. {entry.ItemNo})",
+                            CauseListNo = "1",
                             CauseListItemNo = entry.ItemNo,
                             CauseListType = "Daily Cause List No. 1",
                             EstablishmentName = "Dharwad Bench",

@@ -93,6 +93,7 @@ namespace MVCCaseManagement.Models
         public int? TrackedId { get; set; }
         public string? AssignedWorker { get; set; }
         public string? CauseListType { get; set; }
+        public string? CauseListNo { get; set; }
         public string? CauseListItemNo { get; set; }
         public string? JudgeName { get; set; }
 
