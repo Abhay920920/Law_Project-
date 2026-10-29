@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -568,8 +568,6 @@ namespace MVCCaseManagement.Controllers
 
             // Strictly exclude any case from other co-organizations (KSRTC, KKRTC, BMTC, NEKRTC)
             // or non-corporation third parties when searching for NWKRTC cause list matters
-            if (string.Equals(effectiveParty, "NWKRTC", StringComparison.OrdinalIgnoreCase) || isMulti)
-            {
                 list = list.Where(item => 
                 {
                     if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation")
@@ -596,7 +594,6 @@ namespace MVCCaseManagement.Controllers
 
                     return true;
                 }).ToList();
-            }
 
             int totalAllCount = list.Count;
             int todayCount = list.Count(x => x.IsListedToday);

@@ -1191,13 +1191,25 @@ function syncSingleCnr(appealId, cnr, isBatch = false) {
 }
 
 async function syncAllVisibleCnrs() {
-    const elements = document.querySelectorAll('[data-appeal-id][data-cnr]');
+    // 1. Strictly query visible, genuine NWKRTC corporation cases currently displayed on screen
+    let visibleElements = Array.from(document.querySelectorAll('#livePartyCauselistTable tbody tr.live-causelist-row'))
+        .filter(r => r.style.display !== 'none' && r.getAttribute('data-is-corp') === 'true');
+
+    // Fallback to mobile cards if viewing on mobile viewport
+    if (visibleElements.length === 0) {
+        visibleElements = Array.from(document.querySelectorAll('.live-causelist-card'))
+            .filter(c => c.style.display !== 'none' && c.getAttribute('data-is-corp') === 'true');
+    }
+
     const seenCnrs = new Set();
     const validItems = [];
-    elements.forEach(el => {
-        const cnr = (el.getAttribute('data-cnr') || '').trim();
-        const appealId = el.getAttribute('data-appeal-id') || '';
-        if (cnr.length > 0 && !seenCnrs.has(cnr)) {
+    visibleElements.forEach(el => {
+        const cnr = (el.getAttribute('data-cnr') || '').trim().toUpperCase();
+        const appealId = (el.getAttribute('data-appeal-id') || '').trim();
+        const isCorp = el.getAttribute('data-is-corp') === 'true';
+
+        // Must be a valid High Court CNR and verified NWKRTC matter
+        if (cnr.length >= 14 && isCorp && !seenCnrs.has(cnr)) {
             seenCnrs.add(cnr);
             validItems.push({ appealId, cnr });
         }
@@ -1206,8 +1218,21 @@ async function syncAllVisibleCnrs() {
     const masterBtn = document.getElementById('btnSyncAll');
     
     if (validItems.length === 0) {
-        showToast("CNR Sync", "No cases with CNR linked to sync.", false);
+        showToast("CNR Sync", "No visible NWKRTC cases with linked CNR found to sync.", false);
         return;
+    }
+
+    const modeLabel = (currentViewMode === 'today') ? "Today's Listed" : "Visible";
+    const confirmMsg = `Sync live e-Courts status for ${validItems.length} ${modeLabel} NWKRTC High Court case(s)?`;
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    // Safety limit to avoid exhausting NAPIX rate limits / hanging browser on thousands of items
+    const maxBatch = 50;
+    const itemsToSync = validItems.slice(0, maxBatch);
+    if (validItems.length > maxBatch) {
+        showToast("Batch Sync Cap", `Batching first ${maxBatch} of ${validItems.length} visible NWKRTC cases to protect e-Courts API quota.`, true);
     }
 
     let originalHtml = '';
@@ -1218,15 +1243,15 @@ async function syncAllVisibleCnrs() {
 
     let successCount = 0;
     let failCount = 0;
-    const total = validItems.length;
+    const total = itemsToSync.length;
 
     for (let i = 0; i < total; i++) {
-        const item = validItems[i];
+        const item = itemsToSync[i];
         const appealId = item.appealId;
         const cnr = item.cnr;
 
         if (masterBtn) {
-            masterBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing ${i + 1} of ${total}...`;
+            masterBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing ${i + 1} of ${total} NWKRTC...`;
         }
 
         try {
@@ -1254,9 +1279,9 @@ async function syncAllVisibleCnrs() {
     }
 
     if (failCount === 0) {
-        showToast("Bulk Sync Completed", `All ${successCount} High Court cases synced successfully with live eCourts Gateway.`, true);
+        showToast("Bulk Sync Completed", `All ${successCount} visible NWKRTC High Court cases synced successfully with live eCourts Gateway.`, true);
     } else {
-        showToast("Bulk Sync Completed", `Synced ${successCount} of ${total} cases (${failCount} pending/offline).`, successCount > 0);
+        showToast("Bulk Sync Completed", `Synced ${successCount} of ${total} visible NWKRTC cases (${failCount} pending/offline).`, successCount > 0);
     }
 }
 
