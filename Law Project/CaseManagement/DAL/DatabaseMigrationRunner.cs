@@ -1699,6 +1699,68 @@ namespace MVCCaseManagement.DAL
                             recordCmd16.ExecuteNonQuery();
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_4_OrgSettingsMigrationId, migTimer16.ElapsedMilliseconds);
+
+                    // 17. Filtered Indexes for Active Hearings and High Court listings (V017)
+                    const string v1_2_5_ActiveHearingsIndexesMigrationId = "20261029_v1_2_5_Active_Hearings_Filtered_Indexes";
+                    bool applyMig17 = false;
+                    using (var checkCmd17 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd17.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_5_ActiveHearingsIndexesMigrationId });
+                        applyMig17 = ((int?)checkCmd17.ExecuteScalar() ?? 0) == 0;
+                    }
+
+                    if (applyMig17)
+                    {
+                        var migTimer17 = Stopwatch.StartNew();
+                        logger.LogInformation("Applying migration {MigrationId}...", v1_2_5_ActiveHearingsIndexesMigrationId);
+
+                        string mig17Sql = @"
+                            -- Filtered index on MVC_CASES for fast Active Cases and Hearing Date queries
+                            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MVC_CASES_ActiveHearings' AND object_id = OBJECT_ID('dbo.MVC_CASES'))
+                            BEGIN
+                                CREATE NONCLUSTERED INDEX IX_MVC_CASES_ActiveHearings
+                                ON dbo.MVC_CASES (PendDispStatus, NextHearingDate)
+                                INCLUDE (CaseID, CNRNumber, MVCNo, MVCYear, CourtHall, EstCode)
+                                WHERE (PendDispStatus IS NULL OR PendDispStatus <> 'D');
+                            END
+
+                            -- Filtered index on LABOUR_CASES for fast Active Cases, Writs, and Hearing Date queries
+                            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LABOUR_CASES_ActiveHearings' AND object_id = OBJECT_ID('dbo.LABOUR_CASES'))
+                            BEGIN
+                                CREATE NONCLUSTERED INDEX IX_LABOUR_CASES_ActiveHearings
+                                ON dbo.LABOUR_CASES (PendDispStatus, NextHearingDate)
+                                INCLUDE (CaseID, CNRNumber, CO_WP_CNRNumber, CO_WA_CNRNumber, CaseNumber, EstName)
+                                WHERE (PendDispStatus IS NULL OR PendDispStatus <> 'D');
+                            END
+
+                            -- Index on APPEAL_DETAILS for fast CNR cross-referencing and live cause list updates
+                            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_APPEAL_DETAILS_Cnrs' AND object_id = OBJECT_ID('dbo.APPEAL_DETAILS'))
+                            BEGIN
+                                CREATE NONCLUSTERED INDEX IX_APPEAL_DETAILS_Cnrs
+                                ON dbo.APPEAL_DETAILS (CorpMFACNRNumber, ClaimantMFACNRNumber)
+                                INCLUDE (AppealID, CaseID, HighCourtBench, CourtHall, CorpMFANextHearingDate, ClaimantMFANextHearingDate);
+                            END
+                        ";
+
+                        using (var migCmd17 = new SqlCommand(mig17Sql, conn))
+                        {
+                            migCmd17.CommandTimeout = 180;
+                            migCmd17.ExecuteNonQuery();
+                        }
+
+                        string recordSql17 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd17 = new SqlCommand(recordSql17, conn))
+                        {
+                            recordCmd17.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_5_ActiveHearingsIndexesMigrationId });
+                            recordCmd17.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Create filtered indexes for active hearings on MVC_CASES, LABOUR_CASES and APPEAL_DETAILS" });
+                            recordCmd17.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer17.ElapsedMilliseconds });
+                            recordCmd17.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_5_ActiveHearingsIndexesMigrationId, migTimer17.ElapsedMilliseconds);
+                    }
+
                     }
                 }
                 finally
