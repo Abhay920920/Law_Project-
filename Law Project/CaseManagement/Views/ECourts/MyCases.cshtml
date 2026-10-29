@@ -2377,7 +2377,7 @@
                     <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold" title="Physical Court Hall">
                         <i class="bi bi-bank2 me-1 text-secondary"></i>${escapeHtml(c.courtNo)}
                     </span>` : ''}
-                    ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Item #${escapeHtml(c.itemNo)}`}</span>` : ''}
+                    ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
                     ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                     <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                 </div>
@@ -2469,7 +2469,7 @@
                                             <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">${escapeHtml(c.courtNo || 'Awaited')}</span>
                                         </div>
                                         <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
-                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-list-ol me-1 text-secondary"></i>Serial / Item #:</span>
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-list-ol me-1 text-secondary"></i>Serial Number:</span>
                                             <span class="font-monospace fw-bold text-dark small">${c.itemNo ? escapeHtml(c.itemNo) : '—'}</span>
                                         </div>
                                         <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
@@ -2788,7 +2788,7 @@
                         <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
                             <i class="bi bi-bank2 me-1"></i>${escapeHtml(c.courtNo)}
                         </span>` : ''}
-                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Item #${escapeHtml(c.itemNo)}`}</span>` : ''}
+                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
                         ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                         <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                     </div>
@@ -5093,7 +5093,7 @@
                             <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
                                 ${(d.itemNo && d.itemNo !== '—') ? `
                                 <span class="badge bg-primary fs-6 px-3 py-2 font-monospace shadow-sm">
-                                    <i class="bi bi-list-ol me-1"></i>${(d.itemNo.toString().startsWith('Item') || d.itemNo.toString().startsWith('List') || d.itemNo.toString().startsWith('Sl') ? d.itemNo : `Item #${d.itemNo}`)}
+                                    <i class="bi bi-list-ol me-1"></i>${(d.itemNo.toString().startsWith('Item') || d.itemNo.toString().startsWith('List') || d.itemNo.toString().startsWith('Sl') ? d.itemNo : `Serial No. ${d.itemNo}`)}
                                 </span>` : `
                                 <span class="badge bg-secondary-subtle text-dark border border-secondary fs-6 px-3 py-2 font-monospace shadow-sm" title="Cause list serial number is assigned upon publication by the registry">
                                     <i class="bi bi-clock-history me-1 text-secondary"></i>Awaiting Publication

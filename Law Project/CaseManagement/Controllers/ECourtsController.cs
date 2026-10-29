@@ -588,7 +588,7 @@ namespace MVCCaseManagement.Controllers
                     {
                         match.IsListedToday = true;
                         match.NextHearingDate = targetDate;
-                        match.CourtHall = $"{entry.CourtHall} (Item {entry.ItemNo})";
+                        match.CourtHall = $"{entry.CourtHall} (Serial No. {entry.ItemNo})";
                         match.CaseStage = entry.Stage;
                         match.CauseListItemNo = entry.ItemNo;
                         match.CauseListType = "Daily Cause List No. 1";
@@ -610,7 +610,7 @@ namespace MVCCaseManagement.Controllers
                             MatchedDesignation = roleResult.MatchedDesignation,
                             NextHearingDate = targetDate,
                             CaseStage = entry.Stage,
-                            CourtHall = $"{entry.CourtHall} (Item {entry.ItemNo})",
+                            CourtHall = $"{entry.CourtHall} (Serial No. {entry.ItemNo})",
                             CauseListItemNo = entry.ItemNo,
                             CauseListType = "Daily Cause List No. 1",
                             EstablishmentName = "Dharwad Bench",
@@ -801,7 +801,7 @@ namespace MVCCaseManagement.Controllers
             sb.AppendLine("<th>Next Hearing Date</th>");
             sb.AppendLine("<th>Hearing Stage / Purpose</th>");
             sb.AppendLine("<th>Cause List Type</th>");
-            sb.AppendLine("<th>Item No</th>");
+            sb.AppendLine("<th>Serial Number</th>");
             sb.AppendLine("<th>Listing Status</th>");
             sb.AppendLine("<th>Tracked in Registry?</th>");
             sb.AppendLine("</tr>");
