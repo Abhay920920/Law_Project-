@@ -26,29 +26,30 @@
 
     /* Full Details Modal Tabs Styling */
     #fullDetailsTabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0.45rem 0.55rem !important;
         background: #ffffff !important;
-        padding: 0.5rem !important;
-        border-radius: 10px;
+        padding: 0.6rem !important;
+        border-radius: 12px;
         border: 1px solid #e2e8f0;
+        overflow-x: visible !important;
     }
     #fullDetailsTabs .nav-item {
-        flex: 1 1 auto;
+        flex: 0 0 auto !important;
     }
     #fullDetailsTabs .nav-link {
-        width: 100%;
-        display: flex;
+        display: inline-flex !important;
         align-items: center;
         justify-content: center;
         font-weight: 700 !important;
-        font-size: 0.86rem !important;
-        padding: 0.6rem 1rem !important;
+        font-size: 0.82rem !important;
+        padding: 0.45rem 0.85rem !important;
         border-radius: 8px !important;
         border: 1.5px solid #e2e8f0 !important;
         background: #f8fafc !important;
         color: #334155 !important;
+        white-space: nowrap !important;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         cursor: pointer;
     }
@@ -208,12 +209,24 @@
         overflow-x: auto !important;
         flex-wrap: nowrap !important;
         -webkit-overflow-scrolling: touch !important;
-        scrollbar-width: none !important;
-        -ms-overflow-style: none !important;
-        padding-bottom: 4px;
+        scrollbar-width: thin !important;
+        scrollbar-color: #cbd5e1 #f8fafc !important;
+        padding-bottom: 6px !important;
     }
     .mobile-nav-tabs-scroll::-webkit-scrollbar {
-        display: none !important;
+        height: 5px !important;
+        display: block !important;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar-track {
+        background: #f8fafc;
+        border-radius: 3px;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
     }
     .mobile-nav-tabs-scroll .nav-item {
         flex: 0 0 auto !important;
@@ -228,11 +241,24 @@
             flex-wrap: nowrap !important;
             overflow-x: auto !important;
             -webkit-overflow-scrolling: touch !important;
-            scrollbar-width: none !important;
-            padding-bottom: 4px;
+            scrollbar-width: thin !important;
+            scrollbar-color: #2563eb #f1f5f9 !important;
+            padding-bottom: 6px !important;
         }
         #fullDetailsTabs::-webkit-scrollbar {
-            display: none !important;
+            height: 5px !important;
+            display: block !important;
+        }
+        #fullDetailsTabs::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 3px;
+        }
+        #fullDetailsTabs::-webkit-scrollbar-thumb {
+            background: #94a3b8;
+            border-radius: 3px;
+        }
+        #fullDetailsTabs::-webkit-scrollbar-thumb:hover {
+            background: #2563eb;
         }
         #fullDetailsTabs .nav-item {
             flex: 0 0 auto !important;
@@ -3015,7 +3041,7 @@
             <!-- Modal Body -->
             <div class="modal-body p-3 p-md-4" style="background-color: #f8fafc;">
                 <!-- Navigation Tabs -->
-                <ul class="nav nav-pills gap-1 mb-3 p-1 rounded-3 border bg-white shadow-sm mobile-nav-tabs-scroll flex-nowrap" id="fullDetailsTabs" role="tablist">
+                <ul class="nav nav-pills gap-2 mb-3 p-2 rounded-3 border bg-white shadow-sm flex-wrap" id="fullDetailsTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active fw-bold small py-2 px-3 rounded-2" id="tab-general-nav" data-bs-toggle="pill" data-bs-target="#tab-general-content" type="button" role="tab" aria-controls="tab-general-content" aria-selected="true">
                             <i class="bi bi-info-circle-fill me-1 text-primary"></i> General &amp; Accident
@@ -6442,29 +6468,30 @@
 
     /* Full Details Modal Tabs Styling */
     #fullDetailsTabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0.45rem 0.55rem !important;
         background: #ffffff !important;
-        padding: 0.5rem !important;
-        border-radius: 10px;
+        padding: 0.6rem !important;
+        border-radius: 12px;
         border: 1px solid #e2e8f0;
+        overflow-x: visible !important;
     }
     #fullDetailsTabs .nav-item {
-        flex: 1 1 auto;
+        flex: 0 0 auto !important;
     }
     #fullDetailsTabs .nav-link {
-        width: 100%;
-        display: flex;
+        display: inline-flex !important;
         align-items: center;
         justify-content: center;
         font-weight: 700 !important;
-        font-size: 0.86rem !important;
-        padding: 0.6rem 1rem !important;
+        font-size: 0.82rem !important;
+        padding: 0.45rem 0.85rem !important;
         border-radius: 8px !important;
         border: 1.5px solid #e2e8f0 !important;
-        background: #f8fafc;
+        background: #f8fafc !important;
         color: #334155 !important;
+        white-space: nowrap !important;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         cursor: pointer;
     }
