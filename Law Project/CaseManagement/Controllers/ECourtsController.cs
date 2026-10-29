@@ -486,70 +486,7 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // 3. Ensure any High Court case from database (tracked or appeals) is included
-            var candidateCases = todayOnly
-                ? trackedCases.Where(t => t.NextHearingDate.HasValue && t.NextHearingDate.Value.Date == targetDate && !string.IsNullOrWhiteSpace(t.CNRNumber))
-                : trackedCases.Where(t => !string.IsNullOrWhiteSpace(t.CNRNumber));
-
-            foreach (var tc in candidateCases)
-            {
-                string tcCnr = tc.CNRNumber!.Trim();
-                if (seenCnrs.Contains(tcCnr))
-                    continue;
-
-                // Only genuine High Court CNRs (KAHC... or High Court EstCode)
-                bool isHc = tcCnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || 
-                            (tc.EstCode != null && tc.EstCode.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase));
-                if (!isHc) continue;
-
-                string tcBench = tc.EstCode switch
-                {
-                    "KAHC01" => "Principal Bench (Bengaluru)",
-                    "KAHC02" => "Dharwad Bench",
-                    "KAHC03" => "Kalaburagi Bench",
-                    _ => tcCnr.StartsWith("KAHC02") ? "Dharwad Bench" : (tcCnr.StartsWith("KAHC01") ? "Principal Bench (Bengaluru)" : (tcCnr.StartsWith("KAHC03") ? "Kalaburagi Bench" : "High Court of Karnataka"))
-                };
-
-                // Exclude if explicitly another RTC
-                if (NwkrtcPartyMatcher.IsOtherCoOrganization(tc.Petitioner) || NwkrtcPartyMatcher.IsOtherCoOrganization(tc.Respondent))
-                    continue;
-
-                var roleResult = NwkrtcPartyMatcher.DetectRole(tc.Petitioner ?? "", tc.Respondent ?? "");
-                string role = roleResult.Role;
-                string desig = roleResult.MatchedDesignation;
-                if (role == "Other RTC") continue;
-                if (role == "Non-Corporation" || role == "Unknown")
-                {
-                    // By virtue of being saved in ECOURTS_TRACKED_CASES by NWKRTC legal staff,
-                    // if petitioner is person vs authority, it is Against NWKRTC, otherwise With NWKRTC
-                    bool resHasOfficer = NwkrtcPartyMatcher.IsNwkrtcEntity(tc.Respondent, out var rDesig);
-                    if (resHasOfficer) { role = "Against NWKRTC"; desig = rDesig; }
-                    else { role = "With NWKRTC"; desig = "Tracked Case"; }
-                }
-                bool isListedOnTarget = tc.NextHearingDate.HasValue && tc.NextHearingDate.Value.Date == targetDate;
-
-                var item = new MVCCaseManagement.Models.PartyCaseSearchResultItem
-                {
-                    CNRNumber = tcCnr,
-                    CaseType = tc.CaseTypeCode ?? "MFA",
-                    RegNumber = tc.CaseNumber ?? "",
-                    RegYear = tc.CaseYear.ToString(),
-                    PetitionerName = tc.Petitioner ?? "—",
-                    RespondentName = tc.Respondent ?? "—",
-                    NwkrtcRole = role,
-                    MatchedDesignation = roleResult.MatchedDesignation,
-                    NextHearingDate = tc.NextHearingDate,
-                    CaseStage = tc.StagePurpose ?? "Hearing Active",
-                    CourtHall = !string.IsNullOrEmpty(tc.CourtNo) ? tc.CourtNo : "Court Hall",
-                    EstablishmentName = tcBench,
-                    HighCourtBench = tcBench,
-                    IsListedToday = isListedOnTarget,
-                    IsTrackedInMyCases = true
-                };
-
-                seenCnrs.Add(tcCnr);
-                list.Add(item);
-            }
+            // 3. Strictly live cases fetched with respect to party name NWKRTC (no DB injection; MyCases is separate)
 
             // 4. Strictly exclude any case without a valid official CNR (no dummy/internal DB cases without CNR)
             list = list.Where(x => !string.IsNullOrWhiteSpace(x.CNRNumber) && x.CNRNumber.Trim() != "-").ToList();
