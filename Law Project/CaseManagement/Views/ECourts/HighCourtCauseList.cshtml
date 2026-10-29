@@ -1448,13 +1448,12 @@ function fetchLiveHcCauselist(viewMode) {
 
 
 
-    const isTodayOnly = (currentViewMode === 'today');
-
     const regYear = document.getElementById('liveRegYear')?.value || 'RECENT';
 
     const caseStatus = document.getElementById('liveCaseStatus')?.value || 'P';
 
-    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || defaultOrgShortName)}&regYear=${encodeURIComponent(regYear)}&pendDisp=${encodeURIComponent(caseStatus)}&hearingDate=${encodeURIComponent(dateInputVal)}&todayOnly=${isTodayOnly}&multiAlias=true`;
+    // Always fetch full roster (todayOnly=false) so both all matters and scheduled tabs are populated without network lag
+    const partyUrl = `/ECourts/GetLiveHighCourtPartyCases?estCode=${encodeURIComponent(estCode)}&partyName=${encodeURIComponent(partyName || defaultOrgShortName)}&regYear=${encodeURIComponent(regYear)}&pendDisp=${encodeURIComponent(caseStatus)}&hearingDate=${encodeURIComponent(dateInputVal)}&todayOnly=false&multiAlias=true`;
 
 
 
@@ -1490,11 +1489,12 @@ function fetchLiveHcCauselist(viewMode) {
 
                 if (kpiAgainst && res.againstCount !== undefined) kpiAgainst.textContent = res.againstCount;
 
+                window.__allHcCauselistItems = res.allMatters || res.data || [];
+                window.__serverRes = res;
 
+                if (window.__allHcCauselistItems.length > 0) {
 
-                if (res.data && res.data.length > 0) {
-
-                    renderLivePartyCauseList(res.data, dateInputVal, targetBench, container, badge, res);
+                    renderLivePartyCauseList(window.__allHcCauselistItems, dateInputVal, targetBench, container, badge, res);
 
                 } else {
 
@@ -1598,12 +1598,63 @@ function debouncedFilterLiveCauselist() {
 
 
 
+function switchCauseListViewMode(mode) {
+    currentViewMode = mode;
+    const allItems = window.__allHcCauselistItems || [];
+    const todayItems = allItems.filter(i => i.isListedToday);
+    const listedCount = window.__serverRes?.todayCount ?? todayItems.length;
+    const totalCount = window.__serverRes?.allCount ?? allItems.length;
+
+    const items = (mode === 'today') ? (todayItems.length > 0 ? todayItems : allItems) : allItems;
+    window.__currentHcCauselistItems = items;
+    hcCurrentPage = 1;
+
+    const countVisEl = document.getElementById('exportCountVisible');
+    if (countVisEl) countVisEl.textContent = items.length;
+
+    const btnAll = document.getElementById('btnTabAllMatters');
+    const btnToday = document.getElementById('btnTabTodayMatters');
+    if (btnAll && btnToday) {
+        if (mode === 'today') {
+            btnToday.className = 'btn btn-sm btn-danger text-white py-0 px-2 extra-small fw-bold';
+            btnAll.className = 'btn btn-sm btn-outline-secondary py-0 px-2 extra-small fw-bold';
+        } else {
+            btnAll.className = 'btn btn-sm btn-danger text-white py-0 px-2 extra-small fw-bold';
+            btnToday.className = 'btn btn-sm btn-outline-secondary py-0 px-2 extra-small fw-bold';
+        }
+    }
+
+    const badge = document.getElementById('liveListBadge');
+    if (badge) {
+        if (mode === 'today') {
+            badge.className = listedCount > 0 ? "badge bg-danger px-3 py-1 shadow-sm" : "badge bg-secondary px-3 py-1";
+            badge.textContent = `${listedCount} ${defaultOrgShortName} Matter${listedCount === 1 ? '' : 's'} Listed on ${window.__currentDisplayDate}`;
+        } else {
+            badge.className = "badge bg-primary px-3 py-1 shadow-sm";
+            badge.textContent = `${totalCount} Active ${defaultOrgShortName} Matters Loaded`;
+        }
+    }
+
+    const liveSummary = document.getElementById('liveHeaderSummary');
+    if (liveSummary) {
+        liveSummary.innerHTML = (mode === 'today')
+            ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${window.__currentDisplayDate}</strong>`
+            : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${window.__currentTargetBench})`;
+    }
+
+    filterLiveCauselistRows();
+}
+
 function renderLivePartyCauseList(rawItems, displayDate, targetBench, container, badge, res) {
 
     // Strictly NWKRTC live matters — server returns authentic party cases for NWKRTC
-    const items = rawItems || [];
+    const allItems = window.__allHcCauselistItems && window.__allHcCauselistItems.length > 0 ? window.__allHcCauselistItems : (rawItems || []);
+    const todayItems = allItems.filter(i => i.isListedToday);
+    const listedCount = res?.todayCount ?? todayItems.length;
+    const totalCount = res?.allCount ?? allItems.length;
 
-    window.__currentHcCauselistItems = items;
+    const displayedItems = (currentViewMode === 'today') ? (todayItems.length > 0 ? todayItems : allItems) : allItems;
+    window.__currentHcCauselistItems = displayedItems;
 
     window.__currentDisplayDate = displayDate;
 
@@ -1611,15 +1662,9 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     hcCurrentPage = 1;
 
-
-
-    const listedCount = res?.todayCount ?? items.filter(i => i.isListedToday).length;
-
-
-
     const countAllEl = document.getElementById('exportCountAll');
 
-    if (countAllEl) countAllEl.textContent = items.length;
+    if (countAllEl) countAllEl.textContent = totalCount;
 
     const countTodayEl = document.getElementById('exportCountToday');
 
@@ -1627,7 +1672,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     const countVisEl = document.getElementById('exportCountVisible');
 
-    if (countVisEl) countVisEl.textContent = items.length;
+    if (countVisEl) countVisEl.textContent = displayedItems.length;
 
 
 
@@ -1643,7 +1688,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
             badge.className = "badge bg-primary px-3 py-1 shadow-sm";
 
-            badge.textContent = `${items.length} Active ${defaultOrgShortName} Matters Loaded`;
+            badge.textContent = `${totalCount} Active ${defaultOrgShortName} Matters Loaded`;
 
         }
 
@@ -1669,7 +1714,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
                     ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
 
-                    : `Displaying <strong id="liveHeaderCount">${items.length}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
+                    : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
 
             </span>
 
@@ -1679,13 +1724,13 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
             <div class="btn-group btn-group-sm">
 
-                <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('all')">
+                <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('all')">
 
-                    All Matters (<span id="tabCountAll">${items.length}</span>)
+                    All Matters (<span id="tabCountAll">${totalCount}</span>)
 
                 </button>
 
-                <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="fetchLiveHcCauselist('today')">
+                <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('today')">
 
                     Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
 
