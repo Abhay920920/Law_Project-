@@ -2678,26 +2678,82 @@ namespace MVCCaseManagement.Controllers
                     return Json(new { success = false, message = "Case record not found" });
                 }
 
-                if (!string.IsNullOrWhiteSpace(record.RawJson))
+                if (string.IsNullOrWhiteSpace(record.RawJson))
+                {
+                    string norm = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
+                    string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
+                    await FetchAndSaveTrackedCnrAsync(record.CNRNumber, norm, userName);
+
+                    record = await conn.QueryFirstOrDefaultAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                        SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                               RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                               NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                               LastSyncedAt, CreatedDate, AddedBy, RawJson
+                        FROM admin_Law.ECOURTS_TRACKED_CASES
+                        WHERE TrackedID = @trackedId", new { trackedId });
+                }
+
+                if (record != null && !string.IsNullOrWhiteSpace(record.RawJson))
                 {
                     try
                     {
-                        using var doc = JsonDocument.Parse(record.RawJson);
+                        PopulateHearingAnalysisAndProceedings(record, DateTime.Today);
+                        var rootNode = System.Text.Json.Nodes.JsonNode.Parse(record.RawJson);
+                        if (rootNode is System.Text.Json.Nodes.JsonObject rootObj)
+                        {
+                            var haObj = new System.Text.Json.Nodes.JsonObject
+                            {
+                                ["next_hearing_date"] = record.NextHearingDate?.ToString("yyyy-MM-dd"),
+                                ["stage_purpose"] = record.StagePurpose,
+                                ["hearing_urgency"] = record.HearingUrgency,
+                                ["days_to_next_hearing"] = record.DaysToNextHearing,
+                                ["last_hearing_date"] = record.LastHearingDate,
+                                ["last_hearing_judge"] = record.LastHearingJudge,
+                                ["days_since_last_hearing"] = record.DaysSinceLastHearing,
+                                ["total_hearings"] = record.TotalHearings,
+                                ["avg_days_between_hearings"] = record.AvgDaysBetweenHearings,
+                                ["first_hearing_date"] = record.FirstHearingDate,
+                                ["case_worker"] = record.AddedBy,
+                                ["court_establishment_name"] = record.CourtNo
+                            };
+                            rootObj["hearing_analysis"] = haObj;
+
+                            if (!string.IsNullOrWhiteSpace(record.CNRNumber))
+                            {
+                                string cleanCnr = record.CNRNumber.Trim().ToUpperInvariant();
+                                var dbHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
+                                    SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
+                                    FROM [dbo].[CASE_HEARINGS_HISTORY]
+                                    WHERE CNRNumber = @cnr", new { cnr = cleanCnr })).ToList();
+
+                                if (dbHearings.Count > 0 && rootObj["history"] is System.Text.Json.Nodes.JsonArray hArray)
+                                {
+                                    foreach (var hNode in hArray)
+                                    {
+                                        if (hNode is System.Text.Json.Nodes.JsonObject hObj)
+                                        {
+                                            string dateStr = hObj["hearing_date"]?.ToString() ?? hObj["business_date"]?.ToString() ?? "";
+                                            if (DateTime.TryParse(dateStr, out var d))
+                                            {
+                                                var match = dbHearings.FirstOrDefault(r => r.HearingDate.Date == d.Date);
+                                                if (match != null && !string.IsNullOrWhiteSpace(match.BusinessTransacted))
+                                                {
+                                                    hObj["business"] = match.BusinessTransacted;
+                                                    hObj["roznama"] = match.BusinessTransacted;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            return Content(rootObj.ToJsonString(), "application/json");
+                        }
+                    }
+                    catch
+                    {
                         return Content(record.RawJson, "application/json");
                     }
-                    catch { }
-                }
-
-                string norm = NapixQuotaService.NormalizeModule(record.RelatedModule ?? "MVC");
-                string userName = User.Identity?.Name ?? User.FindFirst("FullName")?.Value ?? "Central Office";
-                await FetchAndSaveTrackedCnrAsync(record.CNRNumber, norm, userName);
-
-                var refreshed = await conn.QueryFirstOrDefaultAsync<string>(@"
-                    SELECT RawJson FROM admin_Law.ECOURTS_TRACKED_CASES WHERE TrackedID = @trackedId", new { trackedId });
-
-                if (!string.IsNullOrWhiteSpace(refreshed))
-                {
-                    return Content(refreshed, "application/json");
                 }
 
                 return Json(new { success = false, message = "eCourts dossier data not available for this CNR." });

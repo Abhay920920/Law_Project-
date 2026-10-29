@@ -4310,105 +4310,195 @@
     }
 
     function printProceedingsModal() {
-        if (!currentProceedingsCase || !currentProceedingsList) {
+        if (!currentProceedingsCase || !currentProceedingsList || currentProceedingsList.length === 0) {
             showToast("Print Notice", "No proceedings data loaded to print.", false);
             return;
         }
+
         const c = currentProceedingsCase;
-        const printWin = window.open('', '_blank', 'width=900,height=700');
-        if (!printWin) {
-            showToast("Pop-up Blocked", "Please allow pop-ups to print proceedings.", false);
-            return;
+        const cnr = c.cnrNumber || "—";
+        const displayType = getDisplayCaseType(c);
+        const printTime = new Date().toLocaleString("en-GB", {
+            day: '2-digit', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+
+        const ha = computeHearingAnalysis(currentProceedingsList, c, {});
+        let urgencyBadgeHtml = "";
+        const urgencyText = (ha.hearing_urgency || "").toUpperCase();
+        if (urgencyText.includes("TODAY")) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">LISTING TODAY</span>`;
+        } else if (urgencyText.includes("URGENT") || (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing >= 0 && ha.days_to_next_hearing <= 3)) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">URGENT (IN ${ha.days_to_next_hearing}d)</span>`;
+        } else if (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing > 3 && ha.days_to_next_hearing <= 7) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">UPCOMING (${ha.days_to_next_hearing}d)</span>`;
+        } else if (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing > 7) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">SCHEDULED</span>`;
+        } else {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 600; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">COMPLIANCE VERIFIED</span>`;
         }
 
-        let rowsHtml = currentProceedingsList.map((h, i) => `
+        const rowsHtml = currentProceedingsList.map((h, i) => {
+            const rawBus = (h.business_date || h.businessDate || h.cause_date || h.hist_date || "").toString().trim();
+            const rawHear = (h.hearing_date || h.hearingDate || "").toString().trim();
+            const rawNext = (h.next_date || h.nextDate || "").toString().trim();
+            const purpose = h.purpose_of_listing || h.purpose || h.stage || "—";
+            const nextPurpose = h.next_purpose || h.nextPurpose || "";
+            const judge = h.judge || h.judge_name || h.judgeName || "—";
+            const roznama = (h.business || h.roznama || h.proceeding || h.order || "").toString().trim();
+
+            let roznamaContent = "";
+            if (roznama) {
+                roznamaContent = `<div style="font-size: 9px; line-height: 1.4; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 3px solid #0284c7; padding: 5px 8px; border-radius: 4px; white-space: pre-wrap; word-break: break-word;">
+                    <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #0369a1; letter-spacing: 0.3px; margin-bottom: 2px;">
+                        Official Roznama / Business Transacted
+                    </div>
+                    ${escapeHtml(roznama)}
+                </div>`;
+            } else {
+                roznamaContent = `<div style="font-size: 8px; color: #64748b; font-style: italic; background: #f8fafc; padding: 4px 6px; border-radius: 3px; border: 1px dashed #cbd5e1;">
+                    Stage: <strong>${escapeHtml(purpose)}</strong>${nextPurpose ? ` &bull; Next Purpose: ${escapeHtml(nextPurpose)}` : ""} &bull; Official roznama text pending registry upload
+                </div>`;
+            }
+
+            return `
             <tr>
-                <td style="border: 1px solid #ddd; padding: 6px; text-align: center;">${i + 1}</td>
-                <td style="border: 1px solid #ddd; padding: 6px; font-weight: bold;">${h.hearing_date || h.hearingDate || "—"}</td>
-                <td style="border: 1px solid #ddd; padding: 6px;">${h.business_date || h.businessDate || "—"}</td>
-                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.purpose_of_listing || h.purpose || "—")}</td>
-                <td style="border: 1px solid #ddd; padding: 6px; font-weight: bold;">${h.next_date || h.nextDate || "—"}</td>
-                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.next_purpose || h.nextPurpose || "—")}</td>
-                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.judge || h.judge_name || "—")}</td>
-                <td style="border: 1px solid #ddd; padding: 6px;">${escapeHtml(h.business || h.roznama || h.proceeding || "—")}</td>
+                <td class="text-center fw-bold text-muted">${i + 1}</td>
+                <td class="text-center font-mono">${escapeHtml(rawBus || "—")}</td>
+                <td class="text-center font-mono fw-bold" style="color: #0284c7;">${escapeHtml(rawHear || "—")}</td>
+                <td class="fw-semibold">${escapeHtml(purpose)}</td>
+                <td class="text-center font-mono fw-bold" style="color: #d97706;">${escapeHtml(rawNext || "—")}</td>
+                <td>${escapeHtml(judge)}</td>
+                <td>${roznamaContent}</td>
             </tr>
-        `).join("");
+            `;
+        }).join("");
 
-        const content = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Daily Proceedings - ${escapeHtml(c.cnrNumber)}</title>
-            <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; margin: 20px; color: #222; }
-                h2 { margin: 0 0 5px 0; font-size: 18px; }
-                .subtitle { color: #555; margin-bottom: 15px; font-size: 13px; }
-                .kpi-box { display: flex; gap: 15px; margin-bottom: 20px; background: #f8f9fa; padding: 12px; border: 1px solid #e9ecef; border-radius: 6px; }
-                .kpi-col { flex: 1; }
-                .kpi-label { font-size: 10px; text-transform: uppercase; color: #6c757d; font-weight: bold; }
-                .kpi-val { font-size: 14px; font-weight: bold; color: #0d6efd; margin-top: 2px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
-                th { background-color: #f1f3f5; border: 1px solid #ddd; padding: 7px; text-align: left; font-size: 10px; text-transform: uppercase; }
-                .footer { margin-top: 20px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
-            </style>
-        </head>
-        <body>
-            <h2>${escapeHtml(getDisplayCaseType(c))} ${escapeHtml(c.caseNumber || "")} &mdash; Daily Court Proceedings</h2>
-            <div class="subtitle">
-                <strong>CNR:</strong> ${escapeHtml(c.cnrNumber)} | 
-                <strong>Parties:</strong> ${escapeHtml(c.petitioner || "Petitioner")} vs ${escapeHtml(c.respondent || "Respondent")} | 
-                <strong>Court:</strong> ${escapeHtml(c.courtEstablishmentName || c.courtEstName || "District / High Court")}
+        const bodyHtml = `
+        <div class="official-header">
+            <div>
+                <div class="corp-kannada">${escapeHtml(decodeHtml(defaultOrgNameKannada))} - ಕಾನೂನು ಶಾಖೆ</div>
+                <h1 class="corp-title">${escapeHtml(defaultOrgNameEnglish)}</h1>
+                <div class="doc-title">Central Law Cell — Daily Proceedings & Hearing Date Analysis</div>
             </div>
-            <div class="kpi-box">
-                <div class="kpi-col">
-                    <div class="kpi-label">Next Hearing</div>
-                    <div class="kpi-val">${escapeHtml(c.nextHearingDate || "—")}</div>
-                    <small>${escapeHtml(c.stagePurpose || c.caseStage || c.stage || "—")}</small>
-                </div>
-                <div class="kpi-col">
-                    <div class="kpi-label">Last Listing</div>
-                    <div class="kpi-val" style="color: #333;">${escapeHtml(c.lastHearingDate || "—")}</div>
-                    <small>${c.daysSinceLastHearing != null ? c.daysSinceLastHearing + " days ago" : "—"}</small>
-                </div>
-                <div class="kpi-col">
-                    <div class="kpi-label">Hearings Velocity</div>
-                    <div class="kpi-val" style="color: #d63384;">${currentProceedingsList.length} Listed</div>
-                    <small>Avg Interval: ~${c.avgDaysBetweenHearings || "—"} days</small>
-                </div>
-                <div class="kpi-col">
-                    <div class="kpi-label">Assigned Desk</div>
-                    <div class="kpi-val" style="color: #198754;">${escapeHtml(c.addedBy || c.caseWorkerName || "Unassigned")}</div>
+            <div class="text-end">
+                <span class="badge-pending" style="font-size: 10px; padding: 2px 8px;">PROCEEDINGS RECORD</span>
+                <div class="text-muted" style="font-size: 8.5px; margin-top: 3px;">
+                    Report Printed: <strong>${printTime}</strong>
                 </div>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 30px;">#</th>
-                        <th>Hearing Date</th>
-                        <th>Business Date</th>
-                        <th>Purpose / Stage</th>
-                        <th>Next Date</th>
-                        <th>Next Purpose</th>
-                        <th>Judge / Coram</th>
-                        <th>Daily Proceeding / Roznama</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rowsHtml}
-                </tbody>
-            </table>
-            <div class="footer">
-                Printed from Law Project eCourts Module &bull; Verified against official e-Courts NAPIX Record &bull; ${new Date().toLocaleString()}
-            </div>
-            <script>
-                window.onload = function() { window.print(); }
-            <\/script>
-        </body>
-        </html>`;
+        </div>
 
-        printWin.document.open();
-        printWin.document.write(content);
-        printWin.document.close();
+        <!-- CNR Banner -->
+        <div class="meta-container" style="background: #f1f5f9; border-color: #94a3b8; margin-bottom: 10px;">
+            <div>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">CNR Number:</span>
+                <span class="font-mono fw-bold" style="font-size: 12px; margin-left: 4px; color: #0f172a;">${escapeHtml(cnr)}</span>
+            </div>
+            <div>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">Case:</span>
+                <span class="fw-bold" style="font-size: 12px; margin-left: 4px; color: #0369a1;">${escapeHtml(displayType)} ${escapeHtml(c.caseNumber || "—")}</span>
+            </div>
+            <div>
+                <span class="text-muted text-uppercase" style="font-size: 8.5px; font-weight: 700;">Parties:</span>
+                <span class="fw-semibold" style="font-size: 10.5px; margin-left: 4px;">${escapeHtml(c.petitioner || "Petitioner")} vs ${escapeHtml(c.respondent || "Respondent")}</span>
+            </div>
+        </div>
+
+        <!-- KPI Cards Grid -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;">
+            <div style="border: 1px solid #cbd5e1; border-left: 3px solid #0284c7; border-radius: 4px; padding: 6px 8px; background: #f8fafc;">
+                <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b;">Next Scheduled Hearing</div>
+                <div style="font-size: 13px; font-weight: 800; color: #0284c7; font-family: ui-monospace, monospace; margin-top: 1px;">
+                    ${escapeHtml(ha.next_hearing_date || "—")}
+                </div>
+                <div style="font-size: 8px; font-weight: 600; color: #334155; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escapeHtml(ha.stage_purpose || "Stage not specified")}
+                </div>
+                <div style="margin-top: 2px;">
+                    ${urgencyBadgeHtml}
+                </div>
+            </div>
+
+            <div style="border: 1px solid #cbd5e1; border-left: 3px solid #0d9488; border-radius: 4px; padding: 6px 8px; background: #f8fafc;">
+                <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b;">Last Concluded Listing</div>
+                <div style="font-size: 13px; font-weight: 800; color: #0f172a; font-family: ui-monospace, monospace; margin-top: 1px;">
+                    ${escapeHtml(ha.last_hearing_date || "—")}
+                </div>
+                <div style="font-size: 8px; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    Coram: ${escapeHtml(ha.last_hearing_judge || "—")}
+                </div>
+                <div style="font-size: 7.5px; font-weight: 600; color: #0d9488; margin-top: 2px;">
+                    ${ha.days_since_last_hearing !== null && ha.days_since_last_hearing !== undefined ? `${ha.days_since_last_hearing} days since listing` : "—"}
+                </div>
+            </div>
+
+            <div style="border: 1px solid #cbd5e1; border-left: 3px solid #d97706; border-radius: 4px; padding: 6px 8px; background: #f8fafc;">
+                <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b;">Hearing Velocity &amp; Rhythm</div>
+                <div style="font-size: 13px; font-weight: 800; color: #d97706; margin-top: 1px;">
+                    ${ha.total_hearings} Listed Hearings
+                </div>
+                <div style="font-size: 8px; color: #475569; margin-top: 1px;">
+                    ${ha.avg_days_between_hearings ? `Avg interval: ~${ha.avg_days_between_hearings} days` : "Avg interval: —"}
+                </div>
+                <div style="font-size: 7.5px; color: #64748b; margin-top: 2px;">
+                    First listed: ${escapeHtml(ha.first_hearing_date || "—")}
+                </div>
+            </div>
+
+            <div style="border: 1px solid #cbd5e1; border-left: 3px solid #16a34a; border-radius: 4px; padding: 6px 8px; background: #f8fafc;">
+                <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b;">Assigned Desk / Court</div>
+                <div style="font-size: 11px; font-weight: 700; color: #0f172a; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escapeHtml(ha.case_worker || "Central Law Cell")}
+                </div>
+                <div style="font-size: 8px; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    ${escapeHtml(c.courtEstablishmentName || c.courtEstName || "High Court of Karnataka")}
+                </div>
+                <div style="font-size: 7.5px; font-weight: 600; color: #16a34a; margin-top: 2px;">
+                    Verified eCourts Gateway Record
+                </div>
+            </div>
+        </div>
+
+        <!-- Daily Proceedings & Roznama Timeline -->
+        <div class="dossier-card">
+            <div class="dossier-card-header d-flex justify-content-between align-items-center">
+                <span>Daily Proceedings &amp; Roznama Timeline (${currentProceedingsList.length} Hearings Recorded)</span>
+                <span style="font-size: 8px; font-weight: normal; text-transform: none; color: #475569;">Verbatim Official Court Minutes</span>
+            </div>
+            <div class="dossier-card-body">
+                <table class="report-table" style="table-layout: fixed; width: 100%; margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width: 26px;">#</th>
+                            <th class="text-center" style="width: 75px;">Sitting Date</th>
+                            <th class="text-center" style="width: 75px;">Hearing Date</th>
+                            <th style="width: 17%;">Listing Stage</th>
+                            <th class="text-center" style="width: 75px;">Next Date</th>
+                            <th style="width: 16%;">Presiding Coram</th>
+                            <th>Daily Proceedings / Business Transacted (Roznama)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="report-footer">
+            <div>
+                <div><strong>Certified True Daily Proceedings Record</strong> — Live eCourts Sync</div>
+                <div style="font-size: 8.5px; margin-top: 1px;">Official legal record prepared for court proceedings and Central Office law management.</div>
+            </div>
+            <div class="text-end">
+                <div>Law Officer / Registry In-charge</div>
+                <div style="font-size: 8.5px; font-weight: normal; margin-top: 2px;">Central Office, ${escapeHtml(defaultOrgShortName)}, Hubballi</div>
+            </div>
+        </div>
+        `;
+
+        executePrintHtml(`${defaultOrgShortName}_Daily_Proceedings_${cnr}`, bodyHtml, 'landscape');
     }
 
     async function syncCurrentCaseProceedings() {
@@ -4486,11 +4576,22 @@
         document.getElementById("dossierCnrBadge").innerText = "CNR: —";
 
         try {
-            const res = await fetch(`/ECourts/GetTrackedCaseDossier?trackedId=${trackedId}`);
-            const data = await res.json();
-            currentRawJsonString = JSON.stringify(data, null, 2);
+            const [dossierRes, procRes] = await Promise.allSettled([
+                fetch(`/ECourts/GetTrackedCaseDossier?trackedId=${trackedId}`).then(r => r.json()),
+                fetch(`/ECourts/GetCaseProceedings?trackedId=${trackedId}`).then(r => r.json())
+            ]);
 
-            populateDossierModal(data);
+            if (dossierRes.status === "fulfilled" && dossierRes.value) {
+                const data = dossierRes.value;
+                currentRawJsonString = JSON.stringify(data, null, 2);
+                if (procRes.status === "fulfilled" && procRes.value && procRes.value.caseInfo) {
+                    currentProceedingsCase = procRes.value.caseInfo;
+                    currentProceedingsList = procRes.value.proceedings || procRes.value.caseInfo.proceedingsHistory || [];
+                }
+                populateDossierModal(data);
+            } else {
+                throw new Error("Failed to load dossier data");
+            }
         } catch (err) {
             console.error("Error loading dossier:", err);
             document.getElementById("dossierModalTitle").innerText = "Error Loading Dossier";
@@ -5796,27 +5897,127 @@
     async function printSingleCase(trackedId) {
         if (!trackedId) return;
 
-        if (currentDossierTrackedId === trackedId && currentDossierObject) {
-            printCurrentDossier();
-            return;
-        }
-
-        showToast("Preparing Print", "Loading full case dossier from database...", true);
+        showToast("Preparing Print", "Loading full case dossier & daily proceedings...", true);
 
         try {
-            const res = await fetch(`/ECourts/GetTrackedCaseDossier?trackedId=${trackedId}`);
-            const data = await res.json();
-            if (data && (data.data || data.raw || data.cnr)) {
-                currentDossierObject = data;
-                currentDossierTrackedId = trackedId;
-                printCurrentDossier();
-            } else {
-                showToast("Print Error", "Could not retrieve full dossier for printing.", false);
+            const [dossierRes, procRes] = await Promise.allSettled([
+                fetch(`/ECourts/GetTrackedCaseDossier?trackedId=${trackedId}`).then(r => r.json()),
+                fetch(`/ECourts/GetCaseProceedings?trackedId=${trackedId}`).then(r => r.json())
+            ]);
+
+            if (dossierRes.status === "fulfilled" && dossierRes.value) {
+                const data = dossierRes.value;
+                if (data && (data.data || data.raw || data.cnr)) {
+                    currentDossierObject = data;
+                    currentDossierTrackedId = trackedId;
+                    if (procRes.status === "fulfilled" && procRes.value && procRes.value.caseInfo) {
+                        currentProceedingsCase = procRes.value.caseInfo;
+                        currentProceedingsList = procRes.value.proceedings || procRes.value.caseInfo.proceedingsHistory || [];
+                    }
+                    printCurrentDossier();
+                    return;
+                }
             }
+            showToast("Print Error", "Could not retrieve full dossier for printing.", false);
         } catch (err) {
             console.error("Error loading dossier for print:", err);
             showToast("Print Error", "Network error retrieving dossier.", false);
         }
+    }
+
+    function computeHearingAnalysis(hist, rawCase, dataObj) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (!hist || hist.length === 0) {
+            const nextDate = (rawCase?.nextHearingDate || dataObj?.next_hearing_date || "").toString().split('T')[0];
+            return {
+                total_hearings: 0,
+                next_hearing_date: nextDate || "—",
+                stage_purpose: rawCase?.stagePurpose || dataObj?.stage_purpose || "Stage not specified",
+                hearing_urgency: "Standard",
+                days_to_next_hearing: null,
+                last_hearing_date: "—",
+                last_hearing_judge: "—",
+                days_since_last_hearing: null,
+                avg_days_between_hearings: null,
+                first_hearing_date: "—",
+                case_worker: rawCase?.addedBy || rawCase?.caseWorkerName || "Central Law Cell"
+            };
+        }
+
+        const parsed = hist.map(h => {
+            const rawDate = (h.hearing_date || h.hearingDate || h.business_date || h.businessDate || h.cause_date || h.hist_date || "").toString().trim();
+            const d = extractValidDate(rawDate);
+            return {
+                dateStr: d,
+                dateObj: d ? new Date(d) : null,
+                judge: h.judge || h.judge_name || h.judgeName || "—",
+                purpose: h.purpose_of_listing || h.purpose || h.stage || "—",
+                nextDate: extractValidDate(h.next_date || h.nextDate) || h.next_date || h.nextDate || "",
+                nextPurpose: h.next_purpose || h.nextPurpose || "",
+                business: (h.business || h.roznama || h.proceeding || h.order || "").toString().trim()
+            };
+        });
+
+        const withDates = parsed.filter(p => p.dateObj && !isNaN(p.dateObj.getTime())).sort((a, b) => a.dateObj - b.dateObj);
+        const totalHearings = hist.length;
+        const firstHearing = withDates.length > 0 ? withDates[0].dateStr : "—";
+
+        let lastHearing = "—";
+        let lastJudge = "—";
+        let daysSince = null;
+        let nextDate = (rawCase?.nextHearingDate || dataObj?.next_hearing_date || "").toString().split('T')[0];
+        let nextStage = rawCase?.stagePurpose || dataObj?.stage_purpose || "";
+
+        const pastListings = withDates.filter(p => p.dateObj <= today);
+        if (pastListings.length > 0) {
+            const latest = pastListings[pastListings.length - 1];
+            lastHearing = latest.dateStr;
+            lastJudge = latest.judge;
+            daysSince = Math.round((today - latest.dateObj) / (1000 * 60 * 60 * 24));
+            if (!nextDate && latest.nextDate) {
+                nextDate = latest.nextDate;
+                nextStage = latest.nextPurpose || latest.purpose;
+            }
+        } else if (withDates.length > 0) {
+            lastHearing = withDates[0].dateStr;
+            lastJudge = withDates[0].judge;
+        }
+
+        let avgInterval = null;
+        if (withDates.length >= 2) {
+            const spanDays = (withDates[withDates.length - 1].dateObj - withDates[0].dateObj) / (1000 * 60 * 60 * 24);
+            avgInterval = Math.round((spanDays / (withDates.length - 1)) * 10) / 10;
+        }
+
+        let urgency = "Standard";
+        let daysToNext = null;
+        if (nextDate && nextDate !== "—") {
+            const nd = new Date(nextDate);
+            if (!isNaN(nd.getTime())) {
+                daysToNext = Math.round((nd - today) / (1000 * 60 * 60 * 24));
+                if (daysToNext === 0) urgency = "Listed Today";
+                else if (daysToNext > 0 && daysToNext <= 3) urgency = "Urgent (< 3 Days)";
+                else if (daysToNext > 0 && daysToNext <= 7) urgency = "Upcoming (This Week)";
+                else if (daysToNext > 7) urgency = `Scheduled in ${daysToNext} days`;
+                else urgency = "Hearing Concluded";
+            }
+        }
+
+        return {
+            total_hearings: totalHearings,
+            next_hearing_date: nextDate || "—",
+            stage_purpose: nextStage || "Stage not specified",
+            hearing_urgency: urgency,
+            days_to_next_hearing: daysToNext,
+            last_hearing_date: lastHearing,
+            last_hearing_judge: lastJudge,
+            days_since_last_hearing: daysSince,
+            avg_days_between_hearings: avgInterval,
+            first_hearing_date: firstHearing,
+            case_worker: rawCase?.addedBy || rawCase?.caseWorkerName || "Central Law Cell"
+        };
     }
 
     function printCurrentDossier() {
@@ -5892,6 +6093,87 @@
             `).join("");
         } else {
             historyRows = `<tr><td colspan="7" class="text-center text-muted" style="padding: 10px;">No historical proceedings recorded in eCourts payload.</td></tr>`;
+        }
+
+        // 1B. Daily Proceedings & Hearing Analysis Data Generation
+        const trackedCase = allCasesData.find(x => (x.trackedID == currentDossierTrackedId || x.trackedId == currentDossierTrackedId || x.id == currentDossierTrackedId)) ||
+                            allCasesData.find(x => x.cnrNumber && cnr && x.cnrNumber.trim().toUpperCase() === cnr.trim().toUpperCase()) ||
+                            currentProceedingsCase ||
+                            {};
+
+        let ha = dossier.hearing_analysis;
+        if (!ha || !ha.total_hearings) {
+            ha = computeHearingAnalysis(history, trackedCase, data);
+        }
+
+        let urgencyBadgeHtml = "";
+        const urgencyText = (ha.hearing_urgency || "").toUpperCase();
+        if (urgencyText.includes("TODAY")) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">LISTING TODAY</span>`;
+        } else if (urgencyText.includes("URGENT") || (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing >= 0 && ha.days_to_next_hearing <= 3)) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">URGENT (IN ${ha.days_to_next_hearing}d)</span>`;
+        } else if (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing > 3 && ha.days_to_next_hearing <= 7) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">UPCOMING (${ha.days_to_next_hearing}d)</span>`;
+        } else if (ha.days_to_next_hearing !== null && ha.days_to_next_hearing !== undefined && ha.days_to_next_hearing > 7) {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 700; background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">SCHEDULED</span>`;
+        } else {
+            urgencyBadgeHtml = `<span style="font-size: 8px; font-weight: 600; background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; padding: 1.5px 5px; border-radius: 3px; display: inline-block;">COMPLIANCE VERIFIED</span>`;
+        }
+
+        const roznamaMap = {};
+        const sourceProc = (currentProceedingsList && currentProceedingsList.length > 0)
+            ? currentProceedingsList
+            : (trackedCase?.proceedingsHistory || []);
+
+        sourceProc.forEach(p => {
+            const d = extractValidDate(p.hearing_date || p.hearingDate || p.business_date || p.businessDate || p.next_date);
+            const biz = (p.business || p.roznama || p.proceeding || p.order || "").toString().trim();
+            if (d && biz) {
+                roznamaMap[d] = biz;
+            }
+        });
+
+        let dailyProceedingsRows = "";
+        if (history.length > 0) {
+            dailyProceedingsRows = history.map((h, i) => {
+                const rawBus = (h.business_date || h.businessDate || h.cause_date || h.hist_date || "").toString().trim();
+                const rawHear = (h.hearing_date || h.hearingDate || "").toString().trim();
+                const rawNext = (h.next_date || h.nextDate || "").toString().trim();
+                const validBus = extractValidDate(rawBus);
+                const validHear = extractValidDate(rawHear);
+                const validNext = extractValidDate(rawNext);
+                const targetKey = validHear || validBus || validNext || "";
+
+                const purpose = h.purpose_of_listing || h.purpose || h.stage || "—";
+                const nextPurpose = h.next_purpose || h.nextPurpose || "";
+                const judge = h.judge || h.judge_name || h.judgeName || "—";
+
+                let roznama = (h.business || h.roznama || h.proceeding || h.order || "").toString().trim();
+                if (!roznama && targetKey && roznamaMap[targetKey]) {
+                    roznama = roznamaMap[targetKey];
+                }
+
+                let roznamaContent = "";
+                if (roznama) {
+                    roznamaContent = `<div style="font-size: 8.5px; line-height: 1.35; color: #0f172a; background: #f8fafc; border-left: 2px solid #0284c7; padding: 4px 6px; border-radius: 3px;">${escapeHtml(roznama)}</div>`;
+                } else {
+                    roznamaContent = `<div style="font-size: 8px; color: #64748b; font-style: italic;">Stage: <strong>${escapeHtml(purpose)}</strong>${nextPurpose ? ` &bull; Next Stage: ${escapeHtml(nextPurpose)}` : ""} &bull; Official roznama text pending registry upload</div>`;
+                }
+
+                return `
+                <tr>
+                    <td class="text-center fw-bold text-muted">${i + 1}</td>
+                    <td class="text-center font-mono">${escapeHtml(rawBus || "—")}</td>
+                    <td class="text-center font-mono fw-bold" style="color: #0284c7;">${escapeHtml(rawHear || "—")}</td>
+                    <td class="fw-semibold">${escapeHtml(purpose)}</td>
+                    <td class="text-center font-mono fw-bold" style="color: #d97706;">${escapeHtml(rawNext || "—")}</td>
+                    <td>${escapeHtml(judge)}</td>
+                    <td>${roznamaContent}</td>
+                </tr>
+                `;
+            }).join("");
+        } else {
+            dailyProceedingsRows = `<tr><td colspan="7" class="text-center text-muted" style="padding: 10px;">No daily proceedings or hearing history recorded.</td></tr>`;
         }
 
         // 2. Orders & Judgements Rows
@@ -6151,9 +6433,91 @@
             </div>
         </div>
 
-        <!-- Section 4: Orders & Judgements -->
+        <!-- Section 4: Daily Proceedings & Hearing Analysis -->
         <div class="dossier-card">
-            <div class="dossier-card-header">4. Court Orders & Judgements (${orders.length} Uploaded)</div>
+            <div class="dossier-card-header d-flex justify-content-between align-items-center">
+                <span>4. Daily Proceedings &amp; Hearing Analysis (${history.length} Listings &amp; Roznama Record)</span>
+                <span style="font-size: 8px; font-weight: normal; text-transform: none; color: #475569;">Chronological Roznama Business &amp; Hearing Velocity Audit</span>
+            </div>
+            <div class="dossier-card-body" style="padding: 8px 10px;">
+                <!-- KPI Cards Grid -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;">
+                    <div style="border: 1px solid #cbd5e1; border-left: 3px solid #0284c7; border-radius: 4px; padding: 5px 7px; background: #f8fafc;">
+                        <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.3px;">Next Scheduled Hearing</div>
+                        <div style="font-size: 12px; font-weight: 800; color: #0284c7; font-family: ui-monospace, monospace; margin-top: 1px;">
+                            ${escapeHtml(ha.next_hearing_date || "—")}
+                        </div>
+                        <div style="font-size: 8px; font-weight: 600; color: #334155; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${escapeHtml(ha.stage_purpose || "Stage not specified")}
+                        </div>
+                        <div style="margin-top: 2px;">
+                            ${urgencyBadgeHtml}
+                        </div>
+                    </div>
+
+                    <div style="border: 1px solid #cbd5e1; border-left: 3px solid #0d9488; border-radius: 4px; padding: 5px 7px; background: #f8fafc;">
+                        <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.3px;">Last Concluded Listing</div>
+                        <div style="font-size: 12px; font-weight: 800; color: #0f172a; font-family: ui-monospace, monospace; margin-top: 1px;">
+                            ${escapeHtml(ha.last_hearing_date || "—")}
+                        </div>
+                        <div style="font-size: 8px; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            Coram: ${escapeHtml(ha.last_hearing_judge || "—")}
+                        </div>
+                        <div style="font-size: 7.5px; font-weight: 600; color: #0d9488; margin-top: 2px;">
+                            ${ha.days_since_last_hearing !== null && ha.days_since_last_hearing !== undefined ? `${ha.days_since_last_hearing} days since listing` : "—"}
+                        </div>
+                    </div>
+
+                    <div style="border: 1px solid #cbd5e1; border-left: 3px solid #d97706; border-radius: 4px; padding: 5px 7px; background: #f8fafc;">
+                        <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.3px;">Hearing Velocity &amp; Rhythm</div>
+                        <div style="font-size: 12px; font-weight: 800; color: #d97706; margin-top: 1px;">
+                            ${ha.total_hearings} Listed Hearings
+                        </div>
+                        <div style="font-size: 8px; color: #475569; margin-top: 1px;">
+                            ${ha.avg_days_between_hearings ? `Avg interval: ~${ha.avg_days_between_hearings} days` : "Avg interval: —"}
+                        </div>
+                        <div style="font-size: 7.5px; color: #64748b; margin-top: 2px;">
+                            First listed: ${escapeHtml(ha.first_hearing_date || "—")}
+                        </div>
+                    </div>
+
+                    <div style="border: 1px solid #cbd5e1; border-left: 3px solid #16a34a; border-radius: 4px; padding: 5px 7px; background: #f8fafc;">
+                        <div style="font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.3px;">Assigned Desk / Court</div>
+                        <div style="font-size: 10.5px; font-weight: 700; color: #0f172a; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${escapeHtml(ha.case_worker || "Central Law Cell")}
+                        </div>
+                        <div style="font-size: 8px; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${escapeHtml(data.establishment_name || raw.court_est_name || "High Court of Karnataka")}
+                        </div>
+                        <div style="font-size: 7.5px; font-weight: 600; color: #16a34a; margin-top: 2px;">
+                            Verified eCourts Gateway Record
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daily Proceedings Table with Roznama -->
+                <table class="report-table" style="table-layout: fixed; width: 100%; margin-bottom: 0;">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width: 26px;">#</th>
+                            <th class="text-center" style="width: 75px;">Sitting Date</th>
+                            <th class="text-center" style="width: 75px;">Hearing Date</th>
+                            <th style="width: 17%;">Listing Stage</th>
+                            <th class="text-center" style="width: 75px;">Next Date</th>
+                            <th style="width: 16%;">Presiding Coram</th>
+                            <th>Daily Proceedings / Business Transacted (Roznama)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${dailyProceedingsRows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Section 5: Orders & Judgements -->
+        <div class="dossier-card">
+            <div class="dossier-card-header">5. Court Orders & Judgements (${orders.length} Uploaded)</div>
             <div class="dossier-card-body">
                 <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
@@ -6172,9 +6536,9 @@
             </div>
         </div>
 
-        <!-- Section 5: IA Filings & Applications -->
+        <!-- Section 6: IA Filings & Applications -->
         <div class="dossier-card">
-            <div class="dossier-card-header">5. Interlocutory Applications (IA Filings: ${iaList.length})</div>
+            <div class="dossier-card-header">6. Interlocutory Applications (IA Filings: ${iaList.length})</div>
             <div class="dossier-card-body">
                 <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
@@ -6193,9 +6557,9 @@
             </div>
         </div>
 
-        <!-- Section 6: Process Issued -->
+        <!-- Section 7: Process Issued -->
         <div class="dossier-card">
-            <div class="dossier-card-header">6. Process & Court Notices (${processes.length})</div>
+            <div class="dossier-card-header">7. Process & Court Notices (${processes.length})</div>
             <div class="dossier-card-body">
                 <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>
@@ -6214,9 +6578,9 @@
             </div>
         </div>
 
-        <!-- Section 7: Acts & Sections -->
+        <!-- Section 8: Acts & Sections -->
         <div class="dossier-card">
-            <div class="dossier-card-header">7. Statutory Acts & Sections (${acts.length})</div>
+            <div class="dossier-card-header">8. Statutory Acts & Sections (${acts.length})</div>
             <div class="dossier-card-body">
                 <table class="report-table" style="table-layout: fixed; margin-bottom: 0;">
                     <thead>

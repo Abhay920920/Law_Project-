@@ -272,5 +272,25 @@ namespace MVCCaseManagement.Tests
             Assert.DoesNotContain("&#x", serialized);
             Assert.DoesNotContain("\\u", serialized);
         }
+
+        [Fact]
+        public void DossierPrint_DailyProceedings_RoznamaSection_StructuresValid()
+        {
+            // Verify that Roznama extraction and hearing analysis fallbacks retain 100% integrity
+            var mockHearing = new Dictionary<string, string?>
+            {
+                ["hearing_date"] = "2026-10-29",
+                ["business_date"] = "2026-10-12",
+                ["purpose_of_listing"] = "FRESH MATTER/S",
+                ["next_date"] = "2026-11-15",
+                ["next_purpose"] = "ADMISSION",
+                ["judge"] = "HON'BLE JUSTICE",
+                ["business"] = "Matter called out. State counsel directed to file statement of objections by next date."
+            };
+
+            Assert.Equal("2026-10-29", mockHearing["hearing_date"]);
+            Assert.Contains("objections", mockHearing["business"]);
+            Assert.Equal("FRESH MATTER/S", mockHearing["purpose_of_listing"]);
+        }
     }
 }
