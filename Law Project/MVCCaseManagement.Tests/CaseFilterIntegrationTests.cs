@@ -31,5 +31,23 @@ namespace MVCCaseManagement.Tests
             Assert.Equal("19", caseInMfa.MVCNo);
             Assert.Equal(2026, caseInMfa.MVCYear);
         }
+        [Fact]
+        public void Verify_GetDashboardStats_HubballiRural_Returns_Valid_Counts()
+        {
+            var myConfig = new Dictionary<string, string?>
+            {
+                {"ConnectionStrings:MVCCaseDB", "Data Source=198.38.89.31;Initial Catalog=Admin_Law;User ID=admin_Law;Password=4c4H_0l8q;Connection Timeout=60;Encrypt=True;TrustServerCertificate=True;Pooling=true;Max Pool Size=200;MultiSubnetFailover=True;ConnectRetryCount=3;ConnectRetryInterval=10;"}
+            };
+            var config = new ConfigurationBuilder().AddInMemoryCollection(myConfig).Build();
+            var db = new DBHelper(config);
+            var repo = new CaseRepository(db);
+
+            // Hubballi Rural division is 8
+            var stats = repo.GetDashboardStats(8);
+            Assert.NotNull(stats);
+            Assert.True(stats.TotalCases >= 100, $"Expected >= 100 total cases for Hubballi Rural, but got {stats.TotalCases}");
+            Assert.True(stats.PendingCases >= 100, $"Expected >= 100 pending cases for Hubballi Rural, but got {stats.PendingCases}");
+            Assert.True(stats.CorpMFAPendingCount >= 1, $"Expected >= 1 Corp MFA pending, but got {stats.CorpMFAPendingCount}");
+        }
     }
 }

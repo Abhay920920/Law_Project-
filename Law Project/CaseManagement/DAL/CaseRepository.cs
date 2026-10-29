@@ -2147,125 +2147,126 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 conn.Open();
                 
                 // 1. Fetch Global Summary Stats (Aggregating MVC, Labour, and Gratuity)
-                string summaryQuery = @"
+                string summaryQuery = @"
+                    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
                     SELECT 
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE ((a.CorpMFAStatus LIKE '%Pending%' OR a.CorpMFAStatus IS NULL OR a.CorpMFAStatus = '' OR a.IsPendingForFiling = 1) AND (a.CorpMFANumber IS NOT NULL AND a.CorpMFANumber != '' OR a.IsPendingForFiling = 1 OR UPPER(LTRIM(RTRIM(a.InitialAction))) = 'APPEAL')) AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS CorpMFAPendingCount,
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (a.ClaimantMFANumber IS NOT NULL AND a.ClaimantMFANumber != '') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS ClaimantMFAPendingCount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE ((a.CorpMFAStatus LIKE '%Pending%' OR a.CorpMFAStatus IS NULL OR a.CorpMFAStatus = '' OR a.IsPendingForFiling = 1) AND (a.CorpMFANumber IS NOT NULL AND a.CorpMFANumber != '' OR a.IsPendingForFiling = 1 OR UPPER(LTRIM(RTRIM(a.InitialAction))) = 'APPEAL')) AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS CorpMFAPendingCount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (a.ClaimantMFANumber IS NOT NULL AND a.ClaimantMFANumber != '') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS ClaimantMFAPendingCount,
 
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS TotalCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS TotalCases,
 
                         -- 2. PENDING/ACTIVE CASES
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = '')) AS PendingCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = '')) AS PendingCases,
 
                         -- 3. FAVOR CASES
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalResult = 'Favor') AS FavorCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalResult = 'Favor') AS FavorCases,
 
                         -- 4. AGAINST CASES
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalResult = 'Against') AS AgainstCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalResult = 'Against') AS AgainstCases,
 
                         -- 5. HEARINGS TODAY (Multi-Module Unified)
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayMvc,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayMvc,
                         (SELECT 
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE))
                         ) AS HearingsTodayLabour,
-                        (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayGratuity,
-                        (SELECT COUNT(*) FROM OTHER_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextDateOfHearing AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayOther,
+                        (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND CAST(NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayGratuity,
+                        (SELECT COUNT(*) FROM OTHER_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(NextDateOfHearing AS DATE) = CAST(GETDATE() AS DATE)) AS HearingsTodayOther,
 
                         -- 6. AWARDS TODAY & THIS MONTH (Multi-Module Unified)
                         (
-                            (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad JOIN MVC_CASES WITH (NOLOCK) mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND CAST(ad.AwardDate AS DATE) = CAST(GETDATE() AS DATE))
+                            (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS ad JOIN MVC_CASES mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND CAST(ad.AwardDate AS DATE) = CAST(GETDATE() AS DATE))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Favor'))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Favor'))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed'))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND CAST(DisposalDate AS DATE) = CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed'))
                         ) AS AwardsToday,
 
                         (
-                            (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad JOIN MVC_CASES WITH (NOLOCK) mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND ad.AwardDate >= DATEADD(day, -30, GETDATE()))
+                            (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS ad JOIN MVC_CASES mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND ad.AwardDate >= DATEADD(day, -30, GETDATE()))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()) AND DisposalResult IN ('Against', 'Favor'))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()) AND DisposalResult IN ('Against', 'Favor'))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()) AND DisposalResult IN ('Against', 'Dismissed'))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND DisposalDate >= DATEADD(day, -30, GETDATE()) AND DisposalResult IN ('Against', 'Dismissed'))
                         ) AS AwardsThisMonth,
 
                         -- 7. COMPLIANCE DUE (Next 7-15 days & Overdue)
                         (
-                            (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND a.FinalComplianceDate >= CAST(GETDATE() AS DATE) AND a.FinalComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
+                            (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND a.FinalComplianceDate >= CAST(GETDATE() AS DATE) AND a.FinalComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CO_StayComplianceDate >= CAST(GETDATE() AS DATE) AND CO_StayComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CO_StayComplianceDate >= CAST(GETDATE() AS DATE) AND CO_StayComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND StayComplianceDate >= CAST(GETDATE() AS DATE) AND StayComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND StayComplianceDate >= CAST(GETDATE() AS DATE) AND StayComplianceDate <= DATEADD(day, 15, CAST(GETDATE() AS DATE)))
                         ) AS ComplianceDue,
 
                         (
-                            (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND a.FinalComplianceDate < CAST(GETDATE() AS DATE) AND (a.InitialAction LIKE '%Pending%' OR a.InitialAction IS NULL OR a.InitialAction = ''))
+                            (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND a.FinalComplianceDate < CAST(GETDATE() AS DATE) AND (a.InitialAction LIKE '%Pending%' OR a.InitialAction IS NULL OR a.InitialAction = ''))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CO_StayComplianceDate < CAST(GETDATE() AS DATE) AND DisposalResult = 'Against')
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND CO_StayComplianceDate < CAST(GETDATE() AS DATE) AND DisposalResult = 'Against')
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND StayComplianceDate < CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed'))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND StayComplianceDate < CAST(GETDATE() AS DATE) AND DisposalResult IN ('Against', 'Dismissed'))
                         ) AS ComplianceOverdue,
 
                         -- 8. CRITICAL DELAYS (Multi-Module Overdue & Aging Categories)
                         (
-                            (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM OTHER_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing < CAST(GETDATE() AS DATE) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
+                            (SELECT COUNT(*) FROM OTHER_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing < CAST(GETDATE() AS DATE) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
                         ) AS CriticalDelays,
 
                         (
-                            (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate >= DATEADD(day, -30, GETDATE()) AND NextHearingDate < CAST(GETDATE() AS DATE) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM OTHER_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing >= DATEADD(day, -30, GETDATE()) AND NextDateOfHearing < CAST(GETDATE() AS DATE) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
+                            (SELECT COUNT(*) FROM OTHER_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing >= DATEADD(day, -30, GETDATE()) AND NextDateOfHearing < CAST(GETDATE() AS DATE) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
                         ) AS CriticalDelaysRecent,
 
                         (
-                            (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate < DATEADD(day, -30, GETDATE()) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM OTHER_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing < DATEADD(day, -30, GETDATE()) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
+                            (SELECT COUNT(*) FROM OTHER_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing < DATEADD(day, -30, GETDATE()) AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
                         ) AS CriticalDelaysStale,
 
                         (
-                            (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
+                            (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR CaseStatus = 'Pending' OR CaseStatus = '' OR CaseStatus IS NULL))
                             +
-                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
+                            (SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate IS NULL AND (Status IS NULL OR Status = 'Pending' OR Status = ''))
                             +
-                            (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
+                            (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID) AND NextHearingDate IS NULL AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = ''))
                             +
-                            (SELECT COUNT(*) FROM OTHER_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing IS NULL AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
+                            (SELECT COUNT(*) FROM OTHER_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextDateOfHearing IS NULL AND (DisposalStatus IS NULL OR DisposalStatus = 'Pending' OR DisposalStatus = ''))
                         ) AS CriticalDelaysMissingDate,
 
                         -- 9. MISC STATS
-                        (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad JOIN MVC_CASES WITH (NOLOCK) mc ON ad.CaseID = mc.CaseID 
+                        (SELECT COUNT(*) FROM MVC_CASE_ADVERSE_DETAILS ad JOIN MVC_CASES mc ON ad.CaseID = mc.CaseID 
                          WHERE ad.ForwardingStatus = 'Sent to Central Office' 
                          AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)
                          AND NOT EXISTS (
-                             SELECT 1 FROM APPEAL_DETAILS WITH (NOLOCK) a 
+                             SELECT 1 FROM APPEAL_DETAILS a 
                              WHERE (a.CaseID = mc.CaseID OR (NULLIF(LTRIM(RTRIM(a.ClaimantMVCNumber)), '') IS NOT NULL AND a.ClaimantMVCNumber = mc.MVCNo AND a.ClaimantMVCYear = mc.MVCYear))
                              AND (
                                  NULLIF(LTRIM(RTRIM(a.CorpMFANumber)), '') IS NOT NULL 
@@ -2276,23 +2277,23 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                              )
                          )) AS SentToCOCount,
 
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE CreatedAt >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0) AND (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS CasesThisMonth,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE CreatedAt >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0) AND (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS CasesThisMonth,
 
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS MVCCount,
-                        (SELECT COUNT(*) FROM LABOUR_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS LabourCount,
-                        (SELECT COUNT(*) FROM GRA_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID)) AS GratuityCount,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS MVCCount,
+                        (SELECT COUNT(*) FROM LABOUR_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)) AS LabourCount,
+                        (SELECT COUNT(*) FROM GRA_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionCode = @DivisionID)) AS GratuityCount,
 
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%COMPETENT%AUTHORITY%' OR UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%AT%CA%') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS PendingCACount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%COMPETENT%AUTHORITY%' OR UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%AT%CA%') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS PendingCACount,
  
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%DECISION%' OR UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%FOR%ACTION%') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS PendingDecisionCount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%DECISION%' OR UPPER(LTRIM(RTRIM(a.InitialAction))) LIKE '%PENDING%FOR%ACTION%') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS PendingDecisionCount,
 
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (a.InitialAction = 'Appeal' OR a.InitialAction = 'APPEAL') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS AppealCount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (a.InitialAction = 'Appeal' OR a.InitialAction = 'APPEAL') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS AppealCount,
 
-                        (SELECT COUNT(*) FROM APPEAL_DETAILS WITH (NOLOCK) a JOIN MVC_CASES WITH (NOLOCK) mc ON a.CaseID = mc.CaseID WHERE (a.InitialAction = 'Close' OR a.InitialAction = 'CLOSE' OR a.InitialAction = 'CLOSED') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS CloseCount,
+                        (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (a.InitialAction = 'Close' OR a.InitialAction = 'CLOSE' OR a.InitialAction = 'CLOSED') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS CloseCount,
 
-                        (SELECT COUNT(*) FROM MVC_CASES WITH (NOLOCK) WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= CAST(GETDATE() AS DATE) AND NextHearingDate <= DATEADD(day, 7, CAST(GETDATE() AS DATE))) AS UpcomingHearingsCount,
-                        (SELECT ISNULL(SUM(AwardAmount), 0) FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad JOIN MVC_CASES WITH (NOLOCK) mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS TotalAwardAmountAgainst,
-                        (SELECT ISNULL(SUM(AwardAmount), 0) FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad JOIN MVC_CASES WITH (NOLOCK) mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND ad.AwardDate >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)) AS MonthlyAwardAmountAgainst";
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND NextHearingDate >= CAST(GETDATE() AS DATE) AND NextHearingDate <= DATEADD(day, 7, CAST(GETDATE() AS DATE))) AS UpcomingHearingsCount,
+                        (SELECT ISNULL(SUM(AwardAmount), 0) FROM MVC_CASE_ADVERSE_DETAILS ad JOIN MVC_CASES mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS TotalAwardAmountAgainst,
+                        (SELECT ISNULL(SUM(AwardAmount), 0) FROM MVC_CASE_ADVERSE_DETAILS ad JOIN MVC_CASES mc ON ad.CaseID = mc.CaseID WHERE (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID) AND ad.AwardDate >= DATEADD(month, DATEDIFF(month, 0, GETDATE()), 0)) AS MonthlyAwardAmountAgainst";
 
                 using (var cmd = new SqlCommand(summaryQuery, conn))
                 {
