@@ -291,6 +291,19 @@ namespace MVCCaseManagement.Tests
             Assert.Equal("2026-10-29", mockHearing["hearing_date"]);
             Assert.Contains("objections", mockHearing["business"]);
             Assert.Equal("FRESH MATTER/S", mockHearing["purpose_of_listing"]);
+
+            // Verify MyCases.cshtml dossier print contains unified non-duplicate Section 3
+            string viewPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "..", "..", "..", "CaseManagement", "Views", "ECourts", "MyCases.cshtml");
+            if (File.Exists(viewPath))
+            {
+                string viewContent = File.ReadAllText(viewPath);
+                Assert.Contains("3. Daily Proceedings &amp; Hearing Analysis (${history.length} Hearings Recorded)", viewContent);
+                Assert.DoesNotContain("3. Full Court Proceedings History", viewContent);
+                Assert.Contains("4. Court Orders & Judgements (${orders.length} Uploaded)", viewContent);
+                Assert.Contains("5. Interlocutory Applications (IA Filings: ${iaList.length})", viewContent);
+                Assert.Contains("6. Process & Court Notices (${processes.length})", viewContent);
+                Assert.Contains("7. Statutory Acts & Sections (${acts.length})", viewContent);
+            }
         }
     }
 }

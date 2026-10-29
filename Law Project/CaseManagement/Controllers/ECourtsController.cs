@@ -906,7 +906,7 @@ namespace MVCCaseManagement.Controllers
                 {
                     var saved = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
                         SELECT TOP 1 HearingDate, BusinessTransacted, NextHearingDate, NextStage 
-                        FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                        FROM admin_Law.CASE_HEARINGS_HISTORY 
                         WHERE CNRNumber = @clean AND CAST(HearingDate AS DATE) = @hDate AND BusinessTransacted IS NOT NULL AND LEN(BusinessTransacted) > 0",
                         new { clean, hDate = targetDate.Value.Date });
 
@@ -2058,7 +2058,7 @@ namespace MVCCaseManagement.Controllers
                 // 2. Fetch all recorded hearings & roznamas from CASE_HEARINGS_HISTORY
                 var dbHearings = (conn.Query<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
                     SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
-                    FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                    FROM admin_Law.CASE_HEARINGS_HISTORY 
                     WHERE CNRNumber = @cleanCnr
                     ORDER BY HearingDate DESC", new { cleanCnr })).ToList();
 
@@ -2723,24 +2723,76 @@ namespace MVCCaseManagement.Controllers
                                 string cleanCnr = record.CNRNumber.Trim().ToUpperInvariant();
                                 var dbHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
                                     SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
-                                    FROM [dbo].[CASE_HEARINGS_HISTORY]
+                                    FROM admin_Law.CASE_HEARINGS_HISTORY
                                     WHERE CNRNumber = @cnr", new { cnr = cleanCnr })).ToList();
 
-                                if (dbHearings.Count > 0 && rootObj["history"] is System.Text.Json.Nodes.JsonArray hArray)
+                                if (rootObj["history"] is System.Text.Json.Nodes.JsonArray hArray)
                                 {
+                                    bool isHighCourt = cleanCnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || cleanCnr.Contains("HC");
+                                    string effectiveModule = isHighCourt ? "HC" : (string.IsNullOrWhiteSpace(record.RelatedModule) ? "MVC" : record.RelatedModule);
+
+                                    string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
                                     foreach (var hNode in hArray)
                                     {
                                         if (hNode is System.Text.Json.Nodes.JsonObject hObj)
                                         {
-                                            string dateStr = hObj["hearing_date"]?.ToString() ?? hObj["business_date"]?.ToString() ?? "";
-                                            if (DateTime.TryParse(dateStr, out var d))
+                                            var candidateDates = new List<DateTime>();
+                                            foreach (var k in dtCandidateKeys)
                                             {
-                                                var match = dbHearings.FirstOrDefault(r => r.HearingDate.Date == d.Date);
-                                                if (match != null && !string.IsNullOrWhiteSpace(match.BusinessTransacted))
+                                                string s = hObj[k]?.ToString() ?? "";
+                                                if (!string.IsNullOrWhiteSpace(s) && TryParseFlexibleDate(s, out var dtVal) && !IsCisSentinelDate(dtVal) && dtVal.Year >= 1970 && dtVal.Year <= 2050)
                                                 {
-                                                    hObj["business"] = match.BusinessTransacted;
-                                                    hObj["roznama"] = match.BusinessTransacted;
+                                                    if (!candidateDates.Any(x => x.Date == dtVal.Date)) candidateDates.Add(dtVal);
                                                 }
+                                            }
+
+                                            var match = dbHearings.FirstOrDefault(r => candidateDates.Any(cd => cd.Date == r.HearingDate.Date));
+                                            string? biz = match?.BusinessTransacted;
+
+                                            if (string.IsNullOrWhiteSpace(biz) && candidateDates.Count > 0)
+                                            {
+                                                foreach (var cDate in candidateDates)
+                                                {
+                                                    try
+                                                    {
+                                                        string dtStr = cDate.ToString("yyyy-MM-dd");
+                                                        var napixRes = await _napixService.GetCaseBusinessAsync(cleanCnr, dtStr, isHighCourt, effectiveModule);
+                                                        if (napixRes.HasValue && IsValidJsonData(napixRes))
+                                                        {
+                                                            var rRoot = napixRes.Value;
+                                                            if (rRoot.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                                                                biz = bProp.GetString();
+                                                            else if (rRoot.TryGetProperty("roznama", out var roProp) && !string.IsNullOrWhiteSpace(roProp.GetString()))
+                                                                biz = roProp.GetString();
+                                                            else if (rRoot.TryGetProperty("proceedings", out var prProp) && !string.IsNullOrWhiteSpace(prProp.GetString()))
+                                                                biz = prProp.GetString();
+                                                            else if (rRoot.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                                                                biz = soProp.GetString();
+
+                                                            if (!string.IsNullOrWhiteSpace(biz))
+                                                            {
+                                                                await conn.ExecuteAsync(@"
+                                                                    MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
+                                                                    USING (SELECT @cleanCnr AS CNRNumber, @hDate AS HearingDate) AS source
+                                                                    ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                                                                    WHEN MATCHED THEN
+                                                                        UPDATE SET BusinessTransacted = COALESCE(NULLIF(@biz, ''), target.BusinessTransacted)
+                                                                    WHEN NOT MATCHED THEN
+                                                                        INSERT (CNRNumber, HearingDate, BusinessTransacted, CreatedDate)
+                                                                        VALUES (@cleanCnr, @hDate, NULLIF(@biz, ''), GETDATE());",
+                                                                    new { cleanCnr, hDate = cDate.Date, biz });
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                    catch { }
+                                                }
+                                            }
+
+                                            if (!string.IsNullOrWhiteSpace(biz))
+                                            {
+                                                hObj["business"] = biz;
+                                                hObj["roznama"] = biz;
                                             }
                                         }
                                     }
@@ -2880,29 +2932,28 @@ namespace MVCCaseManagement.Controllers
 
                             var dbHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
                                 SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
-                                FROM [dbo].[CASE_HEARINGS_HISTORY]
+                                FROM admin_Law.CASE_HEARINGS_HISTORY
                                 WHERE CNRNumber = @cnr", new { cnr = clean })).ToList();
 
                             // 1. First enrich all hearings that already exist in DB
+                            string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
                             foreach (var h in record.ProceedingsHistory)
                             {
-                                DateTime? d = null;
-                                string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                                var candDates = new List<DateTime>();
                                 foreach (var k in dtCandidateKeys)
                                 {
                                     if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
                                     {
                                         if (TryParseFlexibleDate(val, out var parsed) && !IsCisSentinelDate(parsed) && parsed.Year >= 1970 && parsed.Year <= 2050)
                                         {
-                                            d = parsed;
-                                            break;
+                                            if (!candDates.Any(x => x.Date == parsed.Date)) candDates.Add(parsed);
                                         }
                                     }
                                 }
 
-                                if (d.HasValue)
+                                if (candDates.Count > 0)
                                 {
-                                    var match = dbHearings.FirstOrDefault(r => r.HearingDate.Date == d.Value.Date);
+                                    var match = dbHearings.FirstOrDefault(r => candDates.Any(cd => cd.Date == r.HearingDate.Date));
                                     if (match != null && !string.IsNullOrWhiteSpace(match.BusinessTransacted))
                                     {
                                         h["business"] = match.BusinessTransacted;
@@ -2919,7 +2970,7 @@ namespace MVCCaseManagement.Controllers
                                 if (!string.IsNullOrWhiteSpace(existingBiz)) continue;
 
                                 DateTime? sittingDt = null;
-                                string[] dtCandidateKeys = { "business_date", "hearing_date", "cause_date", "hist_date", "next_date" };
+                                // Candidate date search keys
                                 foreach (var k in dtCandidateKeys)
                                 {
                                     if (h.TryGetValue(k, out var val) && !string.IsNullOrWhiteSpace(val))
@@ -2974,7 +3025,7 @@ namespace MVCCaseManagement.Controllers
 
                                         // Persist to CASE_HEARINGS_HISTORY
                                         await conn.ExecuteAsync(@"
-                                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                            MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
                                             USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
                                             ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
                                             WHEN MATCHED THEN
@@ -3174,7 +3225,7 @@ namespace MVCCaseManagement.Controllers
                         }
 
                         await conn.ExecuteAsync(@"
-                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                            MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
                             USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
                             ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
                             WHEN MATCHED THEN
@@ -3222,7 +3273,7 @@ namespace MVCCaseManagement.Controllers
                 using var conn = _db.GetConnection();
                 var dbSaved = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
                     SELECT TOP 1 HearingDate, BusinessTransacted, NextHearingDate, NextStage 
-                    FROM [dbo].[CASE_HEARINGS_HISTORY] 
+                    FROM admin_Law.CASE_HEARINGS_HISTORY 
                     WHERE CNRNumber = @clean AND CAST(HearingDate AS DATE) = @hDate AND BusinessTransacted IS NOT NULL AND LEN(BusinessTransacted) > 0",
                     new { clean, hDate = resolvedTargetDate.Value.Date });
 
@@ -3312,7 +3363,7 @@ namespace MVCCaseManagement.Controllers
                 // 2. Fetch existing hearings from CASE_HEARINGS_HISTORY
                 var existingHearings = (await conn.QueryAsync<MVCCaseManagement.Models.CaseHearingHistoryModel>(@"
                     SELECT HearingDate, BusinessTransacted, NextHearingDate, NextStage
-                    FROM [dbo].[CASE_HEARINGS_HISTORY]
+                    FROM admin_Law.CASE_HEARINGS_HISTORY
                     WHERE CNRNumber = @clean", new { clean })).ToList();
 
                 int fetchedCount = 0;
@@ -3387,7 +3438,7 @@ namespace MVCCaseManagement.Controllers
 
                             // Persist to CASE_HEARINGS_HISTORY
                             await conn.ExecuteAsync(@"
-                                MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
                                 USING (SELECT @clean AS CNRNumber, @hDate AS HearingDate) AS source
                                 ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
                                 WHEN MATCHED THEN
@@ -5115,7 +5166,7 @@ namespace MVCCaseManagement.Controllers
                                           h.GetValueOrDefault("proceeding");
 
                             await conn.ExecuteAsync(@"
-                                MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
                                 USING (SELECT @cleanCnr AS CNRNumber, @hDt AS HearingDate) AS source
                                 ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
                                 WHEN MATCHED THEN
@@ -5193,7 +5244,7 @@ namespace MVCCaseManagement.Controllers
 
                                         // Persist to CASE_HEARINGS_HISTORY via MERGE
                                         await conn.ExecuteAsync(@"
-                                            MERGE [dbo].[CASE_HEARINGS_HISTORY] AS target
+                                            MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
                                             USING (SELECT @cleanCnr AS CNRNumber, @hDate AS HearingDate) AS source
                                             ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
                                             WHEN MATCHED THEN
