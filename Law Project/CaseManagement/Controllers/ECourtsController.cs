@@ -906,6 +906,7 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtCauselistBenches?estCode=KAHC01&causelistDate=13-08-2026
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtCauselistBenches(string estCode = "KAHC01", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -916,6 +917,7 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtCauselistDetails?estCode=KAHC01&benchId=...&causelistDate=13-08-2026
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtCauselistDetails(string estCode = "KAHC01", string benchId = "", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -926,6 +928,7 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetHighCourtShowCauselist?estCode=KAHC01&benchId=...&causelistId=...&causelistDate=13-08-2026
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetHighCourtShowCauselist(string estCode = "KAHC01", string benchId = "", string causelistId = "", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
@@ -936,6 +939,7 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/GetCaseBusiness?cnrNumber=...&date=...&isHighCourt=false&module=...
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> GetCaseBusiness(string cnrNumber, string date, bool isHighCourt = false, string? module = null)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber))
