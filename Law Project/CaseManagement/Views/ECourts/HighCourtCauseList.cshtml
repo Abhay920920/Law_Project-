@@ -2060,25 +2060,25 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     <div class="table-responsive d-none d-md-block" style="max-height: 620px;">
 
-        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable" style="table-layout: fixed; width: 100%;">
+        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable" style="min-width: 1180px;">
 
             <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom shadow-sm">
 
                 <tr>
 
-                    <th style="width: 44px;" class="text-center">#</th>
+                    <th style="width: 45px;" class="text-center">#</th>
 
-                    <th style="width: 14%;">Case Number & Year</th>
+                    <th style="min-width: 140px;">Case Number & Year</th>
 
-                    <th style="width: 18%;">Court Hall / Bench / Cause List No</th>
+                    <th style="min-width: 180px;">Court Hall / Bench / Cause List No</th>
 
-                    <th style="width: 17%;">CNR Number & Actions</th>
+                    <th style="min-width: 215px;">CNR Number & Actions</th>
 
-                    <th style="width: 26%;">Petitioner vs Respondent</th>
+                    <th style="min-width: 280px;">Petitioner vs Respondent</th>
 
-                    <th style="width: 11%;">Corporation Role</th>
+                    <th style="min-width: 130px;">Corporation Role</th>
 
-                    <th style="width: 14%;">Hearing Date & Stage</th>
+                    <th style="min-width: 140px;">Hearing Date & Stage</th>
 
                 </tr>
 
@@ -2405,7 +2405,7 @@ function renderHcCauselistPage() {
 
             <td class="fw-bold text-center text-muted">${sr}</td>
 
-            <td>
+            <td class="text-nowrap">
 
                 <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
 
@@ -2413,9 +2413,9 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td style="word-break: break-word;">
+            <td>
 
-                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block text-wrap mb-1" style="max-width: 100%; white-space: normal; text-align: left;">
+                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block text-nowrap mb-1">
 
                     <i class="bi bi-bank2 me-1"></i>${courtNo}
 
@@ -2425,7 +2425,7 @@ function renderHcCauselistPage() {
 
                 <div class="extra-small text-dark fw-bold mb-0.5">
 
-                    <span class="badge bg-primary-subtle text-primary border border-primary font-monospace extra-small">
+                    <span class="badge bg-primary-subtle text-primary border border-primary font-monospace extra-small text-nowrap">
 
                         <i class="bi bi-card-checklist me-1"></i>Cause List No: ${clNo}
 
@@ -2433,7 +2433,7 @@ function renderHcCauselistPage() {
 
                 </div>` : ''}
 
-                <div class="extra-small text-muted">
+                <div class="extra-small text-muted text-nowrap">
 
                     <i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}
 
@@ -2441,29 +2441,29 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td style="word-break: break-word;">
+            <td class="text-nowrap">
 
-                <div class="font-monospace fw-bold text-dark extra-small mb-1 text-break">${itemCnr || '—'}</div>
+                <div class="font-monospace fw-bold text-dark extra-small mb-1 text-nowrap">${itemCnr || '—'}</div>
 
                 ${itemCnr ? `
 
-                <div class="btn-group btn-group-sm">
+                <div class="btn-group btn-group-sm d-inline-flex flex-nowrap" style="white-space: nowrap;">
 
-                    <button class="btn btn-outline-primary btn-sm py-0 px-1.5 extra-small" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')" title="Sync live status">
+                    <button class="btn btn-outline-primary btn-sm py-0.5 px-2 extra-small text-nowrap" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')" title="Sync live status">
 
-                        <i class="bi bi-arrow-repeat"></i> Sync
-
-                    </button>
-
-                    <button class="btn btn-outline-info btn-sm py-0 px-1.5 extra-small" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')" title="View Dossier">
-
-                        <i class="bi bi-journal-text"></i> Dossier
+                        <i class="bi bi-arrow-repeat me-0.5"></i>Sync
 
                     </button>
 
-                    <button class="btn btn-outline-warning text-dark btn-sm py-0 px-1.5 extra-small fw-bold" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')" title="View Roznama / Daily Proceedings">
+                    <button class="btn btn-outline-info btn-sm py-0.5 px-2 extra-small text-nowrap" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')" title="View Dossier">
 
-                        <i class="bi bi-file-earmark-text"></i> Roznama
+                        <i class="bi bi-journal-text me-0.5"></i>Dossier
+
+                    </button>
+
+                    <button class="btn btn-outline-warning text-dark btn-sm py-0.5 px-2 extra-small fw-bold text-nowrap" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')" title="View Roznama / Daily Proceedings">
+
+                        <i class="bi bi-file-earmark-text me-0.5"></i>Roznama
 
                     </button>
 
@@ -2471,7 +2471,7 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td style="word-break: break-word;">
+            <td style="max-width: 320px; word-break: break-word;">
 
                 <div class="fw-bold text-dark text-break mb-1" style="line-height: 1.35;">${pet}</div>
 
@@ -2481,13 +2481,13 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td>${roleBadge}</td>
+            <td class="text-nowrap">${roleBadge}</td>
 
-            <td>
+            <td class="text-nowrap">
 
                 ${listingBadge}
 
-                <span class="badge bg-light text-dark border extra-small">${stageText}</span>
+                <span class="badge bg-light text-dark border extra-small text-nowrap">${stageText}</span>
 
             </td>
 
