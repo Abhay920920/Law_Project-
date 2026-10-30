@@ -3093,6 +3093,27 @@ let currentDossierCnr = '';
 let currentDossierAppealId = '';
 let currentDossierCaseNo = '';
 
+function formatHcCauselistDate(dVal) {
+    if (!dVal) return '—';
+    if (typeof dVal === 'string') {
+        if (dVal.includes('T')) dVal = dVal.split('T')[0];
+        const parts = dVal.split('-');
+        if (parts.length === 3 && parts[0].length === 4) {
+            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        }
+        return dVal;
+    }
+    if (dVal instanceof Date && !isNaN(dVal.getTime())) {
+        const dd = String(dVal.getDate()).padStart(2, '0');
+        const mm = String(dVal.getMonth() + 1).padStart(2, '0');
+        const yyyy = dVal.getFullYear();
+        return `${dd}-${mm}-${yyyy}`;
+    }
+    return String(dVal);
+}
+const formatDate = formatHcCauselistDate;
+window.formatDate = formatHcCauselistDate;
+
 function openDossierModal(appealId, cnr, mfaNo) {
     currentDossierCnr = cnr || '';
     currentDossierAppealId = appealId || '';
