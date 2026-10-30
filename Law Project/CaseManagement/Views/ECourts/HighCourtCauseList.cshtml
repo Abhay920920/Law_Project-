@@ -2060,25 +2060,25 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     <div class="table-responsive d-none d-md-block" style="max-height: 620px;">
 
-        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable">
+        <table class="table table-hover align-middle mb-0 small" id="livePartyCauselistTable" style="table-layout: fixed; width: 100%;">
 
-            <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom">
+            <thead class="bg-white sticky-top text-secondary extra-small text-uppercase border-bottom shadow-sm">
 
                 <tr>
 
-                    <th style="width: 40px;" class="text-center">#</th>
+                    <th style="width: 44px;" class="text-center">#</th>
 
-                    <th style="min-width: 150px;">Case Number & Year</th>
+                    <th style="width: 14%;">Case Number & Year</th>
 
-                    <th style="min-width: 160px;">Court Hall / Bench / Cause List No</th>
+                    <th style="width: 18%;">Court Hall / Bench / Cause List No</th>
 
-                    <th style="min-width: 160px;">CNR Number & Actions</th>
+                    <th style="width: 17%;">CNR Number & Actions</th>
 
-                    <th style="min-width: 240px;">Petitioner vs Respondent</th>
+                    <th style="width: 26%;">Petitioner vs Respondent</th>
 
-                    <th style="min-width: 140px;">Corporation Role</th>
+                    <th style="width: 11%;">Corporation Role</th>
 
-                    <th style="min-width: 160px;">Hearing Date & Stage</th>
+                    <th style="width: 14%;">Hearing Date & Stage</th>
 
                 </tr>
 
@@ -2336,12 +2336,22 @@ function renderHcCauselistPage() {
 
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 
-        const courtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
+        let rawCourtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
+        let courtNo = rawCourtNo;
+        if (courtNo && (courtNo.length > 35 || courtNo.includes('Cause List') || courtNo.includes('Sl.No'))) {
+            const m = courtNo.match(/(?:COURT\s+HALL\s+(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
+            const slM = courtNo.match(/Serial\s+No\.?\s*(\d+(?:\.\d+)?)/i);
+            if (m) {
+                courtNo = `Court Hall ${m[1]}` + (slM ? ` (Serial No. ${slM[1]})` : (item.causeListItemNo ? ` (Serial No. ${item.causeListItemNo})` : ''));
+            } else {
+                courtNo = item.highCourtBench || 'Court Hall';
+            }
+        }
+
         const clNo = item.causeListNo || (item.causeListType ? (item.causeListType.match(/(?:No\.?|#)\s*(\d+)/i)?.[1] || (item.causeListType.includes('No. 1') ? '1' : '')) : (isThisListedToday ? '1' : ''));
 
-        const pet = item.petitionerName || '—';
-
-        const resName = item.respondentName || '—';
+        let pet = (item.petitionerName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
+        let resName = (item.respondentName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
 
         const itemCnr = (item.cnrNumber || '').trim().toUpperCase();
 
@@ -2403,9 +2413,9 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td>
+            <td style="word-break: break-word;">
 
-                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block mb-1">
+                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block text-wrap mb-1" style="max-width: 100%; white-space: normal; text-align: left;">
 
                     <i class="bi bi-bank2 me-1"></i>${courtNo}
 
@@ -2431,9 +2441,9 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td>
+            <td style="word-break: break-word;">
 
-                <div class="font-monospace fw-bold text-dark extra-small mb-1">${itemCnr || '—'}</div>
+                <div class="font-monospace fw-bold text-dark extra-small mb-1 text-break">${itemCnr || '—'}</div>
 
                 ${itemCnr ? `
 
@@ -2461,11 +2471,13 @@ function renderHcCauselistPage() {
 
             </td>
 
-            <td>
+            <td style="word-break: break-word;">
 
-                <div class="fw-bold text-dark">${pet}</div>
+                <div class="fw-bold text-dark text-break mb-1" style="line-height: 1.35;">${pet}</div>
 
-                <div class="extra-small text-muted">vs ${resName}</div>
+                <div class="extra-small text-muted text-break" style="line-height: 1.25;"><span class="fw-semibold">vs</span> ${resName}</div>
+
+                ${item.advocate ? `<div class="extra-small text-primary fw-bold mt-1 text-break"><i class="bi bi-person-fill me-0.5"></i>Adv: ${item.advocate}</div>` : ''}
 
             </td>
 

@@ -356,9 +356,23 @@ namespace MVCCaseManagement.Services.ECourts
                         respondent = blockText.Substring(resIdx + 4).Trim();
                     }
 
-                    // Clean newlines
+                    // Strip any attached page header/footer metadata from petitioner and respondent
+                    petitioner = Regex.Replace(petitioner, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^
+]*|Cause\s+List\s+No[^
+]*|Sl\.No\.[^
+]*|Case\s+No\.[^
+]*", " ", RegexOptions.IgnoreCase);
+                    respondent = Regex.Replace(respondent, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^
+]*|Cause\s+List\s+No[^
+]*|Sl\.No\.[^
+]*|Case\s+No\.[^
+]*", " ", RegexOptions.IgnoreCase);
+
                     petitioner = Regex.Replace(petitioner, @"\s+", " ").Trim();
                     respondent = Regex.Replace(respondent, @"\s+", " ").Trim();
+
+                    if (petitioner.Length > 160) petitioner = petitioner.Substring(0, 160).Trim() + "...";
+                    if (respondent.Length > 160) respondent = respondent.Substring(0, 160).Trim() + "...";
 
                     // Extract Counsel/Advocate if present
                     var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s+M\s+KHANNUR|M\s+M\s+KHANNUR|PRASHANT\s+S?\s+HOSMANI|P\s+S\s+HOSMANI|SUNITHA\s+P\s+KALASOOR|VEENA\s+HEGDE|VEERESH\s+R\s+BUDIHAL|SHIVAKUMAR\s+S\s+BADAWADAGI|S\s+C\s+BHUTI)", RegexOptions.IgnoreCase);
