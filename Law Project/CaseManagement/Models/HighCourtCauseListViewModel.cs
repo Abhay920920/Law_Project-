@@ -96,6 +96,7 @@ namespace MVCCaseManagement.Models
         public string? CauseListNo { get; set; }
         public string? CauseListItemNo { get; set; }
         public string? JudgeName { get; set; }
+        public string? Advocate { get; set; }
 
         public string ListingStatus
         {

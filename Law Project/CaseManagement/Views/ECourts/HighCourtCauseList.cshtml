@@ -741,6 +741,10 @@
 
             <div class="d-flex align-items-center gap-2 flex-wrap">
 
+                <button type="button" class="btn btn-sm btn-outline-danger fw-bold shadow-sm py-1 px-2.5" id="btnLiveBenchScan" onclick="triggerLiveHighCourtScan()" title="Deep scan all sitting benches from NAPIX cause list PDF rosters for 100% accuracy">
+                    <i class="bi bi-cpu-fill me-1"></i>⚡ Live Bench Sync
+                </button>
+
                 <div class="btn-group">
 
                     <button type="button" class="btn btn-sm btn-outline-success fw-bold shadow-sm py-1 px-2.5" onclick="exportCauseListToExcel('visible')" title="Export current cause list view to Excel">
@@ -1644,6 +1648,47 @@ const registeredCases = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Mode
 let currentViewMode = 'all';
 
 
+
+async function triggerLiveHighCourtScan() {
+    const btn = document.getElementById('btnLiveBenchScan');
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Scanning Benches...`;
+    }
+
+    const estCode = (document.getElementById('liveEstCode')?.value || 'KAHC02').trim();
+    const dateInput = (document.getElementById('hearingDateInput')?.value || '').trim();
+
+    try {
+        const res = await fetch(`/ECourts/SyncDailyHighCourtCauseList?estCode=${encodeURIComponent(estCode)}&date=${encodeURIComponent(dateInput)}&force=true`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Cause List Scan Complete',
+                    html: `<b>${data.count} NWKRTC matters</b> successfully scanned across High Court sitting benches for <b>${data.date}</b>.`,
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+            }
+            fetchLiveHcCauselist();
+        } else {
+            alert('Scan notice: ' + (data.message || 'Error scanning cause list.'));
+        }
+    } catch (e) {
+        console.error('Error triggering live scan:', e);
+        fetchLiveHcCauselist();
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
 
 function fetchLiveHcCauselist(viewMode) {
 

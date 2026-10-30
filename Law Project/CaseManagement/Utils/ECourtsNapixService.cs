@@ -1905,8 +1905,18 @@ namespace MVCCaseManagement.Utils
         public async Task<JsonElement?> GetHighCourtShowCauselistAsync(string estCode, string benchId, string causelistId, string causelistDate, string module = "MVC")
         {
             if (string.IsNullOrWhiteSpace(estCode)) estCode = "KAHC01";
-            string paramsStr = $"est_code={estCode}|bench_id={benchId}|causelist_id={causelistId}|causelist_date={causelistDate}";
-            return await QueryApiAsync("hc-show-causelist-api", "showcauselist", paramsStr, module: module);
+            var dateVariants = GetDateVariants(causelistDate);
+            // NAPIX hc-show-causelist-api requires yyyy-MM-dd first
+            var orderedVariants = dateVariants.OrderByDescending(d => d.Length == 10 && d[4] == '-' ? 1 : 0).ToList();
+
+            foreach (var d in orderedVariants)
+            {
+                string paramsStr = $"est_code={estCode}|bench_id={benchId}|causelist_id={causelistId}|causelist_date={d}";
+                var res = await QueryApiAsync("hc-show-causelist-api", "showcauselist", paramsStr, module: module);
+                if (res.HasValue && !IsErrorJson(res.Value)) return res;
+            }
+
+            return null;
         }
 
         public async Task<JsonElement?> GetHighCourtBenchMasterAsync(string estCode, string module = "MVC")
