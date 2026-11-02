@@ -340,7 +340,7 @@ namespace MVCCaseManagement.Services.ECourts
 
                 // Regex to match item starting row: (Sl.No.) (CaseType) (RegNo/RegYear)
                 // e.g., "1 WP 63575/2012" or "3.1 WP 113595/2015" or "10 WA 100038/2026"
-                var itemRegex = new Regex(@"(\d{1,4}(?:\.\d{1,3})?)\s*([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)\s*(\d+/\d{4})", RegexOptions.IgnoreCase);
+                var itemRegex = new Regex(@"\b(\d{1,3}(?:\.\d{1,2})?)\s+([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)\s*(\d+/\d{4})", RegexOptions.IgnoreCase);
                 var matches = itemRegex.Matches(fullText);
 
                 for (int i = 0; i < matches.Count; i++)
@@ -367,7 +367,7 @@ namespace MVCCaseManagement.Services.ECourts
                         : "";
 
                     // Check if block contains NWKRTC relevance
-                    if (!IsNwkrtcRelated(blockText))
+                    if (!IsNwkrtcRelated(blockText, estCode))
                     {
                         continue;
                     }
@@ -516,37 +516,47 @@ namespace MVCCaseManagement.Services.ECourts
             return list;
         }
 
-        private static bool IsNwkrtcRelated(string text)
+        private static bool IsNwkrtcRelated(string text, string estCode = "KAHC02")
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
             // 1. Direct NWKRTC keywords (highest confidence, including internal insurance & concatenated OCR forms)
             if (Regex.IsMatch(text, @"\b(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST(ERN)?(\s+STATE)?\s+ROAD\s+TRANSPORT|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND)\b", RegexOptions.IgnoreCase) ||
                 text.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("MANAGEMENTOF N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase))
+                text.Contains("MANAGEMENTOF N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("MANAGEMENT OF NWKRTC", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
             // 2. NWKRTC Specific Officer / Management designations with division hubs or context
             bool mentionsOfficer = Regex.IsMatch(text, @"\b(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|CHIEF\s*PERSONNEL\s*MANAGER|CHIEF\s*TRAFFIC\s*MANAGER|MANAGEMENT\s*OF\s*NWKRTC)\b", RegexOptions.IgnoreCase) ||
-                                  text.Contains("DIVISIONALCONTROLLER", StringComparison.OrdinalIgnoreCase);
+                                  text.Contains("DIVISIONALCONTROLLER", StringComparison.OrdinalIgnoreCase) ||
+                                  text.Contains("MANAGINGDIRECTOR", StringComparison.OrdinalIgnoreCase);
 
             bool mentionsNwkrtcHub = Regex.IsMatch(text, @"\b(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|BAGALKOTE|GADAG|HAVERI|UTTARA\s*KANNADA|KARWAR|CHIKKODI|CHIKODI|SIRSI|GOKUL\s*ROAD|DHARWAD)\b", RegexOptions.IgnoreCase) ||
                                      text.Contains("DHARWADDIVISION", StringComparison.OrdinalIgnoreCase) ||
                                      text.Contains("HAVERIDIVISION", StringComparison.OrdinalIgnoreCase);
 
-            if (mentionsOfficer && (mentionsNwkrtcHub || text.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) || text.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase)))
+            bool isDharwad = string.IsNullOrEmpty(estCode) || 
+                             estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase) ||
+                             estCode.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             estCode.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase);
+            if (mentionsOfficer && (isDharwad || mentionsNwkrtcHub || text.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) || text.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase)))
             {
-                return true;
+                // Ensure not explicitly NEKRTC / BMTC
+                if (!Regex.IsMatch(text, @"\b(NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                {
+                    return true;
+                }
             }
 
             // 3. Empanelled standing counsel representing NWKRTC across Dharwad, Bengaluru, and Kalaburagi
-            bool hasCounsel = Regex.IsMatch(text, @"\b(MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR)\b", RegexOptions.IgnoreCase);
+            bool hasCounsel = Regex.IsMatch(text, @"\b(MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR)\b", RegexOptions.IgnoreCase);
             if (hasCounsel)
             {
                 bool hasTransportOrCourtContext = mentionsOfficer || mentionsNwkrtcHub ||
-                    Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|MANAGEMENT|CONTROLLER|DIRECTOR|DEPOT|APPELLANT|RESPONDENT|CLAIMANT|INSURANCE)\b", RegexOptions.IgnoreCase);
+                    Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|MANAGEMENT|CONTROLLER|DIRECTOR|DEPOT|APPELLANT|RESPONDENT|CLAIMANT|INSURANCE|KSRTC|SD|ORDERS|HEARING)\b", RegexOptions.IgnoreCase);
                 if (hasTransportOrCourtContext)
                 {
                     return true;

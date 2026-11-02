@@ -427,11 +427,32 @@ namespace MVCCaseManagement.Controllers
 
             // Strictly filter scanned cause list cases for NWKRTC matters
             var validScanned = scannedDailyCases.Where(sc => 
-                !NwkrtcPartyMatcher.IsOtherCoOrganization(sc.PetitionerName) && 
-                !NwkrtcPartyMatcher.IsOtherCoOrganization(sc.RespondentName) &&
-                (NwkrtcPartyMatcher.IsNwkrtcEntity(sc.PetitionerName, out _, sc.EstablishmentName ?? "KAHC02") ||
-                 NwkrtcPartyMatcher.IsNwkrtcEntity(sc.RespondentName, out _, sc.EstablishmentName ?? "KAHC02"))
-            ).ToList();
+            {
+                // Exclude explicit NEKRTC, BMTC, KKRTC
+                if (Regex.IsMatch(sc.PetitionerName ?? "", @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase) ||
+                    Regex.IsMatch(sc.RespondentName ?? "", @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+
+                string itemEst = (!string.IsNullOrEmpty(sc.CNRNumber) && sc.CNRNumber.Length >= 6)
+                    ? sc.CNRNumber.Substring(0, 6).ToUpperInvariant()
+                    : ((!string.IsNullOrEmpty(sc.EstablishmentName) && sc.EstablishmentName.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC02" : (sc.EstablishmentName ?? "KAHC02"));
+                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.PetitionerName, out _, itemEst, sc.Advocate);
+                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.RespondentName, out _, itemEst, sc.Advocate);
+
+                if (petIsNwkrtc || resIsNwkrtc) return true;
+
+                // In Dharwad Bench, if an empanelled standing counsel appears for Managing Director or Divisional Controller
+                if (!string.IsNullOrEmpty(sc.Advocate))
+                {
+                    bool hasAdv = Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
+                    bool hasOfficer = Regex.IsMatch($"{sc.PetitionerName} {sc.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                    if (hasAdv && hasOfficer) return true;
+                }
+
+                return false;
+            }).ToList();
 
             var newlyDiscoveredToday = new List<PartyCaseSearchResultItem>();
 
@@ -482,8 +503,10 @@ namespace MVCCaseManagement.Controllers
 
                 if (string.IsNullOrEmpty(item.NwkrtcRole) || item.NwkrtcRole == "Unknown")
                 {
-                    string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
-                    var r = NwkrtcPartyMatcher.DetectRole(item.PetitionerName ?? "", item.RespondentName ?? "", estCode: itemEst);
+                    string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
+                        ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
+                        : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
+                    var r = NwkrtcPartyMatcher.DetectRole(item.PetitionerName ?? "", item.RespondentName ?? "", estCode: itemEst, advocate: item.Advocate);
                     item.NwkrtcRole = r.Role;
                     item.MatchedDesignation = r.MatchedDesignation;
                 }
@@ -511,9 +534,18 @@ namespace MVCCaseManagement.Controllers
                     return false;
                 }
 
-                string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
-                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst);
-                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst);
+                string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
+                    ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
+                    : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
+                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
+                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
+
+                if (!petIsNwkrtc && !resIsNwkrtc && !string.IsNullOrEmpty(item.Advocate))
+                {
+                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
+                    bool hasOfficer = Regex.IsMatch($"{item.PetitionerName} {item.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                    if (hasAdv && hasOfficer) return true;
+                }
 
                 return petIsNwkrtc || resIsNwkrtc;
             }).ToList();

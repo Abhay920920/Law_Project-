@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
@@ -34,7 +34,7 @@ namespace MVCCaseManagement.Utils
 
         // Other Karnataka RTCs and non-NWKRTC division headquarters (Koppal, Ballari, Raichur, Kalaburagi, Bidar, Yadgir belong to NEKRTC/KKRTC)
         private static readonly Regex OtherCoOrganizationsRegex = new(
-            @"(?i)(K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|K\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|B\s*\.?\s*M\s*\.?\s*T\s*\.?\s*C|KARNATAKA\s*(STATE\s*)?ROAD\s*TRANSPORT|KALYANA\s*KARNATAKA|NORTH\s*[- ]?EAST(ERN)?\s*KARNATAKA|BANGALORE\s*METROPOLITAN|BENGALURU\s*METROPOLITAN|NEKRTC|KKRTC|KSRTC|BMTC|\b(KOPPAL|BALLARI|BELLARY|RAICHUR|KALABURAGI|GULBARGA|BIDAR|YADGIR)\b)",
+            @"(?i)(K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|K\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|N\s*\.?\s*E\s*\.?\s*K\s*\.?\s*S\s*\.?\s*R\s*\.?\s*T\s*\.?\s*C|B\s*\.?\s*M\s*\.?\s*T\s*\.?\s*C|KARNATAKA\s*(STATE\s*)?ROAD\s*TRANSPORT|KALYANA\s*KARNATAKA|NORTH\s*[- ]?EAST(ERN)?\s*KARNATAKA|BANGALORE\s*METROPOLITAN|BENGALURU\s*METROPOLITAN|NEKRTC|KKRTC|BMTC|\b(KOPPAL|BALLARI|BELLARY|RAICHUR|KALABURAGI|GULBARGA|BIDAR|YADGIR)\b)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // 4. Non-transport corporate/commercial/government entities commonly appearing with generic designations (e.g. Managing Director)
@@ -44,7 +44,7 @@ namespace MVCCaseManagement.Utils
 
         // 5. Designation-specific patterns (strictly for NWKRTC, no KSRTC)
         private static readonly Regex ManagingDirectorRegex = new(
-            @"\b(MANAGING\s+DIRECTOR|MANGING\s+DIRECTOR|THE\s+MANAGEMENT\s+OF\s+(NWKRTC|NKWRTC|NORTH\s*WEST|N\.W\.K\.R\.T\.C)|M\.?D\.?\b\s*(NWKRTC|NKWRTC|NORTH\s*WEST)?|CHIEF\s+EXECUTIVE|M\.?\s*PRIYANGA|PRIYANGA)\b",
+            @"\b(MANAGING\s*DIRECTOR|MANGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGEMENT\s+OF\s+(NWKRTC|NKWRTC|NORTH\s*WEST|N\.W\.K\.R\.T\.C)|MANAGEMENTOF\s*NWKRTC|M\.?D\.?\b\s*(NWKRTC|NKWRTC|NORTH\s*WEST)?|CHIEF\s+EXECUTIVE|M\.?\s*PRIYANGA|PRIYANGA)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex CpmRegex = new(
@@ -52,11 +52,11 @@ namespace MVCCaseManagement.Utils
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex DivisionalControllerRegex = new(
-            @"\b(DIVISIONAL\s+CONTROLLER|THE\s+DIVISIONAL\s+CONTROLLER|DIVISION\s+NWKRTC)\b",
+            @"\b(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|THE\s+DIVISIONAL\s*CONTROLLER|DIVISION\s+NWKRTC)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex DepotManagerRegex = new(
-            @"\b(DEPOT\s+MANAGER|D\.?M\.?\b\s*(NWKRTC|NKWRTC|DEPOT)?|DEPOT\s+NWKRTC)",
+            @"\b(DEPOT\s*MANAGER|DEPOTMANAGER|D\.?M\.?\b\s*(NWKRTC|NKWRTC|DEPOT)?|DEPOT\s+NWKRTC)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex InsuranceFundRegex = new(
@@ -73,7 +73,7 @@ namespace MVCCaseManagement.Utils
 
         // Standard division hubs in NWKRTC jurisdiction (helpful for contextual matching)
         private static readonly Regex DivisionHubsRegex = new(
-            @"\b(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|BAGALKOTE|GADAG|HAVERI|UTTARA\s+KANNADA|KARWAR|CHIKKODI|CHIKODI|SIRSI)\b",
+            @"\b(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|BAGALKOTE|GADAG|HAVERI|UTTARA\s+KANNADA|KARWAR|CHIKKODI|CHIKODI|SIRSI|GOKUL\s*ROAD|DHARWAD)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         /// <summary>
@@ -84,6 +84,9 @@ namespace MVCCaseManagement.Utils
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
             string s = text.Trim();
+
+            // Strip High Court roster subject codes like (S, KSRTC ), (L, KSRTC ), (S, RES)
+            s = Regex.Replace(s, @"\([A-Za-z0-9\s,]+\s*,\s*KSRTC\s*\)", " ", RegexOptions.IgnoreCase).Trim();
 
             // If it explicitly mentions NWKRTC / North West, it is NWKRTC, not another RTC
             if (AcronymRegex.IsMatch(s) || FullNameRegex.IsMatch(s) ||
@@ -123,14 +126,17 @@ namespace MVCCaseManagement.Utils
         /// Extracts the matched designation category.
         /// Strictly excludes non-NWKRTC entities (e.g. KSRTC, BMTC, KKRTC, Sugar Mills, Banks).
         /// </summary>
-        public static bool IsNwkrtcEntity(string? text, out string designation, string? estCode = null)
+        public static bool IsNwkrtcEntity(string? text, out string designation, string? estCode = null, string? advocate = null)
         {
             designation = "General / Corporate";
             if (string.IsNullOrWhiteSpace(text)) return false;
 
             string s = text.Trim();
 
-            // 1. Strictly exclude other sibling RTCs (KSRTC, BMTC, KKRTC, NEKRTC)
+            // Strip High Court subject classifications e.g. (S, KSRTC ), (L, KSRTC )
+            s = Regex.Replace(s, @"\([A-Za-z0-9\s,]+\s*,\s*KSRTC\s*\)", " ", RegexOptions.IgnoreCase).Trim();
+
+            // 1. Strictly exclude other sibling RTCs (NEKRTC, KKRTC, BMTC)
             if (IsOtherCoOrganization(s))
             {
                 return false;
@@ -177,7 +183,7 @@ namespace MVCCaseManagement.Utils
                 return true;
             }
 
-            // Officer designations tied to NWKRTC division hubs (Hubballi, Belagavi, Bagalkot, Gadag, Haveri, Karwar, Sirsi, Chikkodi)
+            // Officer designations tied to NWKRTC division hubs (Hubballi, Belagavi, Bagalkot, Gadag, Haveri, Karwar, Sirsi, Chikkodi, Dharwad)
             bool hasNwkrtcHub = DivisionHubsRegex.IsMatch(s);
             if (hasNwkrtcHub)
             {
@@ -190,26 +196,45 @@ namespace MVCCaseManagement.Utils
                 if (LawOfficerRegex.IsMatch(s)) { designation = "Law Officer"; return true; }
             }
 
-            // In Dharwad Bench (KAHC02), explicit "THE DIVISIONAL CONTROLLER" or "THE DEPOT MANAGER" 
-            // without another corporation specified is an NWKRTC transport authority
-            bool isDharwad = string.IsNullOrEmpty(estCode) || estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase);
+            // In Dharwad Bench (KAHC02), NWKRTC is the sole regional road transport corporation.
+            // Explicit designations like "THE MANAGING DIRECTOR", "THE DIVISIONAL CONTROLLER", or "THE DEPOT MANAGER" 
+            // without another corporation specified refer to NWKRTC.
+            bool isDharwad = string.IsNullOrEmpty(estCode) || 
+                             estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase) ||
+                             estCode.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                             estCode.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase);
             if (isDharwad)
             {
-                if (Regex.IsMatch(s, @"\b(DIVISIONAL\s+CONTROLLER|THE\s+DIVISIONAL\s+CONTROLLER)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|KSRTC|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(s, @"\b(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|THE\s+DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
                 {
                     designation = "Divisional Controller";
                     return true;
                 }
-                if (Regex.IsMatch(s, @"\b(DEPOT\s+MANAGER|THE\s+DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|KSRTC|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(s, @"\b(DEPOT\s*MANAGER|DEPOTMANAGER|THE\s+DEPOT\s*MANAGER)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
                 {
                     designation = "Depot Manager";
                     return true;
                 }
-                if (Regex.IsMatch(s, @"\b(THE\s+MANAGEMENT\s+OF\s+NWKRTC|THE\s+MANAGING\s+OF\s+NWKRTC)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(s, @"\b(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING\s*DIRECTOR|THE\s+MANAGEMENT\s+OF\s+NWKRTC|THE\s+MANAGING\s+OF\s+NWKRTC|MANAGEMENTOF\s*NWKRTC)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
                 {
                     designation = "Managing Director";
+                    return true;
+                }
+            }
+
+            // Empanelled NWKRTC Standing Counsel representation check
+            if (!string.IsNullOrWhiteSpace(advocate))
+            {
+                bool isNwkrtcStandingCounsel = Regex.IsMatch(advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
+                bool hasTransportAuthority = Regex.IsMatch(s, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                if (isNwkrtcStandingCounsel && hasTransportAuthority)
+                {
+                    if (ManagingDirectorRegex.IsMatch(s)) designation = "Managing Director";
+                    else if (DivisionalControllerRegex.IsMatch(s)) designation = "Divisional Controller";
+                    else designation = "NWKRTC Central";
                     return true;
                 }
             }
@@ -217,20 +242,25 @@ namespace MVCCaseManagement.Utils
             return false;
         }
 
+        public static bool IsNwkrtcEntity(string? text, out string designation, string? estCode)
+        {
+            return IsNwkrtcEntity(text, out designation, estCode, null);
+        }
+
         /// <summary>
         /// Analyzes Petitioner, Respondent, and Appeal Type to determine whether the case is
         /// "With NWKRTC" (Petitioner/Appellant) or "Against NWKRTC" (Respondent),
         /// or an "Other RTC" / "Non-Corporation" case.
         /// </summary>
-        public static NwkrtcPartyRoleResult DetectRole(string? petitioner, string? respondent, string? appealType = null, string? estCode = null)
+        public static NwkrtcPartyRoleResult DetectRole(string? petitioner, string? respondent, string? appealType = null, string? estCode = null, string? advocate = null)
         {
             var result = new NwkrtcPartyRoleResult();
 
             bool isOtherPet = IsOtherCoOrganization(petitioner);
             bool isOtherRes = IsOtherCoOrganization(respondent);
 
-            bool isPet = IsNwkrtcEntity(petitioner, out string petDesignation, estCode);
-            bool isRes = IsNwkrtcEntity(respondent, out string resDesignation, estCode);
+            bool isPet = IsNwkrtcEntity(petitioner, out string petDesignation, estCode, advocate);
+            bool isRes = IsNwkrtcEntity(respondent, out string resDesignation, estCode, advocate);
 
             // If either party is explicitly an Other RTC and neither party is NWKRTC, mark clearly as Other RTC
             if ((isOtherPet || isOtherRes) && !isPet && !isRes)
@@ -259,7 +289,6 @@ namespace MVCCaseManagement.Utils
 
             if (isPet && isRes)
             {
-                // In intra-corporation or ambiguous dual listings, appealType breaks ties
                 if (!string.IsNullOrEmpty(appealType) && appealType.Contains("Corporation", StringComparison.OrdinalIgnoreCase))
                 {
                     result.Role = "With NWKRTC";
