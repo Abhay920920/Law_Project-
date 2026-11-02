@@ -75,12 +75,13 @@
 
     #dossierModal.modal,
     #roznamaModal.modal {
-        background: rgba(15, 23, 42, 0.45);
-        backdrop-filter: blur(2px);
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(4px);
     }
 
     #dossierModal .modal-dialog,
     #roznamaModal .modal-dialog {
+        max-width: min(96vw, 1200px);
         transition: transform 0.25s ease-out;
         margin: 1.75rem auto;
     }
@@ -91,24 +92,125 @@
         box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
         border: none;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
     }
 
     #dossierModal .table th {
         font-weight: 700;
-        font-size: 11.5px;
+        font-size: 11px;
         letter-spacing: 0.02em;
         text-transform: uppercase;
         background-color: #f8fafc;
+        white-space: nowrap;
+        padding: 8px 10px;
     }
 
     #dossierModal .table td {
         vertical-align: middle;
-        padding: 9px 12px;
+        padding: 8px 10px;
+        font-size: 0.82rem;
     }
 
     #dossierModal #mTbodyHistory tr td:nth-child(2),
     #dossierModal #mTbodyOrders tr td:nth-child(2) {
         white-space: nowrap !important;
+    }
+
+    /* Dossier Modal Mobile Responsiveness */
+    .dossier-tabs-wrapper {
+        width: 100%;
+        overflow: hidden;
+    }
+    .dossier-nav-tabs {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        touch-action: pan-x !important;
+        gap: 4px;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
+    }
+    .dossier-nav-tabs::-webkit-scrollbar {
+        height: 4px;
+    }
+    .dossier-nav-tabs::-webkit-scrollbar-thumb {
+        background: rgba(37, 99, 235, 0.3);
+        border-radius: 4px;
+    }
+    .dossier-nav-tabs .nav-link {
+        white-space: nowrap !important;
+        border-radius: 8px 8px 0 0 !important;
+        padding: 7px 12px;
+        font-size: 0.82rem;
+        transition: all 0.15s ease-in-out;
+    }
+    .dossier-nav-tabs .nav-link.active {
+        background-color: #fff !important;
+        border-color: #dee2e6 #dee2e6 #fff !important;
+        color: #1d4ed8 !important;
+        font-weight: 700 !important;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.03);
+    }
+
+    @@media (max-width: 767.98px) {
+        #dossierModal.modal,
+        #roznamaModal.modal {
+            padding: 0 !important;
+        }
+        #dossierModal .modal-dialog,
+        #roznamaModal .modal-dialog {
+            max-width: 100% !important;
+            width: 100% !important;
+            margin: 0 !important;
+            height: 100% !important;
+            min-height: 100% !important;
+        }
+        #dossierModal .modal-content,
+        #roznamaModal .modal-content {
+            border-radius: 0 !important;
+            height: 100% !important;
+            min-height: 100vh !important;
+            max-height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+        #dossierModal .modal-body,
+        #roznamaModal .modal-body {
+            flex: 1 1 auto !important;
+            padding: 0.65rem !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+        }
+        #dossierModal .modal-header,
+        #roznamaModal .modal-header {
+            padding: 0.65rem 0.75rem !important;
+            flex-shrink: 0 !important;
+        }
+        #dossierModal .modal-footer,
+        #roznamaModal .modal-footer {
+            padding: 0.5rem 0.75rem !important;
+            flex-shrink: 0 !important;
+        }
+        .dossier-nav-tabs {
+            gap: 3px !important;
+            padding: 4px 4px !important;
+            scrollbar-width: thin !important;
+        }
+        .dossier-nav-tabs::-webkit-scrollbar {
+            height: 3px !important;
+        }
+        .dossier-nav-tabs::-webkit-scrollbar-thumb {
+            background: #94a3b8 !important;
+            border-radius: 3px !important;
+        }
+        .dossier-nav-tabs .nav-link {
+            padding: 5px 8px !important;
+            font-size: 0.72rem !important;
+            white-space: nowrap !important;
+            border-radius: 6px !important;
+        }
     }
 
     .hc-header-gradient {
@@ -878,74 +980,119 @@
 
 <!-- Full Comprehensive e-Courts Dossier Modal -->
 <div class="modal fade" id="dossierModal" tabindex="-1" aria-labelledby="dossierModalLabel" aria-hidden="true" style="z-index: 1060;">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down" style="max-width: min(96vw, 1200px);">
-        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-content border-0 shadow-lg">
             <!-- Modal Header -->
-            <div class="modal-header py-3 px-4 text-white" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border-bottom: 1px solid rgba(255,255,255,0.15);">
-                <div class="d-flex align-items-center gap-3">
-                    <div class="bg-white bg-opacity-20 rounded-circle p-2.5 d-flex align-items-center justify-content-center text-white flex-shrink-0" style="width: 42px; height: 42px;">
-                        <i class="bi bi-journal-richtext fs-4"></i>
-                    </div>
-                    <div>
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <h5 class="modal-title fw-bold mb-0 text-white" id="modalCaseHeading">Case Dossier — <span id="modalMfaNo" class="font-monospace text-warning"></span></h5>
-                            <span class="badge bg-warning text-dark font-monospace fw-bold" id="modalCnrBadge">CNR: —</span>
-                            <span class="badge bg-success" id="modalStatusBadge">Pending</span>
+            <div class="modal-header py-2.5 px-3 p-md-3 text-white flex-column align-items-stretch" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); border-bottom: 1px solid rgba(255,255,255,0.15);">
+                <!-- Top Row: Icon + Title + Close Button -->
+                <div class="d-flex align-items-center justify-content-between w-100 gap-2">
+                    <div class="d-flex align-items-center gap-2 min-w-0">
+                        <div class="bg-white bg-opacity-20 rounded-circle d-flex align-items-center justify-content-center text-white flex-shrink-0" style="width: 36px; height: 36px;">
+                            <i class="bi bi-journal-richtext fs-5"></i>
                         </div>
-                        <div class="extra-small text-white-50 mt-0.5" id="modalSubtitle">
-                            High Court of Karnataka • Live Judicial Case Record • NAPIX Gateway
+                        <div class="min-w-0">
+                            <h6 class="modal-title fw-bold mb-0 text-white text-truncate" id="modalCaseHeading">
+                                Case Dossier — <span id="modalMfaNo" class="font-monospace text-warning"></span>
+                            </h6>
+                            <div class="extra-small text-white-50 text-truncate" id="modalSubtitle" style="font-size: 0.72rem;">
+                                High Court of Karnataka • Live Judicial Case Record • NAPIX Gateway
+                            </div>
                         </div>
                     </div>
+                    <button type="button" class="btn-close btn-close-white flex-shrink-0" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm d-flex align-items-center gap-1.5" onclick="printHighCourtDossier()" title="Print full comprehensive legal dossier">
-                        <i class="bi bi-printer-fill"></i>
-                        <span class="d-none d-sm-inline">Print Dossier</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3 d-flex align-items-center gap-1.5" id="btnRefreshDossier" onclick="reFetchDossier()" title="Refresh live case data from e-Courts">
-                        <i class="bi bi-arrow-clockwise"></i>
-                        <span class="d-none d-sm-inline">Sync Live</span>
-                    </button>
-                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                <!-- Badges & Action Buttons Row -->
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-1.5 mt-2 pt-2 border-top border-white border-opacity-15">
+                    <div class="d-flex align-items-center gap-1.5 flex-wrap min-w-0">
+                        <span class="badge bg-warning text-dark font-monospace fw-bold extra-small" id="modalCnrBadge">CNR: —</span>
+                        <span class="badge bg-success extra-small" id="modalStatusBadge">Pending</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1.5 ms-auto flex-shrink-0">
+                        <button type="button" class="btn btn-xs btn-warning text-dark fw-bold rounded-pill px-2.5 py-1 extra-small shadow-xs d-flex align-items-center gap-1" onclick="printHighCourtDossier()" title="Print full comprehensive legal dossier">
+                            <i class="bi bi-printer-fill"></i>
+                            <span class="d-none d-sm-inline">Print</span>
+                        </button>
+                        <button type="button" class="btn btn-xs btn-outline-light rounded-pill px-2.5 py-1 extra-small d-flex align-items-center gap-1" id="btnRefreshDossier" onclick="reFetchDossier()" title="Refresh live case data from e-Courts">
+                            <i class="bi bi-arrow-clockwise"></i>
+                            <span class="d-none d-sm-inline">Sync</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <!-- Tab Navigation (Clean Horizontal Scroll) -->
-            <div class="bg-light border-bottom px-3 pt-2">
-                <ul class="nav nav-tabs border-0 flex-nowrap overflow-x-auto dossier-nav-tabs" id="dossierNavTabs" role="tablist" style="scrollbar-width: none;">
-                    <li class="nav-item">
-                        <button class="nav-link active fw-bold small text-primary" data-bs-toggle="tab" data-bs-target="#mTabOverview" type="button" role="tab">
-                            <i class="bi bi-info-circle me-1"></i> Overview & Status
+            <!-- Mobile Tab Quick Selector & Stepper (Visible on Mobile screens < 768px) -->
+            <div class="d-block d-md-none bg-light border-bottom p-2 flex-shrink-0">
+                <div class="d-flex align-items-center justify-content-between gap-1.5">
+                    <button type="button" class="btn btn-sm btn-white border shadow-xs px-2.5 py-1 text-secondary flex-shrink-0" id="btnDossierPrevTab" onclick="navDossierTab(-1)" title="Previous Tab">
+                        <i class="bi bi-chevron-left fw-bold"></i>
+                    </button>
+                    <div class="flex-grow-1 min-w-0">
+                        <select class="form-select form-select-sm fw-bold border-primary text-primary shadow-xs" id="dossierTabMobileSelect" onchange="selectDossierTab(this.value)">
+                            <option value="#mTabOverview" selected>1. Overview &amp; Status</option>
+                            <option value="#mTabParties">2. Parties &amp; Advocates</option>
+                            <option value="#mTabHistory">3. Hearing History (0)</option>
+                            <option value="#mTabOrders">4. Orders &amp; Judgments (0)</option>
+                            <option value="#mTabIA">5. IA Filings (0)</option>
+                            <option value="#mTabProcess">6. Process Issued (0)</option>
+                            <option value="#mTabActs">7. Acts &amp; Sections (0)</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-white border shadow-xs px-2.5 py-1 text-secondary flex-shrink-0" id="btnDossierNextTab" onclick="navDossierTab(1)" title="Next Tab">
+                        <i class="bi bi-chevron-right fw-bold"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Navigation Bar (Horizontal Scrollable Pills with Touch Support) -->
+            <div class="dossier-tabs-wrapper bg-light border-bottom px-2 px-md-3 pt-1.5 position-relative flex-shrink-0">
+                <ul class="nav nav-tabs border-0 flex-nowrap overflow-x-auto dossier-nav-tabs" id="dossierNavTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active fw-bold small text-primary" data-bs-toggle="tab" data-bs-target="#mTabOverview" type="button" role="tab" onclick="syncDossierSelect('#mTabOverview')">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <span class="d-none d-sm-inline">Overview &amp; Status</span>
+                            <span class="d-sm-none">Overview</span>
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabParties" type="button" role="tab">
-                            <i class="bi bi-people me-1 text-info"></i> Parties & Advocates
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabParties" type="button" role="tab" onclick="syncDossierSelect('#mTabParties')">
+                            <i class="bi bi-people me-1 text-info"></i>
+                            <span class="d-none d-sm-inline">Parties &amp; Advocates</span>
+                            <span class="d-sm-none">Parties</span>
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabHistory" type="button" role="tab">
-                            <i class="bi bi-clock-history me-1 text-success"></i> Hearing History (<span id="mCountHistory">0</span>)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabHistory" type="button" role="tab" onclick="syncDossierSelect('#mTabHistory')">
+                            <i class="bi bi-clock-history me-1 text-success"></i>
+                            <span class="d-none d-sm-inline">Hearing History</span>
+                            <span class="d-sm-none">History</span> (<span id="mCountHistory">0</span>)
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabOrders" type="button" role="tab">
-                            <i class="bi bi-file-earmark-pdf me-1 text-danger"></i> Orders & Judgments (<span id="mCountOrders">0</span>)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabOrders" type="button" role="tab" onclick="syncDossierSelect('#mTabOrders')">
+                            <i class="bi bi-file-earmark-pdf me-1 text-danger"></i>
+                            <span class="d-none d-sm-inline">Orders &amp; Judgments</span>
+                            <span class="d-sm-none">Orders</span> (<span id="mCountOrders">0</span>)
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabIA" type="button" role="tab">
-                            <i class="bi bi-paperclip me-1 text-warning"></i> IA Filings (<span id="mCountIA">0</span>)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabIA" type="button" role="tab" onclick="syncDossierSelect('#mTabIA')">
+                            <i class="bi bi-paperclip me-1 text-warning"></i>
+                            <span class="d-none d-sm-inline">IA Filings</span>
+                            <span class="d-sm-none">IA</span> (<span id="mCountIA">0</span>)
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabProcess" type="button" role="tab">
-                            <i class="bi bi-envelope-paper me-1 text-secondary"></i> Process Issued (<span id="mCountProcess">0</span>)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabProcess" type="button" role="tab" onclick="syncDossierSelect('#mTabProcess')">
+                            <i class="bi bi-envelope-paper me-1 text-secondary"></i>
+                            <span class="d-none d-sm-inline">Process Issued</span>
+                            <span class="d-sm-none">Process</span> (<span id="mCountProcess">0</span>)
                         </button>
                     </li>
-                    <li class="nav-item">
-                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabActs" type="button" role="tab">
-                            <i class="bi bi-bank me-1 text-dark"></i> Acts & Sections (<span id="mCountActs">0</span>)
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link fw-bold small text-dark" data-bs-toggle="tab" data-bs-target="#mTabActs" type="button" role="tab" onclick="syncDossierSelect('#mTabActs')">
+                            <i class="bi bi-bank me-1 text-dark"></i>
+                            <span class="d-none d-sm-inline">Acts &amp; Sections</span>
+                            <span class="d-sm-none">Acts</span> (<span id="mCountActs">0</span>)
                         </button>
                     </li>
                 </ul>
@@ -1007,43 +1154,43 @@
                                 <span class="fw-bold small text-dark"><i class="bi bi-tag-fill me-1.5 text-primary"></i>Comprehensive Case Metadata & Cross-References</span>
                                 <span class="badge bg-light text-muted border extra-small">e-Courts Registry Data</span>
                             </div>
-                            <div class="card-body p-3">
-                                <div class="row g-3 small">
-                                    <div class="col-md-4">
+                            <div class="card-body p-2.5 p-md-3">
+                                <div class="row g-2 g-md-3 small">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Nature of Disposal</div>
-                                        <div id="dNatureDisposal" class="fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dNatureDisposal" class="fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Judicial Branch</div>
-                                        <div id="dJudicialBranch" class="fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dJudicialBranch" class="fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Cause List Type</div>
-                                        <div id="dCauselistType" class="fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dCauselistType" class="fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Main Matter CNR</div>
-                                        <div id="dMainMatterCnr" class="font-monospace text-primary fw-semibold mt-0.5">—</div>
+                                        <div id="dMainMatterCnr" class="font-monospace text-primary fw-semibold mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Lower Court Name</div>
-                                        <div id="dLowerCourt" class="fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dLowerCourt" class="fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Lower Court Case No</div>
-                                        <div id="dLowerCourtCaseNo" class="font-monospace fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dLowerCourtCaseNo" class="font-monospace fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Transferred From</div>
-                                        <div id="dTransferEst" class="fw-semibold text-dark mt-0.5">—</div>
+                                        <div id="dTransferEst" class="fw-semibold text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-6 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Transfer Date</div>
-                                        <div id="dTransferDate" class="font-monospace text-dark mt-0.5">—</div>
+                                        <div id="dTransferDate" class="font-monospace text-dark mt-0.5 text-break">—</div>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-12 col-md-4">
                                         <div class="text-muted extra-small fw-bold text-uppercase">Connected / Linked Cases</div>
-                                        <div id="dConnectedCases" class="font-monospace text-dark mt-0.5">—</div>
+                                        <div id="dConnectedCases" class="font-monospace text-dark mt-0.5 text-break">—</div>
                                     </div>
                                 </div>
                             </div>
@@ -1111,15 +1258,19 @@
 
                     <!-- TAB 3: HEARING HISTORY -->
                     <div class="tab-pane fade" id="mTabHistory" role="tabpanel">
-                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 860px; width: 100%;">
+                        <div class="d-flex align-items-center justify-content-between mb-1.5 px-1 text-muted extra-small d-md-none">
+                            <span class="fst-italic"><i class="bi bi-arrows-expand me-1"></i>Swipe table horizontally</span>
+                            <span class="badge bg-light text-secondary border">Touch-scrollable</span>
+                        </div>
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 680px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 120px; white-space: nowrap;">Hearing Date</th>
-                                        <th style="width: 250px;">Stage / Purpose</th>
-                                        <th style="width: 220px;">Bench / Judge</th>
-                                        <th style="min-width: 260px;">Business On Date / Remarks</th>
+                                        <th style="width: 45px; text-align: center;">#</th>
+                                        <th style="width: 110px; white-space: nowrap;">Hearing Date</th>
+                                        <th style="width: 200px;">Stage / Purpose</th>
+                                        <th style="width: 180px;">Bench / Judge</th>
+                                        <th style="min-width: 220px;">Business On Date / Remarks</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mTbodyHistory">
@@ -1131,16 +1282,20 @@
 
                     <!-- TAB 4: ORDERS & JUDGMENTS -->
                     <div class="tab-pane fade" id="mTabOrders" role="tabpanel">
-                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
+                        <div class="d-flex align-items-center justify-content-between mb-1.5 px-1 text-muted extra-small d-md-none">
+                            <span class="fst-italic"><i class="bi bi-arrows-expand me-1"></i>Swipe table horizontally</span>
+                            <span class="badge bg-light text-secondary border">Touch-scrollable</span>
+                        </div>
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 640px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 120px; white-space: nowrap;">Order Date</th>
-                                        <th style="width: 100px;">Order No</th>
-                                        <th style="min-width: 240px;">Order Type / Details</th>
-                                        <th style="min-width: 200px;">Judge / Coram</th>
-                                        <th style="width: 150px; text-align: center;">Document</th>
+                                        <th style="width: 45px; text-align: center;">#</th>
+                                        <th style="width: 110px; white-space: nowrap;">Order Date</th>
+                                        <th style="width: 90px;">Order No</th>
+                                        <th style="min-width: 190px;">Order Type / Details</th>
+                                        <th style="min-width: 160px;">Judge / Coram</th>
+                                        <th style="width: 120px; text-align: center;">Document</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mTbodyOrders">
@@ -1152,16 +1307,20 @@
 
                     <!-- TAB 5: IA FILINGS -->
                     <div class="tab-pane fade" id="mTabIA" role="tabpanel">
-                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 820px; width: 100%;">
+                        <div class="d-flex align-items-center justify-content-between mb-1.5 px-1 text-muted extra-small d-md-none">
+                            <span class="fst-italic"><i class="bi bi-arrows-expand me-1"></i>Swipe table horizontally</span>
+                            <span class="badge bg-light text-secondary border">Touch-scrollable</span>
+                        </div>
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 640px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 130px;">IA Number</th>
-                                        <th style="width: 120px; white-space: nowrap;">Filing Date</th>
+                                        <th style="width: 45px; text-align: center;">#</th>
+                                        <th style="width: 110px;">IA Number</th>
+                                        <th style="width: 110px; white-space: nowrap;">Filing Date</th>
                                         <th>Applicant / Party</th>
-                                        <th style="min-width: 260px;">Prayer / Relief Sought</th>
-                                        <th style="width: 110px; text-align: center;">Status</th>
+                                        <th style="min-width: 200px;">Prayer / Relief Sought</th>
+                                        <th style="width: 95px; text-align: center;">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mTbodyIA">
@@ -1173,16 +1332,20 @@
 
                     <!-- TAB 6: PROCESS ISSUED -->
                     <div class="tab-pane fade" id="mTabProcess" role="tabpanel">
-                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 780px; width: 100%;">
+                        <div class="d-flex align-items-center justify-content-between mb-1.5 px-1 text-muted extra-small d-md-none">
+                            <span class="fst-italic"><i class="bi bi-arrows-expand me-1"></i>Swipe table horizontally</span>
+                            <span class="badge bg-light text-secondary border">Touch-scrollable</span>
+                        </div>
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 600px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="width: 120px;">Process ID</th>
-                                        <th style="min-width: 220px;">Notice / Process Title</th>
-                                        <th style="width: 120px; white-space: nowrap;">Issue Date</th>
-                                        <th style="width: 120px; white-space: nowrap;">Return Date</th>
-                                        <th style="width: 110px; text-align: center;">Status</th>
+                                        <th style="width: 45px; text-align: center;">#</th>
+                                        <th style="width: 100px;">Process ID</th>
+                                        <th style="min-width: 180px;">Notice / Process Title</th>
+                                        <th style="width: 100px; white-space: nowrap;">Issue Date</th>
+                                        <th style="width: 100px; white-space: nowrap;">Return Date</th>
+                                        <th style="width: 95px; text-align: center;">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mTbodyProcess">
@@ -1194,13 +1357,17 @@
 
                     <!-- TAB 7: ACTS & SECTIONS -->
                     <div class="tab-pane fade" id="mTabActs" role="tabpanel">
-                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto;">
-                            <table class="table table-hover align-middle mb-0" style="min-width: 650px; width: 100%;">
+                        <div class="d-flex align-items-center justify-content-between mb-1.5 px-1 text-muted extra-small d-md-none">
+                            <span class="fst-italic"><i class="bi bi-arrows-expand me-1"></i>Swipe table horizontally</span>
+                            <span class="badge bg-light text-secondary border">Touch-scrollable</span>
+                        </div>
+                        <div class="table-responsive border rounded-3 bg-white shadow-xs" style="max-height: 450px; overflow-y: auto; -webkit-overflow-scrolling: touch;">
+                            <table class="table table-hover align-middle mb-0" style="min-width: 500px; width: 100%;">
                                 <thead class="table-light sticky-top" style="z-index: 2;">
                                     <tr>
-                                        <th style="width: 50px; text-align: center;">#</th>
-                                        <th style="min-width: 320px;">Act Name</th>
-                                        <th style="min-width: 240px;">Section(s) Invoked</th>
+                                        <th style="width: 45px; text-align: center;">#</th>
+                                        <th style="min-width: 240px;">Act Name</th>
+                                        <th style="min-width: 180px;">Section(s) Invoked</th>
                                     </tr>
                                 </thead>
                                 <tbody id="mTbodyActs">
@@ -1214,16 +1381,16 @@
             </div>
 
             <!-- Modal Footer -->
-            <div class="modal-footer py-2.5 px-4 bg-light border-top d-flex justify-content-between align-items-center">
-                <div class="extra-small text-muted d-flex align-items-center gap-1.5">
-                    <i class="bi bi-shield-check text-primary"></i>
-                    <span>Official Verified e-Courts Judicial Record • NWKRTC Legal Department</span>
+            <div class="modal-footer py-2 px-3 bg-light border-top d-flex flex-column flex-sm-row justify-content-between align-items-stretch align-items-sm-center gap-2">
+                <div class="extra-small text-muted d-flex align-items-center justify-content-center justify-content-sm-start gap-1.5 text-center text-sm-start">
+                    <i class="bi bi-shield-check text-primary flex-shrink-0"></i>
+                    <span style="font-size: 0.72rem;">Official Verified e-Courts Judicial Record • NWKRTC Legal Department</span>
                 </div>
-                <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-secondary px-3 rounded-pill" onclick="printHighCourtDossier()">
+                <div class="d-flex align-items-center gap-2 w-100 w-sm-auto justify-content-end">
+                    <button type="button" class="btn btn-sm btn-outline-secondary px-3 rounded-pill flex-fill flex-sm-grow-0 fw-semibold" onclick="printHighCourtDossier()">
                         <i class="bi bi-printer me-1"></i> Print Dossier
                     </button>
-                    <button type="button" class="btn btn-sm btn-secondary px-4 rounded-pill fw-semibold" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-sm btn-secondary px-4 rounded-pill fw-semibold flex-fill flex-sm-grow-0" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -3136,6 +3303,87 @@ function formatHcCauselistDate(dVal) {
 const formatDate = formatHcCauselistDate;
 window.formatDate = formatHcCauselistDate;
 
+function formatCaseNoWithCaseType(caseType, caseNo) {
+    if (!caseNo || caseNo === '—') return caseNo || '—';
+    if (!caseType) return caseNo;
+    const ct = String(caseType).trim();
+    const cn = String(caseNo).trim();
+    if (cn.toUpperCase().startsWith(ct.toUpperCase())) {
+        return cn;
+    }
+    return `${ct} ${cn}`;
+}
+window.formatCaseNoWithCaseType = formatCaseNoWithCaseType;
+
+function selectDossierTab(targetId) {
+    if (!targetId) return;
+    const tabBtn = document.querySelector(`#dossierNavTabs button[data-bs-target="${targetId}"]`);
+    if (tabBtn && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+        bootstrap.Tab.getOrCreateInstance(tabBtn).show();
+        try {
+            tabBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } catch(e) {}
+    }
+    const selectEl = document.getElementById('dossierTabMobileSelect');
+    if (selectEl && selectEl.value !== targetId) {
+        selectEl.value = targetId;
+    }
+}
+window.selectDossierTab = selectDossierTab;
+
+function syncDossierSelect(targetId) {
+    const selectEl = document.getElementById('dossierTabMobileSelect');
+    if (selectEl && selectEl.value !== targetId) {
+        selectEl.value = targetId;
+    }
+    const tabBtn = document.querySelector(`#dossierNavTabs button[data-bs-target="${targetId}"]`);
+    if (tabBtn) {
+        try {
+            tabBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } catch(e) {}
+    }
+}
+window.syncDossierSelect = syncDossierSelect;
+
+function navDossierTab(delta) {
+    const tabIds = ['#mTabOverview', '#mTabParties', '#mTabHistory', '#mTabOrders', '#mTabIA', '#mTabProcess', '#mTabActs'];
+    const selectEl = document.getElementById('dossierTabMobileSelect');
+    const currentVal = selectEl?.value || '#mTabOverview';
+    let curIdx = tabIds.indexOf(currentVal);
+    if (curIdx === -1) curIdx = 0;
+    let nextIdx = curIdx + delta;
+    if (nextIdx < 0) nextIdx = tabIds.length - 1;
+    if (nextIdx >= tabIds.length) nextIdx = 0;
+    selectDossierTab(tabIds[nextIdx]);
+}
+window.navDossierTab = navDossierTab;
+
+function updateDossierMobileTabCounts() {
+    const selectEl = document.getElementById('dossierTabMobileSelect');
+    if (!selectEl) return;
+    const cHist = document.getElementById('mCountHistory')?.textContent || '0';
+    const cOrd = document.getElementById('mCountOrders')?.textContent || '0';
+    const cIa = document.getElementById('mCountIA')?.textContent || '0';
+    const cProc = document.getElementById('mCountProcess')?.textContent || '0';
+    const cActs = document.getElementById('mCountActs')?.textContent || '0';
+
+    const optHist = selectEl.querySelector('option[value="#mTabHistory"]');
+    if (optHist) optHist.textContent = `3. Hearing History (${cHist})`;
+
+    const optOrd = selectEl.querySelector('option[value="#mTabOrders"]');
+    if (optOrd) optOrd.textContent = `4. Orders & Judgments (${cOrd})`;
+
+    const optIa = selectEl.querySelector('option[value="#mTabIA"]');
+    if (optIa) optIa.textContent = `5. IA Filings (${cIa})`;
+
+    const optProc = selectEl.querySelector('option[value="#mTabProcess"]');
+    if (optProc) optProc.textContent = `6. Process Issued (${cProc})`;
+
+    const optActs = selectEl.querySelector('option[value="#mTabActs"]');
+    if (optActs) optActs.textContent = `7. Acts & Sections (${cActs})`;
+}
+window.updateDossierMobileTabCounts = updateDossierMobileTabCounts;
+
 function openDossierModal(appealId, cnr, mfaNo) {
     currentDossierCnr = cnr || '';
     currentDossierAppealId = appealId || '';
@@ -3161,7 +3409,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
         document.getElementById('dStatusPill').className = 'badge bg-primary-subtle text-primary border border-primary extra-small';
 
         document.getElementById('dCaseTypeBadge').textContent = matchedItem.caseType || 'High Court Matter';
-        document.getElementById('dCaseNo').textContent = `${matchedItem.caseType} ${matchedItem.regNumber}/${matchedItem.regYear}`;
+        document.getElementById('dCaseNo').textContent = formatCaseNoWithCaseType(matchedItem.caseType, `${matchedItem.regNumber}/${matchedItem.regYear}`);
         document.getElementById('dRegDate').textContent = matchedItem.regYear || '—';
         const dHearingFormatted = matchedItem.nextHearingDate ? formatDate(matchedItem.nextHearingDate) : '';
         document.getElementById('dNextHearing').textContent = (dHearingFormatted && dHearingFormatted !== '—') ? dHearingFormatted : 'Hearing Active';
@@ -3208,6 +3456,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
     document.getElementById('mCountIA').textContent = '0';
     document.getElementById('mCountProcess').textContent = '0';
     document.getElementById('mCountActs').textContent = '0';
+    updateDossierMobileTabCounts();
 
     if (matchedItem) {
         document.getElementById('mTbodyHistory').innerHTML = `<tr>
@@ -3235,10 +3484,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
     modal.show();
 
     // Reset to first tab
-    const firstTabBtn = document.querySelector('#dossierNavTabs button[data-bs-target="#mTabOverview"]');
-    if (firstTabBtn && typeof bootstrap !== 'undefined' && bootstrap.Tab) {
-        bootstrap.Tab.getOrCreateInstance(firstTabBtn).show();
-    }
+    selectDossierTab('#mTabOverview');
 
     const cTypeParam = matchedItem?.caseType || '';
     const rNoParam = matchedItem?.regNumber || '';
@@ -3270,7 +3516,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
                 // 1. Overview Card - Registration
                 const caseType = d.case_type || raw.type_name_reg || raw.type_name || '';
                 document.getElementById('dCaseTypeBadge').textContent = caseType || 'High Court Matter';
-                document.getElementById('dCaseNo').textContent = `${caseType ? caseType + ' ' : ''}${d.case_number || mfaNo || '—'}`;
+                document.getElementById('dCaseNo').textContent = formatCaseNoWithCaseType(caseType, d.case_number || mfaNo || '—');
                 document.getElementById('dFilNo').textContent = raw.fil_no ? `${raw.fil_no}/${raw.fil_year || ''}` : (d.filing_date || '—');
                 document.getElementById('dFilDate').textContent = d.filing_date || raw.date_of_filing || '—';
                 document.getElementById('dRegDate').textContent = d.registration_date || raw.dt_regis || '—';
@@ -3512,6 +3758,8 @@ function openDossierModal(appealId, cnr, mfaNo) {
                     });
                     document.getElementById('mTbodyActs').innerHTML = actsHtml;
                 }
+
+                updateDossierMobileTabCounts();
 
             } else {
                 if (matchedItem) {
@@ -4056,6 +4304,17 @@ document.addEventListener('DOMContentLoaded', function () {
 
         });
 
+    }
+
+    // Sync dossier tab navigation and mobile selector
+    const dTabs = document.getElementById('dossierNavTabs');
+    if (dTabs) {
+        dTabs.addEventListener('shown.bs.tab', function (e) {
+            const target = e.target?.getAttribute('data-bs-target');
+            if (target) {
+                syncDossierSelect(target);
+            }
+        });
     }
 
 });
