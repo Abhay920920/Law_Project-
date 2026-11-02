@@ -199,201 +199,159 @@
 
 
     .causelist-mobile-card {
-
-        border-radius: 10px;
-
+        border-radius: 12px;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
-
         border: 1px solid #e2e8f0;
-
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-
+    .causelist-mobile-card:active {
+        background-color: #f8fafc;
+    }
     .corp-match-card {
-
-        background-color: #f0fdf4 !important;
-
-        border: 1.5px solid #86efac !important;
-
+        background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
         border-left: 5px solid #10b981 !important;
-
     }
 
+    /* KPI Cards Responsiveness */
+    .kpi-card {
+        border-radius: 12px;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border: 1px solid #e2e8f0;
+    }
+    .kpi-label {
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        line-height: 1.25;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        min-height: 2.5em;
+    }
+    .kpi-num {
+        font-size: 1.6rem;
+        font-weight: 800;
+        margin-top: 2px;
+    }
 
+    /* Mobile Presets Scroll */
+    .mobile-presets-scroll {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 6px;
+    }
+    .mobile-presets-scroll::-webkit-scrollbar {
+        display: none;
+    }
 
     @@media (max-width: 767.98px) {
-
         .hc-header-gradient {
-
-            padding: 1.15rem !important;
-
+            padding: 1rem !important;
             border-radius: 0.75rem !important;
-
         }
-
         .hc-header-gradient h3 {
-
-            font-size: 1.15rem !important;
-
-            line-height: 1.35;
-
+            font-size: 1.08rem !important;
+            line-height: 1.35 !important;
         }
-
         .hc-header-actions {
-
-            width: 100%;
-
-            display: flex;
-
-            gap: 8px;
-
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 8px !important;
         }
-
         .hc-header-actions .btn {
-
-            flex: 1;
-
-            padding: 8px 12px !important;
-
-            font-size: 0.82rem !important;
-
-            display: flex;
-
-            align-items: center;
-
-            justify-content: center;
-
-        }
-
-        .kpi-row {
-
-            margin-bottom: 0.75rem !important;
-
-        }
-
-        .kpi-card {
-
-            border-radius: 0.75rem !important;
-
-        }
-
-        .kpi-card .card-body {
-
-            padding: 0.6rem 0.75rem !important;
-
-        }
-
-        .kpi-label {
-
-            font-size: 0.66rem !important;
-
-            line-height: 1.15;
-
-            white-space: nowrap;
-
-            overflow: hidden;
-
-            text-overflow: ellipsis;
-
-        }
-
-        .kpi-num {
-
-            font-size: 1.3rem !important;
-
-            margin-top: 2px !important;
-
-        }
-
-    .mobile-presets-scroll {
-
-            display: flex !important;
-
-            flex-wrap: nowrap !important;
-
-            overflow-x: auto !important;
-
-            -webkit-overflow-scrolling: touch;
-
-            padding-bottom: 4px;
-
-        }
-
-        .mobile-presets-scroll .btn {
-
-            flex-shrink: 0;
-
-            white-space: nowrap;
-
-            padding: 4px 10px !important;
-
-            font-size: 0.75rem !important;
-
-        }
-
-        .dossier-nav-tabs {
-
-            display: flex !important;
-
-            flex-wrap: nowrap !important;
-
-            overflow-x: auto !important;
-
-            -webkit-overflow-scrolling: touch;
-
-        }
-
-        .dossier-nav-tabs .nav-item {
-
-            flex-shrink: 0;
-
-        }
-
-        .dossier-nav-tabs .nav-link {
-
-            white-space: nowrap;
-
-            padding: 7px 12px !important;
-
+            width: 100% !important;
+            padding: 8px 10px !important;
             font-size: 0.8rem !important;
-
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            white-space: nowrap !important;
         }
-
+        .kpi-row {
+            margin-bottom: 0.75rem !important;
+        }
+        .kpi-card .card-body {
+            padding: 0.65rem 0.75rem !important;
+        }
+        .kpi-label {
+            font-size: 0.65rem !important;
+            min-height: 2.4em !important;
+        }
+        .kpi-num {
+            font-size: 1.3rem !important;
+        }
+        .hc-results-header {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 10px !important;
+            padding: 0.85rem !important;
+        }
+        .hc-results-actions {
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            gap: 6px !important;
+        }
+        .hc-results-actions .btn {
+            width: 100% !important;
+            padding: 7px 8px !important;
+            font-size: 0.78rem !important;
+            justify-content: center !important;
+        }
+        .hc-results-actions .btn-group {
+            grid-column: span 2 !important;
+            width: 100% !important;
+        }
+        .hc-results-actions .btn-group .btn:first-child {
+            flex: 1 !important;
+        }
+        .hc-results-header #liveListBadge {
+            grid-column: span 2 !important;
+            width: 100% !important;
+            text-align: center !important;
+            padding: 6px 10px !important;
+        }
+        .dossier-nav-tabs {
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            overflow-x: auto !important;
+            -webkit-overflow-scrolling: touch;
+        }
+        .dossier-nav-tabs .nav-link {
+            padding: 8px 12px !important;
+            font-size: 0.78rem !important;
+            white-space: nowrap !important;
+        }
         .hc-toast-container {
-
-            left: 12px;
-
-            right: 12px;
-
-            bottom: 12px;
-
-            max-width: calc(100% - 24px);
-
+            left: 12px !important;
+            right: 12px !important;
+            bottom: 12px !important;
+            max-width: calc(100% - 24px) !important;
         }
-
     }
 
-
-
     @@media (max-width: 575.98px) {
-
         .kpi-card .card-body {
-
             padding: 0.5rem 0.6rem !important;
-
         }
-
         .kpi-label {
-
-            font-size: 0.62rem !important;
-
+            font-size: 0.6rem !important;
         }
-
         .kpi-num {
-
-            font-size: 1.2rem !important;
-
+            font-size: 1.18rem !important;
         }
-
+        .causelist-mobile-card {
+            padding: 0.85rem !important;
+            margin-bottom: 0.65rem !important;
+        }
     }
 
 </style>
@@ -656,7 +614,7 @@
 
 
 
-                <div class="col-6 col-md-6 col-lg-2">
+                <div class="col-12 col-sm-6 col-md-6 col-lg-2">
 
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Hearing Date</label>
 
@@ -664,11 +622,11 @@
 
                     <div class="btn-group btn-group-sm w-100 mt-1" role="group">
 
-                        <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small" id="btnQuickYesterday" onclick="setQuickDate('yesterday')" title="Load yesterday's listed cases and Roznama proceedings">Yesterday</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary py-1 px-1 extra-small" id="btnQuickYesterday" onclick="setQuickDate('yesterday')" title="Load yesterday's listed cases and Roznama proceedings">Yesterday</button>
 
-                        <button type="button" class="btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active" id="btnQuickToday" onclick="setQuickDate('today')" title="Load today's cause list">Today</button>
+                        <button type="button" class="btn btn-xs btn-danger py-1 px-1 extra-small fw-bold active" id="btnQuickToday" onclick="setQuickDate('today')" title="Load today's cause list">Today</button>
 
-                        <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small" id="btnQuickTomorrow" onclick="setQuickDate('tomorrow')" title="Load tomorrow's cause list">Tomorrow</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary py-1 px-1 extra-small" id="btnQuickTomorrow" onclick="setQuickDate('tomorrow')" title="Load tomorrow's cause list">Tomorrow</button>
 
                     </div>
 
@@ -764,9 +722,9 @@
 
     <div class="card shadow-sm border-0 rounded-3">
 
-        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom">
+        <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2 border-bottom hc-results-header">
 
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
 
                 <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Cause List & Roster — @OrgService.GetCurrentSettings().OrganizationShortName</h6>
 
@@ -778,7 +736,7 @@
 
             </div>
 
-            <div class="d-flex align-items-center gap-2 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-wrap hc-results-actions">
 
                 <button type="button" class="btn btn-sm btn-outline-danger fw-bold shadow-sm py-1 px-2.5" id="btnLiveBenchScan" onclick="triggerLiveHighCourtScan()" title="Deep scan all sitting benches from NAPIX cause list PDF rosters for 100% accuracy">
                     <i class="bi bi-cpu-fill me-1"></i>⚡ Live Bench Sync
@@ -2079,53 +2037,39 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
     }
 
     let headerHtml = `
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-2.5 bg-light border-bottom">
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge ${currentViewMode === 'today' ? 'bg-danger text-white' : 'bg-primary text-white'} px-2.5 py-1">
-                <i class="bi bi-${currentViewMode === 'today' ? 'broadcast' : 'collection-fill'} me-1"></i>${currentViewMode === 'today' ? "Today's Cause List" : "All " + defaultOrgShortName + " High Court Matters"}
-            </span>
-            <span class="fw-bold text-dark small" id="liveHeaderSummary">
-                ${currentViewMode === 'today' 
-                    ? (listedCount > 0
-                        ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
-                        : `0 matters listed for hearing on <strong>${displayDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
-                    : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
-            </span>
+    <div class="p-2.5 bg-light border-bottom hc-sub-header">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge ${currentViewMode === 'today' ? 'bg-danger text-white' : 'bg-primary text-white'} px-2.5 py-1">
+                    <i class="bi bi-${currentViewMode === 'today' ? 'broadcast' : 'collection-fill'} me-1"></i>${currentViewMode === 'today' ? "Today's Cause List" : "All " + defaultOrgShortName + " High Court Matters"}
+                </span>
+                <span class="fw-bold text-dark small" id="liveHeaderSummary">
+                    ${currentViewMode === 'today' 
+                        ? (listedCount > 0
+                            ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
+                            : `0 matters listed for hearing on <strong>${displayDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
+                        : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
+                </span>
+            </div>
+            <div class="d-flex align-items-center gap-2 w-100 w-md-auto justify-content-between justify-content-md-end flex-wrap">
+                <div class="btn-group btn-group-sm flex-fill flex-md-grow-0" role="group">
+                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-1 px-2.5 extra-small fw-bold" onclick="switchCauseListViewMode('all')">
+                        All Matters (<span id="tabCountAll">${totalCount}</span>)
+                    </button>
+                    <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-1 px-2.5 extra-small fw-bold" onclick="switchCauseListViewMode('today')">
+                        Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
+                    </button>
+                </div>
+                <div class="d-none d-sm-flex align-items-center gap-1.5">
+                    <button type="button" class="btn btn-sm btn-outline-warning text-dark py-1 px-2 extra-small fw-bold shadow-sm" onclick="triggerBatchRoznamaSync()" title="Fetch verbatim daily proceedings & Roznama from e-Courts Gateway for listed cases">
+                        <i class="bi bi-journal-text text-warning me-1"></i> Sync Roznamas
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success py-1 px-2 extra-small fw-bold shadow-sm" onclick="exportCauseListToExcel('visible')" title="Export all details to Excel">
+                        <i class="bi bi-file-earmark-excel-fill text-success me-1"></i> Export Excel
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <div class="btn-group btn-group-sm">
-                <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('all')">
-                    All Matters (<span id="tabCountAll">${totalCount}</span>)
-                </button>
-                <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('today')">
-                    Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
-                </button>
-            </div>
-
-                </button>
-
-            </div>
-
-            <button type="button" id="btnBatchSyncRoznamas" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 extra-small fw-bold shadow-sm" onclick="triggerBatchRoznamaSync()" title="Fetch verbatim daily proceedings & Roznama from e-Courts Gateway for listed cases">
-
-                <i class="bi bi-journal-text text-warning me-1"></i> Sync Roznamas
-
-            </button>
-
-            <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 extra-small fw-bold shadow-sm" onclick="exportCauseListToExcel('visible')" title="Export all details to Excel">
-
-                <i class="bi bi-file-earmark-excel-fill text-success me-1"></i> Export Excel
-
-            </button>
-
-            <div class="extra-small text-muted font-monospace d-none d-md-inline ms-1">
-
-                Bench: <strong>${targetBench}</strong>
-
-            </div>
-
-        </div>
-
     </div>`;
 
 
@@ -2647,128 +2591,81 @@ function renderHcCauselistPage() {
 
 
         mobileCardsHtml += `<div class="causelist-mobile-card p-3 mb-2.5 bg-white border shadow-sm live-causelist-card corp-match-card"
-
             data-appeal-id="${item.regNumber || ''}"
-
             data-cnr="${itemCnr}"
-
             data-is-corp="true"
-
             data-is-today="${isThisListedToday ? 'true' : 'false'}"
-
             data-role="${item.nwkrtcRole || ''}">
-
             
-
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-
-                <div class="d-flex align-items-center gap-2">
-
-                    <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small">#${sr}</span>
-
-                    <div>
-
-                        <div class="fw-bold text-primary font-monospace fs-6">${caseNo}</div>
-
-                        <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
-
+            <div class="d-flex justify-content-between align-items-start gap-2 mb-2 pb-2 border-bottom">
+                <div class="d-flex align-items-center gap-2 min-w-0">
+                    <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>
+                    <div class="min-w-0">
+                        <div class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</div>
+                        <div class="extra-small text-muted text-truncate"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</div>
                     </div>
-
                 </div>
-
-                <div class="d-flex flex-column align-items-end gap-1">
-
-                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1">
-
-                        <i class="bi bi-bank2 me-1"></i>${courtNo}
-
+                <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1 text-wrap text-end" style="max-width: 170px; line-height: 1.25;">
+                        <i class="bi bi-bank2 me-1"></i>${courtNo || 'Court Hall'}
                     </span>
-
                     ${clNo ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small font-monospace"><i class="bi bi-card-checklist me-1"></i>CL No: ${clNo}</span>` : ''}
-
                 </div>
-
             </div>
-
-
 
             <div class="p-2.5 bg-light rounded-2 border mb-2 small">
-
-                <div class="fw-bold text-dark text-truncate" title="${pet}">
-
-                    <i class="bi bi-person-fill text-primary me-1"></i>${pet}
-
+                <div class="fw-bold text-dark" style="line-height: 1.35; word-break: break-word;">
+                    <i class="bi bi-person-fill text-primary me-1 flex-shrink-0"></i>${pet}
                 </div>
-
-                <div class="text-muted extra-small ps-3 my-0.5">vs</div>
-
-                <div class="fw-semibold text-secondary text-truncate" title="${resName}">
-
-                    <i class="bi bi-person text-muted me-1"></i>${resName}
-
+                <div class="text-muted extra-small ps-3 my-0.5 fw-semibold">vs</div>
+                <div class="fw-semibold text-secondary" style="line-height: 1.35; word-break: break-word;">
+                    <i class="bi bi-person text-muted me-1 flex-shrink-0"></i>${resName}
                 </div>
-
+                ${item.advocate ? `
+                <div class="extra-small text-primary fw-bold mt-1.5 pt-1.5 border-top border-secondary border-opacity-10 d-flex align-items-center gap-1 text-break">
+                    <i class="bi bi-person-badge-fill text-primary flex-shrink-0"></i>
+                    <span>Adv: ${escapeHtml(item.advocate)}</span>
+                </div>` : ''}
             </div>
-
-
 
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-2.5">
-
                 <div>${roleBadge}</div>
-
-                <div class="d-flex align-items-center gap-1">
-
+                <div class="d-flex align-items-center gap-1 flex-wrap">
                     ${listingBadge}
-
                     <span class="badge bg-light text-dark border extra-small">${stageText}</span>
-
                 </div>
-
             </div>
-
-
 
             <div class="pt-2 border-top">
-
                 <div class="d-flex justify-content-between align-items-center mb-2">
-
                     <span class="extra-small text-muted fw-bold">CNR Number:</span>
-
-                    <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || '—'}</span>
-
+                    <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || 'â€”'}</span>
                 </div>
-
                 ${itemCnr ? `
-
-                <div class="d-flex gap-1.5 w-100">
-
-                    <button class="btn btn-outline-primary btn-sm py-1.5 extra-small flex-fill fw-semibold shadow-xs" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')">
-
-                        <i class="bi bi-arrow-repeat me-1"></i>Sync
-
-                    </button>
-
-                    <button class="btn btn-outline-info btn-sm py-1.5 extra-small flex-fill fw-semibold shadow-xs" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')">
-
-                        <i class="bi bi-journal-text me-1"></i>Dossier
-
-                    </button>
-
-                    ${(item.hasRoznama || item.roznamaText) ? `
-                    <button class="btn btn-success text-white btn-sm py-1.5 extra-small flex-fill fw-bold shadow-xs" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')">
-                        <i class="bi bi-check2-circle me-1"></i>Roznama Recorded
-                    </button>` : `
-                    <button class="btn btn-warning text-dark btn-sm py-1.5 extra-small flex-fill fw-bold shadow-xs" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')">
-                        <i class="bi bi-file-earmark-text me-1"></i>Fetch Roznama
-                    </button>`}
-
+                <div class="row g-1.5 w-100 m-0">
+                    <div class="col-4 p-0 pe-1">
+                        <button class="btn btn-outline-primary btn-sm w-100 py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')">
+                            <i class="bi bi-arrow-repeat"></i><span>Sync</span>
+                        </button>
+                    </div>
+                    <div class="col-4 p-0 px-0.5">
+                        <button class="btn btn-outline-info btn-sm w-100 py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')">
+                            <i class="bi bi-journal-text"></i><span>Dossier</span>
+                        </button>
+                    </div>
+                    <div class="col-4 p-0 ps-1">
+                        ${(item.hasRoznama || item.roznamaText) ? `
+                        <button class="btn btn-success text-white btn-sm w-100 py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Roznama Recorded - Click to View">
+                            <i class="bi bi-check2-circle"></i><span>Roznama</span>
+                        </button>` : `
+                        <button class="btn btn-warning text-dark btn-sm w-100 py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Fetch Roznama / Daily Proceedings">
+                            <i class="bi bi-file-earmark-text"></i><span>Roznama</span>
+                        </button>`}
+                    </div>
                 </div>` : ''}
-
             </div>
-
         </div>`;
-
-    });
+    };
 
 
 
@@ -2778,72 +2675,41 @@ function renderHcCauselistPage() {
 
 
 
-    if (paginationContainer) {
-
+        if (paginationContainer) {
         paginationContainer.innerHTML = `
-
-        <div class="d-flex align-items-center gap-2 small text-muted">
-
-            <span>Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalItems}</strong> matters</span>
-
-            <span class="text-muted">|</span>
-
-            <div class="d-flex align-items-center gap-1">
-
-                <span class="extra-small text-uppercase fw-bold">Per page:</span>
-
-                <select class="form-select form-select-sm py-0 px-2 fw-bold" style="width: auto; height: 28px; font-size: 0.78rem;" onchange="changeHcPageSize(this.value)">
-
-                    <option value="25" ${hcPageSize === 25 ? 'selected' : ''}>25</option>
-
-                    <option value="50" ${hcPageSize === 50 ? 'selected' : ''}>50</option>
-
-                    <option value="100" ${hcPageSize === 100 ? 'selected' : ''}>100</option>
-
-                    <option value="250" ${hcPageSize === 250 ? 'selected' : ''}>250</option>
-
-                    <option value="ALL" ${hcPageSize === 'ALL' ? 'selected' : ''}>All (${totalItems})</option>
-
-                </select>
-
+        <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-2 w-100">
+            <div class="d-flex align-items-center gap-2 small text-muted flex-wrap justify-content-center justify-content-sm-start">
+                <span>Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalItems}</strong> matters</span>
+                <span class="text-muted d-none d-sm-inline">|</span>
+                <div class="d-flex align-items-center gap-1">
+                    <span class="extra-small text-uppercase fw-bold">Per page:</span>
+                    <select class="form-select form-select-sm py-0 px-2 fw-bold" style="width: auto; height: 28px; font-size: 0.78rem;" onchange="changeHcPageSize(this.value)">
+                        <option value="25" ${hcPageSize === 25 ? 'selected' : ''}>25</option>
+                        <option value="50" ${hcPageSize === 50 ? 'selected' : ''}>50</option>
+                        <option value="100" ${hcPageSize === 100 ? 'selected' : ''}>100</option>
+                        <option value="250" ${hcPageSize === 250 ? 'selected' : ''}>250</option>
+                        <option value="ALL" ${hcPageSize === 'ALL' ? 'selected' : ''}>All (${totalItems})</option>
+                    </select>
+                </div>
             </div>
-
-        </div>
-
-        <div class="d-flex align-items-center gap-1">
-
-            <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 extra-small fw-bold" ${hcCurrentPage <= 1 ? 'disabled' : ''} onclick="changeHcPage(1)" title="First Page">
-
-                <i class="bi bi-chevron-double-left"></i>
-
-            </button>
-
-            <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2.5 extra-small fw-bold" ${hcCurrentPage <= 1 ? 'disabled' : ''} onclick="changeHcPage(${hcCurrentPage - 1})" title="Previous Page">
-
-                <i class="bi bi-chevron-left me-1"></i>Prev
-
-            </button>
-
-            <span class="badge bg-light text-dark border px-2.5 py-1.5 extra-small fw-bold font-monospace">
-
-                Page ${hcCurrentPage} of ${totalPages}
-
-            </span>
-
-            <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2.5 extra-small fw-bold" ${hcCurrentPage >= totalPages ? 'disabled' : ''} onclick="changeHcPage(${hcCurrentPage + 1})" title="Next Page">
-
-                Next<i class="bi bi-chevron-right ms-1"></i>
-
-            </button>
-
-            <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 extra-small fw-bold" ${hcCurrentPage >= totalPages ? 'disabled' : ''} onclick="changeHcPage(${totalPages})" title="Last Page">
-
-                <i class="bi bi-chevron-double-right"></i>
-
-            </button>
-
+            <div class="d-flex align-items-center gap-1 justify-content-center">
+                <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 extra-small fw-bold" ${hcCurrentPage <= 1 ? 'disabled' : ''} onclick="changeHcPage(1)" title="First Page">
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2.5 extra-small fw-bold" ${hcCurrentPage <= 1 ? 'disabled' : ''} onclick="changeHcPage(${hcCurrentPage - 1})" title="Previous Page">
+                    <i class="bi bi-chevron-left me-0.5"></i>Prev
+                </button>
+                <span class="badge bg-light text-dark border px-2.5 py-1.5 extra-small fw-bold font-monospace">
+                    ${hcCurrentPage} / ${totalPages}
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2.5 extra-small fw-bold" ${hcCurrentPage >= totalPages ? 'disabled' : ''} onclick="changeHcPage(${hcCurrentPage + 1})" title="Next Page">
+                    Next<i class="bi bi-chevron-right ms-0.5"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2 extra-small fw-bold" ${hcCurrentPage >= totalPages ? 'disabled' : ''} onclick="changeHcPage(${totalPages})" title="Last Page">
+                    <i class="bi bi-chevron-double-right"></i>
+                </button>
+            </div>
         </div>`;
-
     }
 
 }
