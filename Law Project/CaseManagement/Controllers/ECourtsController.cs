@@ -14,6 +14,8 @@ using MVCCaseManagement.Services.ECourts;
 using MVCCaseManagement.Utils;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
+using System.Threading;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -29,6 +31,7 @@ namespace MVCCaseManagement.Controllers
         private readonly NapixSyncEngine _syncEngine;
         private readonly IOrganizationSettingsService? _orgSettings;
         private readonly IHighCourtCauseListScannerService? _causeListScanner;
+        private readonly IHighCourtPartySearchStore? _partyStore;
 
         public ECourtsController(
             IECourtsNapixService napixService,
@@ -39,7 +42,8 @@ namespace MVCCaseManagement.Controllers
             Microsoft.Extensions.Logging.ILogger<ECourtsController> logger,
             NapixSyncEngine syncEngine,
             IOrganizationSettingsService? orgSettings = null,
-            IHighCourtCauseListScannerService? causeListScanner = null)
+            IHighCourtCauseListScannerService? causeListScanner = null,
+            IHighCourtPartySearchStore? partyStore = null)
         {
             _napixService = napixService;
             _ecourtsRepo = ecourtsRepo;
@@ -50,6 +54,7 @@ namespace MVCCaseManagement.Controllers
             _syncEngine = syncEngine;
             _orgSettings = orgSettings;
             _causeListScanner = causeListScanner;
+            _partyStore = partyStore;
         }
 
         // POST / GET: /ECourts/QueueCaseSync
@@ -309,92 +314,10 @@ namespace MVCCaseManagement.Controllers
                 ? new[] { "KAHC02", "KAHC01", "KAHC03" }
                 : new[] { estCode.Trim() };
 
-            int currentYr = DateTime.Today.Year;
-            List<string> yearsList = new();
-            if (!string.IsNullOrWhiteSpace(regYear) && regYear != "ALL" && regYear != "RECENT" && regYear != "LAST5" && regYear != "LAST10")
-            {
-                yearsList.Add(regYear.Trim());
-            }
-            else if (string.Equals(regYear, "LAST5", StringComparison.OrdinalIgnoreCase))
-            {
-                for (int y = currentYr; y >= currentYr - 4; y--) yearsList.Add(y.ToString());
-            }
-            else if (string.Equals(regYear, "LAST10", StringComparison.OrdinalIgnoreCase))
-            {
-                for (int y = currentYr; y >= currentYr - 9; y--) yearsList.Add(y.ToString());
-            }
-            else if (string.Equals(regYear, "ALL", StringComparison.OrdinalIgnoreCase))
-            {
-                // Full historical archive: from current year down to 2008 (18+ litigation years)
-                for (int y = currentYr; y >= 2008; y--) yearsList.Add(y.ToString());
-            }
-            else // RECENT or null/default
-            {
-                for (int y = currentYr; y >= currentYr - 3; y--) yearsList.Add(y.ToString());
-            }
-
-            var years = yearsList.ToArray();
-
-            var statuses = (string.Equals(pendDisp, "BOTH", StringComparison.OrdinalIgnoreCase) || string.Equals(pendDisp, "ALL", StringComparison.OrdinalIgnoreCase))
-                ? new[] { "P", "D" }
-                : new[] { string.IsNullOrWhiteSpace(pendDisp) ? "P" : pendDisp.Trim() };
-
             string effectiveParty = string.IsNullOrWhiteSpace(partyName) ? "NWKRTC" : partyName.Trim();
             bool isMulti = multiAlias || string.Equals(effectiveParty, "ALL", StringComparison.OrdinalIgnoreCase) || 
                            string.Equals(effectiveParty, "MULTI", StringComparison.OrdinalIgnoreCase) || 
                            string.Equals(effectiveParty, "NWKRTC", StringComparison.OrdinalIgnoreCase);
-
-            var list = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
-            var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var seenRegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            var queryTasks = new List<(string Est, string Year, string Status)>();
-            foreach (var est in estCodes)
-            {
-                foreach (var y in years)
-                {
-                    foreach (var pStatus in statuses)
-                    {
-                        queryTasks.Add((est, y, pStatus));
-                    }
-                }
-            }
-
-            var listLock = new object();
-            await Parallel.ForEachAsync(queryTasks, new ParallelOptions { MaxDegreeOfParallelism = 6 }, async (qt, ct) =>
-            {
-                List<MVCCaseManagement.Models.PartyCaseSearchResultItem>? batch = null;
-                if (isMulti)
-                {
-                    batch = await _napixService.SearchNwkrtcMultiAliasAsync(qt.Est, qt.Year, qt.Status, isHighCourt: true);
-                }
-                else
-                {
-                    batch = await _napixService.SearchCasesByPartyNameAsync(qt.Est, effectiveParty, qt.Year, qt.Status, isHighCourt: true);
-                }
-
-                if (batch != null && batch.Count > 0)
-                {
-                    lock (listLock)
-                    {
-                        foreach (var item in batch)
-                        {
-                            string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
-                            string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
-
-                            if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
-                                continue;
-                            if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
-                                continue;
-
-                            if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
-                            if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
-
-                            list.Add(item);
-                        }
-                    }
-                }
-            });
 
             // Parse target hearing date
             DateTime targetDate = DateTime.Today;
@@ -411,180 +334,90 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // 1. Cross-reference with tracked High Court cases synced from NAPIX and local APPEAL_DETAILS
-            List<MVCCaseManagement.Models.TrackedCaseModel> trackedCases = new();
-            try
-            {
-                using var dbConn = _db.GetConnection();
-                trackedCases = (await dbConn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
-                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
-                           RelatedModule, AddedBy, NextHearingDate, CourtNo, StagePurpose, 
-                           JudgeDesignation, Petitioner, Respondent
-                    FROM admin_Law.ECOURTS_TRACKED_CASES
-                    WHERE CNRNumber IS NOT NULL AND RTRIM(LTRIM(CNRNumber)) <> ''")).ToList();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[GetLiveHighCourtPartyCases] Error querying ECOURTS_TRACKED_CASES.");
-            }
+            var list = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
 
-            try
+            // 1. Strictly fetch from persistent NAPIX API Party Search Master Store (Zero DB Intervention per user requirement)
+            if (isMulti && _partyStore != null)
             {
-                var rawAppeals = await _ecourtsRepo.GetHighCourtCauseListAsync();
-                foreach (var app in rawAppeals.Where(a => !string.IsNullOrWhiteSpace(a.CNRNumber)))
+                list = await _partyStore.GetPartyCasesAsync(estCode, regYear ?? "ALL", pendDisp);
+            }
+            else
+            {
+                // Fallback / Custom party name direct NAPIX query
+                int currentYr = DateTime.Today.Year;
+                List<string> yearsList = new();
+                if (!string.IsNullOrWhiteSpace(regYear) && regYear != "ALL" && regYear != "RECENT" && regYear != "LAST5" && regYear != "LAST10")
                 {
-                    string cnrClean = app.CNRNumber.Trim().ToUpperInvariant();
-                    if (!trackedCases.Any(tc => string.Equals(tc.CNRNumber?.Trim(), cnrClean, StringComparison.OrdinalIgnoreCase)))
+                    yearsList.Add(regYear.Trim());
+                }
+                else if (string.Equals(regYear, "LAST5", StringComparison.OrdinalIgnoreCase))
+                {
+                    for (int y = currentYr; y >= currentYr - 4; y--) yearsList.Add(y.ToString());
+                }
+                else if (string.Equals(regYear, "LAST10", StringComparison.OrdinalIgnoreCase))
+                {
+                    for (int y = currentYr; y >= currentYr - 9; y--) yearsList.Add(y.ToString());
+                }
+                else
+                {
+                    for (int y = currentYr; y >= currentYr - 3; y--) yearsList.Add(y.ToString());
+                }
+
+                var statuses = (string.Equals(pendDisp, "BOTH", StringComparison.OrdinalIgnoreCase) || string.Equals(pendDisp, "ALL", StringComparison.OrdinalIgnoreCase))
+                    ? new[] { "P", "D" }
+                    : new[] { string.IsNullOrWhiteSpace(pendDisp) ? "P" : pendDisp.Trim() };
+
+                var seenCnrs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var seenRegs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var queryTasks = new List<(string Est, string Year, string Status)>();
+                foreach (var ec in estCodes)
+                {
+                    foreach (var y in yearsList)
                     {
-                        trackedCases.Add(new MVCCaseManagement.Models.TrackedCaseModel
+                        foreach (var pStatus in statuses)
                         {
-                            TrackedID = app.AppealID,
-                            CNRNumber = cnrClean,
-                            EstCode = app.HighCourtBench?.Contains("Dharwad", StringComparison.OrdinalIgnoreCase) == true ? "KAHC02" :
-                                      (app.HighCourtBench?.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase) == true ? "KAHC03" : "KAHC01"),
-                            CaseTypeCode = app.AppealType,
-                            CaseNumber = app.MFANumber,
-                            CaseYear = app.MFAYear ?? 0,
-                            RelatedModule = app.ModuleSource,
-                            NextHearingDate = app.NextHearingDate,
-                            CourtNo = app.CourtHall,
-                            StagePurpose = app.CaseStage,
-                            Petitioner = app.PetitionerName,
-                            Respondent = app.RespondentName
-                        });
+                            queryTasks.Add((ec, y, pStatus));
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[GetLiveHighCourtPartyCases] Error enriching from APPEAL_DETAILS.");
-            }
 
-            var trackedCnrMap = trackedCases
-                .Where(tc => !string.IsNullOrWhiteSpace(tc.CNRNumber))
-                .GroupBy(tc => tc.CNRNumber!.Trim().ToUpperInvariant())
-                .ToDictionary(g => g.Key, g => g.First());
-
-            // 2. Enrich live API cases with their synced CNR hearing dates, court halls, and stages
-            foreach (var item in list)
-            {
-                if (!string.IsNullOrWhiteSpace(item.CNRNumber) && trackedCnrMap.TryGetValue(item.CNRNumber.Trim().ToUpperInvariant(), out var tc))
+                var listLock = new object();
+                await Parallel.ForEachAsync(queryTasks, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (qt, ct) =>
                 {
-                    item.IsTrackedInMyCases = true;
-                    if (!item.NextHearingDate.HasValue && tc.NextHearingDate.HasValue)
+                    var batch = await _napixService.SearchCasesByPartyNameAsync(qt.Est, effectiveParty, qt.Year, qt.Status, isHighCourt: true);
+                    if (batch != null && batch.Count > 0)
                     {
-                        item.NextHearingDate = tc.NextHearingDate;
+                        lock (listLock)
+                        {
+                            foreach (var item in batch)
+                            {
+                                string cnrKey = !string.IsNullOrWhiteSpace(item.CNRNumber) ? item.CNRNumber.Trim() : "";
+                                string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim();
+
+                                if (!string.IsNullOrEmpty(cnrKey) && seenCnrs.Contains(cnrKey))
+                                    continue;
+                                if (!string.IsNullOrEmpty(regKey) && regKey != "__" && seenRegs.Contains(regKey))
+                                    continue;
+
+                                if (!string.IsNullOrEmpty(cnrKey)) seenCnrs.Add(cnrKey);
+                                if (!string.IsNullOrEmpty(regKey) && regKey != "__") seenRegs.Add(regKey);
+
+                                list.Add(item);
+                            }
+                        }
                     }
-                    if (string.IsNullOrEmpty(item.CourtHall) && !string.IsNullOrEmpty(tc.CourtNo))
-                    {
-                        item.CourtHall = tc.CourtNo;
-                    }
-                    if (string.IsNullOrEmpty(item.CaseStage) && !string.IsNullOrEmpty(tc.StagePurpose))
-                    {
-                        item.CaseStage = tc.StagePurpose;
-                    }
-                }
-
-                if (item.NextHearingDate.HasValue && item.NextHearingDate.Value.Date == targetDate)
-                {
-                    item.IsListedToday = true;
-                }
-            }
-
-            // 3. Ensure all NWKRTC High Court matters scheduled for hearing on targetDate are included
-            var scheduledCases = trackedCases
-                .Where(t => t.NextHearingDate.HasValue && t.NextHearingDate.Value.Date == targetDate && !string.IsNullOrWhiteSpace(t.CNRNumber))
-                .ToList();
-
-            foreach (var tc in scheduledCases)
-            {
-                string tcCnr = tc.CNRNumber!.Trim().ToUpperInvariant();
-                var existing = list.FirstOrDefault(x => string.Equals(x.CNRNumber?.Trim(), tcCnr, StringComparison.OrdinalIgnoreCase));
-                if (existing != null)
-                {
-                    existing.IsListedToday = true;
-                    existing.NextHearingDate = tc.NextHearingDate;
-                    if (!string.IsNullOrEmpty(tc.CourtNo)) existing.CourtHall = tc.CourtNo;
-                    if (!string.IsNullOrEmpty(tc.StagePurpose)) existing.CaseStage = tc.StagePurpose;
-                    continue;
-                }
-
-                bool isHc = tcCnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || 
-                            (tc.EstCode != null && tc.EstCode.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase));
-                if (!isHc) continue;
-
-                string tcBench = tc.EstCode switch
-                {
-                    "KAHC01" => "Principal Bench (Bengaluru)",
-                    "KAHC02" => "Dharwad Bench",
-                    "KAHC03" => "Kalaburagi Bench",
-                    _ => tcCnr.StartsWith("KAHC02") ? "Dharwad Bench" : (tcCnr.StartsWith("KAHC01") ? "Principal Bench (Bengaluru)" : (tcCnr.StartsWith("KAHC03") ? "Kalaburagi Bench" : "High Court of Karnataka"))
-                };
-
-                if (NwkrtcPartyMatcher.IsOtherCoOrganization(tc.Petitioner) || NwkrtcPartyMatcher.IsOtherCoOrganization(tc.Respondent))
-                    continue;
-
-                var roleResult = NwkrtcPartyMatcher.DetectRole(tc.Petitioner ?? "", tc.Respondent ?? "", estCode: tc.EstCode ?? "KAHC02");
-                string role = roleResult.Role == "Other RTC" || roleResult.Role == "Non-Corporation" ? "With NWKRTC" : roleResult.Role;
-
-                list.Add(new MVCCaseManagement.Models.PartyCaseSearchResultItem
-                {
-                    CNRNumber = tcCnr,
-                    CaseType = tc.CaseTypeCode ?? "MFA",
-                    RegNumber = tc.CaseNumber ?? "",
-                    RegYear = tc.CaseYear.ToString(),
-                    PetitionerName = tc.Petitioner ?? "The Managing Director, NWKRTC",
-                    RespondentName = tc.Respondent ?? "—",
-                    NwkrtcRole = role,
-                    MatchedDesignation = roleResult.MatchedDesignation,
-                    NextHearingDate = tc.NextHearingDate,
-                    CaseStage = tc.StagePurpose ?? "Hearing Active",
-                    CourtHall = !string.IsNullOrEmpty(tc.CourtNo) ? tc.CourtNo : "Court Hall",
-                    EstablishmentName = tcBench,
-                    HighCourtBench = tcBench,
-                    IsListedToday = true,
-                    IsTrackedInMyCases = true
                 });
-
-                seenCnrs.Add(tcCnr);
             }
 
-            // 3.5 Automated live discovery from official High Court cause list rosters via NAPIX Scanner
-            if (_causeListScanner != null)
+            // 2. Discover today's official High Court cause list listings via NAPIX Scanner
+            bool isCourtSittingDay = targetDate.DayOfWeek != DayOfWeek.Saturday && targetDate.DayOfWeek != DayOfWeek.Sunday;
+            List<PartyCaseSearchResultItem> scannedDailyCases = new();
+            if (_causeListScanner != null && isCourtSittingDay)
             {
                 try
                 {
-                    string primaryEst = estCodes.FirstOrDefault() ?? "KAHC02";
-                    var scannedDailyCases = await _causeListScanner.GetOrScanDailyCauseListAsync(primaryEst, targetDate);
-
-                    foreach (var sc in scannedDailyCases)
-                    {
-                        string scCnr = sc.CNRNumber?.Trim().ToUpperInvariant() ?? "";
-                        string scRegKey = $"{sc.CaseType}_{sc.RegNumber}_{sc.RegYear}".Trim();
-
-                        var existing = list.FirstOrDefault(x =>
-                            (!string.IsNullOrEmpty(scCnr) && string.Equals(x.CNRNumber?.Trim(), scCnr, StringComparison.OrdinalIgnoreCase)) ||
-                            (!string.IsNullOrEmpty(scRegKey) && string.Equals($"{x.CaseType}_{x.RegNumber}_{x.RegYear}".Trim(), scRegKey, StringComparison.OrdinalIgnoreCase)));
-
-                        if (existing != null)
-                        {
-                            existing.IsListedToday = true;
-                            existing.NextHearingDate = sc.NextHearingDate;
-                            existing.CourtHall = sc.CourtHall;
-                            existing.CauseListNo = sc.CauseListNo;
-                            existing.CauseListItemNo = sc.CauseListItemNo;
-                            existing.CaseStage = sc.CaseStage;
-                            if (!string.IsNullOrEmpty(sc.Advocate)) existing.Advocate = sc.Advocate;
-                            if (!string.IsNullOrEmpty(sc.PetitionerName) && sc.PetitionerName.Length > (existing.PetitionerName?.Length ?? 0)) existing.PetitionerName = sc.PetitionerName;
-                            if (!string.IsNullOrEmpty(sc.RespondentName) && sc.RespondentName.Length > (existing.RespondentName?.Length ?? 0)) existing.RespondentName = sc.RespondentName;
-                        }
-                        else
-                        {
-                            list.Add(sc);
-                            if (!string.IsNullOrEmpty(scCnr)) seenCnrs.Add(scCnr);
-                            if (!string.IsNullOrEmpty(scRegKey)) seenRegs.Add(scRegKey);
-                        }
-                    }
+                    string scanEst = (estCodes.Length > 1 || (estCodes.Length == 1 && estCodes[0].Equals("ALL", StringComparison.OrdinalIgnoreCase))) ? "ALL" : estCodes[0];
+                    scannedDailyCases = await _causeListScanner.GetOrScanDailyCauseListAsync(scanEst, targetDate);
                 }
                 catch (Exception ex)
                 {
@@ -592,12 +425,61 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // 4. Strictly exclude any case without a valid official CNR (no dummy/internal DB cases without CNR)
-            list = list.Where(x => !string.IsNullOrWhiteSpace(x.CNRNumber) && x.CNRNumber.Trim() != "-").ToList();
+            // Strictly filter scanned cause list cases for NWKRTC matters
+            var validScanned = scannedDailyCases.Where(sc => 
+                !NwkrtcPartyMatcher.IsOtherCoOrganization(sc.PetitionerName) && 
+                !NwkrtcPartyMatcher.IsOtherCoOrganization(sc.RespondentName) &&
+                (NwkrtcPartyMatcher.IsNwkrtcEntity(sc.PetitionerName, out _, sc.EstablishmentName ?? "KAHC02") ||
+                 NwkrtcPartyMatcher.IsNwkrtcEntity(sc.RespondentName, out _, sc.EstablishmentName ?? "KAHC02"))
+            ).ToList();
 
-            // Detect NWKRTC role for any live API items that don't have it
+            var newlyDiscoveredToday = new List<PartyCaseSearchResultItem>();
+
+            // Match scanned daily cause list cases with the party cases list
+            foreach (var sc in validScanned)
+            {
+                string scCnr = sc.CNRNumber?.Trim().ToUpperInvariant() ?? "";
+                string scRegKey = $"{sc.CaseType}_{sc.RegNumber}_{sc.RegYear}".Trim().ToUpperInvariant();
+
+                var existing = list.FirstOrDefault(x =>
+                    (!string.IsNullOrEmpty(scCnr) && scCnr != "-" && string.Equals(x.CNRNumber?.Trim(), scCnr, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(scRegKey) && scRegKey != "__" && string.Equals($"{x.CaseType}_{x.RegNumber}_{x.RegYear}".Trim(), scRegKey, StringComparison.OrdinalIgnoreCase)));
+
+                if (existing != null)
+                {
+                    existing.IsListedToday = true;
+                    existing.NextHearingDate = targetDate;
+                    existing.CourtHall = sc.CourtHall;
+                    existing.CauseListNo = sc.CauseListNo;
+                    existing.CauseListItemNo = sc.CauseListItemNo;
+                    existing.CaseStage = sc.CaseStage;
+                    if (!string.IsNullOrEmpty(sc.Advocate)) existing.Advocate = sc.Advocate;
+                    if (!string.IsNullOrEmpty(sc.PetitionerName) && sc.PetitionerName.Length > (existing.PetitionerName?.Length ?? 0)) existing.PetitionerName = sc.PetitionerName;
+                    if (!string.IsNullOrEmpty(sc.RespondentName) && sc.RespondentName.Length > (existing.RespondentName?.Length ?? 0)) existing.RespondentName = sc.RespondentName;
+                }
+                else
+                {
+                    sc.IsListedToday = true;
+                    sc.NextHearingDate = targetDate;
+                    list.Add(sc);
+                    newlyDiscoveredToday.Add(sc);
+                }
+            }
+
+            // Persist newly discovered cause list cases into the persistent store asynchronously
+            if (newlyDiscoveredToday.Count > 0 && _partyStore != null)
+            {
+                _ = _partyStore.MergeFreshCasesAsync(newlyDiscoveredToday);
+            }
+
+            // Sanitize any placeholder dates (e.g. 01-01-5000, 1900-01-01)
             foreach (var item in list)
             {
+                if (item.NextHearingDate.HasValue && (item.NextHearingDate.Value.Year < 2000 || item.NextHearingDate.Value.Year > 2050))
+                {
+                    item.NextHearingDate = null;
+                }
+
                 if (string.IsNullOrEmpty(item.NwkrtcRole) || item.NwkrtcRole == "Unknown")
                 {
                     string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
@@ -607,50 +489,43 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // Strictly exclude any case from other co-organizations (KSRTC, KKRTC, BMTC, NEKRTC)
-            // or non-corporation third parties when searching for NWKRTC cause list matters
-                list = list.Where(item => 
+            // Strict filtering to ensure NWKRTC only and exclude non-corporation/other RTCs
+            list = list.Where(item => 
+            {
+                bool petIsOther = NwkrtcPartyMatcher.IsOtherCoOrganization(item.PetitionerName);
+                bool resIsOther = NwkrtcPartyMatcher.IsOtherCoOrganization(item.RespondentName);
+                if (petIsOther || resIsOther) return false;
+
+                if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation") return false;
+
+                string pName = item.PetitionerName ?? "";
+                string rName = item.RespondentName ?? "";
+                if (Regex.IsMatch(pName, @"\b(STATE\s+OF\s+KARNATAKA|DEPUTY\s+COMMISSIONER)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(rName, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s+CONTROLLER|DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase))
                 {
-                    // Official listed matters for the requested date are always retained
-                    if (item.IsListedToday)
-                        return true;
+                    return false;
+                }
+                if (Regex.IsMatch(rName, @"\b(STATE\s+OF\s+KARNATAKA|DEPUTY\s+COMMISSIONER)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(pName, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s+CONTROLLER|DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
 
-                    if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation")
-                        return false;
+                string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
+                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst);
+                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst);
 
-                    bool petIsOther = NwkrtcPartyMatcher.IsOtherCoOrganization(item.PetitionerName);
-                    bool resIsOther = NwkrtcPartyMatcher.IsOtherCoOrganization(item.RespondentName);
-
-                    // If either party is another RTC and neither is NWKRTC, reject
-                    if (petIsOther || resIsOther)
-                        return false;
-
-                    // Tracked cases in official NWKRTC registry belong in the list
-                    if (item.IsTrackedInMyCases)
-                        return true;
-
-                    string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
-                    bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst);
-                    bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst);
-
-                    // At least one party MUST explicitly be an NWKRTC entity
-                    if (!petIsNwkrtc && !resIsNwkrtc)
-                        return false;
-
-                    return true;
-                }).ToList();
+                return petIsNwkrtc || resIsNwkrtc;
+            }).ToList();
 
             int totalAllCount = list.Count;
             int todayCount = list.Count(x => x.IsListedToday);
 
             var allSorted = list.OrderByDescending(x => x.IsListedToday)
-                       .ThenByDescending(x => x.IsTrackedInMyCases)
-                       .ThenByDescending(x => x.IsLocalMatch)
                        .ThenByDescending(x => x.RegYear)
                        .ThenBy(x => x.RegNumber)
                        .ToList();
 
-            // If todayOnly is requested, return strictly matters scheduled for hearing on target date
             var displayList = todayOnly
                 ? allSorted.Where(x => x.IsListedToday).ToList()
                 : allSorted;
@@ -663,8 +538,8 @@ namespace MVCCaseManagement.Controllers
                 count = displayList.Count, 
                 allCount = totalAllCount,
                 todayCount = todayCount,
-                trackedCount = allSorted.Count(x => x.IsTrackedInMyCases || x.IsLocalMatch),
-                untrackedCount = allSorted.Count(x => !x.IsTrackedInMyCases && !x.IsLocalMatch),
+                trackedCount = 0,
+                untrackedCount = totalAllCount,
                 withCount = withCount,
                 againstCount = againstCount,
                 targetHearingDate = targetDate.ToString("dd-MM-yyyy"),
@@ -951,10 +826,123 @@ namespace MVCCaseManagement.Controllers
             return Json(new { success = false, message = "Unable to fetch High Court Cause List." });
         }
 
+        private static (string bizText, string? nextDateStr, string? purposeStr) ParseNapixBusinessElement(JsonElement root)
+        {
+            string bizText = "";
+            string? nextDateStr = null;
+            string? purposeStr = null;
+
+            JsonElement target = root;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var dataProp))
+            {
+                if (dataProp.ValueKind == JsonValueKind.Object)
+                    target = dataProp;
+                else if (dataProp.ValueKind == JsonValueKind.Array && dataProp.GetArrayLength() > 0)
+                    target = dataProp[0];
+            }
+            else if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                target = root[0];
+            }
+
+            if (target.ValueKind == JsonValueKind.Object)
+            {
+                if (target.TryGetProperty("business", out var bProp) && !string.IsNullOrWhiteSpace(bProp.GetString()))
+                    bizText = bProp.GetString()!;
+                else if (target.TryGetProperty("roznama", out var rProp) && !string.IsNullOrWhiteSpace(rProp.GetString()))
+                    bizText = rProp.GetString()!;
+                else if (target.TryGetProperty("proceedings", out var pProp) && !string.IsNullOrWhiteSpace(pProp.GetString()))
+                    bizText = pProp.GetString()!;
+                else if (target.TryGetProperty("short_order_det", out var soProp) && !string.IsNullOrWhiteSpace(soProp.GetString()))
+                    bizText = soProp.GetString()!;
+                else if (target.TryGetProperty("court_business", out var cbProp) && !string.IsNullOrWhiteSpace(cbProp.GetString()))
+                    bizText = cbProp.GetString()!;
+                else if (target.TryGetProperty("order", out var oProp) && !string.IsNullOrWhiteSpace(oProp.GetString()))
+                    bizText = oProp.GetString()!;
+
+                if (target.TryGetProperty("next_date", out var ndProp) && !string.IsNullOrWhiteSpace(ndProp.GetString()))
+                    nextDateStr = ndProp.GetString();
+                else if (target.TryGetProperty("nextDate", out var ndProp2) && !string.IsNullOrWhiteSpace(ndProp2.GetString()))
+                    nextDateStr = ndProp2.GetString();
+
+                if (target.TryGetProperty("purpose", out var purProp) && !string.IsNullOrWhiteSpace(purProp.GetString()))
+                    purposeStr = purProp.GetString();
+                else if (target.TryGetProperty("purpose_of_listing", out var polProp) && !string.IsNullOrWhiteSpace(polProp.GetString()))
+                    purposeStr = polProp.GetString();
+                else if (target.TryGetProperty("stage", out var stgProp) && !string.IsNullOrWhiteSpace(stgProp.GetString()))
+                    purposeStr = stgProp.GetString();
+            }
+
+            return (bizText, nextDateStr, purposeStr);
+        }
+
+        private async Task<bool> SaveOrUpdateHearingRoznamaAsync(string cleanCnr, DateTime hearingDate, string? bizText, DateTime? nextDtVal, string? purposeStr)
+        {
+            if (string.IsNullOrWhiteSpace(cleanCnr)) return false;
+            cleanCnr = cleanCnr.Trim().ToUpperInvariant();
+
+            try
+            {
+                using var conn = _db.GetConnection();
+
+                // 1. Persist/Merge into CASE_HEARINGS_HISTORY
+                await conn.ExecuteAsync(@"
+                    MERGE admin_Law.CASE_HEARINGS_HISTORY AS target
+                    USING (SELECT @cleanCnr AS CNRNumber, @hDate AS HearingDate) AS source
+                    ON (target.CNRNumber = source.CNRNumber AND target.HearingDate = source.HearingDate)
+                    WHEN MATCHED THEN
+                        UPDATE SET BusinessTransacted = COALESCE(NULLIF(@bizText, ''), target.BusinessTransacted),
+                                   NextHearingDate = COALESCE(@nextDtVal, target.NextHearingDate),
+                                   NextStage = COALESCE(@purposeStr, target.NextStage)
+                    WHEN NOT MATCHED THEN
+                        INSERT (CNRNumber, HearingDate, BusinessTransacted, NextHearingDate, NextStage, CreatedDate)
+                        VALUES (@cleanCnr, @hDate, NULLIF(@bizText, ''), @nextDtVal, @purposeStr, GETDATE());",
+                    new { cleanCnr, hDate = hearingDate.Date, bizText, nextDtVal, purposeStr });
+
+                // 2. Roll forward ECOURTS_TRACKED_CASES
+                await conn.ExecuteAsync(@"
+                    UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                    SET LastSyncedAt = GETDATE(),
+                        NextHearingDate = COALESCE(@nextDtVal, NextHearingDate),
+                        StagePurpose = COALESCE(@purposeStr, StagePurpose)
+                    WHERE CNRNumber = @cleanCnr",
+                    new { cleanCnr, nextDtVal, purposeStr });
+
+                // 3. Roll forward APPEAL_DETAILS and MVC_CASES
+                if (nextDtVal.HasValue || !string.IsNullOrWhiteSpace(purposeStr))
+                {
+                    await conn.ExecuteAsync(@"
+                        UPDATE admin_Law.APPEAL_DETAILS
+                        SET CorpMFANextHearingDate = COALESCE(@nextDtVal, CorpMFANextHearingDate),
+                            CorpMFAStage = COALESCE(@purposeStr, CorpMFAStage)
+                        WHERE CorpMFACNRNumber = @cleanCnr;
+
+                        UPDATE admin_Law.APPEAL_DETAILS
+                        SET ClaimantMFANextHearingDate = COALESCE(@nextDtVal, ClaimantMFANextHearingDate),
+                            ClaimantMFAStage = COALESCE(@purposeStr, ClaimantMFAStage)
+                        WHERE ClaimantMFACNRNumber = @cleanCnr;",
+                        new { cleanCnr, nextDtVal, purposeStr });
+
+                    await conn.ExecuteAsync(@"
+                        UPDATE admin_Law.MVC_CASES
+                        SET NextHearingDate = COALESCE(@nextDtVal, NextHearingDate),
+                            CaseStage = COALESCE(@purposeStr, CaseStage)
+                        WHERE CNRNumber = @cleanCnr",
+                        new { cleanCnr, nextDtVal, purposeStr });
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[SaveOrUpdateHearingRoznamaAsync] Could not persist Roznama for CNR {CNR}", cleanCnr);
+                return false;
+            }
+        }
+
         // GET: /ECourts/GetCaseBusiness?cnrNumber=...&date=...&isHighCourt=false&module=...
         [HttpGet]
         [AllowAnonymous]
-
         public async Task<IActionResult> GetCaseBusiness(string cnrNumber, string date, bool isHighCourt = false, string? module = null)
         {
             if (string.IsNullOrWhiteSpace(cnrNumber))
@@ -976,12 +964,39 @@ namespace MVCCaseManagement.Controllers
             }
             string norm = NapixQuotaService.NormalizeModule(module);
 
+            DateTime? targetDate = null;
+            if (TryParseFlexibleDate(date, out var pDt) && pDt.Year >= 1970 && pDt.Year <= 2050)
+            {
+                targetDate = pDt;
+            }
+
             try
             {
                 var result = await _napixService.GetCaseBusinessAsync(clean, date, isHighCourt, norm);
                 if (result.HasValue && IsValidJsonData(result))
                 {
-                    return Json(new { success = true, data = result.Value, source = "NAPIX" });
+                    var (bizText, nextDateStr, purposeStr) = ParseNapixBusinessElement(result.Value);
+                    DateTime? nextDtVal = null;
+                    if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                    {
+                        nextDtVal = ndVal;
+                    }
+
+                    if (targetDate.HasValue)
+                    {
+                        await SaveOrUpdateHearingRoznamaAsync(clean, targetDate.Value, bizText, nextDtVal, purposeStr);
+                    }
+
+                    return Json(new { 
+                        success = true, 
+                        data = result.Value, 
+                        business = bizText,
+                        roznama = bizText,
+                        proceedings = bizText,
+                        nextDate = nextDateStr,
+                        purpose = purposeStr,
+                        source = "NAPIX" 
+                    });
                 }
             }
             catch (Exception ex)
@@ -993,12 +1008,6 @@ namespace MVCCaseManagement.Controllers
             try
             {
                 using var conn = _db.GetConnection();
-                DateTime? targetDate = null;
-                if (TryParseFlexibleDate(date, out var pDt) && pDt.Year >= 1970 && pDt.Year <= 2050)
-                {
-                    targetDate = pDt;
-                }
-
                 if (targetDate.HasValue)
                 {
                     var saved = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
@@ -1026,6 +1035,8 @@ namespace MVCCaseManagement.Controllers
                             business = bText,
                             roznama = bText,
                             proceedings = bText,
+                            nextDate = nDtStr,
+                            purpose = stg,
                             source = "Database"
                         });
                     }
@@ -1041,6 +1052,120 @@ namespace MVCCaseManagement.Controllers
                 ? $"eCourts NAPIX Live API: {lastErr}"
                 : $"No live court proceedings returned by eCourts NAPIX API for date {date}.";
             return Json(new { success = false, message = msg });
+        }
+
+        // POST: /ECourts/BatchSyncRoznamas
+        [HttpPost]
+        [AllowAnonymous]
+        public async Task<IActionResult> BatchSyncRoznamas([FromBody] BatchSyncRoznamasRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Date))
+            {
+                return Json(new { success = false, message = "Hearing date is required." });
+            }
+
+            if (!TryParseFlexibleDate(request.Date, out var targetDate) || targetDate.Year < 1970 || targetDate.Year > 2050)
+            {
+                return Json(new { success = false, message = $"Invalid date format '{request.Date}'." });
+            }
+
+            var cnrs = (request.CnrNumbers ?? new List<string>())
+                .Where(c => !string.IsNullOrWhiteSpace(c) && c.Trim() != "-")
+                .Select(c => c.Trim().ToUpperInvariant())
+                .Distinct()
+                .ToList();
+
+            if (cnrs.Count == 0)
+            {
+                return Json(new { success = false, message = "No valid CNR numbers provided for Roznama sync." });
+            }
+
+            string normModule = NapixQuotaService.NormalizeModule(request.Module ?? "MVC");
+            int syncedCount = 0;
+            int nextDatesUpdated = 0;
+            var syncedItems = new ConcurrentDictionary<string, BatchSyncRoznamaItemResult>();
+
+            using var semaphore = new SemaphoreSlim(8);
+            var tasks = cnrs.Select(async cnr =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    bool isHc = cnr.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase) || cnr.Contains("HC");
+                    var res = await _napixService.GetCaseBusinessAsync(cnr, targetDate.ToString("yyyy-MM-dd"), isHighCourt: isHc, normModule);
+                    if (res.HasValue && IsValidJsonData(res))
+                    {
+                        var (bizText, nextDateStr, purposeStr) = ParseNapixBusinessElement(res.Value);
+                        if (!string.IsNullOrWhiteSpace(bizText))
+                        {
+                            DateTime? nextDtVal = null;
+                            if (!string.IsNullOrWhiteSpace(nextDateStr) && TryParseFlexibleDate(nextDateStr, out var ndVal) && !IsCisSentinelDate(ndVal))
+                            {
+                                nextDtVal = ndVal;
+                                Interlocked.Increment(ref nextDatesUpdated);
+                            }
+
+                            await SaveOrUpdateHearingRoznamaAsync(cnr, targetDate, bizText, nextDtVal, purposeStr);
+                            Interlocked.Increment(ref syncedCount);
+
+                            syncedItems[cnr] = new BatchSyncRoznamaItemResult
+                            {
+                                CNRNumber = cnr,
+                                Roznama = bizText,
+                                NextDate = nextDateStr,
+                                Purpose = purposeStr,
+                                Source = "NAPIX"
+                            };
+                        }
+                    }
+                    else
+                    {
+                        // Check if already in database
+                        using var conn = _db.GetConnection();
+                        var dbRow = await conn.QueryFirstOrDefaultAsync<dynamic>(@"
+                            SELECT TOP 1 HearingDate, BusinessTransacted, NextHearingDate, NextStage 
+                            FROM admin_Law.CASE_HEARINGS_HISTORY 
+                            WHERE CNRNumber = @cnr AND CAST(HearingDate AS DATE) = @hDate AND BusinessTransacted IS NOT NULL AND LEN(BusinessTransacted) > 0",
+                            new { cnr, hDate = targetDate.Date });
+
+                        if (dbRow != null && !string.IsNullOrWhiteSpace((string)dbRow.BusinessTransacted))
+                        {
+                            string bText = (string)dbRow.BusinessTransacted;
+                            string? nDt = dbRow.NextHearingDate != null ? Convert.ToDateTime(dbRow.NextHearingDate).ToString("dd-MM-yyyy") : null;
+                            string? stg = (string?)dbRow.NextStage;
+
+                            syncedItems[cnr] = new BatchSyncRoznamaItemResult
+                            {
+                                CNRNumber = cnr,
+                                Roznama = bText,
+                                NextDate = nDt,
+                                Purpose = stg,
+                                Source = "Database"
+                            };
+                        }
+                    }
+                }
+                catch (Exception exCnr)
+                {
+                    _logger.LogWarning(exCnr, "[BatchSyncRoznamas] Error syncing Roznama for CNR {CNR}", cnr);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+
+            return Json(new
+            {
+                success = true,
+                date = targetDate.ToString("dd-MM-yyyy"),
+                totalRequested = cnrs.Count,
+                syncedCount = syncedCount,
+                nextDatesUpdated = nextDatesUpdated,
+                syncedItems = syncedItems
+            });
         }
 
         // GET: /ECourts/GetStates

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
@@ -20,6 +20,7 @@ namespace MVCCaseManagement.Utils
         private readonly ILogger<ECourtsNapixService> _logger;
         private readonly NapixQuotaService _quota;
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _lastModuleErrors = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly SemaphoreSlim _apiConcurrencySemaphore = new(3, 3);
 
         public string? GetLastModuleError(string module = "MVC") =>
             _lastModuleErrors.TryGetValue(NapixQuotaService.NormalizeModule(module), out var err) ? err : null;
@@ -229,19 +230,27 @@ namespace MVCCaseManagement.Utils
                 request.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
                 HttpResponseMessage response;
+                await _apiConcurrencySemaphore.WaitAsync();
                 try
                 {
-                    response = await _httpClient.SendAsync(request);
+                    try
+                    {
+                        response = await _httpClient.SendAsync(request);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException || ex is System.IO.IOException)
+                    {
+                        _logger.LogWarning("[NAPIX] Transient connection reset for {Endpoint}/{Action} ({Module}). Retrying in 400ms...", endpointBasePath, endpointAction, norm);
+                        await Task.Delay(400);
+                        using var retryReq = new HttpRequestMessage(httpMethod, requestUrl);
+                        retryReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                        retryReq.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                        retryReq.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+                        response = await _httpClient.SendAsync(retryReq);
+                    }
                 }
-                catch (Exception ex) when (ex is HttpRequestException || ex is System.IO.IOException)
+                finally
                 {
-                    _logger.LogWarning("[NAPIX] Transient connection reset for {Endpoint}/{Action} ({Module}). Retrying in 400ms...", endpointBasePath, endpointAction, norm);
-                    await Task.Delay(400);
-                    using var retryReq = new HttpRequestMessage(httpMethod, requestUrl);
-                    retryReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    retryReq.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-                    retryReq.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
-                    response = await _httpClient.SendAsync(retryReq);
+                    _apiConcurrencySemaphore.Release();
                 }
 
                 var jsonResp = await response.Content.ReadAsStringAsync();
@@ -925,10 +934,8 @@ namespace MVCCaseManagement.Utils
                     }
                 }
 
-                if (list.Count > 0)
-                {
-                    _cache.Set(partyCacheKey, list, TimeSpan.FromMinutes(45));
-                }
+                // Cache positive results for 45 mins; memoize negative / empty results for 30 mins to conserve NAPIX daily quota
+                _cache.Set(partyCacheKey, list, list.Count > 0 ? TimeSpan.FromMinutes(45) : TimeSpan.FromMinutes(30));
                 return list;
             }
             catch (Exception ex)
@@ -1013,11 +1020,17 @@ namespace MVCCaseManagement.Utils
                 {
                     parsedHearingDate = dtAny;
                 }
+
+                if (parsedHearingDate.HasValue && (parsedHearingDate.Value.Year < 2000 || parsedHearingDate.Value.Year > 2050))
+                {
+                    parsedHearingDate = null;
+                }
             }
 
             string? stage = GetPartyCaseProp(caseObj, "purpose_name", "stage", "case_stage", "purpose", "next_purpose");
             string? courtHall = GetPartyCaseProp(caseObj, "court_no", "court_hall", "court_no_judge", "bench_name", "judge_name");
-            bool isListedToday = parsedHearingDate.HasValue && parsedHearingDate.Value.Date == DateTime.Today;
+            // IsListedToday is computed dynamically per targetDate in ECourtsController
+            bool isListedToday = false;
 
             // Use NwkrtcPartyMatcher for rigorous multi-designation role detection
             var roleResult = NwkrtcPartyMatcher.DetectRole(petName, resName);

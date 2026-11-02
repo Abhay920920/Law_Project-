@@ -69,23 +69,23 @@ namespace MVCCaseManagement.Services.ECourts
                 var now = DateTime.Now;
                 _logger.LogInformation("[HighCourtCauseListSync] Running cause list check at {Time:HH:mm:ss}", now);
 
-                // 1. Morning & Daytime check: Ensure today's list is scanned and cached
+                // 1. Morning & Daytime check: Ensure today's list is scanned and cached across all benches
                 if (now.Hour >= 6 && now.Hour <= 15)
                 {
                     var today = DateTime.Today;
-                    var res = await _scannerService.ScanAndCacheDateAsync("KAHC02", today, stoppingToken);
-                    _logger.LogInformation("[HighCourtCauseListSync] Today's cause list check complete for {Date:yyyy-MM-dd}: {Count} NWKRTC matters.", today, res.nwkrtcMatters);
+                    var res = await _scannerService.ScanAndCacheDateAsync("ALL", today, stoppingToken);
+                    _logger.LogInformation("[HighCourtCauseListSync] Today's cause list check complete for {Date:yyyy-MM-dd}: {Count} NWKRTC matters across all benches.", today, res.nwkrtcMatters);
                 }
 
-                // 2. Evening check (after 17:30): Ensure tomorrow's list is scanned and pre-cached
+                // 2. Evening check (after 17:30): Ensure tomorrow's list is scanned and pre-cached across all benches
                 if (now.Hour >= 17 || (now.Hour == 16 && now.Minute >= 30))
                 {
                     var tomorrow = DateTime.Today.AddDays(1);
                     // Skip Sundays
                     if (tomorrow.DayOfWeek != DayOfWeek.Sunday)
                     {
-                        var res = await _scannerService.ScanAndCacheDateAsync("KAHC02", tomorrow, stoppingToken);
-                        _logger.LogInformation("[HighCourtCauseListSync] Tomorrow's cause list pre-cached for {Date:yyyy-MM-dd}: {Count} NWKRTC matters.", tomorrow, res.nwkrtcMatters);
+                        var res = await _scannerService.ScanAndCacheDateAsync("ALL", tomorrow, stoppingToken);
+                        _logger.LogInformation("[HighCourtCauseListSync] Tomorrow's cause list pre-cached for {Date:yyyy-MM-dd}: {Count} NWKRTC matters across all benches.", tomorrow, res.nwkrtcMatters);
                     }
                 }
             }

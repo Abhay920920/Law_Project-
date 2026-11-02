@@ -761,14 +761,21 @@
             }
             #fullDetailsTabs {
                 display: flex !important;
-                flex-wrap: nowrap !important;
+                flex-wrap: wrap !important;
+                gap: 6px !important;
                 overflow-x: auto !important;
                 -webkit-overflow-scrolling: touch !important;
-                scrollbar-width: none !important;
+                scrollbar-width: thin !important;
+                scrollbar-color: #2563eb #f1f5f9 !important;
                 padding-bottom: 4px;
             }
             #fullDetailsTabs::-webkit-scrollbar {
-                display: none !important;
+                height: 5px !important;
+                display: block !important;
+            }
+            #fullDetailsTabs::-webkit-scrollbar-thumb {
+                background: #2563eb !important;
+                border-radius: 3px;
             }
             #fullDetailsTabs .nav-item {
                 flex: 0 0 auto !important;

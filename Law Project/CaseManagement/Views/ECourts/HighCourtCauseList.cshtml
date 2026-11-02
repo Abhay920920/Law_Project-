@@ -588,7 +588,7 @@
 
         <div class="card-body p-3">
 
-            <div class="row g-2 align-items-end">
+            <div class="row g-2 align-items-start">
 
                 <div class="col-12 col-md-4 col-lg-2">
 
@@ -616,13 +616,13 @@
 
                     <select id="liveRegYear" class="form-select form-select-sm fw-bold" onchange="fetchLiveHcCauselist();">
 
-                        <option value="RECENT" selected>Recent Active (2023–2026)</option>
+                        <option value="RECENT">Recent Active (2023–2026)</option>
 
                         <option value="LAST5">Last 5 Years (2022–2026)</option>
 
                         <option value="LAST10">Last 10 Years (2017–2026)</option>
 
-                        <option value="ALL">All Active Years (Full ~4K Archive)</option>
+                        <option value="ALL" selected>All Active Years (2010–2026)</option>
 
                         @for (int yr = DateTime.Today.Year; yr >= 2008; yr--)
 
@@ -661,6 +661,16 @@
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-calendar-date me-1 text-danger"></i>Hearing Date</label>
 
                     <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
+
+                    <div class="btn-group btn-group-sm w-100 mt-1" role="group">
+
+                        <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small" id="btnQuickYesterday" onclick="setQuickDate('yesterday')" title="Load yesterday's listed cases and Roznama proceedings">Yesterday</button>
+
+                        <button type="button" class="btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active" id="btnQuickToday" onclick="setQuickDate('today')" title="Load today's cause list">Today</button>
+
+                        <button type="button" class="btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small" id="btnQuickTomorrow" onclick="setQuickDate('tomorrow')" title="Load tomorrow's cause list">Tomorrow</button>
+
+                    </div>
 
                 </div>
 
@@ -758,11 +768,11 @@
 
             <div class="d-flex align-items-center gap-2">
 
-                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Daily Cause List — @OrgService.GetCurrentSettings().OrganizationShortName Matters Listed Today</h6>
+                <h6 class="mb-0 fw-bold text-danger"><i class="bi bi-broadcast-pin me-2"></i>Official High Court Cause List & Roster — @OrgService.GetCurrentSettings().OrganizationShortName</h6>
 
-                <span class="badge bg-danger-subtle text-danger border border-danger fw-bold extra-small px-2 py-1">
+                <span id="liveHeaderBadge" class="badge bg-danger-subtle text-danger border border-danger fw-bold extra-small px-2 py-1">
 
-                    <i class="bi bi-bell-fill me-1"></i>Today's Listed @OrgService.GetCurrentSettings().OrganizationShortName Matters Only
+                    <i class="bi bi-collection-fill me-1"></i>All Active Matters & Daily Roster
 
                 </span>
 
@@ -772,6 +782,10 @@
 
                 <button type="button" class="btn btn-sm btn-outline-danger fw-bold shadow-sm py-1 px-2.5" id="btnLiveBenchScan" onclick="triggerLiveHighCourtScan()" title="Deep scan all sitting benches from NAPIX cause list PDF rosters for 100% accuracy">
                     <i class="bi bi-cpu-fill me-1"></i>⚡ Live Bench Sync
+                </button>
+
+                <button type="button" class="btn btn-sm btn-outline-primary fw-bold shadow-sm py-1 px-2.5" id="btnBatchSyncRoznamas" onclick="triggerBatchRoznamaSync()" title="Fetch and save verbatim Roznama court proceedings and roll forward next hearing dates for listed cases">
+                    <i class="bi bi-journal-check text-primary me-1"></i>Sync Roznamas
                 </button>
 
                 <div class="btn-group">
@@ -1222,22 +1236,6 @@
     </div>
 </div>
 
-                </div>
-
-            </div>
-
-            <div class="modal-footer py-2 px-3 bg-light">
-
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
-
 
 
 <!-- Live Roznama / Daily Status Modal -->
@@ -1332,11 +1330,7 @@
 
             </div>
 
-            <div class="modal-footer py-1.5 px-3 bg-light">
 
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
-
-            </div>
 
         </div>
 
@@ -1372,6 +1366,16 @@ function safeJsArg(str) {
 
         .replace(/\n|\r/g, ' ');
 
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 
@@ -1687,7 +1691,7 @@ async function triggerLiveHighCourtScan() {
     }
 
     const estCode = (document.getElementById('liveEstCode')?.value || 'KAHC02').trim();
-    const dateInput = (document.getElementById('hearingDateInput')?.value || '').trim();
+    const dateInput = (document.getElementById('liveDate')?.value || document.getElementById('hearingDateInput')?.value || '').trim();
 
     try {
         const res = await fetch(`/ECourts/SyncDailyHighCourtCauseList?estCode=${encodeURIComponent(estCode)}&date=${encodeURIComponent(dateInput)}&force=true`, {
@@ -1721,7 +1725,11 @@ async function triggerLiveHighCourtScan() {
 
 function fetchLiveHcCauselist(viewMode) {
 
-    if (viewMode !== undefined) currentViewMode = viewMode;
+    if (viewMode !== undefined) {
+        currentViewMode = viewMode;
+    } else if (document.getElementById('liveRegYear')?.value === 'ALL') {
+        currentViewMode = 'all';
+    }
 
     const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
 
@@ -1775,7 +1783,7 @@ function fetchLiveHcCauselist(viewMode) {
 
 
 
-    const regYear = document.getElementById('liveRegYear')?.value || 'RECENT';
+    const regYear = document.getElementById('liveRegYear')?.value || 'ALL';
 
     const caseStatus = document.getElementById('liveCaseStatus')?.value || 'P';
 
@@ -1837,10 +1845,31 @@ function fetchLiveHcCauselist(viewMode) {
 
         })
 
-        .catch(() => {
-
-            renderNoCasesListedTodayView(dateInputVal, targetBench, container, badge, partyName, null);
-
+        .catch((err) => {
+            console.error('High court causelist query error:', err);
+            if (badge) {
+                badge.className = "badge bg-warning text-dark px-3 py-1";
+                badge.textContent = "Query Timed Out";
+            }
+            if (container) {
+                container.innerHTML = `<div class="text-center py-5 px-3">
+                    <div class="mb-3">
+                        <span class="badge bg-warning-subtle text-warning border border-warning p-3 rounded-circle shadow-sm">
+                            <i class="bi bi-clock-history fs-2 text-warning"></i>
+                        </span>
+                    </div>
+                    <h5 class="fw-bold text-dark mb-1">Archive Query Timed Out</h5>
+                    <p class="text-muted small mb-3">Loading all historical cases across 19 years and all benches timed out. Please select <strong>Pending Cases</strong> for instant results (~3,800 cases).</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button" class="btn btn-danger btn-sm px-3 py-2 fw-bold shadow-sm" onclick="document.getElementById('liveCaseStatus').value='P'; fetchLiveHcCauselist();">
+                            <i class="bi bi-lightning-charge-fill me-1"></i> Load Pending Cases (~3,800 Cases)
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-2 fw-bold shadow-sm" onclick="fetchLiveHcCauselist()">
+                            <i class="bi bi-arrow-clockwise me-1"></i> Retry
+                        </button>
+                    </div>
+                </div>`;
+            }
         });
 
 }
@@ -1881,19 +1910,24 @@ function renderNoCasesListedTodayView(displayDate, targetBench, container, badge
 
             <p class="text-muted small mb-3">No High Court cases for <strong>${partyName || defaultOrgShortName}</strong> are scheduled on the official Daily Cause List for <strong>${displayDate}</strong> (${targetBench}).</p>
 
-            ${hasAllMatters ? `
+            <div class="d-flex flex-wrap justify-content-center gap-2 mt-3">
 
-            <div class="mt-3">
+                ${hasAllMatters ? `
+                <button type="button" class="btn btn-danger btn-sm px-3 py-2 fw-bold shadow-sm" onclick="switchCauseListViewMode('all')">
+                    <i class="bi bi-collection-fill me-1"></i> View All ${res.allMatters.length} Active Matters
+                </button>` : ''}
 
-                <button type="button" class="btn btn-danger btn-sm px-3 py-2 fw-bold shadow-sm" onclick="fetchLiveHcCauselist('all')">
-
-                    <i class="bi bi-collection-fill me-1"></i> View All ${res.allMatters.length} Live ${partyName || defaultOrgShortName} Matters
-
+                <button type="button" class="btn btn-outline-danger btn-sm px-3 py-2 fw-bold shadow-sm" onclick="setQuickDate('today')">
+                    <i class="bi bi-calendar-event me-1"></i> Check Today's Cause List
                 </button>
 
-            </div>` : `
+                <button type="button" class="btn btn-outline-primary btn-sm px-3 py-2 fw-bold shadow-sm" onclick="triggerLiveHighCourtScan()">
+                    <i class="bi bi-arrow-clockwise me-1"></i> Re-Scan All High Court Benches
+                </button>
 
-            <p class="extra-small text-muted mb-0">High Court daily cause lists are published by the Court Registry each morning. You can select another hearing date above to check other daily rosters.</p>`}
+            </div>
+
+            <p class="extra-small text-muted mt-3 mb-0">High Court daily cause lists are published by the Court Registry each morning. You can select another hearing date above or switch to All Matters to inspect ongoing litigation.</p>
 
         </div>`;
 
@@ -1925,14 +1959,33 @@ function debouncedFilterLiveCauselist() {
 
 
 
+function getNormalizedItemDateStr(item) {
+    if (!item || !item.nextHearingDate) return '';
+    const raw = typeof item.nextHearingDate === 'string' ? item.nextHearingDate.substring(0, 10) : '';
+    if (!raw || raw.includes('5000') || raw.startsWith('1900') || raw.startsWith('2999') || raw.startsWith('0001')) return '';
+    if (raw && raw.includes('-')) {
+        const p = raw.split('-');
+        if (p.length === 3 && p[0].length === 4) return `${p[2]}-${p[1]}-${p[0]}`;
+    }
+    return raw;
+}
+
 function switchCauseListViewMode(mode) {
     currentViewMode = mode;
+    const activeDate = (window.__currentDisplayDate || document.getElementById('liveDate')?.value || '').trim();
     const allItems = window.__allHcCauselistItems || [];
-    const todayItems = allItems.filter(i => i.isListedToday);
-    const listedCount = window.__serverRes?.todayCount ?? todayItems.length;
+    
+    // An item belongs to the selected cause list date ONLY if its listing date matches activeDate
+    const todayItems = allItems.filter(i => {
+        if (!i || !i.isListedToday) return false;
+        const dStr = getNormalizedItemDateStr(i);
+        return !activeDate || !dStr || dStr === activeDate;
+    });
+
+    const listedCount = todayItems.length;
     const totalCount = window.__serverRes?.allCount ?? allItems.length;
 
-    const items = (mode === 'today') ? (todayItems.length > 0 ? todayItems : allItems) : allItems;
+    const items = (mode === 'today') ? todayItems : allItems;
     window.__currentHcCauselistItems = items;
     hcCurrentPage = 1;
 
@@ -1942,6 +1995,7 @@ function switchCauseListViewMode(mode) {
     const btnAll = document.getElementById('btnTabAllMatters');
     const btnToday = document.getElementById('btnTabTodayMatters');
     if (btnAll && btnToday) {
+        btnToday.innerHTML = `<i class="bi bi-broadcast me-1"></i>Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)`;
         if (mode === 'today') {
             btnToday.className = 'btn btn-sm btn-danger text-white py-0 px-2 extra-small fw-bold';
             btnAll.className = 'btn btn-sm btn-outline-secondary py-0 px-2 extra-small fw-bold';
@@ -1955,7 +2009,9 @@ function switchCauseListViewMode(mode) {
     if (badge) {
         if (mode === 'today') {
             badge.className = listedCount > 0 ? "badge bg-danger px-3 py-1 shadow-sm" : "badge bg-secondary px-3 py-1";
-            badge.textContent = `${listedCount} ${defaultOrgShortName} Matter${listedCount === 1 ? '' : 's'} Listed on ${window.__currentDisplayDate}`;
+            badge.textContent = listedCount > 0
+                ? `${listedCount} ${defaultOrgShortName} Matter${listedCount === 1 ? '' : 's'} Listed on ${activeDate}`
+                : `0 ${defaultOrgShortName} Matters Listed on ${activeDate}`;
         } else {
             badge.className = "badge bg-primary px-3 py-1 shadow-sm";
             badge.textContent = `${totalCount} Active ${defaultOrgShortName} Matters Loaded`;
@@ -1965,7 +2021,9 @@ function switchCauseListViewMode(mode) {
     const liveSummary = document.getElementById('liveHeaderSummary');
     if (liveSummary) {
         liveSummary.innerHTML = (mode === 'today')
-            ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${window.__currentDisplayDate}</strong>`
+            ? (listedCount > 0
+                ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${activeDate}</strong>`
+                : `0 matters listed for hearing on <strong>${activeDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
             : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${window.__currentTargetBench})`;
     }
 
@@ -1973,97 +2031,86 @@ function switchCauseListViewMode(mode) {
 }
 
 function renderLivePartyCauseList(rawItems, displayDate, targetBench, container, badge, res) {
+    window.__currentDisplayDate = displayDate;
+    window.__currentTargetBench = targetBench;
 
-    // Strictly NWKRTC live matters — server returns authentic party cases for NWKRTC
     const allItems = window.__allHcCauselistItems && window.__allHcCauselistItems.length > 0 ? window.__allHcCauselistItems : (rawItems || []);
-    const todayItems = allItems.filter(i => i.isListedToday);
-    const listedCount = res?.todayCount ?? todayItems.length;
+    
+    // Strict date filtering so Friday cases never leak into Saturday
+    const todayItems = allItems.filter(i => {
+        if (!i || !i.isListedToday) return false;
+        const dStr = getNormalizedItemDateStr(i);
+        return !displayDate || !dStr || dStr === displayDate;
+    });
+
+    const listedCount = todayItems.length;
     const totalCount = res?.allCount ?? allItems.length;
 
-    const displayedItems = (currentViewMode === 'today') ? (todayItems.length > 0 ? todayItems : allItems) : allItems;
+    if (currentViewMode !== 'all') {
+        currentViewMode = 'today';
+    }
+    const displayedItems = (currentViewMode === 'today') ? todayItems : allItems;
     window.__currentHcCauselistItems = displayedItems;
-
-    window.__currentDisplayDate = displayDate;
-
-    window.__currentTargetBench = targetBench;
 
     hcCurrentPage = 1;
 
     const countAllEl = document.getElementById('exportCountAll');
-
     if (countAllEl) countAllEl.textContent = totalCount;
 
     const countTodayEl = document.getElementById('exportCountToday');
-
     if (countTodayEl) countTodayEl.textContent = listedCount;
 
     const countVisEl = document.getElementById('exportCountVisible');
-
     if (countVisEl) countVisEl.textContent = displayedItems.length;
 
-
+    const kpiToday = document.getElementById('kpiListedTodayVal');
+    if (kpiToday) kpiToday.textContent = listedCount;
 
     if (badge) {
-
         if (currentViewMode === 'today') {
-
             badge.className = listedCount > 0 ? "badge bg-danger px-3 py-1 shadow-sm" : "badge bg-secondary px-3 py-1";
-
-            badge.textContent = `${listedCount} ${defaultOrgShortName} Matter${listedCount === 1 ? '' : 's'} Listed on ${displayDate}`;
-
+            badge.textContent = listedCount > 0
+                ? `${listedCount} ${defaultOrgShortName} Matter${listedCount === 1 ? '' : 's'} Listed on ${displayDate}`
+                : `0 ${defaultOrgShortName} Matters Listed on ${displayDate}`;
         } else {
-
             badge.className = "badge bg-primary px-3 py-1 shadow-sm";
-
             badge.textContent = `${totalCount} Active ${defaultOrgShortName} Matters Loaded`;
-
         }
-
     }
 
-
-
     let headerHtml = `
-
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 p-2.5 bg-light border-bottom">
-
         <div class="d-flex align-items-center gap-2">
-
             <span class="badge ${currentViewMode === 'today' ? 'bg-danger text-white' : 'bg-primary text-white'} px-2.5 py-1">
-
                 <i class="bi bi-${currentViewMode === 'today' ? 'broadcast' : 'collection-fill'} me-1"></i>${currentViewMode === 'today' ? "Today's Cause List" : "All " + defaultOrgShortName + " High Court Matters"}
-
             </span>
-
             <span class="fw-bold text-dark small" id="liveHeaderSummary">
-
                 ${currentViewMode === 'today' 
-
-                    ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
-
+                    ? (listedCount > 0
+                        ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${displayDate}</strong>`
+                        : `0 matters listed for hearing on <strong>${displayDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
                     : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${targetBench})`}
-
             </span>
-
         </div>
-
         <div class="d-flex align-items-center gap-2">
-
             <div class="btn-group btn-group-sm">
-
                 <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('all')">
-
                     All Matters (<span id="tabCountAll">${totalCount}</span>)
-
                 </button>
-
                 <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary'} py-0 px-2 extra-small fw-bold" onclick="switchCauseListViewMode('today')">
-
                     Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)
+                </button>
+            </div>
 
                 </button>
 
             </div>
+
+            <button type="button" id="btnBatchSyncRoznamas" class="btn btn-sm btn-outline-warning text-dark py-0 px-2 extra-small fw-bold shadow-sm" onclick="triggerBatchRoznamaSync()" title="Fetch verbatim daily proceedings & Roznama from e-Courts Gateway for listed cases">
+
+                <i class="bi bi-journal-text text-warning me-1"></i> Sync Roznamas
+
+            </button>
 
             <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 extra-small fw-bold shadow-sm" onclick="exportCauseListToExcel('visible')" title="Export all details to Excel">
 
@@ -2317,9 +2364,74 @@ function renderHcCauselistPage() {
 
     if (totalItems === 0) {
 
-        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found for the selected criteria.</td></tr>`;
+        const dateInputVal = (document.getElementById('liveDate')?.value || window.__currentDisplayDate || '').trim();
+        let isWeekend = false;
+        let dayName = '';
+        if (dateInputVal) {
+            const parts = dateInputVal.split('-');
+            if (parts.length === 3) {
+                const dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                const day = dt.getDay();
+                if (day === 0) { isWeekend = true; dayName = 'Sunday'; }
+                else if (day === 6) { isWeekend = true; dayName = 'Saturday'; }
+            }
+        }
 
-        cardsContainer.innerHTML = `<div class="text-center py-4 text-muted small"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found.</div>`;
+        if (currentViewMode === 'today' && isWeekend) {
+            tbody.innerHTML = `<tr>
+                <td colspan="7" class="text-center py-5">
+                    <div class="mb-2">
+                        <span class="badge bg-warning-subtle text-warning border border-warning p-2.5 rounded-circle shadow-xs">
+                            <i class="bi bi-calendar-x fs-3"></i>
+                        </span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">High Court Non-Sitting Day (${dateInputVal}, ${dayName})</h6>
+                    <p class="text-muted small mb-3">The High Court of Karnataka (Dharwad, Bengaluru, Kalaburagi) does not conduct hearings on weekends.<br />Daily cause lists are published by the Court Registry strictly for sitting court days.</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="setQuickDate('yesterday')">
+                            <i class="bi bi-clock-history me-1"></i> View Yesterday's Listed Matters (30-10-2026)
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold" onclick="switchCauseListViewMode('all')">
+                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${window.__allHcCauselistItems?.length || 2179})
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        } else if (currentViewMode === 'today') {
+            tbody.innerHTML = `<tr>
+                <td colspan="7" class="text-center py-5">
+                    <div class="mb-2">
+                        <span class="badge bg-light text-secondary border p-2.5 rounded-circle shadow-xs">
+                            <i class="bi bi-calendar-check fs-3"></i>
+                        </span>
+                    </div>
+                    <h6 class="fw-bold text-dark mb-1">No '${defaultOrgShortName}' Matters Listed on ${dateInputVal}</h6>
+                    <p class="text-muted small mb-3">No matters for ${defaultOrgShortName} are listed on the official High Court daily roster for this date across Dharwad, Bengaluru, and Kalaburagi.</p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="setQuickDate('yesterday')">
+                            <i class="bi bi-clock-history me-1"></i> Check Yesterday (30-10-2026)
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold" onclick="switchCauseListViewMode('all')">
+                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${window.__allHcCauselistItems?.length || 2179})
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        } else {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-muted"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found for the selected criteria.</td></tr>`;
+        }
+
+        cardsContainer.innerHTML = currentViewMode === 'today' && isWeekend
+            ? `<div class="text-center py-4 px-2">
+                <span class="badge bg-warning-subtle text-warning border border-warning p-2 rounded-circle mb-2"><i class="bi bi-calendar-x fs-4"></i></span>
+                <h6 class="fw-bold text-dark mb-1">Non-Sitting Court Day (${dateInputVal}, ${dayName})</h6>
+                <p class="text-muted extra-small mb-2">High Court does not sit on weekends.</p>
+                <div class="d-flex justify-content-center gap-1">
+                    <button type="button" class="btn btn-danger btn-xs py-1 px-2 fw-bold" onclick="setQuickDate('yesterday')">View Yesterday (30-10-2026)</button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs py-1 px-2" onclick="switchCauseListViewMode('all')">All Matters</button>
+                </div>
+            </div>`
+            : `<div class="text-center py-4 text-muted small"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found.</div>`;
 
         if (paginationContainer) paginationContainer.innerHTML = '';
 
@@ -2363,6 +2475,8 @@ function renderHcCauselistPage() {
 
         const sr = startIndex + idx + 1;
 
+        const isThisListedToday = item.isListedToday === true;
+
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 
         let rawCourtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
@@ -2377,10 +2491,12 @@ function renderHcCauselistPage() {
             }
         }
 
-        const clNo = item.causeListNo || (item.causeListType ? (item.causeListType.match(/(?:No\.?|#)\s*(\d+)/i)?.[1] || (item.causeListType.includes('No. 1') ? '1' : '')) : (isThisListedToday ? '1' : ''));
+        const clNo = item.causeListNo || (item.causeListType ? (item.causeListType.match(/(?:No\.?|#)\s*(\d+)/i)?.[1] || (item.causeListType.includes('No. 1') ? '1' : '')) : '');
 
-        let pet = (item.petitionerName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
-        let resName = (item.respondentName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
+        let rawPet = (item.petitionerName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
+        let rawRes = (item.respondentName || '—').replace(/Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s+HALL\s+NO[^\n\r]*|Cause\s+List\s+No[^\n\r]*|Sl\.No\.[^\n\r]*/gi, ' ').replace(/\s+/g, ' ').trim();
+        let pet = escapeHtml(rawPet);
+        let resName = escapeHtml(rawRes);
 
         const itemCnr = (item.cnrNumber || '').trim().toUpperCase();
 
@@ -2406,15 +2522,19 @@ function renderHcCauselistPage() {
 
 
 
-        const isThisListedToday = item.isListedToday === true;
-
         let dateStr = item.nextHearingDate ? (typeof item.nextHearingDate === 'string' ? item.nextHearingDate.substring(0, 10) : '') : '';
-
+        const isPlaceholderDate = !dateStr || dateStr.includes('5000') || dateStr.startsWith('1900') || dateStr.startsWith('2999') || dateStr.startsWith('0001');
+        let formattedDate = '';
+        if (!isPlaceholderDate && dateStr && dateStr.includes('-')) {
+            const p = dateStr.split('-');
+            if (p.length === 3) {
+                formattedDate = p[0].length === 4 ? `${p[2]}-${p[1]}-${p[0]}` : dateStr;
+            }
+        }
+        const effectiveListingDate = formattedDate || (isPlaceholderDate ? '' : displayDate);
         const listingBadge = isThisListedToday
-
-            ? `<span class="badge bg-danger text-white px-2 py-1 shadow-sm d-block mb-1"><i class="bi bi-broadcast me-1"></i>Listed on ${displayDate}</span>`
-
-            : (dateStr && !dateStr.startsWith('5000') ? `<span class="badge bg-light text-primary border border-primary-subtle px-2 py-1 d-block mb-1"><i class="bi bi-calendar-event me-1"></i>Next: ${dateStr}</span>` : `<span class="badge bg-light text-muted border px-2 py-1 d-block mb-1"><i class="bi bi-activity me-1"></i>Hearing Active</span>`);
+            ? `<span class="badge bg-danger text-white px-2 py-1 shadow-sm d-block mb-1"><i class="bi bi-broadcast me-1"></i>Listed on ${effectiveListingDate || displayDate}</span>`
+            : (formattedDate ? `<span class="badge bg-light text-primary border border-primary-subtle px-2 py-1 d-block mb-1"><i class="bi bi-calendar-event me-1"></i>Next: ${formattedDate}</span>` : `<span class="badge bg-light text-muted border px-2 py-1 d-block mb-1"><i class="bi bi-activity me-1"></i>Hearing Active</span>`);
 
         const stageText = item.caseStage || 'Hearing Active';
 
@@ -2490,11 +2610,13 @@ function renderHcCauselistPage() {
 
                     </button>
 
-                    <button class="btn btn-outline-warning text-dark btn-sm py-0.5 px-2 extra-small fw-bold text-nowrap" style="white-space: nowrap !important;" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')" title="View Roznama / Daily Proceedings">
-
+                    ${(item.hasRoznama || item.roznamaText) ? `
+                    <button class="btn btn-success text-white btn-sm py-0.5 px-2 extra-small fw-bold text-nowrap" style="white-space: nowrap !important;" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Roznama Recorded - Click to View">
+                        <i class="bi bi-check2-circle me-0.5"></i>Roznama
+                    </button>` : `
+                    <button class="btn btn-outline-warning text-dark btn-sm py-0.5 px-2 extra-small fw-bold text-nowrap" style="white-space: nowrap !important;" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Fetch Roznama / Daily Proceedings">
                         <i class="bi bi-file-earmark-text me-0.5"></i>Roznama
-
-                    </button>
+                    </button>`}
 
                 </div>` : ''}
 
@@ -2506,7 +2628,7 @@ function renderHcCauselistPage() {
 
                 <div class="extra-small text-muted text-break" style="line-height: 1.25;"><span class="fw-semibold">vs</span> ${resName}</div>
 
-                ${item.advocate ? `<div class="extra-small text-primary fw-bold mt-1 text-break"><i class="bi bi-person-fill me-0.5"></i>Adv: ${item.advocate}</div>` : ''}
+                ${item.advocate ? `<div class="extra-small text-primary fw-bold mt-1 text-break"><i class="bi bi-person-fill me-0.5"></i>Adv: ${escapeHtml(item.advocate)}</div>` : ''}
 
             </td>
 
@@ -2632,11 +2754,13 @@ function renderHcCauselistPage() {
 
                     </button>
 
+                    ${(item.hasRoznama || item.roznamaText) ? `
+                    <button class="btn btn-success text-white btn-sm py-1.5 extra-small flex-fill fw-bold shadow-xs" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')">
+                        <i class="bi bi-check2-circle me-1"></i>Roznama Recorded
+                    </button>` : `
                     <button class="btn btn-warning text-dark btn-sm py-1.5 extra-small flex-fill fw-bold shadow-xs" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(pet)}', '${safeJsArg(resName)}')">
-
-                        <i class="bi bi-file-earmark-text me-1"></i>Roznama
-
-                    </button>
+                        <i class="bi bi-file-earmark-text me-1"></i>Fetch Roznama
+                    </button>`}
 
                 </div>` : ''}
 
@@ -3096,6 +3220,7 @@ let currentDossierCaseNo = '';
 function formatHcCauselistDate(dVal) {
     if (!dVal) return '—';
     if (typeof dVal === 'string') {
+        if (dVal.includes('5000') || dVal.startsWith('1900') || dVal.startsWith('2999') || dVal.startsWith('0001')) return '—';
         if (dVal.includes('T')) dVal = dVal.split('T')[0];
         const parts = dVal.split('-');
         if (parts.length === 3 && parts[0].length === 4) {
@@ -3104,6 +3229,7 @@ function formatHcCauselistDate(dVal) {
         return dVal;
     }
     if (dVal instanceof Date && !isNaN(dVal.getTime())) {
+        if (dVal.getFullYear() >= 2999 || dVal.getFullYear() <= 1900) return '—';
         const dd = String(dVal.getDate()).padStart(2, '0');
         const mm = String(dVal.getMonth() + 1).padStart(2, '0');
         const yyyy = dVal.getFullYear();
@@ -3141,7 +3267,8 @@ function openDossierModal(appealId, cnr, mfaNo) {
         document.getElementById('dCaseTypeBadge').textContent = matchedItem.caseType || 'High Court Matter';
         document.getElementById('dCaseNo').textContent = `${matchedItem.caseType} ${matchedItem.regNumber}/${matchedItem.regYear}`;
         document.getElementById('dRegDate').textContent = matchedItem.regYear || '—';
-        document.getElementById('dNextHearing').textContent = matchedItem.nextHearingDate ? formatDate(matchedItem.nextHearingDate) : 'Today';
+        const dHearingFormatted = matchedItem.nextHearingDate ? formatDate(matchedItem.nextHearingDate) : '';
+        document.getElementById('dNextHearing').textContent = (dHearingFormatted && dHearingFormatted !== '—') ? dHearingFormatted : 'Hearing Active';
         document.getElementById('dStage').textContent = matchedItem.caseStage || 'HEARING';
         document.getElementById('dCourtName').textContent = matchedItem.establishmentName || 'High Court of Karnataka';
         document.getElementById('dCourtNo').textContent = matchedItem.courtHall || '—';
@@ -3189,7 +3316,7 @@ function openDossierModal(appealId, cnr, mfaNo) {
     if (matchedItem) {
         document.getElementById('mTbodyHistory').innerHTML = `<tr>
             <td class="text-center text-muted fw-bold">1</td>
-            <td class="fw-bold text-dark font-monospace text-nowrap" style="white-space: nowrap !important;">${matchedItem.nextHearingDate ? formatDate(matchedItem.nextHearingDate) : 'Today'}</td>
+            <td class="fw-bold text-dark font-monospace text-nowrap" style="white-space: nowrap !important;">${(matchedItem.nextHearingDate && formatDate(matchedItem.nextHearingDate) !== '—') ? formatDate(matchedItem.nextHearingDate) : 'Hearing Active'}</td>
             <td><span class="badge bg-light text-primary border text-wrap text-start" style="font-size: 11.5px; line-height: 1.4; padding: 5px 8px;">${matchedItem.caseStage || 'HEARING'}</span></td>
             <td class="fw-semibold text-secondary" style="font-size: 12px; line-height: 1.4;">${matchedItem.courtHall || 'Hon\'ble High Court Bench'}</td>
             <td><span class="fst-italic text-secondary" style="font-size: 12px;">Listed on Official High Court Daily Cause List No. ${matchedItem.causeListNo || '1'} (Serial No. ${matchedItem.causeListItemNo || '—'}).</span></td>
@@ -3641,6 +3768,130 @@ function printHighCourtDossier() {
     pWin.document.close();
 }
 
+function setQuickDate(preset) {
+    const today = new Date();
+    let target = new Date();
+    if (preset === 'yesterday') {
+        target.setDate(today.getDate() - 1);
+    } else if (preset === 'tomorrow') {
+        target.setDate(today.getDate() + 1);
+    }
+    const dd = String(target.getDate()).padStart(2, '0');
+    const mm = String(target.getMonth() + 1).padStart(2, '0');
+    const yyyy = target.getFullYear();
+    const dateStr = `${dd}-${mm}-${yyyy}`;
+
+    const dateInput = document.getElementById('liveDate');
+    if (dateInput) {
+        dateInput.value = dateStr;
+    }
+
+    ['btnQuickYesterday', 'btnQuickToday', 'btnQuickTomorrow'].forEach(id => {
+        const b = document.getElementById(id);
+        if (b) b.className = 'btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small';
+    });
+    const activeId = preset === 'yesterday' ? 'btnQuickYesterday' : (preset === 'tomorrow' ? 'btnQuickTomorrow' : 'btnQuickToday');
+    const activeB = document.getElementById(activeId);
+    if (activeB) activeB.className = 'btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active';
+
+    loadHcCourtBenches();
+    fetchLiveHcCauselist();
+}
+
+async function triggerBatchRoznamaSync() {
+    const btn = document.getElementById('btnBatchSyncRoznamas');
+    const origHtml = btn ? btn.innerHTML : '';
+    const dateInputVal = (document.getElementById('liveDate')?.value || '').trim();
+
+    const allItems = window.__allHcCauselistItems || [];
+    let targetItems = allItems.filter(x => x.isListedToday && x.cnrNumber && x.cnrNumber.trim() !== '-' && (!dateInputVal || getNormalizedItemDateStr(x) === dateInputVal));
+    if (targetItems.length === 0) {
+        targetItems = allItems.filter(x => x.cnrNumber && x.cnrNumber.trim() !== '-').slice(0, 30);
+    }
+
+    const candidateCnrs = [...new Set(targetItems.map(x => x.cnrNumber.trim().toUpperCase()))];
+
+    if (candidateCnrs.length === 0) {
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                icon: 'info',
+                title: 'No Matters to Sync',
+                text: `No cases with valid CNRs were found for ${dateInputVal} to sync Roznamas.`
+            });
+        } else {
+            alert(`No cases with valid CNRs were found for ${dateInputVal} to sync Roznamas.`);
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Syncing (${candidateCnrs.length})...`;
+    }
+
+    try {
+        const res = await fetch('/ECourts/BatchSyncRoznamas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                date: dateInputVal,
+                cnrNumbers: candidateCnrs,
+                module: 'MVC'
+            })
+        });
+
+        const data = await res.json();
+        if (data && data.success) {
+            let updatedCount = 0;
+            if (data.syncedItems && window.__allHcCauselistItems) {
+                Object.keys(data.syncedItems).forEach(cnr => {
+                    const itemData = data.syncedItems[cnr];
+                    window.__allHcCauselistItems.forEach(item => {
+                        if (item.cnrNumber && item.cnrNumber.toUpperCase() === cnr.toUpperCase()) {
+                            if (itemData.roznama) {
+                                item.roznamaText = itemData.roznama;
+                                item.hasRoznama = true;
+                                updatedCount++;
+                            }
+                            if (itemData.nextDate) {
+                                item.nextHearingDate = itemData.nextDate;
+                            }
+                            if (itemData.purpose) {
+                                item.caseStage = itemData.purpose;
+                            }
+                        }
+                    });
+                });
+            }
+
+            filterLiveCauselistRows();
+
+            const nextNote = data.nextDatesUpdated > 0 ? `<br><small class="text-success fw-bold">ðŸ“… ${data.nextDatesUpdated} Next Hearing Dates updated in database.</small>` : '';
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Roznamas Synced',
+                    html: `<b>${data.syncedCount || updatedCount} Roznamas</b> processed and recorded for <b>${data.date || dateInputVal}</b>.${nextNote}`,
+                    timer: 4000,
+                    showConfirmButton: false
+                });
+            } else {
+                showToast('Roznamas Synced', `${data.syncedCount || updatedCount} Roznamas updated for ${dateInputVal}.`, true);
+            }
+        } else {
+            showToast('Notice', (data && data.message) ? data.message : 'Could not sync Roznamas.', false);
+        }
+    } catch (e) {
+        console.error('Error in triggerBatchRoznamaSync:', e);
+        showToast('Error', 'Network error while syncing Roznamas.', false);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
 function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
 
     curRzCnr = cnr || '';
@@ -3693,25 +3944,28 @@ function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
 
     if (elParties) elParties.textContent = (pet && res) ? `${pet} vs ${res}` : (caseNo || 'High Court Case Record');
 
-    if (elText) elText.textContent = `Querying live e-Courts NAPIX showBusiness gateway for CNR ${cnr} on ${date}...`;
-
-    
-
     const badge = document.getElementById('rzLiveBadge');
-
-    if (badge) {
-
-        badge.className = 'badge bg-warning text-dark extra-small';
-
-        badge.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:0.6rem;height:0.6rem;"></span> Checking Live...';
-
-    }
-
     const msg = document.getElementById('rzLiveMsg');
 
-    if (msg) msg.textContent = `Connecting to official Daily Status gateway for ${date}...`;
+    const localMatch = window.__allHcCauselistItems?.find(x => x.cnrNumber && x.cnrNumber.toUpperCase() === (cnr || '').toUpperCase());
+    let hasSavedRoznama = false;
 
-
+    if (localMatch && localMatch.roznamaText && localMatch.roznamaText.trim().length >= 3) {
+        hasSavedRoznama = true;
+        if (elText) elText.textContent = localMatch.roznamaText.trim();
+        if (badge) {
+            badge.className = 'badge bg-primary extra-small';
+            badge.innerHTML = '<i class="bi bi-database-fill me-1"></i> Recorded Database Roznama';
+        }
+        if (msg) msg.textContent = 'Verbatim court proceedings loaded from recorded case history.';
+    } else {
+        if (elText) elText.textContent = `Querying live e-Courts NAPIX showBusiness gateway for CNR ${cnr} on ${date}...`;
+        if (badge) {
+            badge.className = 'badge bg-warning text-dark extra-small';
+            badge.innerHTML = '<span class="spinner-border spinner-border-sm me-1" style="width:0.6rem;height:0.6rem;"></span> Checking Live...';
+        }
+        if (msg) msg.textContent = `Connecting to official Daily Status gateway for ${date}...`;
+    }
 
     const modalEl = document.getElementById('roznamaModal');
     if (modalEl && modalEl.parentElement !== document.body) {
@@ -3719,22 +3973,16 @@ function openLiveRoznamaDirect(cnr, date, caseNo, pet, res) {
     }
     if (modalEl) {
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-
             const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
-
             modal.show();
-
         } else if (typeof $ !== 'undefined') {
-
             $('#roznamaModal').modal('show');
-
         }
-
     }
 
-
-
-    reloadCurrentRoznama();
+    if (!hasSavedRoznama) {
+        reloadCurrentRoznama();
+    }
 
 }
 
@@ -3785,6 +4033,18 @@ function reloadCurrentRoznama() {
                 if (bText && bText.trim().length >= 3) {
 
                     if (rzText) rzText.textContent = bText.trim();
+
+                    // Update local cache so row button turns green immediately
+                    if (window.__allHcCauselistItems && curRzCnr) {
+                        const itm = window.__allHcCauselistItems.find(x => x.cnrNumber && x.cnrNumber.toUpperCase() === curRzCnr.toUpperCase());
+                        if (itm) {
+                            itm.roznamaText = bText.trim();
+                            itm.hasRoznama = true;
+                            if (res.nextDate) itm.nextHearingDate = res.nextDate;
+                            if (res.purpose) itm.caseStage = res.purpose;
+                            filterLiveCauselistRows();
+                        }
+                    }
 
                 } else {
 
@@ -3910,7 +4170,7 @@ function downloadServerExcel() {
 
     const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
 
-    const regYear = document.getElementById('liveRegYear')?.value || 'RECENT';
+    const regYear = document.getElementById('liveRegYear')?.value || 'ALL';
 
     const caseStatus = document.getElementById('liveCaseStatus')?.value || 'P';
 
@@ -4110,7 +4370,11 @@ function exportCauseListToExcel(scope = 'visible') {
 
         let hearingDateDisplay = item.nextHearingDate ? (typeof item.nextHearingDate === 'string' ? item.nextHearingDate.substring(0, 10) : '') : '-';
 
-        if (hearingDateDisplay.startsWith('5000')) hearingDateDisplay = '-';
+        if (hearingDateDisplay.includes('5000') || hearingDateDisplay.includes('1900') || hearingDateDisplay.includes('2999') || hearingDateDisplay.startsWith('0001')) hearingDateDisplay = '-';
+        else if (hearingDateDisplay.includes('-')) {
+            const p = hearingDateDisplay.split('-');
+            if (p.length === 3 && p[0].length === 4) hearingDateDisplay = `${p[2]}-${p[1]}-${p[0]}`;
+        }
 
         const roleClass = (item.nwkrtcRole === 'With NWKRTC' || (item.nwkrtcRole && item.nwkrtcRole.includes('With'))) ? 'badge-with' : 'badge-against';
 
@@ -4223,4 +4487,3 @@ function exportCauseListToExcel(scope = 'visible') {
 
 
 </script>
-

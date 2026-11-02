@@ -97,6 +97,8 @@ namespace MVCCaseManagement.Models
         public string? CauseListItemNo { get; set; }
         public string? JudgeName { get; set; }
         public string? Advocate { get; set; }
+        public string? RoznamaText { get; set; }
+        public bool HasRoznama => !string.IsNullOrWhiteSpace(RoznamaText);
 
         public string ListingStatus
         {
@@ -109,5 +111,21 @@ namespace MVCCaseManagement.Models
                 return "Past Hearing";
             }
         }
+    }
+
+    public class BatchSyncRoznamasRequest
+    {
+        public string Date { get; set; } = string.Empty;
+        public List<string>? CnrNumbers { get; set; }
+        public string? Module { get; set; } = "MVC";
+    }
+
+    public class BatchSyncRoznamaItemResult
+    {
+        public string CNRNumber { get; set; } = string.Empty;
+        public string? Roznama { get; set; }
+        public string? NextDate { get; set; }
+        public string? Purpose { get; set; }
+        public string Source { get; set; } = "NAPIX";
     }
 }

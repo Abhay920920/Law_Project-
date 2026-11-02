@@ -133,6 +133,7 @@ builder.Services.AddSingleton<MVCCaseManagement.Utils.NapixSyncEngine>();
 builder.Services.AddHostedService<MVCCaseManagement.Services.NapixBackgroundSyncService>();
 
 // Add High Court Cause List Scanner & Automated Background Sync Service
+builder.Services.AddSingleton<MVCCaseManagement.Services.ECourts.IHighCourtPartySearchStore, MVCCaseManagement.Services.ECourts.HighCourtPartySearchStore>();
 builder.Services.AddSingleton<MVCCaseManagement.Services.ECourts.IHighCourtCauseListScannerService, MVCCaseManagement.Services.ECourts.HighCourtDailyCauseListScannerService>();
 builder.Services.AddHostedService<MVCCaseManagement.Services.ECourts.HighCourtCauseListBackgroundSyncService>();
 

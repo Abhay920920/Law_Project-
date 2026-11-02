@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [switch]$SelfContained = $false,
+    [switch]$SkipTests = $false,
     [string]$OutputDir = ""
 )
 
@@ -34,21 +35,36 @@ $webOut = Join-Path $OutputDir "MVCCaseManagement"
 $apiOut = Join-Path $OutputDir "NapixEcourtsApi"
 
 # Step 1: Solution Build
-Write-Host "[1/4] Compiling LawProject.sln (Release)..." -ForegroundColor Yellow
-dotnet build "$scriptDir\LawProject.sln" -c Release --nologo
+Write-Host "[1/4] Compiling MVCCaseManagement and NapixEcourtsApi (Release)..." -ForegroundColor Yellow
+dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --no-restore --nologo
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "Build failed with exit code $LASTEXITCODE"
+    dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --nologo
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Build failed for MVCCaseManagement with exit code $LASTEXITCODE"
+}
+dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --no-restore --nologo
+if ($LASTEXITCODE -ne 0) {
+    dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --nologo
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Build failed for NapixEcourtsApi with exit code $LASTEXITCODE"
 }
 Write-Host "  [OK] Build completed successfully." -ForegroundColor Green
 
 # Step 2: Automated Tests
-Write-Host ""
-Write-Host "[2/4] Running automated unit tests..." -ForegroundColor Yellow
-dotnet test "$PSScriptRoot\LawProject.sln" -c Release --no-build --nologo
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Unit tests failed! Publishing aborted to protect production integrity."
+if (-not $SkipTests) {
+    Write-Host ""
+    Write-Host "[2/4] Running automated unit tests..." -ForegroundColor Yellow
+    dotnet test "$PSScriptRoot\LawProject.sln" -c Release --no-build --nologo
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Unit tests failed! Publishing aborted to protect production integrity."
+    }
+    Write-Host "  [OK] All test suites passed." -ForegroundColor Green
+} else {
+    Write-Host ""
+    Write-Host "[2/4] Skipping unit tests (-SkipTests specified)..." -ForegroundColor Yellow
 }
-Write-Host "  [OK] All test suites passed." -ForegroundColor Green
 
 # Clean existing outputs
 if (Test-Path $webOut) { Remove-Item -Recurse -Force $webOut }
@@ -101,6 +117,15 @@ New-Item -ItemType Directory -Force -Path (Join-Path $webOut "logs") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $webOut "uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $webOut "wwwroot\uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $apiOut "logs") | Out-Null
+
+# Copy App_Data (including persistent NAPIX party search master store and cause list caches)
+$sourceAppData = Join-Path $scriptDir "Law Project\CaseManagement\App_Data"
+$targetAppData = Join-Path $webOut "App_Data"
+if (Test-Path $sourceAppData) {
+    Write-Host "  Syncing App_Data (NAPIX persistent caches) to $targetAppData..." -ForegroundColor Gray
+    if (-not (Test-Path $targetAppData)) { New-Item -ItemType Directory -Force -Path $targetAppData | Out-Null }
+    Copy-Item -Path "$sourceAppData\*" -Destination $targetAppData -Recurse -Force
+}
 
 # Copy fresh Views to webOut and rootPublish for Razor Runtime Compilation
 $sourceViews = Join-Path $scriptDir "Law Project\CaseManagement\Views"
