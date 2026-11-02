@@ -2639,7 +2639,7 @@ function renderHcCauselistPage() {
             <div class="pt-2 border-top">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <span class="extra-small text-muted fw-bold">CNR Number:</span>
-                    <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || 'â€”'}</span>
+                    <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || '-'}</span>
                 </div>
                 ${itemCnr ? `
                 <div class="row g-1.5 w-100 m-0">
@@ -2665,7 +2665,7 @@ function renderHcCauselistPage() {
                 </div>` : ''}
             </div>
         </div>`;
-    };
+    });
 
 
 
