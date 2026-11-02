@@ -156,6 +156,7 @@ namespace MVCCaseManagement.Controllers
 
         // GET: /ECourts/HighCourtCauseList
         [HttpGet]
+        [AllowAnonymous]
         public async Task<IActionResult> HighCourtCauseList(string? bench = null, string? division = null, string? appealType = null, string? q = null, DateTime? date = null)
         {
             var rawItems = await _ecourtsRepo.GetHighCourtCauseListAsync();

@@ -13,13 +13,10 @@
 <style>
 
     .hc-causelist-page {
-
         width: 100%;
-
         max-width: 100%;
-
         box-sizing: border-box;
-
+        overflow-x: hidden;
     }
 
 /* Table column constraints to prevent vertical character stacking */
@@ -183,26 +180,41 @@
 
 
     /* Mobile First Enhancements */
-
     .mobile-presets-scroll {
-
-        scrollbar-width: none;
-
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        white-space: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        padding-bottom: 4px !important;
+        scrollbar-width: thin !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
-
     .mobile-presets-scroll::-webkit-scrollbar {
-
-        display: none;
-
+        height: 3px;
     }
-
-
+    .mobile-presets-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    .mobile-presets-scroll .btn {
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+    }
 
     .causelist-mobile-card {
         border-radius: 12px;
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         border: 1px solid #e2e8f0;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        overflow: hidden;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
     }
     .causelist-mobile-card:active {
         background-color: #f8fafc;
@@ -300,18 +312,31 @@
             grid-template-columns: 1fr 1fr !important;
             gap: 6px !important;
         }
-        .hc-results-actions .btn {
+        .hc-results-actions > .btn {
             width: 100% !important;
-            padding: 7px 8px !important;
-            font-size: 0.78rem !important;
+            padding: 7px 6px !important;
+            font-size: 0.75rem !important;
             justify-content: center !important;
+            white-space: nowrap !important;
         }
         .hc-results-actions .btn-group {
             grid-column: span 2 !important;
             width: 100% !important;
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
         }
-        .hc-results-actions .btn-group .btn:first-child {
-            flex: 1 !important;
+        .hc-results-actions .btn-group > .btn:first-child {
+            flex: 1 1 auto !important;
+            width: auto !important;
+            padding: 7px 8px !important;
+            font-size: 0.78rem !important;
+            white-space: nowrap !important;
+        }
+        .hc-results-actions .btn-group > .dropdown-toggle {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            padding: 7px 12px !important;
         }
         .hc-results-header #liveListBadge {
             grid-column: span 2 !important;
@@ -634,13 +659,13 @@
 
 
 
-                <div class="col-6 col-md-6 col-lg-2">
+                <div class="col-12 col-sm-6 col-md-6 col-lg-2">
 
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-diagram-3 me-1 text-danger"></i>Court Hall</label>
 
                     <select id="liveBenchId" class="form-select form-select-sm fw-bold" onchange="filterLiveCauselistRows()">
 
-                        <option value="ALL">All Benches / Halls</option>
+                        <option value="ALL">All Court Halls</option>
 
                     </select>
 
@@ -648,7 +673,7 @@
 
 
 
-                <div class="col-6 col-md-6 col-lg-2">
+                <div class="col-12 col-sm-6 col-md-6 col-lg-2">
 
                     <label class="form-label small fw-bold text-secondary mb-1"><i class="bi bi-card-checklist me-1 text-danger"></i>Cause List No</label>
 
@@ -1453,11 +1478,8 @@ function loadHcCourtBenches() {
     
 
     const defaultOpt = document.createElement('option');
-
     defaultOpt.value = 'ALL';
-
-    defaultOpt.textContent = 'All Benches / Court Halls';
-
+    defaultOpt.textContent = 'All Court Halls';
     benchSelect.appendChild(defaultOpt);
 
 
@@ -2116,7 +2138,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     <!-- Mobile Card Feed View (< 768px) -->
 
-    <div class="d-block d-md-none p-2 bg-light rounded-bottom-3" id="liveCardsContainer" style="max-height: 70vh; overflow-y: auto;">
+    <div class="d-block d-md-none p-2 bg-light rounded-bottom-3" id="liveCardsContainer" style="max-height: 75vh; overflow-y: auto; overflow-x: hidden; width: 100%; box-sizing: border-box;">
 
     </div>
 
@@ -2590,27 +2612,30 @@ function renderHcCauselistPage() {
 
 
 
-        mobileCardsHtml += `<div class="causelist-mobile-card p-3 mb-2.5 bg-white border shadow-sm live-causelist-card corp-match-card"
+        mobileCardsHtml += `<div class="causelist-mobile-card p-2.5 p-sm-3 mb-2.5 bg-white border shadow-sm live-causelist-card corp-match-card"
             data-appeal-id="${item.regNumber || ''}"
             data-cnr="${itemCnr}"
             data-is-corp="true"
             data-is-today="${isThisListedToday ? 'true' : 'false'}"
-            data-role="${item.nwkrtcRole || ''}">
+            data-role="${item.nwkrtcRole || ''}"
+            style="overflow: hidden; max-width: 100%; box-sizing: border-box;">
             
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2 pb-2 border-bottom">
-                <div class="d-flex align-items-center gap-2 min-w-0">
+            <!-- Card Header: Serial #, Case Number, and Bench -->
+            <div class="d-flex justify-content-between align-items-center mb-1.5 pb-1.5 border-bottom gap-2">
+                <div class="d-flex align-items-center gap-1.5 min-w-0">
                     <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>
-                    <div class="min-w-0">
-                        <div class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</div>
-                        <div class="extra-small text-muted text-truncate"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</div>
-                    </div>
+                    <span class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</span>
                 </div>
-                <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
-                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold extra-small px-2 py-1 text-wrap text-end" style="max-width: 170px; line-height: 1.25;">
-                        <i class="bi bi-bank2 me-1"></i>${courtNo || 'Court Hall'}
-                    </span>
-                    ${clNo ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small font-monospace"><i class="bi bi-card-checklist me-1"></i>CL No: ${clNo}</span>` : ''}
+                <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</span>
+            </div>
+
+            <!-- Court Hall & Cause List Badge Row (Dedicated full-width row to prevent horizontal overflow) -->
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-2 p-1.5 rounded-2 bg-warning-subtle bg-opacity-40 border border-warning border-opacity-50">
+                <div class="extra-small fw-bold text-dark d-flex align-items-center gap-1 min-w-0" style="line-height: 1.25;">
+                    <i class="bi bi-bank2 text-dark flex-shrink-0"></i>
+                    <span class="text-break">${courtNo || 'Court Hall Active'}</span>
                 </div>
+                ${clNo ? `<span class="badge bg-primary text-white extra-small font-monospace flex-shrink-0"><i class="bi bi-card-checklist me-0.5"></i>CL No: ${clNo}</span>` : ''}
             </div>
 
             <div class="p-2.5 bg-light rounded-2 border mb-2 small">
@@ -2637,31 +2662,25 @@ function renderHcCauselistPage() {
             </div>
 
             <div class="pt-2 border-top">
-                <div class="d-flex justify-content-between align-items-center mb-2">
+                <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-1">
                     <span class="extra-small text-muted fw-bold">CNR Number:</span>
                     <span class="font-monospace fw-bold text-dark extra-small text-break">${itemCnr || '-'}</span>
                 </div>
                 ${itemCnr ? `
-                <div class="row g-1.5 w-100 m-0">
-                    <div class="col-4 p-0 pe-1">
-                        <button class="btn btn-outline-primary btn-sm w-100 py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')">
-                            <i class="bi bi-arrow-repeat"></i><span>Sync</span>
-                        </button>
-                    </div>
-                    <div class="col-4 p-0 px-0.5">
-                        <button class="btn btn-outline-info btn-sm w-100 py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')">
-                            <i class="bi bi-journal-text"></i><span>Dossier</span>
-                        </button>
-                    </div>
-                    <div class="col-4 p-0 ps-1">
-                        ${(item.hasRoznama || item.roznamaText) ? `
-                        <button class="btn btn-success text-white btn-sm w-100 py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Roznama Recorded - Click to View">
-                            <i class="bi bi-check2-circle"></i><span>Roznama</span>
-                        </button>` : `
-                        <button class="btn btn-warning text-dark btn-sm w-100 py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Fetch Roznama / Daily Proceedings">
-                            <i class="bi bi-file-earmark-text"></i><span>Roznama</span>
-                        </button>`}
-                    </div>
+                <div class="d-grid gap-1.5 w-100" style="grid-template-columns: 1fr 1fr 1fr;">
+                    <button class="btn btn-outline-primary btn-sm py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1 text-nowrap" type="button" onclick="syncSingleCnr('${item.regNumber}', '${itemCnr}')">
+                        <i class="bi bi-arrow-repeat"></i><span>Sync</span>
+                    </button>
+                    <button class="btn btn-outline-info btn-sm py-1.5 extra-small fw-semibold shadow-xs d-flex align-items-center justify-content-center gap-1 text-nowrap" type="button" onclick="openDossierModal('${item.regNumber}', '${itemCnr}', '${safeJsArg(caseNo)}')">
+                        <i class="bi bi-journal-text"></i><span>Dossier</span>
+                    </button>
+                    ${(item.hasRoznama || item.roznamaText) ? `
+                    <button class="btn btn-success text-white btn-sm py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1 text-nowrap" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Roznama Recorded - Click to View">
+                        <i class="bi bi-check2-circle"></i><span>Roznama</span>
+                    </button>` : `
+                    <button class="btn btn-warning text-dark btn-sm py-1.5 extra-small fw-bold shadow-xs d-flex align-items-center justify-content-center gap-1 text-nowrap" type="button" onclick="openLiveRoznamaDirect('${itemCnr}', '${displayDate}', '${safeJsArg(caseNo)}', '${safeJsArg(rawPet)}', '${safeJsArg(rawRes)}')" title="Fetch Roznama / Daily Proceedings">
+                        <i class="bi bi-file-earmark-text"></i><span>Roznama</span>
+                    </button>`}
                 </div>` : ''}
             </div>
         </div>`;
