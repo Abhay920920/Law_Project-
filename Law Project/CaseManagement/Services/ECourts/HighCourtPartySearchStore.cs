@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
@@ -147,12 +148,22 @@ namespace MVCCaseManagement.Services.ECourts
                 if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation")
                     return false;
 
-                string itemEst = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6 
+                string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                     ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
-                    : "KAHC02";
+                    : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
 
-                return NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst) ||
-                       NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst);
+                bool petIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
+                bool resIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
+                if (petIsNw || resIsNw) return true;
+
+                if (!string.IsNullOrEmpty(item.Advocate))
+                {
+                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)\b", RegexOptions.IgnoreCase);
+                    bool hasOfficer = Regex.IsMatch($"{item.PetitionerName} {item.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                    if (hasAdv && hasOfficer) return true;
+                }
+
+                return false;
             });
 
             // Establishment Filter

@@ -228,7 +228,7 @@ namespace MVCCaseManagement.Utils
             // Empanelled NWKRTC Standing Counsel representation check
             if (!string.IsNullOrWhiteSpace(advocate))
             {
-                bool isNwkrtcStandingCounsel = Regex.IsMatch(advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
+                bool isNwkrtcStandingCounsel = Regex.IsMatch(advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)\b", RegexOptions.IgnoreCase);
                 bool hasTransportAuthority = Regex.IsMatch(s, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
                 if (isNwkrtcStandingCounsel && hasTransportAuthority)
                 {
