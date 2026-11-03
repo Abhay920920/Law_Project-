@@ -456,14 +456,21 @@
             flex-direction: row !important;
             flex-wrap: nowrap !important;
             width: 100% !important;
+            background: #e2e8f0 !important;
+            border-radius: 50rem !important;
+            padding: 3px !important;
+            gap: 2px !important;
+            border: none !important;
         }
         .hc-sub-header .btn-group > .btn {
             flex: 1 1 50% !important;
             min-width: 0 !important;
             text-align: center !important;
             white-space: nowrap !important;
-            font-size: 0.75rem !important;
-            padding: 6px 4px !important;
+            font-size: 0.76rem !important;
+            padding: 6px 6px !important;
+            border-radius: 50rem !important;
+            border: none !important;
         }
         .dossier-nav-tabs {
             display: flex !important;
@@ -1835,9 +1842,7 @@ const registeredCases = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Mode
 
 
 
-let currentViewMode = 'all';
-
-
+let currentViewMode = 'today';
 
 async function triggerLiveHighCourtScan() {
     const btn = document.getElementById('btnLiveBenchScan');
@@ -1847,7 +1852,7 @@ async function triggerLiveHighCourtScan() {
         btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Scanning Benches...`;
     }
 
-    const estCode = (document.getElementById('liveEstCode')?.value || 'KAHC02').trim();
+    const estCode = (document.getElementById('liveEstCode')?.value || 'ALL').trim();
     const dateInput = (document.getElementById('liveDate')?.value || document.getElementById('hearingDateInput')?.value || '').trim();
 
     try {
@@ -1865,13 +1870,13 @@ async function triggerLiveHighCourtScan() {
                     showConfirmButton: false
                 });
             }
-            fetchLiveHcCauselist();
+            fetchLiveHcCauselist('today');
         } else {
             alert('Scan notice: ' + (data.message || 'Error scanning cause list.'));
         }
     } catch (e) {
         console.error('Error triggering live scan:', e);
-        fetchLiveHcCauselist();
+        fetchLiveHcCauselist('today');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -1884,8 +1889,6 @@ function fetchLiveHcCauselist(viewMode) {
 
     if (viewMode !== undefined) {
         currentViewMode = viewMode;
-    } else if (document.getElementById('liveRegYear')?.value === 'ALL') {
-        currentViewMode = 'all';
     }
 
     const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
@@ -2156,10 +2159,10 @@ function switchCauseListViewMode(mode) {
         btnAll.innerHTML = `<i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)`;
         if (mode === 'today') {
             btnToday.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
-            btnAll.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
+            btnAll.className = 'btn btn-sm text-secondary bg-transparent py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         } else {
             btnAll.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
-            btnToday.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
+            btnToday.className = 'btn btn-sm text-secondary bg-transparent py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         }
     }
 
@@ -2252,12 +2255,12 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 w-100 w-md-auto justify-content-between justify-content-md-end">
-                <div class="btn-group btn-group-sm w-100 w-md-auto d-flex flex-row flex-nowrap" role="group">
-                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary bg-white'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" onclick="switchCauseListViewMode('all')">
-                        <i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)
-                    </button>
-                    <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary bg-white'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" onclick="switchCauseListViewMode('today')">
+                <div class="btn-group btn-group-sm w-100 w-md-auto d-flex flex-row flex-nowrap" role="group" style="background: #e2e8f0; border-radius: 50rem; padding: 3px; gap: 2px;">
+                    <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('today')">
                         <i class="bi bi-calendar-check me-1"></i>Scheduled (<span id="tabCountToday">${listedCount}</span>)
+                    </button>
+                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('all')">
+                        <i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)
                     </button>
                 </div>
                 <div class="d-none d-sm-flex align-items-center gap-1.5 flex-shrink-0">
@@ -2619,7 +2622,8 @@ function renderHcCauselistPage() {
 
         const sr = startIndex + idx + 1;
 
-        const isThisListedToday = item.isListedToday === true;
+        const itemDateStr = getNormalizedItemDateStr(item);
+        const isThisListedToday = item.isListedToday === true && (!itemDateStr || itemDateStr === displayDate);
 
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 
@@ -2699,11 +2703,11 @@ function renderHcCauselistPage() {
             <td class="fw-bold text-center text-muted">${sr}</td>
 
             <td class="text-nowrap">
-
-                <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
-
+                <div class="d-flex align-items-center gap-1">
+                    <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
+                    ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
+                </div>
                 <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
-
             </td>
 
             <td>
@@ -2803,6 +2807,7 @@ function renderHcCauselistPage() {
                 <div class="d-flex align-items-center gap-1.5 min-w-0">
                     <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>
                     <span class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</span>
+                    ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
                 </div>
                 <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</span>
             </div>
@@ -3939,7 +3944,7 @@ function setQuickDate(preset) {
     if (activeB) activeB.className = 'btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active';
 
     loadHcCourtBenches();
-    fetchLiveHcCauselist();
+    fetchLiveHcCauselist('today');
 }
 
 async function triggerBatchRoznamaSync() {
@@ -4272,7 +4277,7 @@ function copyRoznamaText() {
 
 document.addEventListener('DOMContentLoaded', function () {
     loadHcCourtBenches();
-    fetchLiveHcCauselist();
+    fetchLiveHcCauselist('today');
 
     // Ensure modals are mounted to document.body to prevent flex overflow clipping and background scroll jumping
     const dModal = document.getElementById('dossierModal');

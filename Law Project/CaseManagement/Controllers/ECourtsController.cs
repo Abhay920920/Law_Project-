@@ -476,7 +476,7 @@ namespace MVCCaseManagement.Controllers
                 }
 
                 // 4. Check for direct NWKRTC party keywords
-                if (Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST(ERN)?(\s+STATE)?\s+ROAD|MANAGEMENT\s*OF?\s*NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)", RegexOptions.IgnoreCase) ||
+                if (Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|MANAGEMENT\s*OF?\s*NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)") ||
                     comb.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
@@ -593,26 +593,26 @@ namespace MVCCaseManagement.Controllers
                 string comb = $"{pName} {rName}";
 
                 // Exclude explicit other RTCs
-                if (Regex.IsMatch(comb, @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(comb, @"(?i)(NEKRTC|BMTC|KKRTC)"))
                 {
                     return false;
                 }
                 if (Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST)\b", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)"))
                 {
                     return false;
                 }
 
                 // Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
                 if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER)"))
                 {
                     return false;
                 }
 
                 // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
                 if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)"))
                 {
                     return false;
                 }

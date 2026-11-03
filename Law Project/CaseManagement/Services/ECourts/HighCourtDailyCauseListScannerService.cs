@@ -397,7 +397,14 @@ namespace MVCCaseManagement.Services.ECourts
                 }
 
                 // Strip running page headers and website links so serial numbers and case codes detach cleanly
-                // In Karnataka High Court, headers have the pattern "031120261.367422WP" (Date + ListNo + Dot + BenchId + SerialNo + CaseType).
+                // Pre-process fullText:
+                // 1. Separate 4-digit years from serial numbers before case types: e.g. "202544WP" -> "2025 44 WP"
+                fullText = Regex.Replace(fullText, @"\b(19\d{2}|20\d{2})(\d{1,3}(?:\.\d{1,2})?)(?=(?:wt)?(?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL)\b)", "$1 $2 ", RegexOptions.IgnoreCase);
+                // 2. Separate R/P/A-numbers from serial numbers: e.g. "R1660WP" -> "R16 60 WP"
+                fullText = Regex.Replace(fullText, @"\b([RPA]\d{1,2})(\d{1,2})(?=(?:wt)?(?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL)\b)", "$1 $2 ", RegexOptions.IgnoreCase);
+                // 3. Separate trailing letters from serial numbers: e.g. "RAO27WP" -> "RAO 27 WP"
+                fullText = Regex.Replace(fullText, @"(?<=[A-Za-z])(\d{1,3}(?:\.\d{1,2})?)(?=(?:wt)?(?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL)\b)", " $1 ", RegexOptions.IgnoreCase);
+                // 4. In Karnataka High Court, headers have the pattern "031120261.367422WP" (Date + ListNo + Dot + BenchId + SerialNo + CaseType).
                 // We replace up to BenchId (e.g. "\b\d{8}\d*\.\d{3,4}") so the serial number (e.g. 22 or 35) is preserved!
                 fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d{3,4}", " ", RegexOptions.IgnoreCase);
 
@@ -508,14 +515,15 @@ namespace MVCCaseManagement.Services.ECourts
                     else
                     {
                         // Handle VS format (common in Division Bench & Single Judge orders lists)
-                        var vsMatch = Regex.Match(blockText, @"(?<=[,\s\)])VS(?=[\sA-Z:])", RegexOptions.IgnoreCase);
+                        // Seamlessly handles embedded VS even without spaces: "DANDINAVARVSTHE", "BAGBANVSMANAGING", "PATAGARVSTHE"
+                        var vsMatch = Regex.Match(blockText, @"(?:\s+|\b|(?<=[A-Za-z0-9\.\)]))\s*VS\s*(?:\s+|\b|(?=[A-Za-z]))", RegexOptions.IgnoreCase);
                         if (vsMatch.Success)
                         {
                             string beforeVs = blockText.Substring(0, vsMatch.Index).Trim().Trim(',', ' ', '\r', '\n');
                             string afterVs = blockText.Substring(vsMatch.Index + vsMatch.Length).Trim();
 
-                            var petMatch = Regex.Match(beforeVs, @"(THE\s+DIVISIONAL\s*CONTROLLER|THE\s+MANAGING\s*DIRECTOR|THE\s+MANAGEMENT\s+OF\s+NWKRTC|[A-Z\s\.\/]+?)$", RegexOptions.IgnoreCase);
-                            petitioner = petMatch.Success && !string.IsNullOrWhiteSpace(petMatch.Value) ? petMatch.Value.Trim() : beforeVs;
+                            int lastParen = beforeVs.LastIndexOf(')');
+                            petitioner = (lastParen >= 0 && lastParen < beforeVs.Length - 1) ? beforeVs.Substring(lastParen + 1).Trim() : beforeVs;
 
                             var resMatch = Regex.Match(afterVs, @"^(.*?)(?=(?:Mr\.|ADV|IA\s*NO|\d+WP|\d+WA|$))", RegexOptions.IgnoreCase | RegexOptions.Singleline);
                             respondent = resMatch.Success && !string.IsNullOrWhiteSpace(resMatch.Value) ? resMatch.Value.Trim() : afterVs;
@@ -534,27 +542,52 @@ namespace MVCCaseManagement.Services.ECourts
 ]*|Case\s+No\.[^
 ]*", " ", RegexOptions.IgnoreCase);
 
+                    // Extract Counsel/Advocate if present (covers Dharwad, Bengaluru, Kalaburagi standing counsel)
+                    var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M)", RegexOptions.IgnoreCase);
+                    if (advMatch.Success)
+                    {
+                        advocate = advMatch.Value.ToUpperInvariant();
+
+                        // Clean advocate from respondent if embedded
+                        if (!string.IsNullOrEmpty(respondent))
+                        {
+                            int advIdx = respondent.IndexOf(advMatch.Value, StringComparison.OrdinalIgnoreCase);
+                            if (advIdx >= 0)
+                            {
+                                respondent = respondent.Substring(0, advIdx).Trim();
+                            }
+                            respondent = Regex.Replace(respondent, @"\bFOR\s*(?:R\d+|\bPROP\.?\b|\bRESPONDENT\b).*", "", RegexOptions.IgnoreCase).Trim();
+                        }
+
+                        // Clean advocate from petitioner if embedded
+                        if (!string.IsNullOrEmpty(petitioner))
+                        {
+                            int advIdx = petitioner.IndexOf(advMatch.Value, StringComparison.OrdinalIgnoreCase);
+                            if (advIdx >= 0)
+                            {
+                                petitioner = petitioner.Substring(0, advIdx).Trim();
+                            }
+                        }
+                    }
+
+                    // Strip any attached page header/footer metadata from petitioner and respondent
+                    petitioner = Regex.Replace(petitioner, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s*HALL\s*NO\s*[:\s]*\d+.*|\d+\s+of\s+\d+.*", " ", RegexOptions.IgnoreCase);
+                    respondent = Regex.Replace(respondent, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|COURT\s*HALL\s*NO\s*[:\s]*\d+.*|\d+\s+of\s+\d+.*", " ", RegexOptions.IgnoreCase);
+
                     petitioner = Regex.Replace(petitioner, @"\s+", " ").Trim();
                     respondent = Regex.Replace(respondent, @"\s+", " ").Trim();
 
                     if (petitioner.Length > 160) petitioner = petitioner.Substring(0, 160).Trim() + "...";
                     if (respondent.Length > 160) respondent = respondent.Substring(0, 160).Trim() + "...";
 
-                    // Extract Counsel/Advocate if present (covers Dharwad, Bengaluru, Kalaburagi standing counsel)
-                    var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M)", RegexOptions.IgnoreCase);
-                    if (advMatch.Success)
-                    {
-                        advocate = advMatch.Value.ToUpperInvariant();
-                    }
-
                     // Role detection
                     string role = "With NWKRTC";
-                    if (Regex.IsMatch(petitioner, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)\b", RegexOptions.IgnoreCase) ||
+                    if (Regex.IsMatch(petitioner, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
                         petitioner.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
                     {
                         role = "By NWKRTC";
                     }
-                    else if (Regex.IsMatch(respondent, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)\b", RegexOptions.IgnoreCase) ||
+                    else if (Regex.IsMatch(respondent, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
                              respondent.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
                     {
                         role = "Against NWKRTC";
@@ -640,14 +673,15 @@ namespace MVCCaseManagement.Services.ECourts
             if (string.IsNullOrWhiteSpace(text)) return false;
 
             // 0. EXCLUSIONS: Non-transport government, revenue, tax, and private commercial entities
-            if (Regex.IsMatch(text, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
+            if (Regex.IsMatch(text, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF|SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO)\b", RegexOptions.IgnoreCase) &&
                 !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
             {
                 return false;
             }
 
-            // Sibling Corporation Blocklist: Zero tolerance for BMTC, KKRTC, NEKRTC
-            if (Regex.IsMatch(text, @"\b(BMTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KKRTC|KALYANA\s+KARNATAKA|NEKRTC|NORTH\s*[- ]?EAST)\b", RegexOptions.IgnoreCase))
+            // Sibling Corporation Blocklist: Exclude if it ONLY belongs to BMTC, KKRTC, NEKRTC, unless NWKRTC/North-West is also explicitly a party (e.g. multi-respondent matters)
+            bool hasExplicitNwkrtc = Regex.IsMatch(text, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|HUBBALLI|HUBLI|GOKUL\s*ROAD)");
+            if (!hasExplicitNwkrtc && Regex.IsMatch(text, @"(?i)(BMTC|KKRTC|NEKRTC|NEKSRTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KALYANA\s+KARNATAKA|NORTH\s*[- ]?EAST)"))
             {
                 return false;
             }
@@ -655,8 +689,8 @@ namespace MVCCaseManagement.Services.ECourts
             // High Court subject code: In Dharwad Bench (KAHC02), (L, KSRTC ) and (S, KSRTC ) denote Labour/Service classification, NOT the litigant.
             // Only exclude KSRTC if explicitly written as Bengaluru/Central KSRTC corporation without Dharwad/NWKRTC context.
             bool isDharwadBench = string.Equals(estCode, "KAHC02", StringComparison.OrdinalIgnoreCase);
-            if (!isDharwadBench && Regex.IsMatch(text, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
-                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)", RegexOptions.IgnoreCase))
+            if (!isDharwadBench && Regex.IsMatch(text, @"(?i)(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT|K\.?S\.?R\.?T\.?C\.?)") &&
+                !hasExplicitNwkrtc)
             {
                 return false;
             }
@@ -669,16 +703,29 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 1. Direct NWKRTC keywords (highest confidence, including internal insurance & concatenated OCR forms)
-            if (Regex.IsMatch(text, @"(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND)", RegexOptions.IgnoreCase) ||
-                Regex.IsMatch(text, @"MANAGEMENT\s*OF?\s*NWKRTC", RegexOptions.IgnoreCase) ||
-                Regex.IsMatch(text, @"MANAGEMENT\s*OF?\s*N\.?W\.?K\.?R\.?T\.?C", RegexOptions.IgnoreCase) ||
+            if (Regex.IsMatch(text, @"(?i)(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND)") ||
+                Regex.IsMatch(text, @"(?i)MANAGEMENT\s*OF?\s*NWKRTC") ||
+                Regex.IsMatch(text, @"(?i)MANAGEMENT\s*OF?\s*N\.?W\.?K\.?R\.?T\.?C") ||
                 text.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
+            // 1b. In non-Dharwad benches (Bengaluru & Kalaburagi), also capture NWKRTC territorial divisions & operating hubs
+            if (Regex.IsMatch(text, @"(?i)(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|UTTARA\s*KANNADA|CHIKKODI|SIRSI|GOKUL\s*ROAD)") &&
+                Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|DISCIPLINARY\s*AUTHORITY|MANAGING\s*DIRECTOR|TRANSPORT|ROAD\s*TRANSPORT|KSRTC|NWKRTC)"))
+            {
+                return true;
+            }
+
+            // In non-Dharwad benches (Bengaluru & Kalaburagi), generic officers without NWKRTC or division context belong to Central KSRTC or KKRTC
+            if (!isDharwadBench)
+            {
+                return false;
+            }
+
             // 2. NWKRTC Officers: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
-            if (Regex.IsMatch(text, @"(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)"))
             {
                 // Must not be Railway, Police, or Electricity boards
                 if (!Regex.IsMatch(text, @"\b(RAILWAY|BESCOM|HESCOM|POLICE)\b", RegexOptions.IgnoreCase))
@@ -688,31 +735,17 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 3. Managing Director or "THE MANAGING" with standing counsel or transport context
-            if (Regex.IsMatch(text, @"(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING|\bMANAGING\b)", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(text, @"(?i)(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING|\bMANAGING\b)"))
             {
-                bool hasTransportOrDivision = Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD|KSRTC)\b", RegexOptions.IgnoreCase);
-                bool hasStandingCounsel = Regex.IsMatch(text, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR|KALPANA)", RegexOptions.IgnoreCase);
-
-                if (hasTransportOrDivision || hasStandingCounsel)
-                {
-                    return true;
-                }
-
-                if (isDharwadBench)
-                {
-                    return true;
-                }
+                return true;
             }
 
             // 4. In Dharwad Bench: Standing Counsel appearing with Management, Controller, Officer, or (L/S, KSRTC) context
-            if (isDharwadBench)
+            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KUPPELUR)");
+            bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR)");
+            if (hasStandingCounsel && hasNwkrtcContext)
             {
-                bool hasStandingCounsel = Regex.IsMatch(text, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KUPPELUR)", RegexOptions.IgnoreCase);
-                bool hasNwkrtcContext = Regex.IsMatch(text, @"(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR)", RegexOptions.IgnoreCase);
-                if (hasStandingCounsel && hasNwkrtcContext)
-                {
-                    return true;
-                }
+                return true;
             }
 
             return false;

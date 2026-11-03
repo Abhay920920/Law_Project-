@@ -1842,9 +1842,7 @@ const registeredCases = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Mode
 
 
 
-let currentViewMode = 'all';
-
-
+let currentViewMode = 'today';
 
 async function triggerLiveHighCourtScan() {
     const btn = document.getElementById('btnLiveBenchScan');
@@ -1854,7 +1852,7 @@ async function triggerLiveHighCourtScan() {
         btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> Scanning Benches...`;
     }
 
-    const estCode = (document.getElementById('liveEstCode')?.value || 'KAHC02').trim();
+    const estCode = (document.getElementById('liveEstCode')?.value || 'ALL').trim();
     const dateInput = (document.getElementById('liveDate')?.value || document.getElementById('hearingDateInput')?.value || '').trim();
 
     try {
@@ -1872,13 +1870,13 @@ async function triggerLiveHighCourtScan() {
                     showConfirmButton: false
                 });
             }
-            fetchLiveHcCauselist();
+            fetchLiveHcCauselist('today');
         } else {
             alert('Scan notice: ' + (data.message || 'Error scanning cause list.'));
         }
     } catch (e) {
         console.error('Error triggering live scan:', e);
-        fetchLiveHcCauselist();
+        fetchLiveHcCauselist('today');
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -1891,8 +1889,6 @@ function fetchLiveHcCauselist(viewMode) {
 
     if (viewMode !== undefined) {
         currentViewMode = viewMode;
-    } else if (document.getElementById('liveRegYear')?.value === 'ALL') {
-        currentViewMode = 'all';
     }
 
     const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
@@ -2260,11 +2256,11 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
             </div>
             <div class="d-flex align-items-center gap-2 w-100 w-md-auto justify-content-between justify-content-md-end">
                 <div class="btn-group btn-group-sm w-100 w-md-auto d-flex flex-row flex-nowrap" role="group" style="background: #e2e8f0; border-radius: 50rem; padding: 3px; gap: 2px;">
-                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('all')">
-                        <i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)
-                    </button>
                     <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('today')">
                         <i class="bi bi-calendar-check me-1"></i>Scheduled (<span id="tabCountToday">${listedCount}</span>)
+                    </button>
+                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('all')">
+                        <i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)
                     </button>
                 </div>
                 <div class="d-none d-sm-flex align-items-center gap-1.5 flex-shrink-0">
@@ -3948,7 +3944,7 @@ function setQuickDate(preset) {
     if (activeB) activeB.className = 'btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active';
 
     loadHcCourtBenches();
-    fetchLiveHcCauselist();
+    fetchLiveHcCauselist('today');
 }
 
 async function triggerBatchRoznamaSync() {
@@ -4281,7 +4277,7 @@ function copyRoznamaText() {
 
 document.addEventListener('DOMContentLoaded', function () {
     loadHcCourtBenches();
-    fetchLiveHcCauselist();
+    fetchLiveHcCauselist('today');
 
     // Ensure modals are mounted to document.body to prevent flex overflow clipping and background scroll jumping
     const dModal = document.getElementById('dossierModal');
