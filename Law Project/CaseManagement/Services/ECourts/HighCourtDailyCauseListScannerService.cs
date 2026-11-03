@@ -397,8 +397,9 @@ namespace MVCCaseManagement.Services.ECourts
                 }
 
                 // Strip running page headers and website links so serial numbers and case codes detach cleanly
-                // e.g. "031120261.367418WP 64148/2011" -> " 18WP 64148/2011"
-                fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d+", " ", RegexOptions.IgnoreCase);
+                // In Karnataka High Court, headers have the pattern "031120261.367422WP" (Date + ListNo + Dot + BenchId + SerialNo + CaseType).
+                // We replace up to BenchId (e.g. "\b\d{8}\d*\.\d{3,4}") so the serial number (e.g. 22 or 35) is preserved!
+                fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d{3,4}", " ", RegexOptions.IgnoreCase);
 
                 // Regex to match item starting row: (Sl.No.) (CaseType) (RegNo/RegYear)
                 // In NAPIX PDF text extracted by PdfPig, serial number is often joined to case type without whitespace (e.g. "41WA/100206/2025" or "18WP 64148/2011")
@@ -443,17 +444,22 @@ namespace MVCCaseManagement.Services.ECourts
                         stage = stageMatch.Value.ToUpperInvariant();
                     }
 
-                    // Subject Classification Gate
+                    // Subject Classification Gate:
+                    // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), and Commercial Tender (GM, TEN)
+                    // Strictly exclude MFA / MACT appeals (MV, I / MV, D) and Land Revenue (KLR, RES)
+                    if (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue; // Exclude motor accident insurance appeals
+                    }
+
                     string subjectCategory = "";
                     var anyCatMatch = Regex.Match(blockText, @"\(\s*([A-Za-z]+\s*,\s*[A-Za-z0-9\/\-]+)\s*\)", RegexOptions.IgnoreCase);
                     if (anyCatMatch.Success)
                     {
-                        // An explicit High Court classification code is present:
-                        // Strictly enforce our allowed categories: Labour (L, KSRTC), Gratuity (L, PG), and Service (S, KSRTC)
-                        var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC)\s*\)", RegexOptions.IgnoreCase);
+                        var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN)\s*\)", RegexOptions.IgnoreCase);
                         if (!allowedCatMatch.Success)
                         {
-                            continue; // Exclude non-labour/service categories (GM, TEN, MV, I, KLR, RES, etc.)
+                            continue; // Exclude non-matching categories (MV, I, KLR, RES, GM, CPC, etc.)
                         }
                         subjectCategory = allowedCatMatch.Value.Trim();
                     }
@@ -682,7 +688,7 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 3. Managing Director or "THE MANAGING" with standing counsel or transport context
-            if (Regex.IsMatch(text, @"(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|\bTHE\s+MANAGING\b)", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(text, @"(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING|\bMANAGING\b)", RegexOptions.IgnoreCase))
             {
                 bool hasTransportOrDivision = Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD|KSRTC)\b", RegexOptions.IgnoreCase);
                 bool hasStandingCounsel = Regex.IsMatch(text, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR|KALPANA)", RegexOptions.IgnoreCase);
@@ -702,7 +708,7 @@ namespace MVCCaseManagement.Services.ECourts
             if (isDharwadBench)
             {
                 bool hasStandingCounsel = Regex.IsMatch(text, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KUPPELUR)", RegexOptions.IgnoreCase);
-                bool hasNwkrtcContext = Regex.IsMatch(text, @"(MANAGEMENT|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR)", RegexOptions.IgnoreCase);
+                bool hasNwkrtcContext = Regex.IsMatch(text, @"(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR)", RegexOptions.IgnoreCase);
                 if (hasStandingCounsel && hasNwkrtcContext)
                 {
                     return true;

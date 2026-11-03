@@ -437,10 +437,14 @@ namespace MVCCaseManagement.Controllers
                                  (sc.CNRNumber != null && sc.CNRNumber.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase)) ||
                                  estCodes.Any(e => string.Equals(e, "KAHC02", StringComparison.OrdinalIgnoreCase));
 
-                // 0. Strict Subject Category Gate: Only Labour (L, KSRTC), Gratuity (L, PG), and Service (S, KSRTC)
+                // 0. Strict Exclusions & Subject Category Gate:
+                // Only Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), and Commercial Tender (GM, TEN)
+                // Strictly exclude MFA motor accident insurance appeals
+                if (string.Equals(sc.CaseType, "MFA", StringComparison.OrdinalIgnoreCase)) return false;
+
                 if (!string.IsNullOrEmpty(sc.SubjectCategory))
                 {
-                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC)\s*\)", RegexOptions.IgnoreCase);
+                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN)\s*\)", RegexOptions.IgnoreCase);
                     if (!isAllowedCat) return false;
                 }
 
