@@ -429,37 +429,81 @@ namespace MVCCaseManagement.Controllers
             // Strictly filter scanned cause list cases for NWKRTC matters
             var validScanned = scannedDailyCases.Where(sc => 
             {
-                // Exclude explicit NEKRTC, BMTC, KKRTC
-                if (Regex.IsMatch(sc.PetitionerName ?? "", @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase) ||
-                    Regex.IsMatch(sc.RespondentName ?? "", @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
+                string pName = sc.PetitionerName ?? "";
+                string rName = sc.RespondentName ?? "";
+                string comb = $"{pName} {rName}";
+
+                // 1. Exclude explicit other RTCs
+                if (Regex.IsMatch(comb, @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+                if (Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
 
-                // If flagged as listed today by the cause list scanner, it was already verified for NWKRTC
-                if (sc.IsListedToday)
+                // 2. Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
+                if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+
+                // 3. Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
+                if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+
+                // 4. Check for direct NWKRTC party keywords
+                if (Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|MANAGEMENT\s+OF\s+NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
                 {
                     return true;
                 }
 
-                string itemEst = (!string.IsNullOrEmpty(sc.CNRNumber) && sc.CNRNumber.Length >= 6)
-                    ? sc.CNRNumber.Substring(0, 6).ToUpperInvariant()
-                    : ((!string.IsNullOrEmpty(sc.EstablishmentName) && sc.EstablishmentName.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC02" : (sc.EstablishmentName ?? "KAHC02"));
-                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.PetitionerName, out _, itemEst, sc.Advocate);
-                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.RespondentName, out _, itemEst, sc.Advocate);
+                // 5. Managing Director: must have transport/court context or standing counsel
+                if (Regex.IsMatch(comb, @"\b(MANAGING\s*DIRECTOR)\b", RegexOptions.IgnoreCase))
+                {
+                    bool hasTransportOrDivision = Regex.IsMatch(comb, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD)\b", RegexOptions.IgnoreCase);
+                    bool hasStandingCounsel = !string.IsNullOrEmpty(sc.Advocate) && Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|SAHUKAR)\b", RegexOptions.IgnoreCase);
 
-                if (petIsNwkrtc || resIsNwkrtc) return true;
+                    if (hasTransportOrDivision || hasStandingCounsel)
+                    {
+                        return true;
+                    }
+                }
 
-                // In Dharwad Bench, if an empanelled standing counsel appears for Managing Director or Divisional Controller
+                // 6. Standing counsel check with officer context
                 if (!string.IsNullOrEmpty(sc.Advocate))
                 {
-                    bool hasAdv = Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
-                    bool hasOfficer = Regex.IsMatch($"{sc.PetitionerName} {sc.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                    bool hasAdv = Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|SAHUKAR)\b", RegexOptions.IgnoreCase);
+                    bool hasOfficer = Regex.IsMatch(comb, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
                     if (hasAdv && hasOfficer) return true;
+                }
+
+                // 7. If matched by cause list scanner and exists in verified NWKRTC master store
+                string scCnr = sc.CNRNumber?.Trim().ToUpperInvariant() ?? "";
+                string scRegKey = $"{sc.CaseType}_{sc.RegNumber}_{sc.RegYear}".Trim().ToUpperInvariant();
+                bool matchesMasterStore = list.Any(x =>
+                    (!string.IsNullOrEmpty(scCnr) && scCnr != "-" && string.Equals(x.CNRNumber?.Trim(), scCnr, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(scRegKey) && scRegKey != "__" && string.Equals($"{x.CaseType}_{x.RegNumber}_{x.RegYear}".Trim(), scRegKey, StringComparison.OrdinalIgnoreCase)));
+
+                if (matchesMasterStore)
+                {
+                    return true;
                 }
 
                 return false;
             }).ToList();
+
+            // Reset all loaded items' IsListedToday flag to false so previous days' listed status never persists into a new query date
+            foreach (var item in list)
+            {
+                item.IsListedToday = false;
+            }
 
             var newlyDiscoveredToday = new List<PartyCaseSearchResultItem>();
 
@@ -530,18 +574,34 @@ namespace MVCCaseManagement.Controllers
 
                 string pName = item.PetitionerName ?? "";
                 string rName = item.RespondentName ?? "";
-                if (Regex.IsMatch(pName, @"\b(STATE\s+OF\s+KARNATAKA|DEPUTY\s+COMMISSIONER)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(rName, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s+CONTROLLER|DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase))
+                string comb = $"{pName} {rName}";
+
+                // Exclude explicit other RTCs
+                if (Regex.IsMatch(comb, @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
-                if (Regex.IsMatch(rName, @"\b(STATE\s+OF\s+KARNATAKA|DEPUTY\s+COMMISSIONER)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(pName, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s+CONTROLLER|DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
 
-                // If this is a verified cause list listing for today, preserve it
+                // Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
+                if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+
+                // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
+                if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+                {
+                    return false;
+                }
+
+                // If this is a verified cause list listing for today and passed exclusion checks, preserve it
                 if (item.IsListedToday)
                 {
                     return true;
@@ -555,8 +615,8 @@ namespace MVCCaseManagement.Controllers
 
                 if (!petIsNwkrtc && !resIsNwkrtc && !string.IsNullOrEmpty(item.Advocate))
                 {
-                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR)\b", RegexOptions.IgnoreCase);
-                    bool hasOfficer = Regex.IsMatch($"{item.PetitionerName} {item.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
+                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|SAHUKAR)\b", RegexOptions.IgnoreCase);
+                    bool hasOfficer = Regex.IsMatch(comb, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
                     if (hasAdv && hasOfficer) return true;
                 }
 

@@ -456,14 +456,21 @@
             flex-direction: row !important;
             flex-wrap: nowrap !important;
             width: 100% !important;
+            background: #e2e8f0 !important;
+            border-radius: 50rem !important;
+            padding: 3px !important;
+            gap: 2px !important;
+            border: none !important;
         }
         .hc-sub-header .btn-group > .btn {
             flex: 1 1 50% !important;
             min-width: 0 !important;
             text-align: center !important;
             white-space: nowrap !important;
-            font-size: 0.75rem !important;
-            padding: 6px 4px !important;
+            font-size: 0.76rem !important;
+            padding: 6px 6px !important;
+            border-radius: 50rem !important;
+            border: none !important;
         }
         .dossier-nav-tabs {
             display: flex !important;
@@ -2156,10 +2163,10 @@ function switchCauseListViewMode(mode) {
         btnAll.innerHTML = `<i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)`;
         if (mode === 'today') {
             btnToday.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
-            btnAll.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
+            btnAll.className = 'btn btn-sm text-secondary bg-transparent py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         } else {
             btnAll.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
-            btnToday.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
+            btnToday.className = 'btn btn-sm text-secondary bg-transparent py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         }
     }
 
@@ -2252,11 +2259,11 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 w-100 w-md-auto justify-content-between justify-content-md-end">
-                <div class="btn-group btn-group-sm w-100 w-md-auto d-flex flex-row flex-nowrap" role="group">
-                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white' : 'btn-outline-secondary bg-white'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" onclick="switchCauseListViewMode('all')">
+                <div class="btn-group btn-group-sm w-100 w-md-auto d-flex flex-row flex-nowrap" role="group" style="background: #e2e8f0; border-radius: 50rem; padding: 3px; gap: 2px;">
+                    <button type="button" id="btnTabAllMatters" class="btn btn-sm ${currentViewMode === 'all' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('all')">
                         <i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)
                     </button>
-                    <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white' : 'btn-outline-secondary bg-white'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" onclick="switchCauseListViewMode('today')">
+                    <button type="button" id="btnTabTodayMatters" class="btn btn-sm ${currentViewMode === 'today' ? 'btn-danger text-white shadow-xs' : 'text-secondary bg-transparent'} py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap" style="border-radius: 50rem;" onclick="switchCauseListViewMode('today')">
                         <i class="bi bi-calendar-check me-1"></i>Scheduled (<span id="tabCountToday">${listedCount}</span>)
                     </button>
                 </div>
@@ -2619,7 +2626,8 @@ function renderHcCauselistPage() {
 
         const sr = startIndex + idx + 1;
 
-        const isThisListedToday = item.isListedToday === true;
+        const itemDateStr = getNormalizedItemDateStr(item);
+        const isThisListedToday = item.isListedToday === true && (!itemDateStr || itemDateStr === displayDate);
 
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 

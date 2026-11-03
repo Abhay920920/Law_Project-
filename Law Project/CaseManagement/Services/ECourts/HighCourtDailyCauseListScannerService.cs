@@ -565,44 +565,57 @@ namespace MVCCaseManagement.Services.ECourts
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
+            // 0. EXCLUSIONS: Non-transport government, revenue, tax, and private commercial entities
+            if (Regex.IsMatch(text, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
+                !Regex.IsMatch(text, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+
+            // Exclude explicit other sibling RTCs unless NWKRTC is explicitly stated
+            if (Regex.IsMatch(text, @"\b(NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+            if (Regex.IsMatch(text, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
+                !Regex.IsMatch(text, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST)\b", RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+
+            // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
+            if (Regex.IsMatch(text, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
+                !Regex.IsMatch(text, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+
             // 1. Direct NWKRTC keywords (highest confidence, including internal insurance & concatenated OCR forms)
             if (Regex.IsMatch(text, @"\b(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST(ERN)?(\s+STATE)?\s+ROAD\s+TRANSPORT|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND)\b", RegexOptions.IgnoreCase) ||
-                text.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("MANAGEMENTOF N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("MANAGEMENT OF NWKRTC", StringComparison.OrdinalIgnoreCase))
+                Regex.IsMatch(text, @"MANAGEMENT\s*OF?\s*NWKRTC", RegexOptions.IgnoreCase) ||
+                Regex.IsMatch(text, @"MANAGEMENT\s*OF?\s*N\.?W\.?K\.?R\.?T\.?C", RegexOptions.IgnoreCase) ||
+                text.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            // 2. NWKRTC Specific Officer / Management designations with division hubs or context
-            bool mentionsOfficer = Regex.IsMatch(text, @"\b(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|CHIEF\s*PERSONNEL\s*MANAGER|CHIEF\s*TRAFFIC\s*MANAGER|MANAGEMENT\s*OF\s*NWKRTC)\b", RegexOptions.IgnoreCase) ||
-                                  text.Contains("DIVISIONALCONTROLLER", StringComparison.OrdinalIgnoreCase) ||
-                                  text.Contains("MANAGINGDIRECTOR", StringComparison.OrdinalIgnoreCase);
-
-            bool mentionsNwkrtcHub = Regex.IsMatch(text, @"\b(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|BAGALKOTE|GADAG|HAVERI|UTTARA\s*KANNADA|KARWAR|CHIKKODI|CHIKODI|SIRSI|GOKUL\s*ROAD|DHARWAD)\b", RegexOptions.IgnoreCase) ||
-                                     text.Contains("DHARWADDIVISION", StringComparison.OrdinalIgnoreCase) ||
-                                     text.Contains("HAVERIDIVISION", StringComparison.OrdinalIgnoreCase);
-
-            bool isDharwad = string.IsNullOrEmpty(estCode) || 
-                             estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase) ||
-                             estCode.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                             estCode.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase);
-            if (mentionsOfficer && (isDharwad || mentionsNwkrtcHub || text.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) || text.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase)))
+            // 2. NWKRTC Officers: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
+            if (Regex.IsMatch(text, @"(?:DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)", RegexOptions.IgnoreCase))
             {
-                // Ensure not explicitly NEKRTC / BMTC
-                if (!Regex.IsMatch(text, @"\b(NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                // Must not be Railway, Police, or Electricity boards
+                if (!Regex.IsMatch(text, @"\b(RAILWAY|BESCOM|HESCOM|POLICE)\b", RegexOptions.IgnoreCase))
                 {
                     return true;
                 }
             }
 
-            // 3. Empanelled standing counsel representing NWKRTC across Dharwad, Bengaluru, and Kalaburagi
-            bool hasCounsel = Regex.IsMatch(text, @"\b(MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR)\b", RegexOptions.IgnoreCase);
-            if (hasCounsel)
+            // 3. Managing Director: must have road/transport/NWKRTC context or empanelled standing counsel
+            if (Regex.IsMatch(text, @"\b(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR)\b", RegexOptions.IgnoreCase))
             {
-                bool hasTransportOrCourtContext = mentionsOfficer || mentionsNwkrtcHub ||
-                    Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|MANAGEMENT|CONTROLLER|DIRECTOR|DEPOT|APPELLANT|RESPONDENT|CLAIMANT|INSURANCE|KSRTC|SD|ORDERS|HEARING)\b", RegexOptions.IgnoreCase);
-                if (hasTransportOrCourtContext)
+                bool hasTransportOrDivision = Regex.IsMatch(text, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD)\b", RegexOptions.IgnoreCase);
+                bool hasStandingCounsel = Regex.IsMatch(text, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|SAHUKAR)\b", RegexOptions.IgnoreCase);
+
+                if (hasTransportOrDivision || hasStandingCounsel)
                 {
                     return true;
                 }
