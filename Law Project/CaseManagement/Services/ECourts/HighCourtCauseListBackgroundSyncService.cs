@@ -27,11 +27,11 @@ namespace MVCCaseManagement.Services.ECourts
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("[HighCourtCauseListSync] Background worker registered. Delaying initial run 45 seconds.");
+            _logger.LogInformation("[HighCourtCauseListSync] Background worker registered. Starting initial cause list scan in 3 seconds.");
 
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(45), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -69,15 +69,15 @@ namespace MVCCaseManagement.Services.ECourts
                 var now = DateTime.Now;
                 _logger.LogInformation("[HighCourtCauseListSync] Running cause list check at {Time:HH:mm:ss}", now);
 
-                // 1. Morning & Daytime check: Ensure today's list is scanned and cached across all benches
-                if (now.Hour >= 6 && now.Hour <= 15)
+                // 1. Daytime / Working day check: Ensure today's list is scanned and cached across all benches if not Sunday
+                var today = DateTime.Today;
+                if (today.DayOfWeek != DayOfWeek.Sunday)
                 {
-                    var today = DateTime.Today;
                     var res = await _scannerService.ScanAndCacheDateAsync("ALL", today, stoppingToken);
                     _logger.LogInformation("[HighCourtCauseListSync] Today's cause list check complete for {Date:yyyy-MM-dd}: {Count} NWKRTC matters across all benches.", today, res.nwkrtcMatters);
                 }
 
-                // 2. Evening check (after 17:30): Ensure tomorrow's list is scanned and pre-cached across all benches
+                // 2. Evening check (after 16:30): Ensure tomorrow's list is scanned and pre-cached across all benches
                 if (now.Hour >= 17 || (now.Hour == 16 && now.Minute >= 30))
                 {
                     var tomorrow = DateTime.Today.AddDays(1);

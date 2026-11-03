@@ -314,7 +314,7 @@ namespace MVCCaseManagement.Services.ECourts
                 string fullText = fullTextBuilder.ToString();
                 if (string.IsNullOrWhiteSpace(fullText)) return list;
 
-                // Extract Court Hall header
+                // Extract Court Hall header before cleaning running headers
                 string courtHall = $"Court Hall ({judgeName})";
                 var chNumMatch = Regex.Match(fullText, @"COURT\s+HALL\s+NO\s*:\s*(\d+)", RegexOptions.IgnoreCase);
                 if (chNumMatch.Success)
@@ -338,15 +338,20 @@ namespace MVCCaseManagement.Services.ECourts
                     causeListNo = clNoMatch.Groups[1].Value.Trim();
                 }
 
+                // Strip running page headers and website links so serial numbers and case codes detach cleanly
+                // e.g. "031120261.367418WP 64148/2011" -> " 18WP 64148/2011"
+                fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d+", " ", RegexOptions.IgnoreCase);
+
                 // Regex to match item starting row: (Sl.No.) (CaseType) (RegNo/RegYear)
-                // e.g., "1 WP 63575/2012" or "3.1 WP 113595/2015" or "10 WA 100038/2026"
-                var itemRegex = new Regex(@"\b(\d{1,3}(?:\.\d{1,2})?)\s+([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)\s*(\d+/\d{4})", RegexOptions.IgnoreCase);
+                // In NAPIX PDF text extracted by PdfPig, serial number is often joined to case type without whitespace (e.g. "41WA/100206/2025" or "18WP 64148/2011")
+                var itemRegex = new Regex(@"(?:^|\s|[A-Za-z0-9\.\-]+?)(\d{1,3}(?:\.\d{1,2})?)\s*([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
                 var matches = itemRegex.Matches(fullText);
 
                 for (int i = 0; i < matches.Count; i++)
                 {
                     var m = matches[i];
-                    string serialNo = m.Groups[1].Value.Trim();
+                    string rawSerialNo = m.Groups[1].Value.Trim();
+                    string serialNo = Regex.Match(rawSerialNo, @"\d{1,3}(?:\.\d{1,2})?$")?.Value ?? rawSerialNo;
                     string rawCaseType = m.Groups[2].Value.Trim().ToUpperInvariant();
                     string caseType = Regex.Replace(rawCaseType, @"\s+NO\.?", "").Trim();
                     string caseNoWithYr = m.Groups[3].Value.Trim();
@@ -470,7 +475,7 @@ namespace MVCCaseManagement.Services.ECourts
                     });
 
                     // Companion cases extraction (e.g. WITH WP 104857/2024 or CONNECTED WITH MFA 100234/2019)
-                    var companionRegex = new Regex(@"(?:WITH|CONNECTED\s+WITH|C/W)\s+([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)\s*(\d+/\d{4})", RegexOptions.IgnoreCase);
+                    var companionRegex = new Regex(@"(?:WITH|CONNECTED\s+WITH|C/W)[\s:]*([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
                     var compMatches = companionRegex.Matches(blockText);
                     foreach (Match cm in compMatches)
                     {

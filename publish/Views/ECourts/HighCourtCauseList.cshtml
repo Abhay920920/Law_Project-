@@ -414,31 +414,25 @@
             grid-template-columns: 1fr 1fr !important;
             gap: 6px !important;
         }
-        .hc-results-actions > .btn {
+        .hc-results-actions > .btn,
+        .hc-results-actions > .dropdown {
             width: 100% !important;
+        }
+        .hc-results-actions > .btn {
             padding: 7px 6px !important;
             font-size: 0.75rem !important;
             justify-content: center !important;
             white-space: nowrap !important;
         }
-        .hc-results-actions .btn-group {
+        .hc-results-actions > .dropdown {
             grid-column: span 2 !important;
-            width: 100% !important;
-            display: flex !important;
-            flex-direction: row !important;
-            flex-wrap: nowrap !important;
         }
-        .hc-results-actions .btn-group > .btn:first-child {
-            flex: 1 1 auto !important;
-            width: auto !important;
+        .hc-results-actions > .dropdown > .btn {
+            width: 100% !important;
             padding: 7px 8px !important;
             font-size: 0.78rem !important;
+            justify-content: center !important;
             white-space: nowrap !important;
-        }
-        .hc-results-actions .btn-group > .dropdown-toggle {
-            flex: 0 0 auto !important;
-            width: auto !important;
-            padding: 7px 12px !important;
         }
         .hc-results-header #liveListBadge {
             grid-column: span 2 !important;
@@ -456,6 +450,20 @@
         }
         .hc-sub-header {
             padding: 0.65rem 0.75rem !important;
+        }
+        .hc-sub-header .btn-group {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
+        }
+        .hc-sub-header .btn-group > .btn {
+            flex: 1 1 50% !important;
+            min-width: 0 !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            font-size: 0.75rem !important;
+            padding: 6px 4px !important;
         }
         .dossier-nav-tabs {
             display: flex !important;
@@ -884,20 +892,11 @@
                     <i class="bi bi-journal-check text-primary me-1"></i>Sync Roznamas
                 </button>
 
-                <div class="btn-group">
-
-                    <button type="button" class="btn btn-sm btn-outline-success fw-bold shadow-sm py-1 px-2.5" onclick="exportCauseListToExcel('visible')" title="Export current cause list view to Excel">
-
-                        <i class="bi bi-file-earmark-excel-fill text-success me-1"></i> Export to Excel
-
+                <div class="dropdown d-inline-block">
+                    <button type="button" class="btn btn-sm btn-outline-success fw-bold shadow-sm py-1 px-2.5 dropdown-toggle d-flex align-items-center gap-1" data-bs-toggle="dropdown" aria-expanded="false" title="Export current cause list view to Excel">
+                        <i class="bi bi-file-earmark-excel-fill text-success"></i>
+                        <span>Export to Excel</span>
                     </button>
-
-                    <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle dropdown-toggle-split shadow-sm" data-bs-toggle="dropdown" aria-expanded="false">
-
-                        <span class="visually-hidden">Toggle Dropdown</span>
-
-                    </button>
-
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0 small">
 
                         <li><h6 class="dropdown-header text-uppercase extra-small fw-bold text-muted"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Excel Export Options</h6></li>
@@ -2153,13 +2152,14 @@ function switchCauseListViewMode(mode) {
     const btnAll = document.getElementById('btnTabAllMatters');
     const btnToday = document.getElementById('btnTabTodayMatters');
     if (btnAll && btnToday) {
-        btnToday.innerHTML = `<i class="bi bi-broadcast me-1"></i>Scheduled on Date (<span id="tabCountToday">${listedCount}</span>)`;
+        btnToday.innerHTML = `<i class="bi bi-calendar-check me-1"></i>Scheduled (<span id="tabCountToday">${listedCount}</span>)`;
+        btnAll.innerHTML = `<i class="bi bi-collection me-1"></i>All Matters (<span id="tabCountAll">${totalCount}</span>)`;
         if (mode === 'today') {
-            btnToday.className = 'btn btn-sm btn-danger text-white py-0 px-2 extra-small fw-bold';
-            btnAll.className = 'btn btn-sm btn-outline-secondary py-0 px-2 extra-small fw-bold';
+            btnToday.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
+            btnAll.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         } else {
-            btnAll.className = 'btn btn-sm btn-danger text-white py-0 px-2 extra-small fw-bold';
-            btnToday.className = 'btn btn-sm btn-outline-secondary py-0 px-2 extra-small fw-bold';
+            btnAll.className = 'btn btn-sm btn-danger text-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap shadow-xs';
+            btnToday.className = 'btn btn-sm btn-outline-secondary bg-white py-1.5 px-2.5 extra-small fw-bold flex-fill text-nowrap';
         }
     }
 

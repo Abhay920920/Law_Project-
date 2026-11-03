@@ -436,6 +436,12 @@ namespace MVCCaseManagement.Controllers
                     return false;
                 }
 
+                // If flagged as listed today by the cause list scanner, it was already verified for NWKRTC
+                if (sc.IsListedToday)
+                {
+                    return true;
+                }
+
                 string itemEst = (!string.IsNullOrEmpty(sc.CNRNumber) && sc.CNRNumber.Length >= 6)
                     ? sc.CNRNumber.Substring(0, 6).ToUpperInvariant()
                     : ((!string.IsNullOrEmpty(sc.EstablishmentName) && sc.EstablishmentName.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC02" : (sc.EstablishmentName ?? "KAHC02"));
@@ -533,6 +539,12 @@ namespace MVCCaseManagement.Controllers
                     !Regex.IsMatch(pName, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s+CONTROLLER|DEPOT\s+MANAGER)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
+                }
+
+                // If this is a verified cause list listing for today, preserve it
+                if (item.IsListedToday)
+                {
+                    return true;
                 }
 
                 string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
