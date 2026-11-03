@@ -431,6 +431,14 @@ namespace MVCCaseManagement.Services.ECourts
                         stage = stageMatch.Value.ToUpperInvariant();
                     }
 
+                    // Extract High Court Subject Classification Code e.g. (L, KSRTC ), (S, KSRTC ), (GM, TEN ), (L, PG )
+                    string subjectCategory = "";
+                    var catMatch = Regex.Match(blockText, @"\(([A-Za-z]+(?:\s*,\s*[A-Za-z0-9\/\-]+)?)\s*\)", RegexOptions.IgnoreCase);
+                    if (catMatch.Success)
+                    {
+                        subjectCategory = catMatch.Value.Trim();
+                    }
+
                     // Extract Petitioner and Respondent
                     string petitioner = "";
                     string respondent = "";
@@ -506,6 +514,7 @@ namespace MVCCaseManagement.Services.ECourts
                         PetitionerName = !string.IsNullOrWhiteSpace(petitioner) ? petitioner : (role == "By NWKRTC" ? "The Managing Director, NWKRTC" : "Petitioner"),
                         RespondentName = !string.IsNullOrWhiteSpace(respondent) ? respondent : (role == "Against NWKRTC" ? "The Managing Director, NWKRTC" : "Respondent"),
                         Advocate = advocate,
+                        SubjectCategory = subjectCategory,
                         NwkrtcRole = role,
                         MatchedDesignation = role == "By NWKRTC" ? "Petitioner Management" : "Respondent Corporation",
                         EstablishmentName = $"High Court of Karnataka, {benchName}",
@@ -543,6 +552,7 @@ namespace MVCCaseManagement.Services.ECourts
                                 PetitionerName = !string.IsNullOrWhiteSpace(petitioner) ? petitioner : (role == "By NWKRTC" ? "The Managing Director, NWKRTC" : "Petitioner"),
                                 RespondentName = !string.IsNullOrWhiteSpace(respondent) ? respondent : (role == "Against NWKRTC" ? "The Managing Director, NWKRTC" : "Respondent"),
                                 Advocate = advocate,
+                                SubjectCategory = subjectCategory,
                                 NwkrtcRole = role,
                                 MatchedDesignation = role == "By NWKRTC" ? "Petitioner Management" : "Respondent Corporation",
                                 EstablishmentName = $"High Court of Karnataka, {benchName}",

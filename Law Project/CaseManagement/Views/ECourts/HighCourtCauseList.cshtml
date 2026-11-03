@@ -2707,11 +2707,11 @@ function renderHcCauselistPage() {
             <td class="fw-bold text-center text-muted">${sr}</td>
 
             <td class="text-nowrap">
-
-                <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
-
+                <div class="d-flex align-items-center gap-1">
+                    <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
+                    ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
+                </div>
                 <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
-
             </td>
 
             <td>
@@ -2811,6 +2811,7 @@ function renderHcCauselistPage() {
                 <div class="d-flex align-items-center gap-1.5 min-w-0">
                     <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>
                     <span class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</span>
+                    ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
                 </div>
                 <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</span>
             </div>

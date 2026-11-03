@@ -97,6 +97,7 @@ namespace MVCCaseManagement.Models
         public string? CauseListItemNo { get; set; }
         public string? JudgeName { get; set; }
         public string? Advocate { get; set; }
+        public string? SubjectCategory { get; set; } // e.g. "(L, KSRTC)", "(S, KSRTC)", "(GM, TEN)"
         public string? RoznamaText { get; set; }
         public bool HasRoznama => !string.IsNullOrWhiteSpace(RoznamaText);
 

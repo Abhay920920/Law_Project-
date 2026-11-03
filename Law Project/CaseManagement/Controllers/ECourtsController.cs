@@ -529,6 +529,7 @@ namespace MVCCaseManagement.Controllers
                     existing.CauseListNo = sc.CauseListNo;
                     existing.CauseListItemNo = sc.CauseListItemNo;
                     existing.CaseStage = sc.CaseStage;
+                    if (!string.IsNullOrEmpty(sc.SubjectCategory)) existing.SubjectCategory = sc.SubjectCategory;
                     if (!string.IsNullOrEmpty(sc.Advocate)) existing.Advocate = sc.Advocate;
                     if (!string.IsNullOrEmpty(sc.PetitionerName) && sc.PetitionerName.Length > (existing.PetitionerName?.Length ?? 0)) existing.PetitionerName = sc.PetitionerName;
                     if (!string.IsNullOrEmpty(sc.RespondentName) && sc.RespondentName.Length > (existing.RespondentName?.Length ?? 0)) existing.RespondentName = sc.RespondentName;
