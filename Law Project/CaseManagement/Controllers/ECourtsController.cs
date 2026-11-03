@@ -437,8 +437,15 @@ namespace MVCCaseManagement.Controllers
                                  (sc.CNRNumber != null && sc.CNRNumber.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase)) ||
                                  estCodes.Any(e => string.Equals(e, "KAHC02", StringComparison.OrdinalIgnoreCase));
 
-                // 1. Exclude explicit other sibling RTCs
-                if (Regex.IsMatch(comb, @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
+                // 0. Strict Subject Category Gate: Only Labour (L, KSRTC), Gratuity (L, PG), and Service (S, KSRTC)
+                if (!string.IsNullOrEmpty(sc.SubjectCategory))
+                {
+                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC)\s*\)", RegexOptions.IgnoreCase);
+                    if (!isAllowedCat) return false;
+                }
+
+                // 1. Sibling Corporation Blocklist: Zero tolerance for BMTC, KKRTC, NEKRTC
+                if (Regex.IsMatch(comb, @"\b(BMTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KKRTC|KALYANA\s+KARNATAKA|NEKRTC|NORTH\s*[- ]?EAST)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }

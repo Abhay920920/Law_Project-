@@ -431,13 +431,14 @@ namespace MVCCaseManagement.Services.ECourts
                         stage = stageMatch.Value.ToUpperInvariant();
                     }
 
-                    // Extract High Court Subject Classification Code e.g. (L, KSRTC ), (S, KSRTC ), (GM, TEN ), (L, PG )
-                    string subjectCategory = "";
-                    var catMatch = Regex.Match(blockText, @"\(([A-Za-z]+(?:\s*,\s*[A-Za-z0-9\/\-]+)?)\s*\)", RegexOptions.IgnoreCase);
-                    if (catMatch.Success)
+                    // Extract High Court Subject Classification Code & Strict Subject Category Gate:
+                    // Only Labour (L, KSRTC), Gratuity (L, PG), and Service (S, KSRTC)
+                    var catMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC)\s*\)", RegexOptions.IgnoreCase);
+                    if (!catMatch.Success)
                     {
-                        subjectCategory = catMatch.Value.Trim();
+                        continue; // Exclude non-labour/service categories (GM, TEN, MV, I, KLR, RES, etc.)
                     }
+                    string subjectCategory = catMatch.Value.Trim();
 
                     // Extract Petitioner and Respondent
                     string petitioner = "";
@@ -588,8 +589,8 @@ namespace MVCCaseManagement.Services.ECourts
                 return false;
             }
 
-            // Exclude explicit other sibling RTCs unless NWKRTC is explicitly stated
-            if (Regex.IsMatch(text, @"\b(NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+            // Sibling Corporation Blocklist: Zero tolerance for BMTC, KKRTC, NEKRTC
+            if (Regex.IsMatch(text, @"\b(BMTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KKRTC|KALYANA\s+KARNATAKA|NEKRTC|NORTH\s*[- ]?EAST)\b", RegexOptions.IgnoreCase))
             {
                 return false;
             }
