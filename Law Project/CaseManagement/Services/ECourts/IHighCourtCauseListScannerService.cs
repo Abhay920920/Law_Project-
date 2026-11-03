@@ -28,6 +28,12 @@ namespace MVCCaseManagement.Services.ECourts
             string estCode,
             DateTime targetDate,
             CancellationToken ct = default);
+
+        /// <summary>
+        /// Automatically purges historical cause list cache files older than today from App_Data/causelist_cache.
+        /// Keeps the cache strictly up to date for current and upcoming sitting dates.
+        /// </summary>
+        void PurgePreviousDaysCache(DateTime? referenceDate = null);
     }
 }
 

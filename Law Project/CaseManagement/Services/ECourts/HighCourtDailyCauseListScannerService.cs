@@ -45,12 +45,52 @@ namespace MVCCaseManagement.Services.ECourts
             return Path.Combine(cacheDir, $"highcourt_{estCode.ToUpperInvariant()}_{targetDate:yyyy-MM-dd}.json");
         }
 
+        public void PurgePreviousDaysCache(DateTime? referenceDate = null)
+        {
+            try
+            {
+                var today = (referenceDate ?? DateTime.Today).Date;
+                string cacheDir = Path.Combine(_env.ContentRootPath, "App_Data", "causelist_cache");
+                if (!Directory.Exists(cacheDir)) return;
+
+                var files = Directory.GetFiles(cacheDir, "highcourt_*_*.json");
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        // File naming convention: highcourt_{EST}_{yyyy-MM-dd}
+                        var parts = fileName.Split('_');
+                        if (parts.Length >= 3 && DateTime.TryParseExact(parts[parts.Length - 1], "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var fileDate))
+                        {
+                            if (fileDate.Date < today)
+                            {
+                                File.Delete(file);
+                                _logger.LogInformation("[CauseListScanner] Purged previous day cause list cache file: {FileName} (Date: {Date:yyyy-MM-dd})", Path.GetFileName(file), fileDate);
+                            }
+                        }
+                    }
+                    catch (Exception exF)
+                    {
+                        _logger.LogWarning(exF, "[CauseListScanner] Error checking/purging cache file {File}", file);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[CauseListScanner] Error purging previous days cause list cache.");
+            }
+        }
+
         public async Task<List<PartyCaseSearchResultItem>> GetOrScanDailyCauseListAsync(
             string estCode,
             DateTime targetDate,
             bool forceRefresh = false,
             CancellationToken ct = default)
         {
+            // Prune previous day files automatically so cache remains strictly clean
+            PurgePreviousDaysCache();
+
             if (targetDate.DayOfWeek == DayOfWeek.Saturday || targetDate.DayOfWeek == DayOfWeek.Sunday)
             {
                 _logger.LogInformation("[CauseListScanner] Target date {Date:yyyy-MM-dd} is a weekend ({Day}). Court is closed.", targetDate, targetDate.DayOfWeek);

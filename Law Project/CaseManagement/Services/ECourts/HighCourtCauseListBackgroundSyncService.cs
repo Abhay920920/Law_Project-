@@ -67,10 +67,13 @@ namespace MVCCaseManagement.Services.ECourts
             try
             {
                 var now = DateTime.Now;
+                var today = DateTime.Today;
                 _logger.LogInformation("[HighCourtCauseListSync] Running cause list check at {Time:HH:mm:ss}", now);
 
+                // 0. Automatically purge any previous days cache files so only current/upcoming days remain
+                _scannerService.PurgePreviousDaysCache(today);
+
                 // 1. Daytime / Working day check: Ensure today's list is scanned and cached across all benches if not Sunday
-                var today = DateTime.Today;
                 if (today.DayOfWeek != DayOfWeek.Sunday)
                 {
                     var res = await _scannerService.ScanAndCacheDateAsync("ALL", today, stoppingToken);
