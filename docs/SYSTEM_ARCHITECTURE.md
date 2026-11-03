@@ -7,7 +7,7 @@
 
 ## 📌 1. High-Level Architecture Overview
 
-The **Law Project** is an enterprise-grade legal management platform engineered on **ASP.NET Core 9.0 MVC**, **Microsoft SQL Server**, and modern **Bootstrap 5 / Razor** user interfaces. It automates legal case lifecycle tracking, legal opinion workflows, advocate fee vetting, automated SMS hearing notifications, and real-time status synchronization with Indian courts via the **NIC e-Courts NAPIX API Gateway**.
+The **Law Project** is an enterprise-grade legal management platform engineered on **ASP.NET Core 9.0 MVC**, **Microsoft SQL Server**, and modern **Bootstrap 5 / Razor** user interfaces. It automates legal case lifecycle tracking, legal opinion workflows, advocate fee vetting, automated SMS hearing notifications, multi-bench High Court cause list scanning, and real-time status synchronization with Indian courts via the **NIC e-Courts NAPIX API Gateway**.
 
 ```mermaid
 graph TD
@@ -45,6 +45,8 @@ graph TD
         AI_Engine[Nyaya Patha AI Engine - 34 Services]
         Ollama[Local Ollama / Qwen2.5:7b LLM]
         ECourts_Service[ECourtsNapixService & SyncEngine]
+        HC_Scanner[HighCourtDailyCauseListScannerService]
+        HC_Store[HighCourtPartySearchStoreService]
         SMS_Service[SMSService Mobile-1 Gateway]
         TR18_Service[TR18Service Accident Sync]
     end
@@ -52,6 +54,7 @@ graph TD
     subgraph BackgroundServices [Hosted Background Services]
         NapixSyncWorker[NapixBackgroundSyncService]
         SMSNotificationWorker[NotificationBackgroundService]
+        HCCauseListSyncWorker[HighCourtCauseListBackgroundSyncService]
     end
 
     subgraph DALLayer [Data Access Layer - 32 Repositories]
@@ -65,13 +68,9 @@ graph TD
         MasterRepo[MasterRepository]
     end
 
-    subgraph DatabaseLayer [Persistence Layer - Microsoft SQL Server]
-        AdminLawDB[(Admin_Law / MVCCaseDB - 83 Tables)]
-        TablesCases[tbl_MVC_Cases, tbl_Labour_Cases, tbl_Gra_Cases]
-        TablesAppeals[tbl_Appeal_Details, tbl_Labour_EP_Details]
-        TablesAI[tbl_NyayaPatha_Audit, tbl_Legal_Precedents]
-        TablesECourts[tbl_ECourts_Cases, tbl_Napix_Api_Quota]
-        TablesUsers[tbl_Users, tbl_Role_Master, tbl_Division_Master]
+    subgraph StorageLayer [Persistence & Caching Tier]
+        AdminLawDB[(SQL Server - 83 Tables)]
+        FileCache[(App_Data/causelist_cache JSON Store)]
     end
 
     UI --> Correlation
@@ -84,12 +83,13 @@ graph TD
 
     ControllersLayer --> ServiceLayer
     ControllersLayer --> DALLayer
-    BackgroundServices --> DALLayer
     BackgroundServices --> ServiceLayer
+    BackgroundServices --> DALLayer
 
     AI_Engine <--> Ollama
+    HC_Scanner <--> FileCache
     ServiceLayer --> DALLayer
-    DALLayer --> DatabaseLayer
+    DALLayer --> AdminLawDB
 ```
 
 ---
@@ -119,7 +119,8 @@ Law Project/
 │   │   ├── DAL/                           # 32 Repositories + Schema Migrators
 │   │   ├── Models/                        # Domain models and ViewModels
 │   │   ├── Services/                      # Background workers, AI engine, SMS/TR18
-│   │   │   └── AI/                        # 34 Nyaya Patha AI research components
+│   │   │   ├── AI/                        # 34 Nyaya Patha AI research components
+│   │   │   └── ECourts/                   # High Court cause list scanner & sync services
 │   │   ├── SQL/                           # Master schema and seed scripts
 │   │   ├── Utils/                         # NAPIX crypto, security, network utilities
 │   │   ├── Views/                         # Razor UI views (19 functional areas)
@@ -141,7 +142,7 @@ Law Project/
 
 ## ⚙️ 3. ASP.NET Core 9.0 Pipeline & Middleware
 
-The request processing pipeline is configured in [`Program.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Program.cs):
+The request processing pipeline is configured in [`Program.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Program.cs):
 
 ### 3.1 Middleware Order
 1. **CorrelationIdMiddleware**: Generates and attaches a unique `X-Correlation-ID` GUID to each request for distributed tracing across logs.
@@ -160,25 +161,25 @@ The presentation and API tier is handled by 19 specialized controllers:
 
 | Controller | Source File | Responsibilities |
 | :--- | :--- | :--- |
-| **AccountController** | [`AccountController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AccountController.cs) | Authentication, login/logout, password change with PBKDF2 hashing, user profile management. |
-| **ActivityLogController** | [`ActivityLogController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ActivityLogController.cs) | Centralized audit log inspection, filtering by user, division, and timestamp. |
-| **ApiDashboardController** | [`ApiDashboardController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ApiDashboardController.cs) | Live telemetry for external APIs (eCourts NAPIX, TR18, SMS Mobile-1, AI providers). |
-| **AppealController** | [`AppealController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AppealController.cs) | High Court (MFA/WP/WA) and Supreme Court (SLP) appeals lifecycle, stay orders, and compensation deposits. |
-| **AuditController** | [`AuditController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AuditController.cs) | Sensitive operations tracking, tamper-evident record mutation history. |
-| **CaseController** | [`CaseController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/CaseController.cs) | Core MVC / MACT case registration, PW/RW witness records, tribunal awards, deposits, inter-division transfers. |
-| **DashboardController** | [`DashboardController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/DashboardController.cs) | Statewide and divisional KPI overview, pending vs disposed summaries, financial exposure. |
-| **ECourtsController** | [`ECourtsController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ECourtsController.cs) | NIC NAPIX v1.3 integration, CNR resolution, High Court & District Court case lookup, MyCases server-side pagination, Hall resolution. |
-| **EPController** | [`EPController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/EPController.cs) | Motor Vehicle Claims Execution Petitions (EP), attachment warrants, bank deposits. |
-| **GratuityController** | [`GratuityController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/GratuityController.cs) | Payment of Gratuity Act claims, Controlling & Appellate Authority cases, 10% p.a. interest calculation, petty bills. |
-| **HomeController** | [`HomeController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/HomeController.cs) | System landing page, navigation hub, session status. |
-| **JudgementController** | [`JudgementController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/JudgementController.cs) | Repository of legal precedents, judgment tagging, and full-text reference linking. |
-| **LabourController** | [`LabourController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/LabourController.cs) | Industrial Disputes, Section 33-C(2) Arising Applications, Parent case linking, Multi-tier legal opinions, A4 printable dossier. |
-| **LabourEPController** | [`LabourEPController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/LabourEPController.cs) | Labour Court Execution Petitions for reinstatement and back-wages recovery. |
-| **MasterController** | [`MasterController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/MasterController.cs) | Master directories: Divisions, Depots, Courts, MACT Tribunals, Advocates, Case Statuses, System Users. |
-| **NotificationController**| [`NotificationController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NotificationController.cs) | In-app hearing reminder center, stay expiry countdowns. |
-| **NyayaPathaController** | [`NyayaPathaController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NyayaPathaController.cs) | AI legal research assistant, RAG queries, document OCR extraction, petty bill compliance checks. |
-| **ReportController** | [`ReportController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ReportController.cs) | Division & Central Office Monthly Legal Statements, Pending Reconciliation, Excel/PDF exports. |
-| **UploadsController** | [`UploadsController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/UploadsController.cs) | Secure authenticated PDF streaming, file upload MIME validation, path traversal defense. |
+| **AccountController** | [`AccountController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AccountController.cs) | Authentication, login/logout, password change with PBKDF2 hashing, user profile management. |
+| **ActivityLogController** | [`ActivityLogController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ActivityLogController.cs) | Centralized audit log inspection, filtering by user, division, and timestamp. |
+| **ApiDashboardController** | [`ApiDashboardController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ApiDashboardController.cs) | Live telemetry for external APIs (eCourts NAPIX, TR18, SMS Mobile-1, AI providers). |
+| **AppealController** | [`AppealController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AppealController.cs) | High Court (MFA/WP/WA) and Supreme Court (SLP) appeals lifecycle, stay orders, and compensation deposits. |
+| **AuditController** | [`AuditController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/AuditController.cs) | Sensitive operations tracking, tamper-evident record mutation history. |
+| **CaseController** | [`CaseController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/CaseController.cs) | Core MVC / MACT case registration, PW/RW witness records, tribunal awards, deposits, inter-division transfers. |
+| **DashboardController** | [`DashboardController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/DashboardController.cs) | Statewide and divisional KPI overview, pending vs disposed summaries, financial exposure. |
+| **ECourtsController** | [`ECourtsController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ECourtsController.cs) | NIC NAPIX v1.3 integration, CNR resolution, Multi-Bench High Court daily cause list scanning (`GetLiveHighCourtPartyCases`), MyCases server-side pagination, Hall resolution, Roznama fetching. |
+| **EPController** | [`EPController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/EPController.cs) | Motor Vehicle Claims Execution Petitions (EP), attachment warrants, bank deposits. |
+| **GratuityController** | [`GratuityController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/GratuityController.cs) | Payment of Gratuity Act claims, Controlling & Appellate Authority cases, 10% p.a. interest calculation, petty bills. |
+| **HomeController** | [`HomeController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/HomeController.cs) | System landing page, navigation hub, session status. |
+| **JudgementController** | [`JudgementController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/JudgementController.cs) | Repository of legal precedents, judgment tagging, and full-text reference linking. |
+| **LabourController** | [`LabourController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/LabourController.cs) | Industrial Disputes, Section 33-C(2) Arising Applications, Parent case linking, Multi-tier legal opinions, A4 printable dossier. |
+| **LabourEPController** | [`LabourEPController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/LabourEPController.cs) | Labour Court Execution Petitions for reinstatement and back-wages recovery. |
+| **MasterController** | [`MasterController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/MasterController.cs) | Master directories: Divisions, Depots, Courts, MACT Tribunals, Advocates, Case Statuses, System Users. |
+| **NotificationController**| [`NotificationController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NotificationController.cs) | In-app hearing reminder center, stay expiry countdowns. |
+| **NyayaPathaController** | [`NyayaPathaController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NyayaPathaController.cs) | AI legal research assistant, RAG queries, document OCR extraction, petty bill compliance checks. |
+| **ReportController** | [`ReportController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ReportController.cs) | Division & Central Office Monthly Legal Statements, Pending Reconciliation, Excel/PDF exports. |
+| **UploadsController** | [`UploadsController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/UploadsController.cs) | Secure authenticated PDF streaming, file upload MIME validation, path traversal defense. |
 
 ---
 
@@ -218,8 +219,8 @@ The AI engine in `Services/AI/` implements a strict **Search-First RAG Pipeline*
 ```
 
 ### Key AI Subsystems:
-- **`UnifiedLegalResearchService.cs`** (212 KB): Master orchestrator coordinating context retrieval, LLM inference, and verification.
-- **`CaseContextBuilder.cs`** (193 KB): Ingests case facts, parent dispute records, and eCourts history into structured LLM prompts.
+- **`UnifiedLegalResearchService.cs`**: Master orchestrator coordinating context retrieval, LLM inference, and verification.
+- **`CaseContextBuilder.cs`**: Ingests case facts, parent dispute records, and eCourts history into structured LLM prompts.
 - **`OllamaLLMProvider.cs`**: Native HTTP client interfacing with Ollama (`http://127.0.0.1:11434`) running `qwen2.5:7b`.
 - **`ConflictDetectorService.cs`**: Flags conflicting high court judgments or adverse rulings before presenting advice.
 - **`PostGenerationVerifier.cs`**: Validates legal citations against the internal precedent database to prevent hallucinations.
@@ -235,7 +236,7 @@ The persistence tier relies on high-performance ADO.NET and Dapper using paramet
 
 ### 6.2 Schema Bootstrapping & Automatic Migrations
 - **`DatabaseMigrationRunner.cs` & `DBMigration.cs`**: Executes on application startup, inspecting table definitions, column types, and indexes. It automatically applies incremental schema updates without requiring downtime.
-- **Master SQL Baseline**: [`00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql) defines all 83 core tables, primary/foreign keys, stored procedures, and seed roles.
+- **Master SQL Baseline**: [`00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql) defines all 83 core tables, primary/foreign keys, stored procedures, and seed roles.
 
 ---
 
@@ -258,7 +259,7 @@ The system implements 8 distinct user roles:
 
 ## ⏰ 8. Hosted Background Services
 
-The application hosts two 24/7 background worker processes:
+The application hosts three 24/7 background worker processes:
 
 1. **`NotificationBackgroundService.cs`**:
    - Executes daily automated batch routines.
@@ -270,3 +271,9 @@ The application hosts two 24/7 background worker processes:
    - Manages hourly API quota budgets (`NapixQuotaService`).
    - Dispatches background sync jobs to query NIC NAPIX e-Courts for active case updates.
    - Synchronizes next hearing dates, interim orders, and bench details.
+
+3. **`HighCourtCauseListBackgroundSyncService.cs`**:
+   - Executes multi-bench background synchronization every 30 minutes.
+   - Automatically pre-caches today's cause lists across Bengaluru (`KAHC01`), Dharwad (`KAHC02`), and Kalaburagi (`KAHC03`).
+   - Evening routine (after 16:30 hrs): Automatically pre-caches tomorrow's cause lists across all three benches.
+   - Employs zero-database high-speed JSON caching in `App_Data/causelist_cache/` with automatic past-date pruning.

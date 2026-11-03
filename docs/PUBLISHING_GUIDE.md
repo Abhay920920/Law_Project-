@@ -2,7 +2,7 @@
 
 > **Target Environment**: Windows Server 2019 / 2022 with Internet Information Services (IIS 10.0)  
 > **Framework Target**: ASP.NET Core 9.0 (.NET 9.0.x Hosting Bundle)  
-> **Master Solution**: [`LawProject.sln`](file:///c:/Users/adts-/Desktop/Law%20Project/LawProject.sln)  
+> **Master Solution**: [`LawProject.sln`](file:///c:/Users/IT/Desktop/Law%20Project/LawProject.sln)  
 > **Quality Gate**: 284/284 Automated Tests Passing Across 17 Test Suites
 
 ---
@@ -19,7 +19,7 @@ The unified solution file `LawProject.sln` aggregates all system components:
 ## 🛠️ 2. Build & Publishing Pipelines
 
 ### Option A: One-Click Master PowerShell Pipeline (Recommended)
-Execute [`publish.ps1`](file:///c:/Users/adts-/Desktop/Law%20Project/publish.ps1) from an administrative terminal:
+Execute [`publish.ps1`](file:///c:/Users/IT/Desktop/Law%20Project/publish.ps1) from an administrative terminal:
 
 ```powershell
 # Standard Framework-Dependent publish (.NET 9 Hosting Bundle installed on server)

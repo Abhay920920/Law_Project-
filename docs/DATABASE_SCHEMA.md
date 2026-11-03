@@ -1,7 +1,7 @@
 # 💾 Law Project — Database Schema & Data Dictionary
 
 > **Database Engine**: Microsoft SQL Server (2019+ / Express / LocalDB)  
-> **Master Schema File**: [`Law Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql)  
+> **Master Schema File**: [`Law Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql)  
 > **Total Tables**: 83 Tables | 55 Historical Migrations Consolidated
 
 ---
@@ -138,8 +138,20 @@ erDiagram
 
 ## 🔄 4. Dynamic Migration Engine
 
-The solution manages schema evolution dynamically via [`DatabaseMigrationRunner.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DatabaseMigrationRunner.cs) and [`DBMigration.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DBMigration.cs):
+The solution manages schema evolution dynamically via [`DatabaseMigrationRunner.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DatabaseMigrationRunner.cs) and [`DBMigration.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DBMigration.cs):
 
 - Automatically queries `INFORMATION_SCHEMA.COLUMNS` and `sys.indexes` on application startup.
 - Idempotently executes `ALTER TABLE ADD ...` or creates missing non-clustered indexes if not present.
 - Guarantees zero-downtime updates across developer environments and production IIS instances.
+
+---
+
+## 🗄️ 5. Zero-Database High Court Cause List Cache (`App_Data/causelist_cache/`)
+
+To preserve transactional database throughput and avoid locking on high-volume cause list updates:
+- **Architecture**: Cause list rosters for all three High Court benches are managed directly via high-speed JSON file caches under `App_Data/causelist_cache/`:
+  - `highcourt_KAHC01_{yyyy-MM-dd}.json`: Principal Bench Bengaluru listings
+  - `highcourt_KAHC02_{yyyy-MM-dd}.json`: Dharwad Bench listings
+  - `highcourt_KAHC03_{yyyy-MM-dd}.json`: Kalaburagi Bench listings
+- **Pruning**: [`HighCourtDailyCauseListScannerService.PurgePreviousDaysCache()`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Services/ECourts/HighCourtDailyCauseListScannerService.cs) automatically purges past-date JSON files to prevent disk bloat.
+- **NAPIX Search Cache**: `App_Data/party_search_cache/highcourt_nwkrtc_master.json` caches master e-Courts search results to ensure zero database intervention for party case lookups.

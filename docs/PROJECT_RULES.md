@@ -6,7 +6,7 @@
 
 ## 🏛️ 1. Core Architectural Principles
 
-1. **Monorepo Cohesion**: All components (`MVCCaseManagement`, `NapixEcourtsApi`, `MVCCaseManagement.Tests`, `docs`, `scripts`) are developed in sync within the unified solution [`LawProject.sln`](file:///c:/Users/adts-/Desktop/Law%20Project/LawProject.sln).
+1. **Monorepo Cohesion**: All components (`MVCCaseManagement`, `NapixEcourtsApi`, `MVCCaseManagement.Tests`, `docs`, `scripts`) are developed in sync within the unified solution [`LawProject.sln`](file:///c:/Users/IT/Desktop/Law%20Project/LawProject.sln).
 2. **Layered Separation of Concerns**:
    - **Controllers**: Handle HTTP routing, input validation, claims-based authorization, and view model assembly. Business logic must not be embedded directly in Razor views.
    - **Services**: Encapsulate multi-step workflows, external communications (NAPIX, SMS, Ollama), cryptographic operations, and quota budgeting.
@@ -21,7 +21,7 @@
 2. **Nullable Reference Types**: Ensure nullable annotations (`#nullable enable`) are respected. Avoid raw `!` null-forgiving operators without defensive checks.
 3. **Strongly-Typed Options**: Do not read configuration values via raw string indexing (`_config["Key"]`). Use `IOptions<TOptions>` or strongly typed option classes (`ECourtsOptions`, `SmsOptions`, `TR18Options`, `NyayaPathaOptions`).
 4. **Dependency Injection**:
-   - Register services with appropriate lifetimes in [`Program.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Program.cs):
+   - Register services with appropriate lifetimes in [`Program.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Program.cs):
      - `Transient`: Lightweight stateless services (`IQueryRouterService`, `IDocumentTextExtractor`).
      - `Scoped`: Repositories and request-bound context builders (`ICaseRepository`, `ICaseContextBuilder`).
      - `Singleton`: Thread-safe services, background workers, memory caches (`NapixQuotaService`, `NapixBackgroundSyncService`).
@@ -77,15 +77,15 @@
    ```
 2. **Transactions**: Use `SqlTransaction` for multi-table updates (e.g., case creation + audit log + notification record). Always commit inside a `try` block and rollback inside `catch`.
 3. **Database Migrations**:
-   - New database columns or tables must be added to [`00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql).
-   - Also register idempotent schema check scripts in [`DatabaseMigrationRunner.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DatabaseMigrationRunner.cs) so existing deployments upgrade automatically on startup.
+   - New database columns or tables must be added to [`00_Master_Full_Database_Schema_And_Seed.sql`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/SQL/00_Master_Full_Database_Schema_And_Seed.sql).
+   - Also register idempotent schema check scripts in [`DatabaseMigrationRunner.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/DAL/DatabaseMigrationRunner.cs) so existing deployments upgrade automatically on startup.
 4. **Pagination**: Large result sets (`MyCases`, case lists) must implement database-level pagination using SQL Server `OFFSET ... ROWS FETCH NEXT ... ROWS ONLY` rather than loading full tables into memory.
 
 ---
 
 ## 🧪 5. Testing & Verification Standards
 
-1. **Test Framework**: The solution uses **xUnit** with FluentAssertions in [`Law Project/MVCCaseManagement.Tests`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/MVCCaseManagement.Tests).
+1. **Test Framework**: The solution uses **xUnit** with FluentAssertions in [`Law Project/MVCCaseManagement.Tests`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/MVCCaseManagement.Tests).
 2. **Pre-Commit Verification**: All 284 unit and integration tests must pass with zero failures:
    ```bash
    dotnet test LawProject.sln -c Release

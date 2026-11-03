@@ -8,9 +8,9 @@ Welcome to the centralized documentation library for the **NWKRTC Law Project**.
 
 | Document | Primary Audience | Purpose & Summary |
 | :--- | :--- | :--- |
-| 🏗️ **[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)** | Architects, Lead Engineers | Complete technical architecture, middleware pipelines, 19 MVC controllers, 34 AI services, 32 DAL repositories, 8 RBAC roles, and background worker threads. |
+| 🏗️ **[SYSTEM_ARCHITECTURE.md](SYSTEM_ARCHITECTURE.md)** | Architects, Lead Engineers | Complete technical architecture, middleware pipelines, 19 MVC controllers, 34 AI services, 32 DAL repositories, 8 RBAC roles, multi-bench cause list background workers, and data flow design. |
 | 📋 **[PROJECT_RULES.md](PROJECT_RULES.md)** | All Developers | Coding standards, C# 13 / .NET 9 conventions, zero-tolerance SQL parameterization rules, CSRF tokens, file upload safety, and release discipline. |
-| 💾 **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** | DBAs, Backend Engineers | Comprehensive dictionary for all 83 database tables, Entity Relationship Diagram (ERD), stored procedures, and dynamic schema migration engine. |
+| 💾 **[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md)** | DBAs, Backend Engineers | Comprehensive dictionary for all 83 database tables, Entity Relationship Diagram (ERD), stored procedures, zero-DB cause list cache structure, and dynamic schema migration engine. |
 | 📑 **[SRS.md](SRS.md)** | Stakeholders, QA, Developers | Software Requirements Specification detailing business requirements, functional rules, 8 user roles, and verification criteria. |
 
 ---
@@ -19,8 +19,8 @@ Welcome to the centralized documentation library for the **NWKRTC Law Project**.
 
 | Document | Primary Audience | Purpose & Summary |
 | :--- | :--- | :--- |
-| ⚖️ **[MODULES_AND_FEATURES_GUIDE.md](MODULES_AND_FEATURES_GUIDE.md)** | Legal Officers, Business Analysts | Functional walkthrough of all core modules: Motor Vehicle Claims (MVC), Labour Disputes & Arising Applications, Payment of Gratuity Act, Other Courts, and MIS Statements. |
-| 🌐 **[ECOURTS_INTEGRATION_GUIDE.md](ECOURTS_INTEGRATION_GUIDE.md)** | Integration Engineers, Admins | NIC e-Courts NAPIX v1.3 gateway guide, AES-128/HMAC cryptography, automated Court Hall resolution, MyCases server-side pagination, and 41 OpenAPI endpoints. |
+| ⚖️ **[MODULES_AND_FEATURES_GUIDE.md](MODULES_AND_FEATURES_GUIDE.md)** | Legal Officers, Business Analysts | Functional walkthrough of all core modules: Motor Vehicle Claims (MVC), Labour Disputes & Arising Applications, Payment of Gratuity Act, Other Courts, High Court Daily Cause List Scanner, and MIS Statements. |
+| 🌐 **[ECOURTS_INTEGRATION_GUIDE.md](ECOURTS_INTEGRATION_GUIDE.md)** | Integration Engineers, Admins | NIC e-Courts NAPIX v1.3 gateway guide, AES-128/HMAC cryptography, automated Court Hall resolution, High Court Multi-Bench Daily Cause List Scanner, 30-min background sync worker, and 41 OpenAPI endpoints. |
 | 💰 **[PETTY_BILL_PREVIOUS_PAYMENTS_GUIDE.md](PETTY_BILL_PREVIOUS_PAYMENTS_GUIDE.md)** | Finance, Legal Auditors | Procedure for tracking advocate fees, certified copy expenses, previous voucher disbursements, and automatic fee disincentives. |
 
 ---

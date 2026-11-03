@@ -1,6 +1,6 @@
 # 📑 Law Project — Modules & Features Operational Guide
 
-> **Enterprise Scope**: Motor Vehicle Claims (MVC/MACT), Labour Court & Service Matters, Arising Applications, Payment of Gratuity Act, Other Courts, Execution Petitions (EP), Petty Bills, Nyaya Patha AI, e-Courts Gateway, and Notification Engine.
+> **Enterprise Scope**: Motor Vehicle Claims (MVC/MACT), Labour Court & Service Matters, Arising Applications, Payment of Gratuity Act, Other Courts, Execution Petitions (EP), Petty Bills, Nyaya Patha AI, e-Courts Gateway, High Court Daily Cause List Multi-Bench Scanner, and Notification Engine.
 
 ---
 
@@ -111,7 +111,7 @@ Beyond MACT and Labour tribunals, the **Other Courts Module** records and manage
 
 ## 🤖 5. Nyaya Patha AI Assistant (ನ್ಯಾಯ ಪಥ)
 
-Integrated directly into [`NyayaPathaController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NyayaPathaController.cs) and backed by 34 specialized services:
+Integrated directly into [`NyayaPathaController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/NyayaPathaController.cs) and backed by 34 specialized services:
 
 - **Search-First RAG Pipeline**: Queries the local SQL precedent library and eCourts order database before formulating legal advice.
 - **BM25 + Dense Embeddings**: Hybrid keyword and vector search over full-text judgments and legal provisions.
@@ -133,18 +133,53 @@ Provides bidirectional integration with the National Informatics Centre (NIC) e-
 
 ---
 
-## 🔔 7. Background Notifications & Hearing Reminders
+## ⚖️ 7. High Court Daily Cause List & Multi-Bench Autonomous Scanner
 
-Hosted service [`NotificationBackgroundService.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Services/NotificationBackgroundService.cs) runs continuously:
+The **High Court Cause List Module** is accessible via [`/ECourts/HighCourtCauseList`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Views/ECourts/HighCourtCauseList.cshtml):
+
+### 7.1 Automatic Page Refresh Behavior
+- Whenever the page is loaded or refreshed:
+  - **Bench Selection**: Defaults to **All High Court Benches** (`estCode=ALL`), querying Bengaluru (`KAHC01`), Dharwad (`KAHC02`), and Kalaburagi (`KAHC03`) in parallel.
+  - **Date**: Defaults to the present day (`DateTime.Today.ToString("dd-MM-yyyy")`).
+  - **View Mode**: Defaults to **`'today'` (Scheduled / Today's Cause List)** with the **Scheduled** tab active.
+  - The UI immediately renders all NWKRTC cases scheduled across all sitting court halls today.
+
+### 7.2 High Court Subject Category Classification
+Every extracted case includes the official High Court classification code in parentheses:
+- **`(L, KSRTC )`**: Labour Court and Industrial Tribunal award challenges.
+- **`(S, KSRTC )`**: Service disputes, disciplinary orders, and promotions.
+- **`(L, PG )`**: Payment of Gratuity statutory appeals.
+- **`(GM, TEN )`**: Commercial tenders (canteen, parking, advertising, stall leases).
+- Non-writ matters (MFA accident claims) and revenue land disputes are strictly eliminated.
+
+### 7.3 Corporation Boundary & Multi-Respondent Rules
+- **Sibling RTC Exclusion**: Zero false positives from sibling corporations (**BMTC**, **KKRTC**, **NEKRTC**, or Central Bengaluru **KSRTC**).
+- **Multi-Respondent Preservation**: When a state-wide policy matter arrays multiple corporations (e.g. `R1: State of Karnataka`, `R2: BMTC`, `R3: NWKRTC`, `R4: KKRTC`), NWKRTC is recognized and retained.
+- **Territorial Divisional Hub Detection**: Recognizes NWKRTC divisional references (`HUBBALLI`, `HUBLI`, `BELAGAVI`, `BAGALKOT`, `GADAG`, `HAVERI`, `UTTARA KANNADA`, `CHIKKODI`, `SIRSI`, `GOKUL ROAD`) in Bengaluru and Kalaburagi even if the registry omitted the acronym `NWKRTC`.
+
+### 7.4 Background Sync & Pre-Caching
+- Handled by [`HighCourtCauseListBackgroundSyncService.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Services/ECourts/HighCourtCauseListBackgroundSyncService.cs) running every 30 minutes.
+- Pre-caches today's roster during daytime court hours and tomorrow's roster after 16:30 hrs across all three benches.
+- Employs zero-database high-speed JSON file caching in `App_Data/causelist_cache/` with automatic past-date cleanup.
+
+### 7.5 Roznama & Excel Exports
+- **Verbatim Roznama**: Fetches live proceedings and order sheets directly from the e-Courts Gateway.
+- **Formatted Excel Export**: Exports records with bench, court hall, serial number, subject category, and counsel details.
+
+---
+
+## 🔔 8. Background Notifications & Hearing Reminders
+
+Hosted service [`NotificationBackgroundService.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Services/NotificationBackgroundService.cs) runs continuously:
 - **SMS Hearing Reminders**: Sends automated SMS alerts directly to advocates and legal officers (1-day, 3-day, and 7-day lead times) via Karnataka Mobile-1 Gateway.
 - **Stay Expiry Warnings**: Alerts legal teams 15 days prior to stay order expiration.
 - **Limitation Period Alerts**: Warns of approaching 90-day appeal filing windows.
 
 ---
 
-## 📊 8. Reports & Executive MIS Statements
+## 📊 9. Reports & Executive MIS Statements
 
-Managed by [`ReportController.cs`](file:///c:/Users/adts-/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ReportController.cs):
+Managed by [`ReportController.cs`](file:///c:/Users/IT/Desktop/Law%20Project/Law%20Project/CaseManagement/Controllers/ReportController.cs):
 - **Division Monthly Legal Statements**: Detailed breakdown of active, pending, disposed, and newly registered cases.
 - **Central Office Consolidated Statement**: Statewide executive summary with total financial exposure vs. savings.
 - **Pending Reconciliation Engine**: Strictly reconciles:
