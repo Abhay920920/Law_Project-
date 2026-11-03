@@ -431,44 +431,51 @@ namespace MVCCaseManagement.Controllers
             {
                 string pName = sc.PetitionerName ?? "";
                 string rName = sc.RespondentName ?? "";
-                string comb = $"{pName} {rName}";
+                string adv = sc.Advocate ?? "";
+                string comb = $"{pName} {rName} {adv}".ToUpperInvariant();
+                bool isDharwad = (sc.HighCourtBench != null && sc.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0) ||
+                                 (sc.CNRNumber != null && sc.CNRNumber.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase)) ||
+                                 estCodes.Any(e => string.Equals(e, "KAHC02", StringComparison.OrdinalIgnoreCase));
 
-                // 1. Exclude explicit other RTCs
+                // 1. Exclude explicit other sibling RTCs
                 if (Regex.IsMatch(comb, @"\b(NEKRTC|BMTC|KKRTC)\b", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
-                if (Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST)\b", RegexOptions.IgnoreCase))
+
+                // High Court subject code: In Dharwad Bench, (L, KSRTC ) and (S, KSRTC ) denote Labour/Service classification, NOT external KSRTC.
+                if (!isDharwad && Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
+                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
 
                 // 2. Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
                 if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER)\b", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
 
                 // 3. Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
                 if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC|MANAGING\s*DIRECTOR)", RegexOptions.IgnoreCase))
                 {
                     return false;
                 }
 
                 // 4. Check for direct NWKRTC party keywords
-                if (Regex.IsMatch(comb, @"\b(NWKRTC|NKWRTC|NORTH\s*WEST|MANAGEMENT\s+OF\s+NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST(ERN)?(\s+STATE)?\s+ROAD|MANAGEMENT\s*OF?\s*NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)", RegexOptions.IgnoreCase) ||
+                    comb.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
 
-                // 5. Managing Director: must have transport/court context or standing counsel
-                if (Regex.IsMatch(comb, @"\b(MANAGING\s*DIRECTOR)\b", RegexOptions.IgnoreCase))
+                // 5. Managing Director / The Managing
+                if (Regex.IsMatch(comb, @"(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|\bTHE\s+MANAGING\b)", RegexOptions.IgnoreCase))
                 {
-                    bool hasTransportOrDivision = Regex.IsMatch(comb, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD)\b", RegexOptions.IgnoreCase);
-                    bool hasStandingCounsel = !string.IsNullOrEmpty(sc.Advocate) && Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|SAHUKAR)\b", RegexOptions.IgnoreCase);
+                    bool hasTransportOrDivision = Regex.IsMatch(comb, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD|KSRTC)\b", RegexOptions.IgnoreCase);
+                    bool hasStandingCounsel = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR)", RegexOptions.IgnoreCase);
 
                     if (hasTransportOrDivision || hasStandingCounsel)
                     {
@@ -476,13 +483,10 @@ namespace MVCCaseManagement.Controllers
                     }
                 }
 
-                // 6. Standing counsel check with officer context
-                if (!string.IsNullOrEmpty(sc.Advocate))
-                {
-                    bool hasAdv = Regex.IsMatch(sc.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|SAHUKAR)\b", RegexOptions.IgnoreCase);
-                    bool hasOfficer = Regex.IsMatch(comb, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
-                    if (hasAdv && hasOfficer) return true;
-                }
+                // 6. Standing counsel check with officer / court context
+                bool hasAdv = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KARIGANNAVAR|SAHUKAR|KUPPELUR)", RegexOptions.IgnoreCase);
+                bool hasOfficer = Regex.IsMatch(comb, @"(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT|OFFICER|DISCIPLINARY|KSRTC)", RegexOptions.IgnoreCase);
+                if (hasAdv && hasOfficer) return true;
 
                 // 7. If matched by cause list scanner and exists in verified NWKRTC master store
                 string scCnr = sc.CNRNumber?.Trim().ToUpperInvariant() ?? "";

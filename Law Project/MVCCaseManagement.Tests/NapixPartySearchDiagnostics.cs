@@ -179,6 +179,57 @@ namespace MVCCaseManagement.Tests
             }
             _output.WriteLine($"TOTAL NWKRTC MATTERS FOUND TODAY: {totalFound}");
         }
+        [Fact]
+        public async Task Test_InspectAllDharwadBenches_Detailed()
+        {
+            var configValues = new Dictionary<string, string?>
+            {
+                ["eCourts:DeptId"] = "clonwkrtc",
+                ["eCourts:AuthKey"] = "tD7Ju6n0Cdf4vxUo",
+                ["eCourts:IV"] = "tD7Ju6n0Cdf4vxUo",
+                ["eCourts:HmacKey"] = "15081947",
+                ["eCourts:Version"] = "v1.0",
+                ["eCourts:GatewayUrl"] = "https://delhigw.napix.gov.in/nic/ecourts",
+                ["eCourts:OAuthTokenUrl"] = "https://delhigw.napix.gov.in/nic/ecourts/oauth2/token",
+                ["eCourts:MVC:ApiKey"] = "5763de722863865e2691e137691d4333",
+                ["eCourts:MVC:SecretKey"] = "454aba6d3c5c867ae185cd198f572ef8"
+            };
+
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
+            var httpClient = new HttpClient();
+            var memoryCache = new MemoryCache(new MemoryCacheOptions());
+            var quotaService = new NapixQuotaService(configuration, NullLogger<NapixQuotaService>.Instance);
+            var napixService = new ECourtsNapixService(httpClient, memoryCache, configuration, NullLogger<ECourtsNapixService>.Instance, quotaService);
+
+            var benchesResult = await napixService.GetHighCourtCauselistBenchesAsync("KAHC02", "2026-11-03");
+            if (!benchesResult.HasValue) return;
+
+            foreach (var prop in benchesResult.Value.EnumerateObject())
+            {
+                if (prop.Value.ValueKind != JsonValueKind.Object) continue;
+                string bId = prop.Value.TryGetProperty("bench_id", out var bp) ? bp.ToString() : "";
+                string jName = prop.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() ?? "" : "";
+                string cNo = prop.Value.TryGetProperty("court_no", out var cp) ? cp.GetString() ?? "" : "";
+
+                var dtlResult = await napixService.GetHighCourtCauselistDetailsAsync("KAHC02", bId, "2026-11-03");
+                if (!dtlResult.HasValue || dtlResult.Value.ValueKind != JsonValueKind.Object)
+                {
+                    _output.WriteLine($"Bench: {bId} | Court: {cNo} | Judge: {jName} | No causelists");
+                    continue;
+                }
+
+                var lists = new List<string>();
+                foreach (var clProp in dtlResult.Value.EnumerateObject())
+                {
+                    if (clProp.Value.ValueKind != JsonValueKind.Object) continue;
+                    string clId = clProp.Value.TryGetProperty("causelist_id", out var cip) ? cip.ToString() : "";
+                    string clType = clProp.Value.TryGetProperty("cause_list_type", out var ctp) ? ctp.GetString() ?? "" : "";
+                    string clNo = clProp.Value.TryGetProperty("causelist_no", out var cnp) ? cnp.GetString() ?? "" : "";
+                    lists.Add($"[CL:{clId} Type:{clType} No:{clNo}]");
+                }
+                _output.WriteLine($"Bench: {bId} | Court: {cNo} | Judge: {jName} | Lists: {string.Join(", ", lists)}");
+            }
+        }
     }
 }
 
