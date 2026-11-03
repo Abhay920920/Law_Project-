@@ -14,6 +14,7 @@
 | Component / Subdirectory | Technology | Description |
 | :--- | :--- | :--- |
 | 🏢 **[MVCCaseManagement](Law%20Project/CaseManagement)** | ASP.NET Core 9.0 MVC, C#, SQL Server | Primary web application containing 19 MVC controllers, domain models, 34 AI services, 32 DAL repositories, background workers, and Razor UI views. |
+| ⚖️ **[High Court Cause List Engine](Law%20Project/CaseManagement/Services/ECourts)** | C#, PdfPig, NAPIX API, Background Workers | Autonomous multi-bench daily cause list scanner across Bengaluru, Dharwad, and Kalaburagi with 100% strict NWKRTC party filtering. |
 | 🤖 **[Nyaya Patha AI](docs/NYAYA_PATHA_PRODUCTION_DEPLOYMENT_PLAN.md)** | Ollama / Qwen2.5:7b, RAG, BM25 | On-premises legal research assistant with hybrid search, factuality verification, conflict detection, and petty bill audit. |
 | 🌐 **[NapixEcourtsApi](NapixEcourtsApi)** | ASP.NET Core Web API | Dedicated microservice handling AES-128 / HMAC-SHA256 e-Courts gateway communications. |
 | 🏛️ **[District Court Status API](District%20Court%20Case%20Status%20API)** | JSON OpenAPI Specs | 19 official OpenAPI endpoint specifications for ICJS & District Court case lookup, Cause List, and FIR status. |
@@ -62,7 +63,31 @@
 - **Cryptographic Security**: Enterprise OAuth2 bearer tokens, **AES-128-CBC** request payload encryption, and **HMAC-SHA256** parameter signing.
 - **Hourly Quota Budgeting**: Enforces 1,000 requests/hour limit per module via `tbl_Napix_Api_Quota` to prevent IP rate-limiting.
 
-### 7. 🔔 Automated Background Notifications
+### 7. ⚖️ High Court Daily Cause List & Multi-Bench Autonomous Scanner
+- **Automatic 3-Bench Scan on Refresh**:
+  - Whenever the High Court Cause List page is loaded or refreshed, it automatically defaults to **All High Court Benches** (`estCode=ALL`) for the **present day** (`DateTime.Today`).
+  - Scans and aggregates cases across the **Principal Bench Bengaluru (`KAHC01`)**, **Dharwad Bench (`KAHC02`)**, and **Kalaburagi Bench (`KAHC03`)** simultaneously.
+  - Automatically activates the **"Scheduled (Today)"** tab on load, immediately listing all cases scheduled for hearing today.
+- **High Court Subject Classification Code Extraction**:
+  - Extracts and displays official High Court subject codes directly in the UI and exports:
+    - `(L, KSRTC )`: Labour disputes involving State Road Transport Corporations.
+    - `(S, KSRTC )`: Service & employment matters.
+    - `(L, PG )`: Payment of Gratuity claims.
+    - `(GM, TEN )`: General Miscellaneous Commercial Tenders.
+  - Strict exclusion of non-writ jurisdictions (MFA motor accident insurance claims) and Land Acquisition/Revenue disputes (`KLR, RES`, `LA, RES`, `SLAO`).
+- **Strict Corporation Boundary Enforcement & Multi-Respondent Preservation**:
+  - Zero false positives from sibling corporations: **BMTC**, **KKRTC**, **NEKRTC**, or Central **KSRTC**.
+  - **Multi-Respondent Safeguard**: In state-wide policy petitions where the State of Karnataka, BMTC, KSRTC, and NWKRTC are co-respondents (e.g., NWKRTC as R2, R3, or R4), the matter is preserved and surfaced.
+  - **Territorial Operating Hub Detection**: Recognizes NWKRTC divisional references (`HUBBALLI`, `HUBLI`, `BELAGAVI`, `BAGALKOT`, `GADAG`, `HAVERI`, `UTTARA KANNADA`, `CHIKKODI`, `SIRSI`, `GOKUL ROAD`) in Bengaluru and Kalaburagi even if the court registry omitted the abbreviated acronym `NWKRTC`.
+- **Background Cause List Sync Worker (`HighCourtCauseListBackgroundSyncService`)**:
+  - Runs in the background every 30 minutes.
+  - Pre-caches today's cause lists during daytime court hours and pre-caches tomorrow's cause lists after 16:30 hrs across all three benches.
+  - Guarantees 0ms UI load time for officers and advocates with automated daily cache pruning.
+- **Verbatim Roznama & Dossier Telemetry**:
+  - Direct integration to fetch verbatim daily proceedings (Roznama), order sheets, and full party profiles directly from the official e-Courts registry without manual lookups.
+  - One-click formatted Excel export (`.xls`) including bench name, court hall, item number, subject category, and listing status.
+
+### 8. 🔔 Automated Background Notifications
 - `NotificationBackgroundService` hosted background job running daily.
 - SMS alerts for upcoming hearing dates (1-day, 3-day, 7-day lead times) dispatched via Karnataka Mobile-1 Gateway.
 - Stay order expiration warnings (15-day alert) and High Court limitation window alerts (90-day alert).
@@ -99,11 +124,15 @@
                      v                                         v
 +------------------------------------------+ +--------------------------------------+
 |            Services & AI Layer           | |      Hosted Background Services      |
-| - Nyaya Patha AI Engine (34 AI services) | | - NotificationBackgroundService      |
-| - Ollama LLM Provider (Qwen2.5:7b)       | |   (Daily SMS notification batch)     |
-| - ECourtsNapixService (AES/HMAC NAPIX)   | | - NapixBackgroundSyncService         |
-| - NapixQuotaService & SyncEngine         | |   (Hourly active case sync)          |
-| - SMSService (Karnataka Mobile-1)        | +--------------------------------------+
+| - HighCourtDailyCauseListScannerService  | | - HighCourtCauseListBackgroundSync   |
+|   (Multi-bench PDF roster parser)        | |   (Every 30m all-bench cause sync)   |
+| - HighCourtPartySearchStoreService       | | - NotificationBackgroundService      |
+|   (Master e-Courts search cache)         | |   (Daily SMS notification batch)     |
+| - Nyaya Patha AI Engine (34 AI services) | | - NapixBackgroundSyncService         |
+| - Ollama LLM Provider (Qwen2.5:7b)       | |   (Hourly active case sync)          |
+| - ECourtsNapixService (AES/HMAC NAPIX)   | +--------------------------------------+
+| - NapixQuotaService & SyncEngine         |
+| - SMSService (Karnataka Mobile-1)        |
 +------------------------------------------+
                      |
                      v
@@ -125,6 +154,7 @@
 - **Runtime Target**: `.NET 9.0` (C# 13)
 - **Web Framework**: ASP.NET Core 9.0 MVC with Razor Engine
 - **Database Engine**: Microsoft SQL Server (83 Tables, Stored Procedures, Automated Migrations)
+- **High Court PDF Extraction**: `UglyToad.PdfPig` (High-speed streaming parser)
 - **AI Inference**: Local Ollama (`qwen2.5:7b-instruct-q4_K_M`)
 - **Data Access**: ADO.NET (`SqlCommand`), Dapper, Parameterized Queries
 - **Security**: PBKDF2 Password Hashing, Anti-Forgery Tokens, AES-128-CBC / HMAC-SHA256 Gateway Cryptography
