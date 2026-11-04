@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Authorization;
 using MVCCaseManagement.DAL;
@@ -340,13 +340,20 @@ namespace MVCCaseManagement.Controllers
             return View(model);
         }
         
-        [HttpGet]
-        public async Task<IActionResult> Details(int id)
+[HttpGet]
+        public async Task<IActionResult> Details(int? id)
         {
-            var gratuityCase = await _gratuityRepo.GetCaseById(id);
+            if (!id.HasValue || id.Value <= 0)
+            {
+                TempData["InfoMessage"] = "Please select a Gratuity Case to view details.";
+                return RedirectToAction("CaseList");
+            }
+
+            var gratuityCase = await _gratuityRepo.GetCaseById(id.Value);
             if (gratuityCase == null)
             {
-                return NotFound();
+                TempData["ErrorMessage"] = "The requested Gratuity Case was not found.";
+                return RedirectToAction("CaseList");
             }
 
             var divIdString = User.FindFirst("DivisionID")?.Value;
@@ -356,9 +363,9 @@ namespace MVCCaseManagement.Controllers
             // IDOR Protection: Non-CO users can only view their own division's cases
             if (!isCO && gratuityCase.DivisionCode != userDivId)
             {
-                _logger.LogWarning("Unauthorized access attempt to Gratuity Case ID {CaseID} by User ID {UserID} from Division {UserDivID}", id, User.FindFirstValue(ClaimTypes.NameIdentifier), userDivId);
+                _logger.LogWarning("Unauthorized access attempt to Gratuity Case ID {CaseID} by User ID {UserID} from Division {UserDivID}", id.Value, User.FindFirstValue(ClaimTypes.NameIdentifier), userDivId);
                 TempData["ErrorMessage"] = "Access Denied: You cannot view cases from other divisions.";
-                return RedirectToAction("Index");
+                return RedirectToAction("CaseList");
             }
 
             // Fetch Division Name
@@ -372,7 +379,7 @@ namespace MVCCaseManagement.Controllers
             // Mark as viewed by CO if opened by a CO user and it's in "Sent to CO" status
             if (isCO && gratuityCase.ForwardingStatus == "Sent to Central Office" && !gratuityCase.IsViewedByCO)
             {
-                await _gratuityRepo.MarkAsViewedByCO(id);
+                await _gratuityRepo.MarkAsViewedByCO(id.Value);
                 gratuityCase.IsViewedByCO = true;
             }
 
