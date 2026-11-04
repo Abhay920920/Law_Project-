@@ -328,34 +328,74 @@
                             </div>
                         </div>
 
-                        @if (!string.IsNullOrEmpty(Model.AppealNumber))
+                        @if (!string.IsNullOrEmpty(Model.AppealNumber) || !string.IsNullOrEmpty(Model.AppealCourt) || (Model.AppealComplianceAmount.HasValue && Model.AppealComplianceAmount > 0) || Model.ForwardingStatus == "Appeal before Appellant Authority" || Model.ForwardingStatus_Appeal == "Sent to Central Office")
                         {
                             <div class="card shadow-sm border-0 mb-3 mb-md-4 border-start border-4 border-success">
-                                <div class="card-header bg-white py-2 fw-bold text-success">Appellate Authority (AA) Details</div>
+                                <div class="card-header bg-white py-2 fw-bold text-success d-flex justify-content-between align-items-center">
+                                    <span>Appellate Authority (AA) Details</span>
+                                    @if (!string.IsNullOrEmpty(Model.ForwardingStatus_Appeal))
+                                    {
+                                        <span class="badge bg-success-subtle text-success">@Model.ForwardingStatus_Appeal</span>
+                                    }
+                                </div>
                                 <div class="card-body small">
                                     <div class="row g-2">
-                                        <div class="col-5 col-sm-6 text-muted">Appeal No / Year:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealNumber / @Model.AppealYear</div>
-                                        <div class="col-5 col-sm-6 text-muted">Arising from:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealArisingNo / @Model.AppealArisingYear</div>
-                                        <div class="col-5 col-sm-6 text-muted">Court:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealCourt</div>
-                                        <div class="col-5 col-sm-6 text-muted">Advocate:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealAdvocate</div>
-                                        <div class="col-5 col-sm-6 text-muted">AA Disposal Date:</div><div class="col-7 col-sm-6 fw-bold text-success">@Model.AppealDisposalDate?.ToShortDateString()</div>
-                                        
-                                        <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
-                                        
-                                        <div class="col-5 col-sm-6 text-muted small">Copy Applied:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyAppliedDate?.ToShortDateString()</div>
-                                        <div class="col-5 col-sm-6 text-muted small">Copy Ready:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyReadyDate?.ToShortDateString()</div>
-                                        <div class="col-5 col-sm-6 text-muted small">Copy Delivered:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyDeliveredDate?.ToShortDateString()</div>
-                                        <div class="col-5 col-sm-6 text-muted small">Copy Received:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyReceivedDate?.ToShortDateString()</div>
-                                        
+                                        <div class="col-5 col-sm-6 text-muted">Appeal No / Year:</div><div class="col-7 col-sm-6 fw-bold text-break">@(string.IsNullOrEmpty(Model.AppealNumber) ? "Pending Allotment" : $"{Model.AppealNumber} / {Model.AppealYear}")</div>
+                                        @if (!string.IsNullOrEmpty(Model.AppealArisingNo))
+                                        {
+                                            <div class="col-5 col-sm-6 text-muted">Arising from:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealArisingNo / @Model.AppealArisingYear</div>
+                                        }
+                                        <div class="col-5 col-sm-6 text-muted">Court:</div><div class="col-7 col-sm-6 fw-bold text-break">@(Model.AppealCourt ?? "-")</div>
+                                        <div class="col-5 col-sm-6 text-muted">Advocate:</div><div class="col-7 col-sm-6 fw-bold text-break">@(Model.AppealAdvocate ?? "-")</div>
+                                        @if (!string.IsNullOrEmpty(Model.AppealEntrustmentNo) || Model.AppealEntrustmentDate.HasValue)
+                                        {
+                                            <div class="col-5 col-sm-6 text-muted">Entrustment:</div><div class="col-7 col-sm-6 fw-bold text-break">@(Model.AppealEntrustmentNo ?? "-") / @Model.AppealEntrustmentDate?.ToShortDateString()</div>
+                                        }
+
+                                        @if (Model.AppealComplianceAmount.HasValue && Model.AppealComplianceAmount > 0)
+                                        {
+                                            <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
+                                            <div class="col-5 col-sm-6 text-muted">Compliance Amount:</div><div class="col-7 col-sm-6 fw-bold text-success">â‚¹ @Model.AppealComplianceAmount?.ToString("N2")</div>
+                                            <div class="col-5 col-sm-6 text-muted">Cheque No / Date:</div><div class="col-7 col-sm-6 small text-break">@(Model.AppealComplianceChequeNumber ?? "-") / @Model.AppealComplianceChequeDate?.ToShortDateString()</div>
+                                        }
+
+                                        @if (Model.AppealDisposalDate.HasValue)
+                                        {
+                                            <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
+                                            <div class="col-5 col-sm-6 text-muted">AA Disposal Date:</div><div class="col-7 col-sm-6 fw-bold text-success">@Model.AppealDisposalDate?.ToShortDateString()</div>
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(Model.AppealAwardDetails))
+                                        {
+                                            <div class="col-5 col-sm-6 text-muted">AA Award Details:</div><div class="col-7 col-sm-6 fw-bold text-break">@Model.AppealAwardDetails</div>
+                                        }
+
+                                        @if (Model.AppealCopyAppliedDate.HasValue || Model.AppealCopyReadyDate.HasValue || Model.AppealCopyDeliveredDate.HasValue || Model.AppealCopyReceivedDate.HasValue)
+                                        {
+                                            <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
+                                            <div class="col-5 col-sm-6 text-muted small">Copy Applied:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyAppliedDate?.ToShortDateString()</div>
+                                            <div class="col-5 col-sm-6 text-muted small">Copy Ready:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyReadyDate?.ToShortDateString()</div>
+                                            <div class="col-5 col-sm-6 text-muted small">Copy Delivered:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyDeliveredDate?.ToShortDateString()</div>
+                                            <div class="col-5 col-sm-6 text-muted small">Copy Received:</div><div class="col-7 col-sm-6 small">@Model.AppealCopyReceivedDate?.ToShortDateString()</div>
+                                        }
+
                                         @if(!string.IsNullOrEmpty(Model.AppealDelayRemarks)) {
                                             <div class="col-12 mt-1 text-muted small font-italic text-break">Delay: @Model.AppealDelayRemarks</div>
                                         }
 
-                                        <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
-                                        
-                                        <div class="col-5 col-sm-6 text-muted small">Advocate Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealAdvocateOpinion</div>
-                                        <div class="col-5 col-sm-6 text-muted small">ALO/LO Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealLOOpinion</div>
-                                        <div class="col-5 col-sm-6 text-muted small">DC Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealDCOpinion</div>
+                                        @if (!string.IsNullOrEmpty(Model.AppealAdvocateOpinion) || !string.IsNullOrEmpty(Model.AppealLOOpinion) || !string.IsNullOrEmpty(Model.AppealDCOpinion))
+                                        {
+                                            <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
+                                            <div class="col-5 col-sm-6 text-muted small">Advocate Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealAdvocateOpinion</div>
+                                            <div class="col-5 col-sm-6 text-muted small">ALO/LO Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealLOOpinion</div>
+                                            <div class="col-5 col-sm-6 text-muted small">DC Opinion:</div><div class="col-7 col-sm-6 fw-bold small text-break">@Model.AppealDCOpinion</div>
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(Model.OutwardNumber_Appeal) || Model.OutwardDate_Appeal.HasValue)
+                                        {
+                                            <div class="col-12 mt-1"><hr class="my-1 opacity-25"></div>
+                                            <div class="col-5 col-sm-6 text-muted small">Outward No / Date:</div><div class="col-7 col-sm-6 small text-break">@(Model.OutwardNumber_Appeal ?? "-") / @Model.OutwardDate_Appeal?.ToShortDateString()</div>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -451,6 +491,27 @@
                                 }
                             </div>
                         </div>
+
+                        @if (Model.EnclosedDocuments != null && Model.EnclosedDocuments.Any())
+                        {
+                            <div class="card shadow-sm border-0 mb-3 mb-md-4">
+                                <div class="card-header bg-white py-2 fw-bold d-flex justify-content-between align-items-center">
+                                    <span><i class="bi bi-paperclip me-2 text-primary"></i>Enclosed Documents</span>
+                                    <span class="badge bg-secondary">@Model.EnclosedDocuments.Count</span>
+                                </div>
+                                <div class="card-body p-0">
+                                    <ul class="list-group list-group-flush small">
+                                        @foreach (var doc in Model.EnclosedDocuments)
+                                        {
+                                            <li class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                                                <span class="text-break"><i class="bi bi-file-earmark-text text-secondary me-2"></i>@doc.DocName</span>
+                                                <span class="badge bg-light text-dark border">@doc.PageCount pages</span>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
                 <div class="row g-3 g-md-4 mt-1 mb-3">

@@ -255,10 +255,36 @@ namespace MVCCaseManagement.Controllers
             if (model.Payments != null)
             {
                 model.Payments = model.Payments.Where(p => p.Amount.HasValue && p.Amount.Value > 0).ToList();
+                if (model.Payments.Any())
+                {
+                    model.ActualPaidAmount = model.Payments.Sum(p => p.Amount ?? 0);
+                    var latestPayment = model.Payments.OrderByDescending(p => p.ChequeDate).FirstOrDefault();
+                    if (latestPayment != null)
+                    {
+                        if (string.IsNullOrEmpty(model.ChequeNumber)) model.ChequeNumber = latestPayment.ChequeNumber;
+                        if (!model.ChequeDate.HasValue) model.ChequeDate = latestPayment.ChequeDate;
+                    }
+                }
             }
             if (model.InterestPayments != null)
             {
                 model.InterestPayments = model.InterestPayments.Where(p => p.Amount.HasValue && p.Amount.Value > 0).ToList();
+                if (model.InterestPayments.Any())
+                {
+                    model.IsInterestPayable = true;
+                    if (model.OrderedAmount_CA == null || model.OrderedAmount_CA == 0)
+                    {
+                        model.OrderedAmount_CA = model.InterestPayments.Sum(ip => ip.Amount ?? 0);
+                    }
+                }
+            }
+            if (!model.LastDrawnPay.HasValue && (model.LastDrawnBasic.HasValue || model.LastDrawnBDA.HasValue || model.LastDrawnDA.HasValue))
+            {
+                model.LastDrawnPay = (model.LastDrawnBasic ?? 0) + (model.LastDrawnBDA ?? 0) + (model.LastDrawnDA ?? 0);
+            }
+            if (!model.LastDrawnPay_CA.HasValue && (model.LastDrawnBasic_CA.HasValue || model.LastDrawnBDA_CA.HasValue || model.LastDrawnDA_CA.HasValue))
+            {
+                model.LastDrawnPay_CA = (model.LastDrawnBasic_CA ?? 0) + (model.LastDrawnBDA_CA ?? 0) + (model.LastDrawnDA_CA ?? 0);
             }
 
             if (ModelState.IsValid)
@@ -568,7 +594,9 @@ namespace MVCCaseManagement.Controllers
                 ClaimantApprovalDate = gratuityCase.ClaimantApprovalDate,
                 EvidenceRemarks = gratuityCase.EvidenceRemarks,
                 EvidenceWitnessName = gratuityCase.EvidenceWitnessName,
-                EvidenceWitnessDesignation = gratuityCase.EvidenceWitnessDesignation
+                EvidenceWitnessDesignation = gratuityCase.EvidenceWitnessDesignation,
+                IsViewedByCO = gratuityCase.IsViewedByCO,
+                EnclosedDocuments = gratuityCase.EnclosedDocuments ?? new List<EnclosedDocument>()
             };
 
             var divisions = _masterRepo.GetAllDivisions();
@@ -601,10 +629,36 @@ namespace MVCCaseManagement.Controllers
             if (model.Payments != null)
             {
                 model.Payments = model.Payments.Where(p => p.Amount.HasValue && p.Amount.Value > 0).ToList();
+                if (model.Payments.Any())
+                {
+                    model.ActualPaidAmount = model.Payments.Sum(p => p.Amount ?? 0);
+                    var latestPayment = model.Payments.OrderByDescending(p => p.ChequeDate).FirstOrDefault();
+                    if (latestPayment != null)
+                    {
+                        if (string.IsNullOrEmpty(model.ChequeNumber)) model.ChequeNumber = latestPayment.ChequeNumber;
+                        if (!model.ChequeDate.HasValue) model.ChequeDate = latestPayment.ChequeDate;
+                    }
+                }
             }
             if (model.InterestPayments != null)
             {
                 model.InterestPayments = model.InterestPayments.Where(p => p.Amount.HasValue && p.Amount.Value > 0).ToList();
+                if (model.InterestPayments.Any())
+                {
+                    model.IsInterestPayable = true;
+                    if (model.OrderedAmount_CA == null || model.OrderedAmount_CA == 0)
+                    {
+                        model.OrderedAmount_CA = model.InterestPayments.Sum(ip => ip.Amount ?? 0);
+                    }
+                }
+            }
+            if (!model.LastDrawnPay.HasValue && (model.LastDrawnBasic.HasValue || model.LastDrawnBDA.HasValue || model.LastDrawnDA.HasValue))
+            {
+                model.LastDrawnPay = (model.LastDrawnBasic ?? 0) + (model.LastDrawnBDA ?? 0) + (model.LastDrawnDA ?? 0);
+            }
+            if (!model.LastDrawnPay_CA.HasValue && (model.LastDrawnBasic_CA.HasValue || model.LastDrawnBDA_CA.HasValue || model.LastDrawnDA_CA.HasValue))
+            {
+                model.LastDrawnPay_CA = (model.LastDrawnBasic_CA ?? 0) + (model.LastDrawnBDA_CA ?? 0) + (model.LastDrawnDA_CA ?? 0);
             }
 
             if (ModelState.IsValid)
@@ -699,6 +753,11 @@ namespace MVCCaseManagement.Controllers
                 existing.ChequeNumber = model.ChequeNumber;
                 existing.ChequeDate = model.ChequeDate;
                 existing.Payments = model.Payments;
+                existing.EnclosedDocuments = model.EnclosedDocuments;
+                existing.IsInterestPayable = model.IsInterestPayable;
+                existing.OrderedAmount_CA = model.OrderedAmount_CA;
+                existing.LastDrawnPay = model.LastDrawnPay;
+                existing.LastDrawnPay_CA = model.LastDrawnPay_CA;
                 existing.DisposalDate = model.DisposalDate;
                 existing.AppointmentDate_CA = model.AppointmentDate_CA;
                 existing.CA_AppointmentRemark = model.CA_AppointmentRemark;
@@ -1361,6 +1420,14 @@ namespace MVCCaseManagement.Controllers
              var existingCase = await _gratuityRepo.GetCaseById(model.CaseID);
              if (existingCase == null) return NotFound();
 
+             var userDivClaim = User.FindFirst("DivisionID")?.Value;
+             int myDiv = int.TryParse(userDivClaim, out int d) ? d : 0;
+             bool isCO = (myDiv == 0 || myDiv == 5 || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("Admin"));
+             if (!isCO && existingCase.DivisionCode != myDiv)
+             {
+                 return Forbid();
+             }
+
              // Update Claimant Appeal Fields
              existingCase.ClaimantDivisionID = model.ClaimantDivisionID;
              existingCase.ClaimantArisingWPNumber = model.ClaimantArisingWPNumber;
@@ -1401,8 +1468,12 @@ namespace MVCCaseManagement.Controllers
         {
             try
             {
+                var divIdString = User.FindFirst("DivisionID")?.Value;
+                int divisionCode = int.TryParse(divIdString, out int idVal) ? idVal : 0;
+
                 var gratuityCase = new GratuityCase
                 {
+                    DivisionCode = divisionCode > 0 ? divisionCode : model.DivisionCode,
                     ClaimantWPNumber = model.ClaimantWPNumber,
                     ClaimantWPYear = model.ClaimantWPYear,
                     ClaimantArisingWPNumber = model.ClaimantArisingWPNumber,
