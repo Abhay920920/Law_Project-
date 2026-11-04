@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.LabourCase
+﻿@model MVCCaseManagement.Models.LabourCase
 @using Microsoft.AspNetCore.Html
 @functions {
     // Renders a single field row — label on left, value on right
@@ -901,16 +901,16 @@
                             <div class="lcp-card-body">
                                 <div class="row g-0">
                                     <div class="col-md-6">
-                                        @Row("CNR Number", D(Model.CNRNumber))
-                                        @Row("Establishment Name", D(Model.EstName))
-                                        @Row("eCourts Stage", D(Model.ECourtsStage))
-                                        @Row("Disposal Status", D(Model.PendDispStatus))
+                                        @Html.Raw(Row("CNR Number", D(Model.CNRNumber)))
+                                        @Html.Raw(Row("Establishment Name", D(Model.EstName)))
+                                        @Html.Raw(Row("eCourts Stage", D(Model.ECourtsStage)))
+                                        @Html.Raw(Row("Disposal Status", D(Model.PendDispStatus)))
                                     </div>
                                     <div class="col-md-6">
-                                        @Row("Court No.", D(Model.ECourtsCourtNo))
-                                        @Row("Presiding Judge / Coram", D(Model.ECourtsJudge))
-                                        @Row("Last Sync Timestamp", DD(Model.LastNapixSyncAt))
-                                        @BadgeRow("Sync Status", D(Model.LastNapixSyncStatus), "bg-info-subtle text-info border")
+                                        @Html.Raw(Row("Court No.", D(Model.ECourtsCourtNo)))
+                                        @Html.Raw(Row("Presiding Judge / Coram", D(Model.ECourtsJudge)))
+                                        @Html.Raw(Row("Last Sync Timestamp", DD(Model.LastNapixSyncAt)))
+                                        @Html.Raw(BadgeRow("Sync Status", D(Model.LastNapixSyncStatus), "bg-info-subtle text-info border"))
                                     </div>
                                 </div>
                             </div>
