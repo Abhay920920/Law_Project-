@@ -1,9 +1,12 @@
-namespace MVCCaseManagement.Models
+﻿namespace MVCCaseManagement.Models
 {
     public class DashboardStatsViewModel
     {
         public int TotalCases { get; set; }
         public int PendingCases { get; set; }
+        public int PendingCorpCases { get; set; }
+        public int PendingThirdPartyCases { get; set; }
+        public int TotalThirdPartyCases { get; set; }
         public int FavorCases { get; set; }
         public int AgainstCases { get; set; }
         public int SentToCOCount { get; set; }

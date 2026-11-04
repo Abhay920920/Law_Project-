@@ -2159,6 +2159,9 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
 
                         -- 2. PENDING/ACTIVE CASES
                         (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = '')) AS PendingCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND (ThirdPartyFlag = 0 OR ThirdPartyFlag IS NULL) AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = '')) AS PendingCorpCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND ThirdPartyFlag = 1 AND (DisposalResult IS NULL OR DisposalResult = 'Pending' OR DisposalResult = '')) AS PendingThirdPartyCases,
+                        (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND ThirdPartyFlag = 1) AS TotalThirdPartyCases,
 
                         -- 3. FAVOR CASES
                         (SELECT COUNT(*) FROM MVC_CASES WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID) AND DisposalResult = 'Favor') AS FavorCases,
@@ -2306,6 +2309,9 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         {
                             stats.TotalCases = reader["TotalCases"] != DBNull.Value ? Convert.ToInt32(reader["TotalCases"]) : 0;
                             stats.PendingCases = reader["PendingCases"] != DBNull.Value ? Convert.ToInt32(reader["PendingCases"]) : 0;
+                            stats.PendingCorpCases = reader["PendingCorpCases"] != DBNull.Value ? Convert.ToInt32(reader["PendingCorpCases"]) : 0;
+                            stats.PendingThirdPartyCases = reader["PendingThirdPartyCases"] != DBNull.Value ? Convert.ToInt32(reader["PendingThirdPartyCases"]) : 0;
+                            stats.TotalThirdPartyCases = reader["TotalThirdPartyCases"] != DBNull.Value ? Convert.ToInt32(reader["TotalThirdPartyCases"]) : 0;
                             stats.FavorCases = reader["FavorCases"] != DBNull.Value ? Convert.ToInt32(reader["FavorCases"]) : 0;
                             stats.AgainstCases = reader["AgainstCases"] != DBNull.Value ? Convert.ToInt32(reader["AgainstCases"]) : 0;
                             stats.SentToCOCount = reader["SentToCOCount"] != DBNull.Value ? Convert.ToInt32(reader["SentToCOCount"]) : 0;

@@ -1,4 +1,4 @@
-@using MVCCaseManagement.Common
+﻿@using MVCCaseManagement.Common
 @{
     ViewData["Title"] = "Dashboard";
     Layout = "~/Views/Shared/_Layout.cshtml";
@@ -61,6 +61,15 @@
         .stat-card-gradient:hover {
             transform: translateY(-4px);
             box-shadow: 0 12px 24px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-sub-item {
+            transition: transform 0.2s cubic-bezier(0.165, 0.84, 0.44, 1), opacity 0.2s ease;
+            cursor: pointer;
+        }
+        .stat-sub-item:hover {
+            transform: scale(1.08);
+            opacity: 1 !important;
         }
 
         .stat-card-gradient .label {
@@ -226,14 +235,27 @@
                 <div class="row g-4 row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-5 mb-4">
                     <!-- Pending Cases -->
                     <div class="col">
-                        <a href="/Case/Index?status=Pending" class="text-decoration-none">
-                            <div class="stat-card-gradient bg-grad-orange">
-                                <div class="bg-circle"></div>
-                                <div class="label">Pending Cases</div>
-                                <div class="value">@ViewBag.PendingCases</div>
-                                <i class="bi bi-clock-history icon-btm"></i>
+                        <div class="stat-card-gradient bg-grad-orange position-relative">
+                            <div class="bg-circle"></div>
+                            <div class="label d-flex justify-content-between align-items-center">
+                                <span>Pending Cases</span>
+                                @if (ViewBag.PendingCases > 0)
+                                {
+                                    <span class="badge bg-white bg-opacity-25 text-white" style="font-size: 0.62rem; font-weight: 700; padding: 2px 6px;" title="Total Pending Cases">@ViewBag.PendingCases</span>
+                                }
                             </div>
-                        </a>
+                            <div class="d-flex justify-content-center gap-4 align-items-baseline mb-1 z-3">
+                                <a href="/Case/Index?status=Pending" class="text-white text-decoration-none text-center stat-sub-item" title="Pending Corporation Cases">
+                                    <div class="value" style="font-size: 1.5rem; line-height: 1;">@(ViewBag.PendingCorpCases ?? ViewBag.PendingCases)</div>
+                                    <div style="font-size: 0.55rem; font-weight: 800; opacity: 0.9; text-transform: uppercase; margin-top: 2px;">Corp</div>
+                                </a>
+                                <a href="/Case/ThirdPartyList" class="text-white text-decoration-none text-center stat-sub-item" title="Third Party Cases">
+                                    <div class="value" style="font-size: 1.5rem; line-height: 1;">@(ViewBag.PendingThirdPartyCases ?? 0)</div>
+                                    <div style="font-size: 0.55rem; font-weight: 800; opacity: 0.9; text-transform: uppercase; margin-top: 2px;">3rd Party</div>
+                                </a>
+                            </div>
+                            <i class="bi bi-clock-history icon-btm"></i>
+                        </div>
                     </div>
                     <!-- MFA Pending -->
                     <div class="col">

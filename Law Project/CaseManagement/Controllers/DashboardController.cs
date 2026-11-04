@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Common;
 using MVCCaseManagement.DAL;
 using Microsoft.AspNetCore.Authorization;
@@ -34,6 +34,9 @@ namespace MVCCaseManagement.Controllers
 
             ViewBag.TotalCases = stats.TotalCases;
             ViewBag.PendingCases = stats.PendingCases;
+            ViewBag.PendingCorpCases = stats.PendingCorpCases;
+            ViewBag.PendingThirdPartyCases = stats.PendingThirdPartyCases;
+            ViewBag.TotalThirdPartyCases = stats.TotalThirdPartyCases;
             ViewBag.FavorCases = stats.FavorCases;
             ViewBag.AgainstCases = stats.AgainstCases;
             ViewBag.TotalDisposed = stats.FavorCases + stats.AgainstCases;
