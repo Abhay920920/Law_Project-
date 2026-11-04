@@ -345,6 +345,12 @@
                                 <input asp-for="DisposalDate" type="date" class="form-control" />
                             </div>
                         </div>
+                        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                            <span class="text-muted small"><i class="bi bi-info-circle me-1"></i> Step 1 of 3: Basic Details</span>
+                            <button type="button" class="btn btn-outline-gratuity rounded-pill px-4 shadow-sm btn-next-tab" data-next-tab="#outcome">
+                                Next: Outcome & Assessment <i class="bi bi-arrow-right ms-2"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- TAB 2: Outcome & Work After Disposal -->
@@ -686,9 +692,10 @@
                                             <span class="h5 fw-bold mb-0 text-primary" id="diffAmountDisplay">₹ 0.00</span>
                                             <div id="diffBadgeText" class="badge bg-secondary-subtle text-secondary-emphasis d-block mt-1" style="font-size: 0.7rem;">Balanced</div>
                                         </div>
-                                                      </div>
+                                    </div>
                             </div>
                         </div>
+                        </div> <!-- End of row mt-4 (Corp vs CA deductions) -->
 
                         <hr />
                         <h5 class="fw-bold text-gratuity section-heading"><i class="bi bi-award me-2"></i>Award Details</h5>
@@ -786,7 +793,8 @@
                             <div class="col-md-6">
                                 <label asp-for="EvidenceWitnessName" class="form-label">Witness/Official Name</label>
                                 <input asp-for="EvidenceWitnessName" class="form-control" placeholder="Enter name" />
-                                    <div class="col-md-6">
+                            </div>
+                            <div class="col-md-6">
                                 <label for="WitnessDesignationSelect" class="form-label">Witness/Official Designation</label>
                                 <select id="WitnessDesignationSelect" class="form-select others-dropdown"
                                         data-others-target="WitnessDesignationManual"
@@ -855,6 +863,17 @@
                                     <option value="Sent to Central Office">Sent to Central Office</option>
                                     <option value="Case Closed">Case Closed</option>
                                 </select>
+                                <div id="appealPromptBox" class="alert alert-info border-0 shadow-sm rounded-3 mt-3 p-3" style="display:none;">
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                        <div class="small">
+                                            <i class="bi bi-info-circle-fill text-primary me-2"></i>
+                                            <strong>Appeal Selected:</strong> Please fill in Appeal details in Step 3.
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 shadow-sm btn-goto-appeal">
+                                            <i class="bi bi-box-arrow-in-right me-1"></i> Go to Appeal Details
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label for="AdverseJudgmentFile" class="form-label">Upload Judgment Copy</label>
@@ -1036,9 +1055,17 @@
                             <i class="bi bi-info-circle-fill me-2"></i>
                             <span>Case will automatically reflect in Central Office login as <strong>"Case File Received"</strong>.</span>
                         </div>
+                        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm btn-prev-tab" data-prev-tab="#basic">
+                                <i class="bi bi-arrow-left me-2"></i> Previous: Basic Details
+                            </button>
+                            <button type="button" class="btn btn-outline-gratuity rounded-pill px-4 shadow-sm btn-next-tab" data-next-tab="#appeal">
+                                Next: Appeal Details (If Any) <i class="bi bi-arrow-right ms-2"></i>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- TAB 3/4: Appeal Details -->
+                    <!-- TAB 3: Appeal Details -->
                     <div class="tab-pane fade @(Model.CaseID > 0 && (Model.ActionTaken == "Appeal" || Model.ForwardingStatus == "Appeal before Appellant Authority") ? "show active" : "")" id="appeal" role="tabpanel">
                          <h5 class="fw-bold text-gratuity mb-3 section-heading">Appeal Before Appellate Authority (If Any)</h5>
 
@@ -1172,10 +1199,16 @@
                                 <input asp-for="OutwardDate_Appeal" type="date" class="form-control" />
                             </div>
                          </div>
+                        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                            <button type="button" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm btn-prev-tab" data-prev-tab="#outcome">
+                                <i class="bi bi-arrow-left me-2"></i> Previous: Outcome & Assessment
+                            </button>
+                            <span class="text-muted small"><i class="bi bi-check2-circle text-success me-1"></i> Step 3 of 3: Appeal Details Complete</span>
+                        </div>
                     </div>
 
-                    </div>
                 </div>
+            </div>
             <div class="card-footer bg-light p-3 text-end">
                 <button type="submit" class="btn btn-gratuity px-5 rounded-pill shadow-sm">
                     <i class="bi bi-save me-2"></i> Save Gratuity Case
@@ -1245,9 +1278,18 @@
                 } else {
                     $('.co-only').removeClass('border-primary');
                 }
+
+                if (status === "Appeal before Appellant Authority") {
+                    $('#appealPromptBox').slideDown(200);
+                    $('#appeal-tab').addClass('text-primary fw-bold');
+                } else {
+                    $('#appealPromptBox').slideUp(200);
+                    $('#appeal-tab').removeClass('text-primary fw-bold');
+                }
             }
 
             $('#forwardStatusSelect').change(toggleForwardingDetails);
+            toggleForwardingDetails();
             
             function toggleVRSBenefits() {
                 var status = $('#WorkingStatusSelect').val();
@@ -1848,23 +1890,56 @@
             // Outward fields remain visible and permanently accessible in responsive grid
         }
 
+        function switchGratuityTab(targetSelector) {
+            if (!targetSelector) return;
+            var tabBtn = $('#gratuityTabs button[data-bs-target="' + targetSelector + '"]');
+            if (tabBtn.length) {
+                if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
+                    var tabTrigger = new bootstrap.Tab(tabBtn[0]);
+                    tabTrigger.show();
+                }
+                $('#gratuityTabs button').removeClass('active').attr('aria-selected', 'false');
+                tabBtn.addClass('active').attr('aria-selected', 'true');
+                $('#gratuityTabsContent > .tab-pane').removeClass('show active').css('display', '');
+                $(targetSelector).addClass('show active').fadeIn(150);
+
+                var tabsOffset = $('#gratuityTabs').offset();
+                if (tabsOffset) {
+                    $('html, body').animate({ scrollTop: tabsOffset.top - 80 }, 200);
+                }
+            }
+        }
+
         // Initialize on load & setup guaranteed tab navigation
         $(document).ready(function() {
              // Robust tab switching handler supporting Bootstrap 5 & jQuery
              $('#gratuityTabs button[data-bs-toggle="tab"]').on('click', function(e) {
                  e.preventDefault();
                  var targetSelector = $(this).attr('data-bs-target');
-                 if (targetSelector) {
-                     if (typeof bootstrap !== 'undefined' && bootstrap.Tab) {
-                         var tabTrigger = new bootstrap.Tab(this);
-                         tabTrigger.show();
-                     }
-                     $('#gratuityTabs button').removeClass('active').attr('aria-selected', 'false');
-                     $(this).addClass('active').attr('aria-selected', 'true');
-                     $('#gratuityTabsContent > .tab-pane').removeClass('show active').css('display', '');
-                     $(targetSelector).addClass('show active').fadeIn(150);
-                 }
+                 switchGratuityTab(targetSelector);
              });
+
+             $(document).on('click', '.btn-next-tab', function() {
+                 var nextTab = $(this).data('next-tab');
+                 switchGratuityTab(nextTab);
+             });
+
+             $(document).on('click', '.btn-prev-tab', function() {
+                 var prevTab = $(this).data('prev-tab');
+                 switchGratuityTab(prevTab);
+             });
+
+             $(document).on('click', '.btn-goto-appeal', function() {
+                 switchGratuityTab('#appeal');
+                 setTimeout(function() {
+                     $('#AppealNumber').focus();
+                 }, 250);
+             });
+
+             // Hash navigation support: e.g. /Gratuity/Create#appeal or /Gratuity/Edit/123#appeal
+             if (window.location.hash === '#appeal' || window.location.hash === '#outcome' || window.location.hash === '#basic') {
+                 switchGratuityTab(window.location.hash);
+             }
         });
     </script>
 }
