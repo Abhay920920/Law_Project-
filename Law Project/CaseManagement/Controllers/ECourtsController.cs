@@ -438,13 +438,12 @@ namespace MVCCaseManagement.Controllers
                                  estCodes.Any(e => string.Equals(e, "KAHC02", StringComparison.OrdinalIgnoreCase));
 
                 // 0. Strict Exclusions & Subject Category Gate:
-                // Only Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), and Commercial Tender (GM, TEN)
-                // Strictly exclude MFA motor accident insurance appeals
-                if (string.Equals(sc.CaseType, "MFA", StringComparison.OrdinalIgnoreCase)) return false;
-
+                // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), Commercial Tender (GM, TEN),
+                // and Motor Accident Appeals (MFA / MSA) under MV, ECA, WC categories
+                // Strictly exclude Land Revenue (KLR, RES), Land Acquisition (LA, RES / LAC), and general civil/criminal/tax disputes
                 if (!string.IsNullOrEmpty(sc.SubjectCategory))
                 {
-                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN)\s*\)", RegexOptions.IgnoreCase);
+                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
                     if (!isAllowedCat) return false;
                 }
 
@@ -486,7 +485,7 @@ namespace MVCCaseManagement.Controllers
                 if (Regex.IsMatch(comb, @"(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|\bTHE\s+MANAGING\b)", RegexOptions.IgnoreCase))
                 {
                     bool hasTransportOrDivision = Regex.IsMatch(comb, @"\b(CORPORATION|TRANSPORT|BUS|INTERNAL\s+INSURANCE|GOKUL\s*ROAD|HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|DHARWAD|KSRTC)\b", RegexOptions.IgnoreCase);
-                    bool hasStandingCounsel = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR)", RegexOptions.IgnoreCase);
+                    bool hasStandingCounsel = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV)", RegexOptions.IgnoreCase);
 
                     if (hasTransportOrDivision || hasStandingCounsel)
                     {
@@ -495,7 +494,7 @@ namespace MVCCaseManagement.Controllers
                 }
 
                 // 6. Standing counsel check with officer / court context
-                bool hasAdv = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KARIGANNAVAR|SAHUKAR|KUPPELUR)", RegexOptions.IgnoreCase);
+                bool hasAdv = Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KARIGANNAVAR|SAHUKAR|KUPPELUR|DABALI|GUNDAPPA|SANJEEV)", RegexOptions.IgnoreCase);
                 bool hasOfficer = Regex.IsMatch(comb, @"(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT|OFFICER|DISCIPLINARY|KSRTC)", RegexOptions.IgnoreCase);
                 if (hasAdv && hasOfficer) return true;
 

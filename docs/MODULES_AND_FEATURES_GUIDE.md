@@ -144,13 +144,15 @@ The **High Court Cause List Module** is accessible via [`/ECourts/HighCourtCause
   - **View Mode**: Defaults to **`'today'` (Scheduled / Today's Cause List)** with the **Scheduled** tab active.
   - The UI immediately renders all NWKRTC cases scheduled across all sitting court halls today.
 
-### 7.2 High Court Subject Category Classification
+### 7.2 High Court Subject Category & Case Type Support
 Every extracted case includes the official High Court classification code in parentheses:
 - **`(L, KSRTC )`**: Labour Court and Industrial Tribunal award challenges.
 - **`(S, KSRTC )`**: Service disputes, disciplinary orders, and promotions.
 - **`(L, PG )`**: Payment of Gratuity statutory appeals.
 - **`(GM, TEN )`**: Commercial tenders (canteen, parking, advertising, stall leases).
-- Non-writ matters (MFA accident claims) and revenue land disputes are strictly eliminated.
+- **`(MV, I )` / `(MV, D )` / `(MV, F )` / `(MV, INS )`**: Miscellaneous First Appeals (MFA) and Miscellaneous Second Appeals (MSA) under the Motor Vehicles Act (MACT accident compensation claims for Injury, Death, and Fatal cases).
+- **`(ECA , )` / `(WC , )`**: Appeals under the Employee's Compensation Act and Workmen's Compensation Act.
+- Strict elimination remains in effect for Land Revenue (`KLR, RES`), Land Acquisition (`LA, RES`, `LAC`), and general civil/tax litigation.
 
 ### 7.3 Corporation Boundary & Multi-Respondent Rules
 - **Sibling RTC Exclusion**: Zero false positives from sibling corporations (**BMTC**, **KKRTC**, **NEKRTC**, or Central Bengaluru **KSRTC**).

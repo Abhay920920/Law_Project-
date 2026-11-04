@@ -174,13 +174,15 @@ The High Court Cause List infrastructure delivers full-roster scanning, subject 
     - **`KAHC03`**: Bench at Kalaburagi (~16 sitting courts)
   - Results are deduped by CNR and synthetic key (`CaseType_RegNo_RegYear`) and unified in memory.
 
-### 7.2 High Court Subject Category Extraction
+### 7.2 High Court Subject Category & Case Type Support
 Every case is tagged with its official Karnataka High Court classification code in parentheses:
 - **`(L, KSRTC )`**: Labour matters involving state road transport corporations.
 - **`(S, KSRTC )`**: Service disputes (dismissal, suspension, promotion, seniority).
 - **`(L, PG )`**: Payment of Gratuity appeals.
 - **`(GM, TEN )`**: General Miscellaneous Commercial Tenders (stall allotments, fuel tenders).
-- **Jurisdictional Gates**: MFA motor accident appeals (`MV, I`, `MV, D`) and Land Revenue disputes (`KLR, RES`, `LA, RES`, `SLAO`) are strictly excluded from the cause list table.
+- **`(MV, I )` / `(MV, D )` / `(MV, F )` / `(MV, INS )`**: Motor Vehicle Claims Tribunals (MACT) appeals under MFA / MSA (Injury, Death, Insurance).
+- **`(ECA , )` / `(WC , )`**: Employee / Workmen's Compensation statutory appeals.
+- **Jurisdictional Gates**: Non-transport Land Revenue disputes (`KLR, RES`, `LA, RES`, `SLAO`), taxes, and non-transport corporate litigation are strictly excluded from the cause list table. Sibling RTC accident claims (BMTC, KKRTC, Central KSRTC) are strictly barred.
 
 ### 7.3 Corporation Boundary Enforcement & Multi-Respondent Rules
 - **Sibling RTC Exclusion**: Zero false positives from sibling corporations (**BMTC**, **KKRTC**, **NEKRTC**, or Central Bengaluru **KSRTC**).

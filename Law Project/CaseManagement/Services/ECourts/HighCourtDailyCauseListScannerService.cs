@@ -339,8 +339,7 @@ namespace MVCCaseManagement.Services.ECourts
             string causelistType,
             DateTime targetDate)
         {
-            var list = new List<PartyCaseSearchResultItem>();
-            if (pdfBytes == null || pdfBytes.Length == 0) return list;
+            if (pdfBytes == null || pdfBytes.Length == 0) return new List<PartyCaseSearchResultItem>();
 
             try
             {
@@ -358,8 +357,28 @@ namespace MVCCaseManagement.Services.ECourts
                 }
 
                 string fullText = fullTextBuilder.ToString();
-                if (string.IsNullOrWhiteSpace(fullText)) return list;
+                return ParseHighCourtCauseListText(fullText, estCode, benchId, judgeName, causelistType, targetDate);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[ParseHighCourtCauseListPdf] Error parsing PDF for bench {BenchId}", benchId);
+                return new List<PartyCaseSearchResultItem>();
+            }
+        }
 
+        public static List<PartyCaseSearchResultItem> ParseHighCourtCauseListText(
+            string fullText,
+            string estCode,
+            string benchId,
+            string judgeName,
+            string causelistType,
+            DateTime targetDate)
+        {
+            var list = new List<PartyCaseSearchResultItem>();
+            if (string.IsNullOrWhiteSpace(fullText)) return list;
+
+            try
+            {
                 // Extract Court Hall header before cleaning running headers
                 string courtHall = $"Court Hall ({judgeName})";
                 var chNumMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*NO\s*[:\s]*(\d+)", RegexOptions.IgnoreCase);
@@ -410,7 +429,7 @@ namespace MVCCaseManagement.Services.ECourts
 
                 // Regex to match item starting row: (Sl.No.) (CaseType) (RegNo/RegYear)
                 // In NAPIX PDF text extracted by PdfPig, serial number is often joined to case type without whitespace (e.g. "41WA/100206/2025" or "18WP 64148/2011")
-                var itemRegex = new Regex(@"(?:^|\s|[A-Za-z0-9\.\-]+?)(\d{1,3}(?:\.\d{1,2})?)\s*([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
+                var itemRegex = new Regex(@"(?:^|\s|[A-Za-z0-9\.\-]+?)(\d{1,3}(?:\.\d{1,2})?)\s*((?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL|EX|MA|RA|RSA|RFA|OS|CA|CC)(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
                 var matches = itemRegex.Matches(fullText);
 
                 for (int i = 0; i < matches.Count; i++)
@@ -452,40 +471,57 @@ namespace MVCCaseManagement.Services.ECourts
                     }
 
                     // Subject Classification Gate:
-                    // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), and Commercial Tender (GM, TEN)
-                    // Strictly exclude MFA / MACT appeals (MV, I / MV, D) and Land Revenue (KLR, RES)
-                    if (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase))
+                    // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), Commercial Tender (GM, TEN),
+                    // and Motor Accident Appeals (MFA / MSA) under MV, ECA, WC categories
+                    // Strictly exclude Land Revenue (KLR, RES), Land Acquisition (LA, RES / LAC), and general civil/criminal/tax disputes
+                    string subjectCategory = "";
+                    var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
+                    var excludedCatMatch = Regex.Match(blockText, @"\(\s*(?:KLR|LA|LAC|GM\s*,\s*(?:CPC|RES|CON)|TAX|EDN|HRC)\b", RegexOptions.IgnoreCase);
+
+                    if (excludedCatMatch.Success)
                     {
-                        continue; // Exclude motor accident insurance appeals
+                        continue; // Strictly exclude Land Revenue, Land Acquisition, General Civil, Tax, etc.
                     }
 
-                    string subjectCategory = "";
-                    var anyCatMatch = Regex.Match(blockText, @"\(\s*([A-Za-z]+\s*,\s*[A-Za-z0-9\/\-]+)\s*\)", RegexOptions.IgnoreCase);
-                    if (anyCatMatch.Success)
+                    if (allowedCatMatch.Success)
                     {
-                        var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN)\s*\)", RegexOptions.IgnoreCase);
-                        if (!allowedCatMatch.Success)
-                        {
-                            continue; // Exclude non-matching categories (MV, I, KLR, RES, GM, CPC, etc.)
-                        }
                         subjectCategory = allowedCatMatch.Value.Trim();
                     }
                     else
                     {
-                        // In some benches (e.g. Division Bench Writ Appeals / VS-format lists), the High Court PDF omits the category column.
-                        // Strictly limit to Writ Petitions (WP), Writ Appeals (WA), and Contempt (CCC)
-                        if (!caseType.Equals("WP", StringComparison.OrdinalIgnoreCase) && 
-                            !caseType.Equals("WA", StringComparison.OrdinalIgnoreCase) &&
-                            !caseType.Equals("CCC", StringComparison.OrdinalIgnoreCase))
+                        var anyCatMatch = Regex.Match(blockText, @"\(\s*([A-Za-z]+\s*,\s*[A-Za-z0-9\/\-]+)\s*\)", RegexOptions.IgnoreCase);
+                        if (anyCatMatch.Success)
                         {
-                            continue; // Exclude non-writ jurisdictions (MFA motor accident appeals, etc.)
+                            // Block contains an unapproved category (e.g. non-transport civil/criminal)
+                            continue;
                         }
 
-                        subjectCategory = (blockText.Contains("LABOUR", StringComparison.OrdinalIgnoreCase) || 
-                                           blockText.Contains("WORKMAN", StringComparison.OrdinalIgnoreCase) || 
-                                           blockText.Contains("INDUSTRIAL", StringComparison.OrdinalIgnoreCase)) 
-                                           ? "(L, KSRTC)" 
-                                           : "(S, KSRTC)";
+                        // In some benches (e.g. Division Bench Writ Appeals / VS-format lists), the High Court PDF omits the category column.
+                        // Strictly limit to Writ Petitions (WP), Writ Appeals (WA), Contempt (CCC), and MFA / MSA
+                        if (!caseType.Equals("WP", StringComparison.OrdinalIgnoreCase) && 
+                            !caseType.Equals("WA", StringComparison.OrdinalIgnoreCase) &&
+                            !caseType.Equals("CCC", StringComparison.OrdinalIgnoreCase) &&
+                            !caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) &&
+                            !caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue; // Exclude non-transport jurisdictions
+                        }
+
+                        if (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase))
+                        {
+                            subjectCategory = (blockText.Contains("DEATH", StringComparison.OrdinalIgnoreCase) || 
+                                               blockText.Contains("FATAL", StringComparison.OrdinalIgnoreCase)) 
+                                               ? "(MV, D)" 
+                                               : "(MV, I)";
+                        }
+                        else
+                        {
+                            subjectCategory = (blockText.Contains("LABOUR", StringComparison.OrdinalIgnoreCase) || 
+                                               blockText.Contains("WORKMAN", StringComparison.OrdinalIgnoreCase) || 
+                                               blockText.Contains("INDUSTRIAL", StringComparison.OrdinalIgnoreCase)) 
+                                               ? "(L, KSRTC)" 
+                                               : "(S, KSRTC)";
+                        }
                     }
 
                     // Extract Petitioner and Respondent
@@ -543,7 +579,7 @@ namespace MVCCaseManagement.Services.ECourts
 ]*", " ", RegexOptions.IgnoreCase);
 
                     // Extract Counsel/Advocate if present (covers Dharwad, Bengaluru, Kalaburagi standing counsel)
-                    var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|MALLIKARJUN\s*SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M)", RegexOptions.IgnoreCase);
+                    var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|(?:HANAMANTREDDY|MALLIKARJUN)?\s*(?:S\s*)?SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M|KUPPELUR)", RegexOptions.IgnoreCase);
                     if (advMatch.Success)
                     {
                         advocate = advMatch.Value.ToUpperInvariant();
@@ -591,6 +627,20 @@ namespace MVCCaseManagement.Services.ECourts
                              respondent.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
                     {
                         role = "Against NWKRTC";
+                    }
+
+                    if (role == "With NWKRTC")
+                    {
+                        if (Regex.IsMatch(blockText, @"(?i)(FOR\s+PETITIONER|FOR\s+APPELLANT)"))
+                        {
+                            bool advIsNwkrtc = Regex.IsMatch(blockText, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|KUPPELUR)\s+FOR\s+(?:PETITIONER|APPELLANT)");
+                            if (advIsNwkrtc) role = "By NWKRTC";
+                        }
+                        if (role == "With NWKRTC" && Regex.IsMatch(blockText, @"(?i)(FOR\s+RESPONDENT|FOR\s+R1|FOR\s+R2|FOR\s+RES)"))
+                        {
+                            bool advIsNwkrtc = Regex.IsMatch(blockText, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|KUPPELUR)\s+FOR\s+(?:RESPONDENT|R1|R2|R\d+|RES)");
+                            if (advIsNwkrtc) role = "Against NWKRTC";
+                        }
                     }
 
                     string cnrSynth = $"{estCode}{caseType}{regNumber}{regYear}".PadRight(16, '0').Substring(0, 16);
@@ -660,15 +710,15 @@ namespace MVCCaseManagement.Services.ECourts
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                _logger.LogWarning(ex, "[ParseHighCourtCauseListPdf] Error parsing PDF for bench {BenchId}", benchId);
+                // In static parser, return partial parsed list on error
             }
 
             return list;
         }
 
-        private static bool IsNwkrtcRelated(string text, string estCode = "KAHC02")
+        public static bool IsNwkrtcRelated(string text, string estCode = "KAHC02")
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
@@ -741,8 +791,8 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 4. In Dharwad Bench: Standing Counsel appearing with Management, Controller, Officer, or (L/S, KSRTC) context
-            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|KUPPELUR)");
-            bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR)");
+            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|KUPPELUR)");
+            bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR|CORPORATION|NWKRTC|INTERNAL\s+INSURANCE)");
             if (hasStandingCounsel && hasNwkrtcContext)
             {
                 return true;

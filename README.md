@@ -68,13 +68,15 @@
   - Whenever the High Court Cause List page is loaded or refreshed, it automatically defaults to **All High Court Benches** (`estCode=ALL`) for the **present day** (`DateTime.Today`).
   - Scans and aggregates cases across the **Principal Bench Bengaluru (`KAHC01`)**, **Dharwad Bench (`KAHC02`)**, and **Kalaburagi Bench (`KAHC03`)** simultaneously.
   - Automatically activates the **"Scheduled (Today)"** tab on load, immediately listing all cases scheduled for hearing today.
-- **High Court Subject Classification Code Extraction**:
+- **High Court Subject Classification Code & Appeal Type Extraction**:
   - Extracts and displays official High Court subject codes directly in the UI and exports:
     - `(L, KSRTC )`: Labour disputes involving State Road Transport Corporations.
     - `(S, KSRTC )`: Service & employment matters.
     - `(L, PG )`: Payment of Gratuity claims.
     - `(GM, TEN )`: General Miscellaneous Commercial Tenders.
-  - Strict exclusion of non-writ jurisdictions (MFA motor accident insurance claims) and Land Acquisition/Revenue disputes (`KLR, RES`, `LA, RES`, `SLAO`).
+    - `(MV, I )`, `(MV, D )`, `(MV, F )`, `(MV, INS )`: Miscellaneous First Appeals (MFA) and second appeals (MSA) in Motor Vehicle Accident claims (Injury, Death, Fatal, Insurance).
+    - `(ECA , )`, `(WC , )`: Employee / Workmen's Compensation statutory appeals.
+  - Strict exclusion of non-transport Land Acquisition/Revenue disputes (`KLR, RES`, `LA, RES`, `SLAO`), taxes, and private commercial litigation.
 - **Strict Corporation Boundary Enforcement & Multi-Respondent Preservation**:
   - Zero false positives from sibling corporations: **BMTC**, **KKRTC**, **NEKRTC**, or Central **KSRTC**.
   - **Multi-Respondent Safeguard**: In state-wide policy petitions where the State of Karnataka, BMTC, KSRTC, and NWKRTC are co-respondents (e.g., NWKRTC as R2, R3, or R4), the matter is preserved and surfaced.
