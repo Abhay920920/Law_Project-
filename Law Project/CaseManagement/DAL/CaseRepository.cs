@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
@@ -1348,7 +1348,7 @@ namespace MVCCaseManagement.DAL
                             }
                         }
 
-                        if (model.Respondents != null)
+                        if (model.Respondents != null && (!model.ThirdPartyFlag || model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.RespondentName))))
                         {
                             using var delRespCmd = new SqlCommand("DELETE FROM MVC_CASE_RESPONDENTS WHERE CaseID = @CaseID", conn, trans);
                             delRespCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
@@ -1385,7 +1385,7 @@ namespace MVCCaseManagement.DAL
                         }
 
                         // Synchronize Opposite Vehicle Numbers
-                        if (model.OppositeVehicleNumbers != null)
+                        if (model.OppositeVehicleNumbers != null && (!model.ThirdPartyFlag || model.OppositeVehicleNumbers.Any(v => !string.IsNullOrWhiteSpace(v))))
                         {
                             using var delVnoCmd = new SqlCommand("DELETE FROM MVC_CASE_OPPOSITE_VEHICLES WHERE CaseID = @CaseID", conn, trans);
                             delVnoCmd.Parameters.AddWithValue("@CaseID", model.CaseID);
@@ -2147,8 +2147,10 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 conn.Open();
                 
                 // 1. Fetch Global Summary Stats (Aggregating MVC, Labour, and Gratuity)
-                string summaryQuery = @"
-                    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+                string summaryQuery = @"
+
+                    SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+
                     SELECT 
                         (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE ((a.CorpMFAStatus LIKE '%Pending%' OR a.CorpMFAStatus IS NULL OR a.CorpMFAStatus = '' OR a.IsPendingForFiling = 1) AND (a.CorpMFANumber IS NOT NULL AND a.CorpMFANumber != '' OR a.IsPendingForFiling = 1 OR UPPER(LTRIM(RTRIM(a.InitialAction))) = 'APPEAL')) AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS CorpMFAPendingCount,
                         (SELECT COUNT(*) FROM APPEAL_DETAILS a JOIN MVC_CASES mc ON a.CaseID = mc.CaseID WHERE (a.ClaimantMFANumber IS NOT NULL AND a.ClaimantMFANumber != '') AND (@DivisionID = 0 OR @DivisionID = 5 OR mc.DivisionID = @DivisionID)) AS ClaimantMFAPendingCount,
@@ -3149,7 +3151,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         }
 
                         // 2.1 Save Respondents (Third Party Remind Back)
-                        if (model.Respondents != null)
+                        if (model.Respondents != null && (!model.ThirdPartyFlag || model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.RespondentName))))
                         {
                             foreach (var resp in model.Respondents)
                             {
@@ -4036,9 +4038,12 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         CAST(c.MVCYear AS NVARCHAR) LIKE @Search OR 
                         c.CNRNumber LIKE @Search OR
                         m.MACTName LIKE @Search OR
+                        d.DivisionNameEnglish LIKE @Search OR
                         c.AdvocateName LIKE @Search OR
                         c.DisposalStatus LIKE @Search OR
-                        c.DisposalResult LIKE @Search
+                        c.DisposalResult LIKE @Search OR
+                        EXISTS (SELECT 1 FROM MVC_CASE_RESPONDENTS r WHERE r.CaseID = c.CaseID AND r.RespondentName LIKE @Search) OR
+                        EXISTS (SELECT 1 FROM MVC_CASE_OPPOSITE_VEHICLES ov WHERE ov.CaseID = c.CaseID AND ov.VehicleNo LIKE @Search)
                     )";
                     paramsList.Add(new SqlParameter("@Search", "%" + search.Trim() + "%"));
                 }
@@ -4093,6 +4098,18 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         });
                     }
 
+                    // Load Opposite Vehicle Numbers for third-party cases
+                    string oppQuery = "SELECT VehicleNo FROM MVC_CASE_OPPOSITE_VEHICLES WHERE CaseID = @CaseID";
+                    DataTable oppDt = _db.ExecuteQuery(oppQuery, new[] { new SqlParameter("@CaseID", caseId) });
+                    foreach (DataRow oppRow in oppDt.Rows)
+                    {
+                        var vNo = oppRow["VehicleNo"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(vNo))
+                        {
+                            c.OppositeVehicleNumbers.Add(vNo.Trim());
+                        }
+                    }
+
                     cases.Add(c);
                 }
             }
@@ -4110,6 +4127,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 string query = @"
                     SELECT COUNT(*)
                     FROM MVC_CASES WITH (NOLOCK) c
+                    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
                     LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                     WHERE c.ThirdPartyFlag = 1";
 
@@ -4128,9 +4146,12 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         CAST(c.MVCYear AS NVARCHAR) LIKE @Search OR 
                         c.CNRNumber LIKE @Search OR
                         m.MACTName LIKE @Search OR
+                        d.DivisionNameEnglish LIKE @Search OR
                         c.AdvocateName LIKE @Search OR
                         c.DisposalStatus LIKE @Search OR
-                        c.DisposalResult LIKE @Search
+                        c.DisposalResult LIKE @Search OR
+                        EXISTS (SELECT 1 FROM MVC_CASE_RESPONDENTS r WHERE r.CaseID = c.CaseID AND r.RespondentName LIKE @Search) OR
+                        EXISTS (SELECT 1 FROM MVC_CASE_OPPOSITE_VEHICLES ov WHERE ov.CaseID = c.CaseID AND ov.VehicleNo LIKE @Search)
                     )";
                     paramsList.Add(new SqlParameter("@Search", "%" + search.Trim() + "%"));
                 }
@@ -4144,6 +4165,43 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 return 0;
             }
         }
+
+        public (int Total, int Pending, int Favor, int Against) GetThirdPartySummaryStats(int divisionId = 0)
+        {
+            try
+            {
+                string query = @"
+                    SELECT 
+                        COUNT(*) AS Total,
+                        SUM(CASE WHEN c.DisposalResult = 'Favor' THEN 1 ELSE 0 END) AS Favor,
+                        SUM(CASE WHEN c.DisposalResult = 'Against' THEN 1 ELSE 0 END) AS Against,
+                        SUM(CASE WHEN c.DisposalResult IS NULL OR c.DisposalResult = '' OR c.DisposalStatus = 'Pending' OR c.DisposalStatus IS NULL THEN 1 ELSE 0 END) AS Pending
+                    FROM MVC_CASES WITH (NOLOCK) c
+                    WHERE c.ThirdPartyFlag = 1";
+
+                var paramsList = new List<SqlParameter>();
+                if (divisionId > 0 && divisionId != 5)
+                {
+                    query += " AND c.DivisionID = @DivisionID";
+                    paramsList.Add(new SqlParameter("@DivisionID", divisionId));
+                }
+
+                DataTable dt = _db.ExecuteQuery(query, paramsList.ToArray());
+                if (dt.Rows.Count > 0)
+                {
+                    DataRow row = dt.Rows[0];
+                    int total = row["Total"] != DBNull.Value ? Convert.ToInt32(row["Total"]) : 0;
+                    int favor = row["Favor"] != DBNull.Value ? Convert.ToInt32(row["Favor"]) : 0;
+                    int against = row["Against"] != DBNull.Value ? Convert.ToInt32(row["Against"]) : 0;
+                    int pending = row["Pending"] != DBNull.Value ? Convert.ToInt32(row["Pending"]) : 0;
+                    return (total, pending, favor, against);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GetThirdPartySummaryStats Error: {ex.Message}");
+            }
+            return (0, 0, 0, 0);
+        }
     }
 }
-

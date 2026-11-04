@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.GratuityViewModel
+﻿@model MVCCaseManagement.Models.GratuityViewModel
 
 @{
     ViewData["Title"] = (Model.CaseID > 0 ? "Edit" : "New") + " Gratuity Case";
@@ -1055,13 +1055,18 @@
                             <i class="bi bi-info-circle-fill me-2"></i>
                             <span>Case will automatically reflect in Central Office login as <strong>"Case File Received"</strong>.</span>
                         </div>
-                        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-4 pt-3 border-top">
                             <button type="button" class="btn btn-outline-secondary rounded-pill px-4 shadow-sm btn-prev-tab" data-prev-tab="#basic">
                                 <i class="bi bi-arrow-left me-2"></i> Previous: Basic Details
                             </button>
-                            <button type="button" class="btn btn-outline-gratuity rounded-pill px-4 shadow-sm btn-next-tab" data-next-tab="#appeal">
-                                Next: Appeal Details (If Any) <i class="bi bi-arrow-right ms-2"></i>
-                            </button>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-gratuity rounded-pill px-4 shadow-sm">
+                                    <i class="bi bi-save me-2"></i> Save Gratuity Case
+                                </button>
+                                <button type="button" class="btn btn-outline-gratuity rounded-pill px-4 shadow-sm btn-next-tab" data-next-tab="#appeal">
+                                    Next: Appeal Details (If Any) <i class="bi bi-arrow-right ms-2"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
 

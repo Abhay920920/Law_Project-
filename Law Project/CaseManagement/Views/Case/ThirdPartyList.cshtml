@@ -1,4 +1,4 @@
-@model IEnumerable<MVCCaseManagement.Models.MVCCaseViewModel>
+﻿@model IEnumerable<MVCCaseManagement.Models.MVCCaseViewModel>
 @{
     ViewData["Title"] = "Third Party Cases";
     ViewData["HidePageHeader"] = true;
@@ -25,7 +25,7 @@
                     </p>
                 </div>
             </div>
-            @if (!User.IsInRole("ReadOnly") && User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))
+            @if (!User.IsInRole("ReadOnly") && (User.IsInRole("Admin") || (User.FindFirst("DivisionID")?.Value != "0" && User.FindFirst("DivisionID")?.Value != "5" && !string.IsNullOrEmpty(User.FindFirst("DivisionID")?.Value))))
             {
                 <a href="/Case/RegisterThirdParty" class="btn btn-new-tp shadow-lg" id="btnNewThirdParty">
                     <i class="bi bi-plus-circle-fill me-2"></i>
@@ -42,7 +42,7 @@
                 <div class="tp-stat-icon bg-info-subtle text-info">
                     <i class="bi bi-collection-fill"></i>
                 </div>
-                <div class="tp-stat-value">@totalCount</div>
+                <div class="tp-stat-value">@(ViewBag.GlobalTotal ?? totalCount)</div>
                 <div class="tp-stat-label">Total Cases</div>
             </div>
         </div>
@@ -51,7 +51,7 @@
                 <div class="tp-stat-icon bg-warning-subtle text-warning">
                     <i class="bi bi-hourglass-split"></i>
                 </div>
-                <div class="tp-stat-value">@Model.Count(c => string.IsNullOrEmpty(c.DisposalStatus) || c.DisposalStatus == "Pending")</div>
+                <div class="tp-stat-value">@(ViewBag.PendingCount ?? 0)</div>
                 <div class="tp-stat-label">Pending</div>
             </div>
         </div>
@@ -60,7 +60,7 @@
                 <div class="tp-stat-icon bg-success-subtle text-success">
                     <i class="bi bi-check-circle-fill"></i>
                 </div>
-                <div class="tp-stat-value">@Model.Count(c => c.DisposalResult == "Favor")</div>
+                <div class="tp-stat-value">@(ViewBag.FavorCount ?? 0)</div>
                 <div class="tp-stat-label">Favor</div>
             </div>
         </div>
@@ -69,7 +69,7 @@
                 <div class="tp-stat-icon bg-danger-subtle text-danger">
                     <i class="bi bi-x-circle-fill"></i>
                 </div>
-                <div class="tp-stat-value">@Model.Count(c => c.DisposalResult == "Against")</div>
+                <div class="tp-stat-value">@(ViewBag.AgainstCount ?? 0)</div>
                 <div class="tp-stat-label">Against</div>
             </div>
         </div>
@@ -89,7 +89,7 @@
                                id="tpSearch"
                                value="@currentSearch"
                                class="form-control tp-search-input"
-                               placeholder="Search by MVC No, Vehicle No, Year, CNR, Advocate, Status..." />
+                               placeholder="Search by MVC No, Vehicle No, Opposite Vehicle, Year, CNR, Respondent, Advocate, Division, Status..." />
                         <button class="btn btn-info text-white px-4 fw-semibold" type="submit" id="btnSearchTP">
                             Search
                         </button>
@@ -150,8 +150,9 @@
                 <table class="table tp-table mb-0" id="thirdPartyTable">
                     <thead>
                         <tr>
-                            <th style="width:50px;">#</th>
+                            <th style="width:45px;">#</th>
                             <th>MVC No / Year</th>
+                            <th>Division</th>
                             <th>Vehicle No</th>
                             <th>Respondent(s)</th>
                             <th>Advocate</th>
@@ -159,7 +160,7 @@
                             <th>Case Type</th>
                             <th>Status</th>
                             <th>Registered On</th>
-                            <th style="width:90px;"></th>
+                            <th style="width:130px;" class="text-end">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -197,18 +198,29 @@
                                     }
                                 </td>
                                 <td class="align-middle">
+                                    <span class="badge bg-light text-dark border">
+                                        <i class="bi bi-geo-alt-fill text-primary me-1"></i>@(string.IsNullOrEmpty(item.DivisionName) ? "&mdash;" : item.DivisionName)
+                                    </span>
+                                </td>
+                                <td class="align-middle">
                                     @if (!string.IsNullOrEmpty(item.VehicleNo))
                                     {
                                         <span class="badge bg-light text-dark border font-monospace">@item.VehicleNo</span>
                                     }
                                     else
                                     {
-                                        <span class="text-muted small">—</span>
+                                        <span class="text-muted small">&mdash;</span>
                                     }
                                     @if (!string.IsNullOrEmpty(item.VehicleType))
                                     {
                                         <div class="text-muted small mt-1">
                                             <i class="bi bi-truck me-1"></i>@item.VehicleType
+                                        </div>
+                                    }
+                                    @if (item.OppositeVehicleNumbers != null && item.OppositeVehicleNumbers.Any())
+                                    {
+                                        <div class="text-muted small mt-1" title="Opposite Vehicle Numbers">
+                                            <i class="bi bi-arrow-left-right text-warning me-1"></i><span class="font-monospace">@string.Join(", ", item.OppositeVehicleNumbers)</span>
                                         </div>
                                     }
                                 </td>
@@ -219,11 +231,11 @@
                                     }
                                     else
                                     {
-                                        <span class="text-muted small">—</span>
+                                        <span class="text-muted small">&mdash;</span>
                                     }
                                 </td>
                                 <td class="align-middle">
-                                    <span class="small">@(item.AdvocateName ?? "—")</span>
+                                    <span class="small">@(string.IsNullOrEmpty(item.AdvocateName) ? "&mdash;" : item.AdvocateName)</span>
                                 </td>
                                 <td class="align-middle">
                                     @if (item.NextHearingDate.HasValue)
@@ -235,7 +247,7 @@
                                     }
                                     else
                                     {
-                                        <span class="text-muted small">—</span>
+                                        <span class="text-muted small">&mdash;</span>
                                     }
                                 </td>
                                 <td class="align-middle">
@@ -245,14 +257,24 @@
                                     <span class="tp-status-badge @statusBadge">@statusLabel</span>
                                 </td>
                                 <td class="align-middle text-muted small">
-                                    @(item.CreatedAt != DateTime.MinValue ? item.CreatedAt.ToString("dd-MM-yyyy") : "—")
+                                    @(item.CreatedAt != DateTime.MinValue ? item.CreatedAt.ToString("dd-MM-yyyy") : "&mdash;")
                                 </td>
                                 <td class="align-middle text-end">
-                                    <a href="@Url.Action("Details", "Case", new { id = item.CaseID })"
-                                       class="btn btn-sm btn-outline-info tp-view-btn"
-                                       title="View Case Details">
-                                        <i class="bi bi-eye-fill me-1"></i>View
-                                    </a>
+                                    <div class="d-flex justify-content-end gap-1">
+                                        <a href="@Url.Action("Details", "Case", new { id = item.CaseID })"
+                                           class="btn btn-sm btn-outline-info tp-view-btn"
+                                           title="View Case Details">
+                                            <i class="bi bi-eye-fill me-1"></i>View
+                                        </a>
+                                        @if (!User.IsInRole("ReadOnly") && (User.IsInRole("Admin") || ViewBag.IsCentralOffice == true || User.FindFirst("DivisionID")?.Value == item.DivisionID.ToString()))
+                                        {
+                                            <a href="@Url.Action("Edit", "Case", new { id = item.CaseID })"
+                                               class="btn btn-sm btn-outline-primary"
+                                               title="Edit Case Details">
+                                                <i class="bi bi-pencil-square me-1"></i>Edit
+                                            </a>
+                                        }
+                                    </div>
                                 </td>
                             </tr>
                         }

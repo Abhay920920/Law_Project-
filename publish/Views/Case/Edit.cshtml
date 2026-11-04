@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.MVCCaseViewModel
+﻿@model MVCCaseManagement.Models.MVCCaseViewModel
 @{
     ViewData["Title"] = "Update Digital MVC Case File";
     ViewData["HidePageHeader"] = true;
@@ -27,6 +27,7 @@
         <form asp-action="Edit" method="post" id="caseEntryForm" enctype="multipart/form-data">
             <input type="hidden" asp-for="CaseID" />
             <input type="hidden" asp-for="CreatedAt" />
+            <input type="hidden" asp-for="ThirdPartyFlag" />
             <input type="hidden" asp-for="AdverseAward.TR18UploadPath" />
             <input type="hidden" asp-for="AdverseAward.PunishmentOrderUploadPath" />
             <input type="hidden" asp-for="AdverseAward.SecurityUploadPath" />
@@ -206,6 +207,66 @@
                             <input asp-for="AccidentDate" class="form-control" type="date" required />
                         </div>
                     </div>
+
+                    @if (Model.ThirdPartyFlag)
+                    {
+                        <!-- PART 1.1: RESPONDENT DETAILS (Third Party Cases) -->
+                        <div class="mb-4 p-3 border rounded-3 bg-light">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h6 class="fw-bold text-info mb-0 small text-uppercase">
+                                    <i class="bi bi-people-fill me-2"></i>Respondent Details (Third Party Case)
+                                </h6>
+                                <button type="button" class="btn btn-sm btn-outline-info rounded-pill px-3 shadow-sm" id="btnAddRespondent">
+                                    <i class="bi bi-person-plus-fill me-1"></i> Add Respondent
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover mb-0" id="respondentsTable">
+                                    <thead>
+                                        <tr class="small text-muted text-uppercase">
+                                            <th style="width: 50%;">Respondent Name <span class="text-danger">*</span></th>
+                                            <th style="width: 45%;">Remarks</th>
+                                            <th style="width: 5%;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @if (Model.Respondents != null && Model.Respondents.Any())
+                                        {
+                                            for (int i = 0; i < Model.Respondents.Count; i++)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <input name="Respondents[@i].RespondentName" value="@Model.Respondents[i].RespondentName" class="form-control form-control-sm" required />
+                                                    </td>
+                                                    <td>
+                                                        <input name="Respondents[@i].Remarks" value="@Model.Respondents[i].Remarks" class="form-control form-control-sm" placeholder="Optional remarks..." />
+                                                    </td>
+                                                    <td class="text-center align-middle">
+                                                        @if (i > 0)
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-resp-row"><i class="bi bi-trash"></i></button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <input name="Respondents[0].RespondentName" class="form-control form-control-sm" placeholder="Enter respondent name..." required />
+                                                </td>
+                                                <td>
+                                                    <input name="Respondents[0].Remarks" class="form-control form-control-sm" placeholder="Optional remarks..." />
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
                     <hr class="my-5" />
 
                     <!-- PART 2: FURTHER CASE DETAILS & LINKAGES -->
@@ -1861,6 +1922,25 @@
             });
 
             $(document).on('click', '.btn-remove-row', function () {
+                $(this).closest('tr').remove();
+            });
+
+            // Dynamic Respondents Handler (Third Party Cases)
+            let respIndex = $('#respondentsTable tbody tr').length;
+            if (respIndex === 0) respIndex = 1;
+
+            $('#btnAddRespondent').click(function () {
+                const html = `
+                    <tr class="animate__animated animate__fadeIn">
+                        <td><input name="Respondents[${respIndex}].RespondentName" class="form-control form-control-sm" placeholder="Enter respondent name..." required /></td>
+                        <td><input name="Respondents[${respIndex}].Remarks" class="form-control form-control-sm" placeholder="Optional remarks..." /></td>
+                        <td class="text-center align-middle"><button type="button" class="btn btn-sm btn-outline-danger btn-remove-resp-row"><i class="bi bi-trash"></i></button></td>
+                    </tr>`;
+                $('#respondentsTable tbody').append(html);
+                respIndex++;
+            });
+
+            $(document).on('click', '.btn-remove-resp-row', function () {
                 $(this).closest('tr').remove();
             });
 

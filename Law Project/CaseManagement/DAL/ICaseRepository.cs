@@ -1,4 +1,4 @@
-using MVCCaseManagement.Models;
+﻿using MVCCaseManagement.Models;
 
 namespace MVCCaseManagement.DAL
 {
@@ -42,5 +42,6 @@ namespace MVCCaseManagement.DAL
         // Third Party Cases
         List<MVCCaseViewModel> GetAllThirdPartyCases(int divisionId = 0, int page = 1, int pageSize = 10, string? search = null);
         int GetTotalThirdPartyCaseCount(int divisionId = 0, string? search = null);
+        (int Total, int Pending, int Favor, int Against) GetThirdPartySummaryStats(int divisionId = 0);
     }
 }

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Services;
@@ -286,11 +286,17 @@ namespace MVCCaseManagement.Controllers
 
             var cases = _caseRepo.GetAllThirdPartyCases(divisionId, page, pageSize, search);
             var totalCount = _caseRepo.GetTotalThirdPartyCaseCount(divisionId, search);
+            var stats = _caseRepo.GetThirdPartySummaryStats(divisionId);
 
             ViewBag.CurrentPage = page;
             ViewBag.TotalPages = (int)Math.Ceiling((double)totalCount / pageSize);
             ViewBag.CurrentSearch = search;
             ViewBag.TotalCount = totalCount;
+            ViewBag.GlobalTotal = stats.Total;
+            ViewBag.PendingCount = stats.Pending;
+            ViewBag.FavorCount = stats.Favor;
+            ViewBag.AgainstCount = stats.Against;
+            ViewBag.IsCentralOffice = divisionId == 0 || divisionId == 5 || User.IsInRole("Admin");
 
             return View(cases);
         }
@@ -406,7 +412,7 @@ namespace MVCCaseManagement.Controllers
                     _ = _activityLogger.LogCaseCreatedAsync("MVC", newCaseId, $"MVC {model.MVCNo}/{model.MVCYear}", model.VehicleNo, null, model, $"Registered new Third Party Case MVC {model.MVCNo}/{model.MVCYear}");
 
                     TempData["SuccessMessage"] = $"Third Party Case MVC No. {model.MVCNo}/{model.MVCYear} has been registered successfully.";
-                    return RedirectToAction("Index");
+                    return RedirectToAction("ThirdPartyList");
                 }
                 catch (Exception ex)
                 {
@@ -977,6 +983,20 @@ namespace MVCCaseManagement.Controllers
                         return Forbid();
                     }
 
+                    // Guard against Third Party data loss
+                    if (existingCase.ThirdPartyFlag)
+                    {
+                        model.ThirdPartyFlag = true;
+                        if (model.Respondents == null || !model.Respondents.Any(r => !string.IsNullOrWhiteSpace(r.RespondentName)))
+                        {
+                            model.Respondents = existingCase.Respondents;
+                        }
+                        if (model.OppositeVehicleNumbers == null || !model.OppositeVehicleNumbers.Any(v => !string.IsNullOrWhiteSpace(v)))
+                        {
+                            model.OppositeVehicleNumbers = existingCase.OppositeVehicleNumbers;
+                        }
+                    }
+
                     // Handle Interim Order file
                     if (model.InterimOrderFile != null)
                     {
@@ -1082,6 +1102,10 @@ namespace MVCCaseManagement.Controllers
                     var userName = User.Claims.FirstOrDefault(c => c.Type == "FullName")?.Value ?? User.Identity?.Name ?? "User";
                     TempData["SuccessMessage"] = "Case details updated successfully.";
 
+                    if (model.ThirdPartyFlag)
+                    {
+                        return RedirectToAction("ThirdPartyList");
+                    }
                     return RedirectToAction("Index");
                 }
                 catch (Exception ex)
