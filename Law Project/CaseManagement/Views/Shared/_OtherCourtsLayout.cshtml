@@ -393,7 +393,7 @@
                     } else {
                         $('#notificationBadge').addClass('d-none');
                     }
-                });
+                }).fail(function(xhr) { if (xhr && xhr.status === 401) { $('#notificationBadge').addClass('d-none'); } });
             }
             loadNotifications();
         });

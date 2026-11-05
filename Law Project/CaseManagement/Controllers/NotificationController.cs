@@ -10,7 +10,6 @@ namespace MVCCaseManagement.Controllers
     public class NotificationController : Controller
     {
         private readonly INotificationRepository _notificationRepo;
-
         private readonly ILogger<NotificationController> _logger;
 
         public NotificationController(INotificationRepository notificationRepo, ILogger<NotificationController> logger)
@@ -32,8 +31,14 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
+        [AllowAnonymous]
         public IActionResult GetUnread()
         {
+            if (User?.Identity?.IsAuthenticated != true)
+            {
+                return Json(new { count = 0, notifications = Array.Empty<object>() });
+            }
+
             try
             {
                 int userId = GetCurrentUserId();
