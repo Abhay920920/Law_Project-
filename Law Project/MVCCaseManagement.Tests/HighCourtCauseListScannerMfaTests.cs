@@ -216,5 +216,156 @@ S C BHUTI FOR RESPONDENT
             Assert.NotNull(mfaCase);
             Assert.Equal("(MV, I )", mfaCase.SubjectCategory);
         }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Strictly_Eliminates_Insurance_Company_MFA_Claims()
+        {
+            // Even when empanelled advocates (Budihal, Hegde, Kuppelur, Matti) appear, pure insurance claims must be rejected
+            string insuranceSnippet = @"
+HIGH COURT OF KARNATAKA DHARWAD BENCH
+COURT HALL NO : 9
+Cause List No. 1
+Sl.No. Case No. Parties / Advocates
+
+1 MFA 101111/2023 (MV, I )
+PET: SMT. RENUKA W/O BASAVARAJ
+RES: 1. SRI. SHIVANAND (OWNER)
+     2. THE DIVISIONAL MANAGER, UNITED INDIA INSURANCE CO. LTD.
+VEERESH R BUDIHAL FOR R2
+
+2 MFA 102222/2023 (MV, D )
+PET: SRI. MALLIKARJUN
+RES: 1. THE MANAGING DIRECTOR, RELIANCE GENERAL INSURANCE CO LTD
+     2. SRI. RAMESH (DRIVER)
+S L MATTI FOR R1
+
+3 MFA 103333/2024 (MV, I )
+PET: THE REGIONAL OFFICER, NATIONAL INSURANCE COMPANY
+RES: SRI. PARASAPPA AND OTHERS
+KUPPELUR FOR PETITIONER
+
+4 MFA 104444/2024 (MV, I )
+PET: SMT. SUMA
+RES: THE LEGAL MANAGER, ICICI LOMBARD GENERAL INSURANCE
+VEENA HEGDE FOR RESPONDENT
+";
+
+            var targetDate = new DateTime(2026, 11, 4);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                insuranceSnippet,
+                estCode: "KAHC02",
+                benchId: "3629",
+                judgeName: "JUSTICE TEST",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            // All insurance company claims must be strictly eliminated!
+            Assert.NotNull(results);
+            Assert.Empty(results);
+        }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Strictly_Eliminates_Non_Transport_Dept_MFA_Claims()
+        {
+            // Land Acquisition, Upper Krishna Project (UKP), PWD, Police, and Electricity boards must be rejected
+            string otherDeptSnippet = @"
+HIGH COURT OF KARNATAKA DHARWAD BENCH
+COURT HALL NO : 98
+Cause List No. 1
+Sl.No. Case No. Parties / Advocates
+
+34 MFA 101942/2023
+PET: VEERAPPA S/O MALLAPPA CHEBBI
+RES: THE SPECIAL LAND ACQUISTITION OFFICER UKP, BAGALKOT
+GOVT ADVOCATE
+
+53 MFA 104672/2025
+PET: MAHAGUNDAPPA S/O HOLIYAPPA MACHAKUNUR
+RES: THE SPECIAL LAND ACQUISITION OFFICER, SLAO
+GOVT PLEADER
+
+12 MFA 105555/2023 (MV, I )
+PET: THE MANAGING DIRECTOR, HESCOM, HUBLI
+RES: SRI. BASAPPA
+ADVOCATE FOR PETITIONER
+
+15 MFA 106666/2022 (MV, D )
+PET: SMT. KAVITA
+RES: THE EXECUTIVE ENGINEER, PWD, DHARWAD
+GOVT ADVOCATE
+
+20 MFA 107777/2023 (MV, I )
+PET: SRI. CHANDRAKANT
+RES: THE SUPERINTENDENT OF POLICE, BELAGAVI DISTRICT
+GOVT ADVOCATE
+";
+
+            var targetDate = new DateTime(2026, 11, 4);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                otherDeptSnippet,
+                estCode: "KAHC02",
+                benchId: "3698",
+                judgeName: "REGISTRAR",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            // All non-transport government departments must be strictly eliminated!
+            Assert.NotNull(results);
+            Assert.Empty(results);
+        }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Accepts_All_Valid_NWKRTC_MFA_Matters()
+        {
+            string validNwkrtcSnippet = @"
+HIGH COURT OF KARNATAKA DHARWAD BENCH
+COURT HALL NO : 9
+Cause List No. 1
+Sl.No. Case No. Parties / Advocates
+
+1 MFA 100250/2020 (MV, I)
+PET: SRI. DURGAPPA S/O HANAMANTAPPA KARI
+RES: THE DIVISIONAL CONTROLLER, NWKRTC
+MADANMOHAN M KHANNUR FOR RESPONDENT
+
+2 MFA 101510/2022 (MV, I)
+PET: SMT. SHILPA H K
+RES: THE DIVISIONAL CONTROLLER, NWKRTC BELAGAVI DIVISION
+CHANDRASHEKHAR M HOSAMANI FOR RES
+
+3 MFA 100999/2024 (MV, D )
+PET: NWKRTC INTERNAL INSURANCE FUND
+RES: SMT. SHANTAWWA AND OTHERS
+S C BHUTI FOR PETITIONER
+
+4 MFA 100888/2023 (MV, I )
+PET: SRI. BASAVARAJU
+RES: NORTH WEST KARNATAKA ROAD TRANSPORT CORPORATION
+VAISHALI K KALADAGI FOR R1
+
+5 MFA 100777/2024 (MV, I )
+PET: SRI. IRAPPA
+RES: THE MANAGING DIRECTOR, NWKRTC, GOKUL ROAD, HUBLI
+HANAMANTREDDY SAHUKAR FOR RESPONDENT
+";
+
+            var targetDate = new DateTime(2026, 11, 4);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                validNwkrtcSnippet,
+                estCode: "KAHC02",
+                benchId: "3629",
+                judgeName: "JUSTICE S.V.",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            Assert.NotNull(results);
+            Assert.Equal(5, results.Count);
+
+            Assert.Contains(results, x => x.RegNumber == "100250" && x.NwkrtcRole == "Against NWKRTC");
+            Assert.Contains(results, x => x.RegNumber == "101510" && x.NwkrtcRole == "Against NWKRTC");
+            Assert.Contains(results, x => x.RegNumber == "100999" && x.NwkrtcRole == "By NWKRTC");
+            Assert.Contains(results, x => x.RegNumber == "100888" && x.NwkrtcRole == "Against NWKRTC");
+            Assert.Contains(results, x => x.RegNumber == "100777" && x.NwkrtcRole == "Against NWKRTC");
+        }
     }
 }

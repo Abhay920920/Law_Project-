@@ -148,6 +148,21 @@ namespace MVCCaseManagement.Services.ECourts
                 if (item.NwkrtcRole == "Other RTC" || item.NwkrtcRole == "Non-Corporation")
                     return false;
 
+                bool isMfa = item.CaseType != null && (item.CaseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || item.CaseType.Equals("MSA", StringComparison.OrdinalIgnoreCase));
+                string combinedParties = $"{item.PetitionerName} {item.RespondentName}";
+                bool hasExplicitNw = Regex.IsMatch(combinedParties, @"(?i)\b(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE|SELF\s+INSURANCE|GOKUL\s*ROAD)\b");
+
+                if (isMfa)
+                {
+                    // Strictly exclude insurance companies without explicit NWKRTC
+                    if (Regex.IsMatch(combinedParties, @"(?i)\b(INSURANCE|ASSURANCE|UNITED\s+INDIA|NATIONAL\s+INSURANCE|NEW\s+INDIA|ORIENTAL\s+INSURANCE|ICICI\s+LOMBARD|BAJAJ\s+ALLIANZ|RELIANCE\s+GENERAL|SHRIRAM|CHOLAMANDALAM|TATA\s*AIG|IFFCO|HDFC|SBI\s+GENERAL|ROYAL\s+SUNDARAM|FUTURE\s+GENERALI|STAR\s+HEALTH|MAGMA|UNIVERSAL\s+SOMPO|GO\s*DIGIT|LIBERTY|KGID)\b") && !hasExplicitNw)
+                        return false;
+
+                    // Strictly exclude Land Acquisition, UKP, PWD, Police, Electricity, Revenue
+                    if (Regex.IsMatch(combinedParties, @"(?i)\b(SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO|UKP|UPPER\s*KRISHNA|PWD|POLICE|REVENUE|TAHSILDAR|HESCOM|BESCOM|GESCOM|KPTCL|MUNICIPAL|HDMC|ZILLA\s*PANCHAYAT|HEALTH|EDUCATION|REGIONAL\s+OFFICER)\b") && !hasExplicitNw)
+                        return false;
+                }
+
                 string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                     ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
                     : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
@@ -156,7 +171,7 @@ namespace MVCCaseManagement.Services.ECourts
                 bool resIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
                 if (petIsNw || resIsNw) return true;
 
-                if (!string.IsNullOrEmpty(item.Advocate))
+                if (!isMfa && !string.IsNullOrEmpty(item.Advocate))
                 {
                     bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)\b", RegexOptions.IgnoreCase);
                     bool hasOfficer = Regex.IsMatch($"{item.PetitionerName} {item.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);

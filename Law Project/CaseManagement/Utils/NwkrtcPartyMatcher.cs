@@ -39,7 +39,7 @@ namespace MVCCaseManagement.Utils
 
         // 4. Non-transport corporate/commercial/government entities commonly appearing with generic designations (e.g. Managing Director)
         private static readonly Regex NonTransportCorporateRegex = new(
-            @"\b(SUGAR|SUGARS|NIRANI|BANK|PVT|PRIVATE\s+LTD|LTD|LIMITED|HOSPITAL|RAILWAY|RAILWAYS|METRO|HESCOM|BESCOM|GESCOM|MESCOM|KPTCL|HOTEL|STEEL|CEMENT|CEMENTS|SLAO|SPECIAL\s+LAND|INSURANCE\s+CO)\b",
+            @"\b(SUGAR|SUGARS|NIRANI|BANK|PVT|PRIVATE\s+LTD|LTD|LIMITED|HOSPITAL|RAILWAY|RAILWAYS|METRO|HESCOM|BESCOM|GESCOM|MESCOM|CHESCOM|KPTCL|HOTEL|STEEL|CEMENT|CEMENTS|SLAO|SPECIAL\s+LAND|LAND\s+ACQUISITION|UKP|UPPER\s+KRISHNA|INSURANCE|ASSURANCE|UNITED\s+INDIA|NATIONAL\s+INSURANCE|NEW\s+INDIA|ORIENTAL\s+INSURANCE|ICICI\s+LOMBARD|BAJAJ\s+ALLIANZ|RELIANCE\s+GENERAL|SHRIRAM\s+GENERAL|CHOLAMANDALAM|TATA\s*AIG|IFFCO|HDFC\s*ERGO|SBI\s+GENERAL|ROYAL\s+SUNDARAM|FUTURE\s+GENERALI|STAR\s+HEALTH|MAGMA|UNIVERSAL\s+SOMPO|GO\s*DIGIT|LIBERTY|KGID|REGIONAL\s+OFFICER|PWD|PUBLIC\s+WORKS|POLICE|REVENUE\s+DEPT|TAHSILDAR|ZILLA\s+PANCHAYAT|TALUK\s+PANCHAYAT|GRAM\s+PANCHAYAT|MUNICIPAL|HDMC|CITY\s+CORP|EDUCATION|HEALTH\s+DEPT|FOREST\s+DEPT)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // 5. Designation-specific patterns (strictly for NWKRTC, no KSRTC)
@@ -217,11 +217,22 @@ namespace MVCCaseManagement.Utils
                     designation = "Depot Manager";
                     return true;
                 }
-                if (Regex.IsMatch(s, @"\b(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING\s*DIRECTOR|THE\s+MANAGEMENT\s+OF\s+NWKRTC|THE\s+MANAGING\s+OF\s+NWKRTC|MANAGEMENTOF\s*NWKRTC)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(s, @"\b(THE\s+MANAGEMENT\s+OF\s+NWKRTC|THE\s+MANAGING\s+OF\s+NWKRTC|MANAGEMENTOF\s*NWKRTC)\b", RegexOptions.IgnoreCase))
                 {
                     designation = "Managing Director";
                     return true;
+                }
+                if (Regex.IsMatch(s, @"\b(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING\s*DIRECTOR)\b", RegexOptions.IgnoreCase) &&
+                    !NonTransportCorporateRegex.IsMatch(s) &&
+                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|GESCOM|CHESCOM|MESCOM|KPTCL|NEKRTC|KKRTC|BMTC|POLICE|PWD|INSURANCE)\b", RegexOptions.IgnoreCase))
+                {
+                    bool hasNwContext = hasNwkrtcKeyword || hasNwkrtcHub ||
+                        Regex.IsMatch(s, @"\b(TRANSPORT|ROAD|NWKRTC|KSRTC|INTERNAL\s+INSURANCE)\b", RegexOptions.IgnoreCase);
+                    if (hasNwContext)
+                    {
+                        designation = "Managing Director";
+                        return true;
+                    }
                 }
             }
 
@@ -230,12 +241,17 @@ namespace MVCCaseManagement.Utils
             {
                 bool isNwkrtcStandingCounsel = Regex.IsMatch(advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)\b", RegexOptions.IgnoreCase);
                 bool hasTransportAuthority = Regex.IsMatch(s, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
-                if (isNwkrtcStandingCounsel && hasTransportAuthority)
+                if (isNwkrtcStandingCounsel && hasTransportAuthority && !NonTransportCorporateRegex.IsMatch(s))
                 {
-                    if (ManagingDirectorRegex.IsMatch(s)) designation = "Managing Director";
-                    else if (DivisionalControllerRegex.IsMatch(s)) designation = "Divisional Controller";
-                    else designation = "NWKRTC Central";
-                    return true;
+                    bool hasNwContext = hasNwkrtcKeyword || hasNwkrtcHub ||
+                        Regex.IsMatch(s, @"\b(TRANSPORT|ROAD|NWKRTC|KSRTC|INTERNAL\s+INSURANCE)\b", RegexOptions.IgnoreCase);
+                    if (hasNwContext)
+                    {
+                        if (ManagingDirectorRegex.IsMatch(s)) designation = "Managing Director";
+                        else if (DivisionalControllerRegex.IsMatch(s)) designation = "Divisional Controller";
+                        else designation = "NWKRTC Central";
+                        return true;
+                    }
                 }
             }
 

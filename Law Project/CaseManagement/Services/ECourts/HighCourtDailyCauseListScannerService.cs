@@ -457,7 +457,7 @@ namespace MVCCaseManagement.Services.ECourts
                         : "";
 
                     // Check if block contains NWKRTC relevance
-                    if (!IsNwkrtcRelated(blockText, estCode))
+                    if (!IsNwkrtcRelated(blockText, estCode, caseType))
                     {
                         continue;
                     }
@@ -481,6 +481,14 @@ namespace MVCCaseManagement.Services.ECourts
                     if (excludedCatMatch.Success)
                     {
                         continue; // Strictly exclude Land Revenue, Land Acquisition, General Civil, Tax, etc.
+                    }
+
+                    // Also exclude Land Acquisition/SLAO/UKP in MFA/MSA even if category parentheses are absent
+                    if ((caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase)) &&
+                        Regex.IsMatch(blockText, @"(?i)\b(SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO|UKP|UPPER\s*KRISHNA|LAC\s*NO|L\.A\.C)\b") &&
+                        !Regex.IsMatch(blockText, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)"))
+                    {
+                        continue;
                     }
 
                     if (allowedCatMatch.Success)
@@ -718,27 +726,48 @@ namespace MVCCaseManagement.Services.ECourts
             return list;
         }
 
-        public static bool IsNwkrtcRelated(string text, string estCode = "KAHC02")
+        public static bool IsNwkrtcRelated(string text, string estCode = "KAHC02", string caseType = "")
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
-            // 0. EXCLUSIONS: Non-transport government, revenue, tax, and private commercial entities
-            if (Regex.IsMatch(text, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF|SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO)\b", RegexOptions.IgnoreCase) &&
-                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
+            bool isMfaOrMsa = caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || 
+                              caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase);
+
+            // 0A. Direct NWKRTC keywords check (used across all downstream exclusion checks)
+            bool hasExplicitNwkrtc = Regex.IsMatch(text, @"(?i)(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND|GOKUL\s*ROAD)");
+            bool hasNwkrtcDivision = Regex.IsMatch(text, @"(?i)(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|UTTARA\s*KANNADA|CHIKKODI|SIRSI)");
+
+            // 0B. EXCLUSION: Insurance Companies (dominates MFA claims)
+            // Exclude private and state insurance companies UNLESS NWKRTC is an explicitly named party
+            if (Regex.IsMatch(text, @"(?i)\b(UNITED\s+INDIA|NATIONAL\s+INSURANCE|NEW\s+INDIA\s+ASSURANCE|ORIENTAL\s+INSURANCE|ICICI\s+LOMBARD|BAJAJ\s+ALLIANZ|SHRIRAM\s+GENERAL|CHOLAMANDALAM|RELIANCE\s+GENERAL|IFFCO\s*TOKIO|TATA\s*AIG|SBI\s+GENERAL|ROYAL\s+SUNDARAM|HDFC\s*ERGO|GO\s*DIGIT|DIGIT\s+INSURANCE|UNIVERSAL\s+SOMPO|MAGMA\s*HDI|LIBERTY\s+GENERAL|STAR\s+HEALTH|FUTURE\s+GENERALI|KOTAK\s+MAHINDRA\s+GENERAL|CARE\s+HEALTH|RAHEJA|ZUNO|ACKO|EDELWEISS|KGID|K\.?G\.?I\.?D|KARNATAKA\s+GOVERNMENT\s+INSURANCE)\b") &&
+                !hasExplicitNwkrtc)
             {
                 return false;
             }
 
-            // Sibling Corporation Blocklist: Exclude if it ONLY belongs to BMTC, KKRTC, NEKRTC, unless NWKRTC/North-West is also explicitly a party (e.g. multi-respondent matters)
-            bool hasExplicitNwkrtc = Regex.IsMatch(text, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|HUBBALLI|HUBLI|GOKUL\s*ROAD)");
+            // 0C. EXCLUSION: Non-transport government departments, revenue, land acquisition, civic bodies, electricity boards
+            if (Regex.IsMatch(text, @"(?i)\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|ASST\.?\s*COMMISSIONER|TAHSILDAR|POLICE|SUPERINTENDENT\s+OF\s+POLICE|COMMISSIONER\s+OF\s+POLICE|DIRECTOR\s+GENERAL\s+OF\s+POLICE|PWD|PUBLIC\s+WORKS|SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO|UKP|UPPER\s*KRISHNA|GRAM\s+PANCHAYAT|TALUK\s+PANCHAYAT|ZILLA\s+PANCHAYAT|MUNICIPAL|HDMC|CITY\s+CORPORATION|HESCOM|BESCOM|GESCOM|CHESCOM|MESCOM|KPTCL|KARNATAKA\s+POWER|ELECTRICITY\s+SUPPLY|KRISHNA\s+BHAGYA|KBJNL|KARNATAKA\s+NEERAVARI|KNNL|HOUSING\s+BOARD|KHB|KUWSDB|KUIDFC|URBAN\s+DEVELOPMENT\s+AUTHORITY|APMC|AGRICULTURE\s+DEPARTMENT|HORTICULTURE|FISHERIES|HEALTH\s+DEPARTMENT|DISTRICT\s+HEALTH\s+OFFICER|DHO|EDUCATION\s+DEPARTMENT|DDPI|BEO|FOREST\s+DEPARTMENT|CONSERVATOR\s+OF\s+FORESTS|RFO|REGIONAL\s+OFFICER|RAILWAY|RAILWAYS|SOUTH\s+WESTERN\s+RAILWAY|POSTAL\s+DEPARTMENT|BSNL|TELECOM|EXCISE\s+DEPARTMENT|MINING|MINES\s+AND\s+GEOLOGY|ISPAT|STEEL|SUGAR|CEMENT|MASJID|TEMPLE|WAKF|MUZRAI)\b") &&
+                !hasExplicitNwkrtc)
+            {
+                return false;
+            }
+
+            // 0D. EXCLUSION: Sibling Corporations (BMTC, KKRTC, NEKRTC)
             if (!hasExplicitNwkrtc && Regex.IsMatch(text, @"(?i)(BMTC|KKRTC|NEKRTC|NEKSRTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KALYANA\s+KARNATAKA|NORTH\s*[- ]?EAST)"))
             {
                 return false;
             }
 
-            // High Court subject code: In Dharwad Bench (KAHC02), (L, KSRTC ) and (S, KSRTC ) denote Labour/Service classification, NOT the litigant.
-            // Only exclude KSRTC if explicitly written as Bengaluru/Central KSRTC corporation without Dharwad/NWKRTC context.
             bool isDharwadBench = string.Equals(estCode, "KAHC02", StringComparison.OrdinalIgnoreCase);
+
+            // In MFA/MSA cases, Central KSRTC (Bengaluru) is a distinct transport corporation. Exclude unless NWKRTC or NWKRTC division is present.
+            if (isMfaOrMsa && Regex.IsMatch(text, @"(?i)(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT|K\.?S\.?R\.?T\.?C\.?)") &&
+                !hasExplicitNwkrtc && !hasNwkrtcDivision)
+            {
+                return false;
+            }
+
+            // In non-Dharwad benches, exclude general KSRTC unless explicitly NWKRTC
             if (!isDharwadBench && Regex.IsMatch(text, @"(?i)(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT|K\.?S\.?R\.?T\.?C\.?)") &&
                 !hasExplicitNwkrtc)
             {
@@ -747,13 +776,13 @@ namespace MVCCaseManagement.Services.ECourts
 
             // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
             if (Regex.IsMatch(text, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC|MANAGING\s*DIRECTOR)", RegexOptions.IgnoreCase))
+                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
             {
                 return false;
             }
 
             // 1. Direct NWKRTC keywords (highest confidence, including internal insurance & concatenated OCR forms)
-            if (Regex.IsMatch(text, @"(?i)(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND)") ||
+            if (hasExplicitNwkrtc ||
                 Regex.IsMatch(text, @"(?i)MANAGEMENT\s*OF?\s*NWKRTC") ||
                 Regex.IsMatch(text, @"(?i)MANAGEMENT\s*OF?\s*N\.?W\.?K\.?R\.?T\.?C") ||
                 text.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase))
@@ -761,8 +790,8 @@ namespace MVCCaseManagement.Services.ECourts
                 return true;
             }
 
-            // 1b. In non-Dharwad benches (Bengaluru & Kalaburagi), also capture NWKRTC territorial divisions & operating hubs
-            if (Regex.IsMatch(text, @"(?i)(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|UTTARA\s*KANNADA|CHIKKODI|SIRSI|GOKUL\s*ROAD)") &&
+            // 1b. NWKRTC territorial divisions & operating hubs with transport/officer context
+            if (hasNwkrtcDivision &&
                 Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|DISCIPLINARY\s*AUTHORITY|MANAGING\s*DIRECTOR|TRANSPORT|ROAD\s*TRANSPORT|KSRTC|NWKRTC)"))
             {
                 return true;
@@ -774,28 +803,53 @@ namespace MVCCaseManagement.Services.ECourts
                 return false;
             }
 
-            // 2. NWKRTC Officers: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
+            // 2. NWKRTC Officers in Dharwad Bench: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
             if (Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)"))
             {
-                // Must not be Railway, Police, or Electricity boards
-                if (!Regex.IsMatch(text, @"\b(RAILWAY|BESCOM|HESCOM|POLICE)\b", RegexOptions.IgnoreCase))
+                return true;
+            }
+
+            // Empanelled NWKRTC Standing Counsel check (Dharwad Bench)
+            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|KUPPELUR)");
+
+            // 3. Managing Director: In Dharwad Bench, NWKRTC is sued as The Managing Director in accident and labour appeals.
+            // Must NOT be an excluded entity (insurance, land acquisition, electricity, police, etc. - already filtered above).
+            // Must have explicit NWKRTC, NWKRTC division, transport context, or NWKRTC standing counsel representation.
+            if (Regex.IsMatch(text, @"(?i)(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING)"))
+            {
+                if (hasExplicitNwkrtc || hasNwkrtcDivision || Regex.IsMatch(text, @"(?i)(TRANSPORT|ROAD\s*TRANSPORT|NWKRTC|INTERNAL\s+INSURANCE)"))
+                {
+                    return true;
+                }
+                if (isDharwadBench && (hasStandingCounsel || (!isMfaOrMsa && Regex.IsMatch(text, @"(?i)(MANAGEMENT|CORPORATION|KSRTC)"))))
                 {
                     return true;
                 }
             }
 
-            // 3. Managing Director or "THE MANAGING" with standing counsel or transport context
-            if (Regex.IsMatch(text, @"(?i)(MANAGING\s*DIRECTOR|MANAGINGDIRECTOR|THE\s+MANAGING|\bMANAGING\b)"))
+            // 4. Standing Counsel representation check
+            if (hasStandingCounsel)
             {
-                return true;
-            }
-
-            // 4. In Dharwad Bench: Standing Counsel appearing with Management, Controller, Officer, or (L/S, KSRTC) context
-            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|KUPPELUR)");
-            bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR|CORPORATION|NWKRTC|INTERNAL\s+INSURANCE)");
-            if (hasStandingCounsel && hasNwkrtcContext)
-            {
-                return true;
+                if (isMfaOrMsa)
+                {
+                    // In MFA/MSA, Standing Counsel also represent private insurance companies and claimants.
+                    // Must have NWKRTC, territorial division, internal insurance, or depot/divisional controller/MD context.
+                    bool hasMfaTransportContext = hasExplicitNwkrtc || hasNwkrtcDivision ||
+                        Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|INTERNAL\s+INSURANCE|SELF\s+INSURANCE|ROAD\s*TRANSPORT)");
+                    if (hasMfaTransportContext)
+                    {
+                        return true;
+                    }
+                }
+                else if (isDharwadBench)
+                {
+                    // In WP / WA / CCC (Labour & Service):
+                    bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR|CORPORATION|NWKRTC|INTERNAL\s+INSURANCE)");
+                    if (hasNwkrtcContext)
+                    {
+                        return true;
+                    }
+                }
             }
 
             return false;
