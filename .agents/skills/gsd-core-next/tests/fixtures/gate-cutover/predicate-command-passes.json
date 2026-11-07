@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{\"kind\":\"command-exit-zero\",\"command\":\"true\"}"
+  ],
+  "fixture": "pred",
+  "stdout": "{\n  \"block\": false,\n  \"message\": \"command exited 0\",\n  \"details\": {\n    \"kind\": \"command-exit-zero\",\n    \"exitCode\": 0\n  }\n}",
+  "stderr": "",
+  "exitCode": 0
+}

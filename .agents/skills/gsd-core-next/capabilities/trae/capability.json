@@ -1,0 +1,99 @@
+{
+  "id": "trae",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "Trae IDE",
+  "description": "Trae IDE — nested-skill artifact layout; no hook surface (profile-marker-only config); tier-2 support.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home",
+      "name": ".trae",
+      "env": [
+        "TRAE_CONFIG_DIR"
+      ]
+    },
+    "localConfigDir": ".trae",
+    "configFormat": "none",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "nested",
+          "recursive": false,
+          "converter": "convertClaudeCommandToTraeSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToTraeAgent"
+        }
+      ],
+      "local": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "nested",
+          "recursive": false,
+          "converter": "convertClaudeCommandToTraeSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToTraeAgent"
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "slash-hyphen",
+    "hooksSurface": "none",
+    "sandboxTier": "none",
+    "supportTier": 2,
+    "installSurface": "profile-marker-only",
+    "writesSharedSettings": false,
+    "permissionWriter": null,
+    "extendedHookEvents": [],
+    "hostIntegration": {
+      "embeddingMode": "imperative",
+      "commandSurface": "slash-file",
+      "dispatch": {
+        "namedDispatch": true,
+        "nested": "undocumented",
+        "maxDepth": "undocumented",
+        "background": true,
+        "subagentToolkit": "undocumented",
+        "backgroundDispatch": "undocumented",
+        "isolation": "undocumented",
+        "maxConcurrency": "undocumented"
+      },
+      "modelMode": "passive",
+      "hookBus": "engine",
+      "stateIO": "filesystem",
+      "transport": "mcp",
+      "runtime": "node",
+      "effortSurface": "undocumented"
+    },
+    "hostBehaviors": {
+      "skipSharedHooksInstall": true,
+      "soloStageMetadata": "workflow",
+      "projectInstructionFile": ".trae/rules/rules.md",
+      "contentRewriteProfile": "slash-bare-own-derived"
+    }
+  }
+}

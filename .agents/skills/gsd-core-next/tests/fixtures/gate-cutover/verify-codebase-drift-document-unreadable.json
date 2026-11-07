@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.verify-codebase-drift"
+  ],
+  "fixture": "cb-doc-unreadable",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": false,\n  \"reason\": null,\n  \"action_required\": false,\n  \"directive\": \"none\",\n  \"spawn_mapper\": false,\n  \"affected_paths\": [],\n  \"withheld_paths\": [],\n  \"withheld_count\": 0,\n  \"documents_read\": [\n    \"STRUCTURE.md\"\n  ],\n  \"documents_unreadable\": [\n    \"ARCHITECTURE.md\"\n  ],\n  \"elements\": [],\n  \"threshold\": 3,\n  \"action\": \"warn\",\n  \"last_mapped_commit\": \"e37741bc82b4cc731fe8afb5cfcc4ec998dc7a00\",\n  \"message\": \"\"\n}",
+  "stderr": "",
+  "exitCode": 69
+}

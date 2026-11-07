@@ -1,0 +1,194 @@
+{
+  "id": "codex",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "OpenAI Codex CLI",
+  "description": "OpenAI Codex CLI — shell-var command style; per-agent sandbox tiers; config.toml + hooks.json hook surface; tier-1 support.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home",
+      "name": ".codex",
+      "env": [
+        "CODEX_HOME"
+      ]
+    },
+    "localConfigDir": ".codex",
+    "configFormat": "toml",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToCodexSkill",
+          "home": ".agents"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToCodexAgent"
+        }
+      ],
+      "local": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToCodexSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToCodexAgent"
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "shell-var",
+    "hooksSurface": "codex-hooks-json",
+    "hookEvents": "claude",
+    "sandboxTier": "codex-agent-sandbox",
+    "supportTier": 1,
+    "installSurface": "codex-toml",
+    "writesSharedSettings": false,
+    "permissionWriter": null,
+    "extendedHookEvents": [
+      "SubagentStop",
+      "Stop",
+      "PreCompact"
+    ],
+    "hostIntegration": {
+      "embeddingMode": "declarative",
+      "commandSurface": "slash-file",
+      "dispatch": {
+        "namedDispatch": true,
+        "nested": true,
+        "maxDepth": 1,
+        "background": true,
+        "subagentToolkit": "full",
+        "backgroundDispatch": true,
+        "isolation": "orchestrator-worktree",
+        "maxConcurrency": "undocumented"
+      },
+      "modelMode": "passive",
+      "hookBus": "host",
+      "stateIO": "filesystem",
+      "transport": "mcp",
+      "runtime": "node",
+      "effortSurface": "argv"
+    },
+    "orchestratorExec": {
+      "command": "codex",
+      "args": [
+        "exec"
+      ],
+      "cwdFlag": "--cd",
+      "promptFlag": null,
+      "modelFlag": "--model"
+    },
+    "hostBehaviors": {
+      "reapplyCommand": "$gsd-update --reapply",
+      "tomlConfigInstall": true,
+      "cleanupSkillSidecars": true,
+      "agentTomlFiles": true,
+      "frontmatterDialect": "codex",
+      "unsupportedFeatures": [
+        "context-warnings",
+        "phase-lifecycle-display"
+      ],
+      "rewriteClaudeAtIncludes": true,
+      "contentRewriteProfile": "slash-own-tilde",
+      "bakesStaticAgentModel": true,
+      "bakedAgentFileExtensions": [
+        ".toml",
+        ".md"
+      ]
+    }
+  },
+  "reviewer": {
+    "slug": "codex",
+    "flags": [
+      "--codex"
+    ],
+    "transport": "spawn",
+    "probe": {
+      "kind": "command-exists",
+      "binary": "codex"
+    },
+    "invoke": {
+      "binary": "codex",
+      "args": [
+        "exec",
+        "--ephemeral",
+        "{{model}}",
+        "{{effort}}",
+        "--skip-git-repo-check",
+        "{{output}}",
+        "-"
+      ],
+      "promptChannel": "stdin",
+      "outputChannel": "file-arg",
+      "outputArg": "-o",
+      "modelArg": "--model",
+      "effortChannel": "argv"
+    },
+    "timeoutFloorMs": 1200000,
+    "timeoutConfigKey": "review.timeouts.codex",
+    "emptyOutput": "stub-with-stderr",
+    "reviewsSection": "Codex",
+    "evidenceClass": "source-grounded",
+    "requiresBinaries": [],
+    "promptBudgetKey": "review.max_prompt_tokens_per_reviewer.codex",
+    "contextWindowTokens": 272000,
+    "contextWindowConfigKey": "review.context_window_tokens.codex",
+    "modelConfigKey": "review.models.codex",
+    "effortConfigKey": "review.effort.codex",
+    "defaultEffort": "high",
+    "handler": null
+  },
+  "config": {
+    "review.models.codex": {
+      "type": "string",
+      "default": "",
+      "description": "Model passed to the Codex reviewer lane."
+    },
+    "review.max_prompt_tokens_per_reviewer.codex": {
+      "type": "number",
+      "default": -1,
+      "description": "Prompt-token budget for the Codex reviewer lane. Unset is -1, a sentinel that inherits the global cap and then the lane's context-window default; 0 is a legitimate value meaning \"no prompt cap for this lane\", so it cannot double as \"not configured\"."
+    },
+    "review.context_window_tokens.codex": {
+      "type": "number",
+      "default": -1,
+      "description": "Context window in tokens used to derive the default prompt cap for the codex reviewer lane at 65% of the window. Unset is -1: use the lane's declared window of 272000 tokens; 0 disables the derived cap; a positive number overrides the window."
+    },
+    "review.timeouts.codex": {
+      "type": "number",
+      "default": -1,
+      "description": "Outer wall-clock timeout override (seconds) for the Codex reviewer lane. Unset is -1, a sentinel: 0 or a negative number is also treated as unset (a timeout has no legitimate zero/negative value), so no second sentinel is needed. Falls back to the lane's built-in timeoutFloorMs when unset."
+    },
+    "review.effort.codex": {
+      "type": "string",
+      "default": "",
+      "description": "Reasoning effort for the Codex reviewer lane: minimal, low, medium, high, xhigh, max, or inherit. Unset falls back to the lane's declared review default (high); inherit emits no effort argument so the CLI's own configuration decides. An unrecognized value falls back to the lane default rather than being forwarded."
+    }
+  }
+}

@@ -1,0 +1,2819 @@
+'use strict';
+
+/**
+ * Unit tests for frontmatter.cjs
+ *
+ * Module: gsd-core/bin/lib/frontmatter.cjs
+ *
+ * Covers:
+ *   - extractFrontmatter: all scalar types, quoted, arrays, nested, edge cases
+ *   - reconstructFrontmatter: exact output for every branch
+ *   - spliceFrontmatter: with/without existing frontmatter
+ *   - parseMustHavesBlock: all branches
+ *   - FRONTMATTER_SCHEMAS: exact keys
+ */
+
+const { describe, test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const yaml = require('js-yaml');
+
+const {
+  extractFrontmatter,
+  reconstructFrontmatter,
+  spliceFrontmatter,
+  stripFrontmatter,
+  noOpObjectListSetError,
+  parseMustHavesBlock,
+  frontmatterListEntries,
+  flattenObjectListItem,
+  FRONTMATTER_SCHEMAS,
+  agentScalarNeedsDoubleQuoting,
+  escapeDoubleQuotedScalar,
+  propagateCommentChannel,
+  frontmatterKeyHasValue,
+  frontmatterKeyBlockText,
+  frontmatterRegion,
+  rawFrontmatterField,
+} = require('../gsd-core/bin/lib/frontmatter.cjs');
+
+// ─── frontmatterKeyHasValue / frontmatterKeyBlockText / rawFrontmatterField (#5139) ───────────────
+//
+// `frontmatterKeyHasValue(content, key, value)` is the `check tdd-review-checkpoint` gate's
+// `type: tdd` test. It must be byte-equivalent to the regex the gate always ran —
+// `^type:\s*tdd\s*$` (multiline) over the fence owner's CLOSED frontmatter region — including its
+// three pathological forms:
+//   - a duplicate `type:` key with `tdd` second -> matches
+//   - the value on the NEXT line (`\s*` spans it) -> matches
+//   - `type : tdd` (space before the colon)       -> does NOT match
+// and it must match the key and value LITERALLY: no caller-supplied key or value can change the
+// pattern (a regex metacharacter is data, never syntax). Every assertion below is an exact value.
+describe('frontmatterKeyHasValue / frontmatterKeyBlockText / rawFrontmatterField (#5139)', () => {
+  /** The pre-#5139 router test, verbatim: the regex over the fence owner's closed region. */
+  function oldTypeTdd(content) {
+    const found = frontmatterRegion(content);
+    return Boolean(found?.terminated && /^type:\s*tdd\s*$/m.test(found.region));
+  }
+
+  const FM = (inner) => `---\n${inner}\n---\n\n# Plan\n`;
+
+  const FIXTURES = [
+    ['plain', FM('phase: 1\ntype: tdd\nslug: x'), true],
+    ['trailing spaces', FM('type: tdd   '), true],
+    ['trailing tab', FM('type: tdd\t'), true],
+    ['CRLF line endings (#2449)', '---\r\nphase: 1\r\ntype: tdd\r\n---\r\n\r\n# Plan\r\n', true],
+    ['BOM before the fence', String.fromCharCode(0xfeff) + FM('type: tdd'), true],
+    ['no space after the colon', FM('type:tdd'), true],
+    ['tab after the colon', FM('type:\ttdd'), true],
+    ['a `--- x` line before the key (the fence owner does not close on it)', FM('note: x\n--- x\ntype: tdd'), true],
+    ['double-quoted value', FM('type: "tdd"'), false],
+    ['single-quoted value', FM("type: 'tdd'"), false],
+    ['trailing comment', FM('type: tdd # note'), false],
+    ['a longer value', FM('type: tddx'), false],
+    ['different case', FM('type: TDD'), false],
+    ['another type', FM('type: execute'), false],
+    ['indented key', FM('  type: tdd'), false],
+    ['unterminated block', '---\ntype: tdd\nphase: 1\n', false],
+    ['no frontmatter at all', 'type: tdd\n# Plan\n', false],
+    ['`type: tdd` only in the body', `${FM('phase: 1')}type: tdd\n`, false],
+    ['PATHOLOGICAL: a duplicate `type:` key with tdd second', FM('type: execute\ntype: tdd'), true],
+    ['PATHOLOGICAL: the value on the next line', FM('type:\ntdd'), true],
+    ['PATHOLOGICAL: a space before the colon (`type : tdd`)', FM('type : tdd'), false],
+  ];
+
+  describe('frontmatterKeyHasValue("type", "tdd") equals the old `^type:\\s*tdd\\s*$` regex (21-fixture table)', () => {
+    test('the table has 21 fixtures', () => {
+      assert.equal(FIXTURES.length, 21);
+    });
+
+    for (const [label, content, expected] of FIXTURES) {
+      test(`${label} -> ${expected}`, () => {
+        assert.equal(oldTypeTdd(content), expected, 'the recorded expectation is what the OLD regex answers');
+        assert.equal(frontmatterKeyHasValue(content, 'type', 'tdd'), expected);
+        assert.equal(frontmatterKeyHasValue(content, 'type', 'tdd'), oldTypeTdd(content));
+      });
+    }
+  });
+
+  describe('frontmatterKeyHasValue: anchoring and region boundaries', () => {
+    test('the key may sit on the first, a middle, or the last line of the block', () => {
+      assert.equal(frontmatterKeyHasValue('---\nk: v\na: 1\n---\n', 'k', 'v'), true);
+      assert.equal(frontmatterKeyHasValue('---\na: 1\nk: v\nb: 2\n---\n', 'k', 'v'), true);
+      assert.equal(frontmatterKeyHasValue('---\na: 1\nk: v\n---\n', 'k', 'v'), true);
+    });
+
+    test('the key must start the line: a longer key or a prefix before it does not match', () => {
+      assert.equal(frontmatterKeyHasValue(FM('xk: v'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('kk: v'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM(' k: v'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: v'), 'kk', 'v'), false);
+    });
+
+    test('the value must be the whole rest of the line: a prefix, suffix, or different value does not match', () => {
+      assert.equal(frontmatterKeyHasValue(FM('k: vx'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: xv'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: w'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: v w'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k:'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: '), 'k', 'v'), false);
+    });
+
+    test('an empty value matches an empty (or whitespace-only) value', () => {
+      assert.equal(frontmatterKeyHasValue(FM('k:'), 'k', ''), true);
+      assert.equal(frontmatterKeyHasValue(FM('k:   '), 'k', ''), true);
+      assert.equal(frontmatterKeyHasValue(FM('k: v'), 'k', ''), false);
+    });
+
+    test('an absent key is false; a space before the colon is false', () => {
+      assert.equal(frontmatterKeyHasValue(FM('a: 1\nb: 2'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k : v'), 'k', 'v'), false);
+    });
+
+    test('the value on a later line matches (\\s* spans newlines), but not across a non-blank line', () => {
+      assert.equal(frontmatterKeyHasValue(FM('k:\n\nv'), 'k', 'v'), true);
+      assert.equal(frontmatterKeyHasValue(FM('k:\nx\nv'), 'k', 'v'), false);
+    });
+
+    test('a key match in the body, past the closing fence, is not seen', () => {
+      assert.equal(frontmatterKeyHasValue('---\na: 1\n---\nk: v\n', 'k', 'v'), false);
+    });
+
+    test('empty content, the bare fence, a fence pair, and an unterminated block are all false', () => {
+      assert.equal(frontmatterKeyHasValue('', 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue('---', 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue('---\n---', 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue('---\nk: v\n', 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue('---\nk: v', 'k', 'v'), false);
+    });
+
+    test('a closed block with no trailing newline after the fence still matches', () => {
+      assert.equal(frontmatterKeyHasValue('---\nk: v\n---', 'k', 'v'), true);
+      assert.equal(frontmatterKeyHasValue('---\nk: v\n---\n', 'k', 'v'), true);
+    });
+
+    test('the match is case-sensitive on key and value', () => {
+      assert.equal(frontmatterKeyHasValue(FM('K: v'), 'k', 'v'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: V'), 'k', 'v'), false);
+    });
+
+    test('a dash after the key is data, not a fence: a block line `---x` does not close the block', () => {
+      assert.equal(frontmatterKeyHasValue(FM('a: 1\n---x\nk: v'), 'k', 'v'), true);
+    });
+  });
+
+  // One entry per regex metacharacter; `decoys` are lines an UNESCAPED key/value would wrongly match.
+  const METACHARS = ['.', '*', '+', '?', '^', '$', '{', '}', '(', ')', '|', '[', ']', '\\'];
+  const DECOYS = ['axb', 'aab', 'ab', 'b', 'a', 'a\u0008b'];
+
+  describe('key and value are matched literally (each metacharacter)', () => {
+    for (const c of METACHARS) {
+      const token = `a${c}b`;
+      test(`frontmatterKeyHasValue: key ${JSON.stringify(token)} matches only itself`, () => {
+        assert.equal(frontmatterKeyHasValue(FM(`${token}: 1`), token, '1'), true);
+        assert.equal(frontmatterKeyHasValue(FM(`${DECOYS.map((d) => `${d}: 1`).join('\n')}`), token, '1'), false);
+      });
+
+      test(`frontmatterKeyHasValue: value ${JSON.stringify(token)} matches only itself`, () => {
+        assert.equal(frontmatterKeyHasValue(FM(`k: ${token}`), 'k', token), true);
+        assert.equal(frontmatterKeyHasValue(FM(DECOYS.map((d) => `k: ${d}`).join('\n')), 'k', token), false);
+      });
+
+      test(`frontmatterKeyBlockText: key ${JSON.stringify(token)} matches only itself`, () => {
+        assert.equal(frontmatterKeyBlockText(FM(`${DECOYS.map((d) => `${d}: 9`).join('\n')}\n${token}: 1\nz: 2`), token), ' 1');
+        assert.equal(frontmatterKeyBlockText(FM(DECOYS.map((d) => `${d}: 9`).join('\n')), token), '');
+      });
+    }
+
+    test('a key or value that is not a valid regex never throws', () => {
+      for (const bad of ['(', ')', '[', ']', '{', '}', '*', '+', '?', '\\', '^', '$', '|', '(?<', '[a-', '\\k<x>']) {
+        assert.doesNotThrow(() => frontmatterKeyHasValue(FM('k: v'), bad, 'v'), `key ${JSON.stringify(bad)}`);
+        assert.doesNotThrow(() => frontmatterKeyHasValue(FM('k: v'), 'k', bad), `value ${JSON.stringify(bad)}`);
+        assert.doesNotThrow(() => frontmatterKeyBlockText(FM('k: v'), bad), `block key ${JSON.stringify(bad)}`);
+      }
+      assert.equal(frontmatterKeyHasValue(FM('\\: \\'), '\\', '\\'), true, 'a backslash matches a backslash');
+    });
+
+    test('a value with regex metacharacters matches only itself (plain cases)', () => {
+      assert.equal(frontmatterKeyHasValue(FM('k: a.c'), 'k', 'a.c'), true);
+      assert.equal(frontmatterKeyHasValue(FM('k: abc'), 'k', 'a.c'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: x'), 'k', '.*'), false);
+      assert.equal(frontmatterKeyHasValue(FM('k: (a|b)'), 'k', '(a|b)'), true);
+    });
+
+    test('a hyphen and a slash in the key or value are plain characters', () => {
+      assert.equal(frontmatterKeyHasValue(FM('a-b/c: x-y/z'), 'a-b/c', 'x-y/z'), true);
+      assert.equal(frontmatterKeyHasValue(FM('a-b/c: x-y/z'), 'a-b/c', 'x-y/q'), false);
+    });
+  });
+
+  describe('frontmatterKeyBlockText: exact return values', () => {
+    test('an inline value is returned with its leading space, without the newline after it', () => {
+      assert.equal(frontmatterKeyBlockText(FM('a: 1\nk: v\nz: 2'), 'k'), ' v');
+      assert.equal(frontmatterKeyBlockText(FM('k: v\na: 1'), 'k'), ' v');
+    });
+
+    test('the key on the LAST line of the block keeps the trailing newline of the region', () => {
+      assert.equal(frontmatterKeyBlockText(FM('a: 1\nk: v'), 'k'), ' v\n');
+      assert.equal(frontmatterKeyBlockText(FM('a: 1\nk:'), 'k'), '\n');
+    });
+
+    test('an empty value followed by another key is the empty string', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k:\na: 1'), 'k'), '');
+    });
+
+    test('nested lines are appended verbatim until the first non-indented, non-blank line', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k:\n  a: 1\n  b: 2\nn: 3'), 'k'), '\n  a: 1\n  b: 2');
+      assert.equal(frontmatterKeyBlockText(FM('k:\n  a: 1\n  b: 2'), 'k'), '\n  a: 1\n  b: 2');
+      assert.equal(frontmatterKeyBlockText(FM('k:\n\ta: 1\nn: 3'), 'k'), '\n\ta: 1');
+    });
+
+    test('a blank line inside the block is kept and does not end it', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k:\n  a: 1\n\n  b: 2\nn: 3'), 'k'), '\n  a: 1\n\n  b: 2');
+    });
+
+    test('an inline value with nested lines keeps both, and trailing spaces on the value line', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k: v  \n  a: 1'), 'k'), ' v  \n  a: 1');
+    });
+
+    test('a space before the colon still finds the key', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k : v\nn: 3'), 'k'), ' v');
+    });
+
+    test('CRLF line endings: the value line loses its CR; the remaining text is split on CRLF', () => {
+      assert.equal(frontmatterKeyBlockText('---\r\nk: v\r\n  a: 1\r\nn: 3\r\n---\r\n', 'k'), ' v\n\n  a: 1');
+      assert.equal(frontmatterKeyBlockText('---\r\nk: v\r\n---\r\n', 'k'), ' v\n');
+    });
+
+    test('a BOM before the fence is skipped', () => {
+      assert.equal(frontmatterKeyBlockText(String.fromCharCode(0xfeff) + FM('k: v'), 'k'), ' v\n');
+    });
+
+    test('a `--- x` line in the block does not hide the key (no YAML parse)', () => {
+      assert.equal(frontmatterKeyBlockText(FM('n: x\n--- x\nk: v'), 'k'), ' v\n');
+    });
+
+    test('the FIRST of a duplicate key wins', () => {
+      assert.equal(frontmatterKeyBlockText(FM('k: 1\nn: 2\nk: 3'), 'k'), ' 1');
+    });
+
+    test('an absent key, an indented key, a prefix or longer key are all the empty string', () => {
+      assert.equal(frontmatterKeyBlockText(FM('a: 1\nb: 2'), 'k'), '');
+      assert.equal(frontmatterKeyBlockText(FM('  k: v'), 'k'), '');
+      assert.equal(frontmatterKeyBlockText(FM('kk: v\nxk: w'), 'k'), '');
+      assert.equal(frontmatterKeyBlockText(FM('k: v'), 'kk'), '');
+    });
+
+    test('unterminated, absent, empty, and fence-only inputs are the empty string', () => {
+      assert.equal(frontmatterKeyBlockText('---\nk: v\n', 'k'), '');
+      assert.equal(frontmatterKeyBlockText('k: v\n', 'k'), '');
+      assert.equal(frontmatterKeyBlockText('', 'k'), '');
+      assert.equal(frontmatterKeyBlockText('---', 'k'), '');
+      assert.equal(frontmatterKeyBlockText('---\n---', 'k'), '');
+      assert.equal(frontmatterKeyBlockText('body\n---\nk: v\n---\n', 'k'), '');
+    });
+
+    test('a key in the body past the closing fence is not seen', () => {
+      assert.equal(frontmatterKeyBlockText('---\na: 1\n---\nk: v\n', 'k'), '');
+    });
+
+    test('the key is followed by optional spaces then a colon: `kx:` is not `k:`', () => {
+      assert.equal(frontmatterKeyBlockText(FM('kx: v'), 'k'), '');
+      assert.equal(frontmatterKeyBlockText(FM('k  : v\nn: 3'), 'k'), ' v');
+    });
+  });
+
+  describe('rawFrontmatterField: the export the gates read (value wrapper, null on refusal)', () => {
+    test('a scalar is returned verbatim inside { value }', () => {
+      assert.deepEqual(rawFrontmatterField(FM('k: v'), 'k'), { value: 'v' });
+      assert.deepEqual(rawFrontmatterField(FM('k: 3'), 'k'), { value: '3' });
+    });
+
+    test('a list and a list of objects are returned structurally', () => {
+      assert.deepEqual(rawFrontmatterField(FM('k: [a, b]'), 'k'), { value: ['a', 'b'] });
+      const listed = rawFrontmatterField(FM('k:\n  - a\n  - b: 1'), 'k');
+      assert.equal(JSON.stringify(listed), '{"value":["a",{"b":"1"}]}');
+    });
+
+    test('a present key with no value is { value: null }', () => {
+      assert.deepEqual(rawFrontmatterField(FM('k:'), 'k'), { value: null });
+    });
+
+    test('an absent key, an unterminated block, no frontmatter, and refused YAML are null', () => {
+      assert.equal(rawFrontmatterField(FM('k: v'), 'z'), null);
+      assert.equal(rawFrontmatterField('---\nk: v\n', 'k'), null);
+      assert.equal(rawFrontmatterField('k: v', 'k'), null);
+      assert.equal(rawFrontmatterField(FM('k: &a v\nz: *a'), 'k'), null, 'anchors/aliases are refused');
+      assert.equal(rawFrontmatterField(FM('k: [unclosed'), 'k'), null, 'a YAML syntax error is refused, not thrown');
+    });
+  });
+});
+
+// ─── extractFrontmatter ───────────────────────────────────────────────────────
+
+describe('extractFrontmatter: no frontmatter', () => {
+  test('plain text returns {}', () => {
+    assert.deepEqual(extractFrontmatter('just plain text'), {});
+  });
+
+  test('empty string returns {}', () => {
+    assert.deepEqual(extractFrontmatter(''), {});
+  });
+
+  test('--- not at start returns {}', () => {
+    assert.deepEqual(extractFrontmatter('content\n---\nkey: val\n---\n'), {});
+  });
+
+  test('--- block without closing delimiter returns {}', () => {
+    assert.deepEqual(extractFrontmatter('---\ntitle: Hello\nauthor: World\n'), {});
+  });
+
+  test('only --- returns {}', () => {
+    assert.deepEqual(extractFrontmatter('---\n---'), {});
+  });
+
+  test('empty frontmatter block returns {}', () => {
+    assert.deepEqual(extractFrontmatter('---\n\n---\nBody'), {});
+  });
+
+  test('heading only returns {}', () => {
+    assert.deepEqual(extractFrontmatter('# Just a heading\ncontent'), {});
+  });
+});
+
+describe('extractFrontmatter: simple scalar values', () => {
+  test('single string key-value', () => {
+    const result = extractFrontmatter('---\ntitle: Hello\n---\nBody');
+    assert.deepEqual(result, { title: 'Hello' });
+  });
+
+  test('multiple string key-values', () => {
+    const result = extractFrontmatter('---\ntitle: Hello\nauthor: World\n---\n');
+    assert.deepEqual(result, { title: 'Hello', author: 'World' });
+  });
+
+  test('numeric string value preserved as string', () => {
+    const result = extractFrontmatter('---\ncount: 42\n---');
+    assert.deepEqual(result, { count: '42' });
+    assert.equal(result.count, '42');
+  });
+
+  test('boolean string value preserved as string', () => {
+    const result = extractFrontmatter('---\nflag: true\n---');
+    assert.deepEqual(result, { flag: 'true' });
+    assert.equal(result.flag, 'true');
+  });
+
+  test('null string value preserved as string', () => {
+    const result = extractFrontmatter('---\nnone: null\n---');
+    assert.deepEqual(result, { none: 'null' });
+    assert.equal(result.none, 'null');
+  });
+
+  test('false string value preserved as string', () => {
+    const result = extractFrontmatter('---\ndone: false\n---');
+    assert.deepEqual(result, { done: 'false' });
+  });
+
+  test('value with internal spaces preserved', () => {
+    const result = extractFrontmatter('---\nphase: phase one\n---');
+    assert.deepEqual(result, { phase: 'phase one' });
+  });
+
+  test('trailing whitespace in value is trimmed', () => {
+    const result = extractFrontmatter('---\ntitle: Hello   \n---');
+    assert.deepEqual(result, { title: 'Hello' });
+  });
+
+  test('key with underscore', () => {
+    const result = extractFrontmatter('---\nmy_key: val\n---');
+    assert.deepEqual(result, { my_key: 'val' });
+  });
+
+  test('key with hyphen', () => {
+    const result = extractFrontmatter('---\nmy-key: val\n---');
+    assert.deepEqual(result, { 'my-key': 'val' });
+  });
+
+  test('key with digits', () => {
+    const result = extractFrontmatter('---\nkey123: val\n---');
+    assert.deepEqual(result, { key123: 'val' });
+  });
+
+  test('empty line in frontmatter is skipped', () => {
+    const result = extractFrontmatter('---\nkey1: val1\n\nkey2: val2\n---');
+    assert.deepEqual(result, { key1: 'val1', key2: 'val2' });
+  });
+
+  test('body content after closing delimiter is ignored', () => {
+    const result = extractFrontmatter('---\ntitle: Hello\n---\n# Heading\nContent here');
+    assert.deepEqual(result, { title: 'Hello' });
+    assert.equal(Object.keys(result).length, 1);
+  });
+});
+
+describe('extractFrontmatter: quoted values', () => {
+  test('double-quoted value strips quotes', () => {
+    const result = extractFrontmatter('---\ntitle: "Hello World"\n---');
+    assert.deepEqual(result, { title: 'Hello World' });
+  });
+
+  test('single-quoted value strips quotes', () => {
+    const result = extractFrontmatter("---\ntitle: 'Hello World'\n---");
+    assert.deepEqual(result, { title: 'Hello World' });
+  });
+
+  test('double-quoted value containing colon', () => {
+    const result = extractFrontmatter('---\nurl: "http://example.com"\n---');
+    assert.deepEqual(result, { url: 'http://example.com' });
+  });
+
+  test('unquoted value with no special chars', () => {
+    const result = extractFrontmatter('---\nname: simple\n---');
+    assert.deepEqual(result, { name: 'simple' });
+    assert.equal(result.name, 'simple');
+  });
+});
+
+describe('extractFrontmatter: CRLF line endings', () => {
+  test('CRLF frontmatter parses correctly', () => {
+    const result = extractFrontmatter('---\r\ntitle: Hello\r\nauthor: World\r\n---\r\nBody');
+    assert.deepEqual(result, { title: 'Hello', author: 'World' });
+  });
+
+  test('CRLF with array values', () => {
+    const result = extractFrontmatter('---\r\ntags: [a, b, c]\r\n---\r\n');
+    assert.deepEqual(result, { tags: ['a', 'b', 'c'] });
+  });
+});
+
+describe('extractFrontmatter: inline arrays', () => {
+  test('empty inline array []', () => {
+    const result = extractFrontmatter('---\ntags: []\n---');
+    assert.deepEqual(result, { tags: [] });
+    assert.ok(Array.isArray(result.tags));
+    assert.equal(result.tags.length, 0);
+  });
+
+  test('single item inline array', () => {
+    const result = extractFrontmatter('---\ntags: [only]\n---');
+    assert.deepEqual(result, { tags: ['only'] });
+    assert.equal(result.tags.length, 1);
+  });
+
+  test('two item inline array', () => {
+    const result = extractFrontmatter('---\ntags: [a, b]\n---');
+    assert.deepEqual(result, { tags: ['a', 'b'] });
+  });
+
+  test('three item inline array', () => {
+    const result = extractFrontmatter('---\ntags: [a, b, c]\n---');
+    assert.deepEqual(result, { tags: ['a', 'b', 'c'] });
+  });
+
+  test('inline array with spaces around items', () => {
+    const result = extractFrontmatter('---\ntags: [ a , b , c ]\n---');
+    assert.deepEqual(result, { tags: ['a', 'b', 'c'] });
+  });
+
+  test('inline array with double-quoted item containing comma', () => {
+    const result = extractFrontmatter('---\ntags: ["a, b", c]\n---');
+    assert.deepEqual(result, { tags: ['a, b', 'c'] });
+  });
+
+  test('inline array with single-quoted item containing comma', () => {
+    const result = extractFrontmatter("---\ntags: ['a, b', c]\n---");
+    assert.deepEqual(result, { tags: ['a, b', 'c'] });
+  });
+
+  test('inline array with quoted item plus more items', () => {
+    const result = extractFrontmatter('---\ntags: ["a, b", c, d]\n---');
+    assert.deepEqual(result, { tags: ['a, b', 'c', 'd'] });
+  });
+
+  // `repairMalformedInlineArrays` (and its `splitLegacyInlineArrayItems` helper), which these
+  // three cases pinned, was deleted (#3881 follow-up): a sweep of every tracked `*.md` file with
+  // a frontmatter fence (910 files) found ZERO documents whose parse result changed with the
+  // repair disabled. A real YAML flow sequence has none of this leniency — `[a,,b]` is an empty
+  // flow-sequence-entry syntax error, `[ , ]` is the same, and an unclosed `[` is an unterminated
+  // collection — so `extractFrontmatter` now correctly reports these as unparseable
+  // (`FRONTMATTER_UNPARSEABLE`) instead of silently repairing them.
+});
+
+describe('extractFrontmatter: dashed list arrays', () => {
+  test('two-item dashed list', () => {
+    const result = extractFrontmatter('---\ntags:\n  - a\n  - b\n---');
+    assert.deepEqual(result, { tags: ['a', 'b'] });
+    assert.ok(Array.isArray(result.tags));
+  });
+
+  test('single-item dashed list', () => {
+    const result = extractFrontmatter('---\ntags:\n  - solo\n---');
+    assert.deepEqual(result, { tags: ['solo'] });
+  });
+
+  test('dashed list with double-quoted item', () => {
+    const result = extractFrontmatter('---\ntags:\n  - "quoted value"\n---');
+    assert.deepEqual(result, { tags: ['quoted value'] });
+  });
+
+  test('dashed list with single-quoted item', () => {
+    const result = extractFrontmatter("---\ntags:\n  - 'single quoted'\n---");
+    assert.deepEqual(result, { tags: ['single quoted'] });
+  });
+
+  // `repairMalformedInlineArrays`'s "bare unclosed `key: [` followed by a block-sequence"
+  // recovery, which this case pinned, was deleted alongside the rest of that function (#3881
+  // follow-up; see the note above `extractFrontmatter: inline arrays`) — zero tracked documents
+  // depended on it. A literal `[` with no closing bracket is an unterminated YAML flow
+  // collection; `extractFrontmatter` now reports it as unparseable rather than silently
+  // reinterpreting it as a block-sequence opener.
+});
+
+describe('extractFrontmatter: empty / missing values', () => {
+  test('empty value becomes empty object {}', () => {
+    const result = extractFrontmatter('---\ntitle:\n---');
+    assert.deepEqual(result, { title: {} });
+    assert.equal(typeof result.title, 'object');
+    assert.ok(!Array.isArray(result.title));
+  });
+
+  test('empty value followed by next key', () => {
+    const result = extractFrontmatter('---\ntitle:\nother: val\n---');
+    assert.equal(typeof result.title, 'object');
+    assert.equal(result.other, 'val');
+  });
+});
+
+describe('extractFrontmatter: nested objects', () => {
+  test('one level of nesting', () => {
+    const result = extractFrontmatter('---\nmeta:\n  key: val\n  count: 10\n---');
+    assert.deepEqual(result, { meta: { key: 'val', count: '10' } });
+  });
+
+  test('nested then back to top level', () => {
+    const result = extractFrontmatter('---\nmeta:\n  sub: val\ntop: parent\n---');
+    assert.deepEqual(result, { meta: { sub: 'val' }, top: 'parent' });
+  });
+
+  test('multiple nested objects', () => {
+    const result = extractFrontmatter('---\na:\n  k1: v1\nb:\n  k2: v2\n---');
+    assert.deepEqual(result, { a: { k1: 'v1' }, b: { k2: 'v2' } });
+  });
+
+  test('two levels of nesting', () => {
+    const result = extractFrontmatter('---\ntop:\n  mid:\n    deep: value\n---');
+    assert.deepEqual(result, { top: { mid: { deep: 'value' } } });
+  });
+
+  test('nested numeric-string value', () => {
+    const result = extractFrontmatter('---\nmeta:\n  count: 42\n---');
+    assert.deepEqual(result, { meta: { count: '42' } });
+  });
+});
+
+describe('extractFrontmatter: return type invariants', () => {
+  test('always returns plain object', () => {
+    const result = extractFrontmatter('random content');
+    assert.equal(typeof result, 'object');
+    assert.ok(result !== null);
+    assert.ok(!Array.isArray(result));
+  });
+
+  test('return value is not null', () => {
+    const result = extractFrontmatter('');
+    assert.ok(result !== null);
+  });
+
+  test('top-level dash item (no parent key) is ignored', () => {
+    const result = extractFrontmatter('---\n- item\n---');
+    assert.deepEqual(result, {});
+  });
+
+  test('key starting with digit still matches key pattern', () => {
+    const result = extractFrontmatter('---\n123key: val\n---');
+    assert.equal(result['123key'], 'val');
+  });
+});
+
+// ─── reconstructFrontmatter ───────────────────────────────────────────────────
+
+describe('reconstructFrontmatter: empty input', () => {
+  test('empty object returns empty string', () => {
+    assert.equal(reconstructFrontmatter({}), '');
+  });
+});
+
+describe('reconstructFrontmatter: scalar values', () => {
+  test('simple string value', () => {
+    assert.equal(reconstructFrontmatter({ title: 'Hello' }), 'title: Hello');
+  });
+
+  test('numeric string value', () => {
+    assert.equal(reconstructFrontmatter({ count: '42' }), 'count: 42');
+  });
+
+  test('boolean string value', () => {
+    assert.equal(reconstructFrontmatter({ flag: 'true' }), 'flag: true');
+  });
+
+  test('null value is skipped', () => {
+    assert.equal(reconstructFrontmatter({ title: null }), '');
+  });
+
+  test('undefined value is skipped', () => {
+    assert.equal(reconstructFrontmatter({ title: undefined }), '');
+  });
+
+  test('value containing colon is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ url: 'http://example.com' }), 'url: "http://example.com"');
+  });
+
+  test('value containing hash is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ name: 'test#1' }), 'name: "test#1"');
+  });
+
+  test('value starting with [ is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ val: '[thing]' }), 'val: "[thing]"');
+  });
+
+  test('value starting with { is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ val: '{thing}' }), 'val: "{thing}"');
+  });
+
+  test('plain value without special chars is unquoted', () => {
+    assert.equal(reconstructFrontmatter({ name: 'simple' }), 'name: simple');
+  });
+
+  test('multiple keys produce newline-joined output', () => {
+    assert.equal(
+      reconstructFrontmatter({ title: 'Hello', author: 'World' }),
+      'title: Hello\nauthor: World'
+    );
+  });
+});
+
+describe('reconstructFrontmatter: arrays', () => {
+  test('empty array produces key: []', () => {
+    assert.equal(reconstructFrontmatter({ tags: [] }), 'tags: []');
+  });
+
+  test('two-item short array uses inline format', () => {
+    assert.equal(reconstructFrontmatter({ tags: ['a', 'b'] }), 'tags: [a, b]');
+  });
+
+  test('three-item short array uses inline format', () => {
+    assert.equal(reconstructFrontmatter({ tags: ['a', 'b', 'c'] }), 'tags: [a, b, c]');
+  });
+
+  test('three items whose join is exactly < 60 chars uses inline format', () => {
+    const tags = ['aaa', 'bbb', 'ccc'];
+    // 'aaa, bbb, ccc' = 13 chars
+    assert.equal(reconstructFrontmatter({ tags }), 'tags: [aaa, bbb, ccc]');
+  });
+
+  test('three items whose join >= 60 chars uses block format', () => {
+    const tags = ['aaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbb', 'cccccccccccccccccccc'];
+    // join is 61+ chars
+    assert.equal(
+      reconstructFrontmatter({ tags }),
+      'tags:\n  - aaaaaaaaaaaaaaaaaaa\n  - bbbbbbbbbbbbbbbbbbb\n  - cccccccccccccccccccc'
+    );
+  });
+
+  test('four-item array uses block format', () => {
+    assert.equal(
+      reconstructFrontmatter({ tags: ['a', 'b', 'c', 'd'] }),
+      'tags:\n  - a\n  - b\n  - c\n  - d'
+    );
+  });
+
+  test('array item with colon is double-quoted in block format', () => {
+    // Need >3 items to force block format where quoting applies
+    const result = reconstructFrontmatter({ tags: ['a:b', 'c', 'd', 'e'] });
+    assert.ok(result.includes('  - "a:b"'), `Expected quoted item, got: ${result}`);
+  });
+
+  test('array item with hash is double-quoted in block format', () => {
+    // Need >3 items to force block format where quoting applies
+    const result = reconstructFrontmatter({ tags: ['a#b', 'c', 'd', 'e'] });
+    assert.ok(result.includes('  - "a#b"'), `Expected quoted hash item, got: ${result}`);
+  });
+
+  test('two-item array uses inline regardless of special chars', () => {
+    // Note: inline format for <=3 items uses join without quoting
+    assert.equal(reconstructFrontmatter({ tags: ['a:b', 'c'] }), 'tags: [a:b, c]');
+  });
+
+  test('array item without colon or hash is unquoted in block format', () => {
+    const result = reconstructFrontmatter({ tags: ['plain', 'also', 'here', 'fourth'] });
+    assert.equal(result, 'tags:\n  - plain\n  - also\n  - here\n  - fourth');
+  });
+});
+
+describe('reconstructFrontmatter: nested objects', () => {
+  test('simple nested object', () => {
+    assert.equal(
+      reconstructFrontmatter({ meta: { key: 'val', num: '42' } }),
+      'meta:\n  key: val\n  num: 42'
+    );
+  });
+
+  test('nested null subvalue is skipped', () => {
+    assert.equal(reconstructFrontmatter({ meta: { key: null } }), 'meta:');
+  });
+
+  test('nested undefined subvalue is skipped', () => {
+    assert.equal(reconstructFrontmatter({ meta: { key: undefined } }), 'meta:');
+  });
+
+  test('nested subvalue with colon is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ meta: { url: 'http://x' } }), 'meta:\n  url: "http://x"');
+  });
+
+  test('nested subvalue with hash is double-quoted', () => {
+    assert.equal(reconstructFrontmatter({ meta: { name: 'x#y' } }), 'meta:\n  name: "x#y"');
+  });
+
+  test('nested empty sub-array', () => {
+    assert.equal(reconstructFrontmatter({ meta: { items: [] } }), 'meta:\n  items: []');
+  });
+
+  test('nested two-item short sub-array uses inline format', () => {
+    assert.equal(reconstructFrontmatter({ meta: { items: ['a', 'b'] } }), 'meta:\n  items: [a, b]');
+  });
+
+  test('nested four-item sub-array uses block format', () => {
+    assert.equal(
+      reconstructFrontmatter({ meta: { items: ['a', 'b', 'c', 'd'] } }),
+      'meta:\n  items:\n    - a\n    - b\n    - c\n    - d'
+    );
+  });
+
+  test('nested three-item short sub-array uses inline', () => {
+    assert.equal(
+      reconstructFrontmatter({ meta: { items: ['a', 'b', 'c'] } }),
+      'meta:\n  items: [a, b, c]'
+    );
+  });
+
+  test('nested three-item long sub-array uses block', () => {
+    const items = ['aaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbb', 'cccccccccccccccccccc'];
+    assert.equal(
+      reconstructFrontmatter({ meta: { items } }),
+      'meta:\n  items:\n    - aaaaaaaaaaaaaaaaaaa\n    - bbbbbbbbbbbbbbbbbbb\n    - cccccccccccccccccccc'
+    );
+  });
+
+  test('nested nested object (3 levels)', () => {
+    assert.equal(
+      reconstructFrontmatter({ top: { mid: { deep: 'value' } } }),
+      'top:\n  mid:\n    deep: value'
+    );
+  });
+
+  test('deeply nested null subvalue skipped', () => {
+    assert.equal(
+      reconstructFrontmatter({ top: { mid: { key: null } } }),
+      'top:\n  mid:'
+    );
+  });
+
+  test('deeply nested empty array', () => {
+    assert.equal(
+      reconstructFrontmatter({ top: { mid: { items: [] } } }),
+      'top:\n  mid:\n    items: []'
+    );
+  });
+
+  test('deeply nested array with items', () => {
+    assert.equal(
+      reconstructFrontmatter({ top: { mid: { items: ['a', 'b'] } } }),
+      'top:\n  mid:\n    items:\n      - a\n      - b'
+    );
+  });
+});
+
+// ─── spliceFrontmatter ────────────────────────────────────────────────────────
+
+describe('spliceFrontmatter: no existing frontmatter', () => {
+  test('prepends frontmatter to plain body', () => {
+    assert.equal(
+      spliceFrontmatter('body text', { title: 'Test' }),
+      '---\ntitle: Test\n---\n\nbody text'
+    );
+  });
+
+  test('prepends frontmatter to empty string', () => {
+    assert.equal(
+      spliceFrontmatter('', { title: 'Test' }),
+      '---\ntitle: Test\n---\n\n'
+    );
+  });
+
+  test('prepends frontmatter with empty object', () => {
+    assert.equal(
+      spliceFrontmatter('body text', {}),
+      '---\n\n---\n\nbody text'
+    );
+  });
+
+  test('prepends multi-key frontmatter', () => {
+    const result = spliceFrontmatter('# Body', { title: 'T', author: 'A' });
+    assert.equal(result, '---\ntitle: T\nauthor: A\n---\n\n# Body');
+  });
+});
+
+describe('spliceFrontmatter: existing frontmatter', () => {
+  test('replaces existing frontmatter, preserves body', () => {
+    const input = '---\ntitle: Old\n---\n\nBody here';
+    assert.equal(
+      spliceFrontmatter(input, { title: 'New' }),
+      '---\ntitle: New\n---\n\nBody here'
+    );
+  });
+
+  test('replaces existing multi-key frontmatter', () => {
+    const input = '---\ntitle: Old\ncount: 5\n---\n\nBody text here';
+    assert.equal(
+      spliceFrontmatter(input, { title: 'New', count: '5' }),
+      '---\ntitle: New\ncount: 5\n---\n\nBody text here'
+    );
+  });
+
+  test('CRLF existing frontmatter: body CRLF preserved', () => {
+    const input = '---\r\ntitle: Old\r\n---\r\nBody';
+    const result = spliceFrontmatter(input, { title: 'New' });
+    assert.equal(result, '---\r\ntitle: New\r\n---\r\nBody');
+  });
+
+  // The block is re-emitted with the document's own line ending (found while implementing
+  // #5105): a CRLF document never gains bare-LF frontmatter lines.
+  test('a key appended to a CRLF block is written with CRLF', () => {
+    const input = '---\r\ntitle: Old\r\n---\r\nBody';
+    const result = spliceFrontmatter(input, { title: 'Old', status: 'new' });
+    assert.equal(result, '---\r\ntitle: Old\r\nstatus: new\r\n---\r\nBody');
+  });
+
+  test('return type is always string', () => {
+    const result = spliceFrontmatter('hello', { k: 'v' });
+    assert.equal(typeof result, 'string');
+  });
+});
+
+// ─── parseMustHavesBlock ──────────────────────────────────────────────────────
+
+describe('parseMustHavesBlock: no frontmatter / no block', () => {
+  test('no frontmatter returns []', () => {
+    assert.deepEqual(parseMustHavesBlock('just content', 'artifacts'), []);
+  });
+
+  test('empty string returns []', () => {
+    assert.deepEqual(parseMustHavesBlock('', 'artifacts'), []);
+  });
+
+  test('frontmatter without must_haves returns []', () => {
+    const doc = '---\ntitle: Hello\n---\nbody';
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), []);
+  });
+
+  test('must_haves present but requested block absent returns []', () => {
+    const doc = '---\nmust_haves:\n  other:\n    - val\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), []);
+  });
+
+  test('block at same indent as must_haves is rejected', () => {
+    const doc = '---\nmust_haves:\nartifacts:\n  - val\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), []);
+  });
+});
+
+describe('parseMustHavesBlock: string items', () => {
+  test('two plain string items', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - simple string\n    - another string\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['simple string', 'another string']);
+  });
+
+  test('single string item', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - only one\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['only one']);
+  });
+
+  test('double-quoted string items strip quotes', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - "contains: colon"\n    - "another: one"\n---';
+    const result = parseMustHavesBlock(doc, 'truths');
+    assert.deepEqual(result, ['contains: colon', 'another: one']);
+  });
+
+  test('single-quoted string items strip quotes', () => {
+    const doc = "---\nmust_haves:\n  truths:\n    - 'single quoted'\n---";
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['single quoted']);
+  });
+
+  test('item without colon treated as plain string', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - plain text here\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['plain text here']);
+  });
+
+  test('item with colon but no space (Class::Method) is plain string', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - Class::Method is used\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['Class::Method is used']);
+  });
+
+  test('item with db:seed (no space after colon) is plain string', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - db:seed task should run\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'truths'), ['db:seed task should run']);
+  });
+});
+
+describe('parseMustHavesBlock: key-value object items', () => {
+  test('simple kv item on dash line', () => {
+    const doc = '---\nmust_haves:\n  artifacts:\n    - path: file.ts\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), [{ path: 'file.ts' }]);
+  });
+
+  test('two kv items', () => {
+    const doc = '---\nmust_haves:\n  artifacts:\n    - path: file.ts\n    - path: other.ts\n---';
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), [{ path: 'file.ts' }, { path: 'other.ts' }]);
+  });
+
+  test('kv item with continuation keys', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      provides: something',
+      '---',
+    ].join('\n');
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), [{ path: 'file.ts', provides: 'something' }]);
+  });
+
+  test('kv item with multiple continuation keys', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      provides: exports X',
+      '      confidence: 90',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0], { path: 'file.ts', provides: 'exports X', confidence: 90 });
+  });
+
+  test('numeric value in continuation key is parsed as integer', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      line: 42',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.equal(result[0].line, 42);
+    assert.equal(typeof result[0].line, 'number');
+  });
+
+  test('non-numeric continuation value stays string', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      provides: some text',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.equal(typeof result[0].provides, 'string');
+    assert.equal(result[0].provides, 'some text');
+  });
+
+  test('two full kv items with continuations', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      provides: something',
+      '    - path: other.ts',
+      '      provides: other',
+      '---',
+    ].join('\n');
+    assert.deepEqual(parseMustHavesBlock(doc, 'artifacts'), [
+      { path: 'file.ts', provides: 'something' },
+      { path: 'other.ts', provides: 'other' },
+    ]);
+  });
+});
+
+describe('parseMustHavesBlock: nested arrays in items', () => {
+  test('item with array continuation', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      tags:',
+      '        - tag1',
+      '        - tag2',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.equal(result.length, 1);
+    assert.deepEqual(result[0].tags, ['tag1', 'tag2']);
+  });
+
+  test('item with three array elements in continuation', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      tags:',
+      '        - tag1',
+      '        - tag2',
+      '        - tag3',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.deepEqual(result[0].tags, ['tag1', 'tag2', 'tag3']);
+  });
+
+  test('two items where first has array continuation', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: file.ts',
+      '      tags:',
+      '        - tag1',
+      '    - path: other.ts',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'artifacts');
+    assert.equal(result.length, 2);
+    assert.deepEqual(result[0].tags, ['tag1']);
+    assert.equal(result[1].path, 'other.ts');
+  });
+});
+
+describe('parseMustHavesBlock: return type', () => {
+  test('always returns an array', () => {
+    const result = parseMustHavesBlock('no content', 'anything');
+    assert.ok(Array.isArray(result));
+  });
+
+  test('empty content returns array', () => {
+    const result = parseMustHavesBlock('', 'anything');
+    assert.ok(Array.isArray(result));
+    assert.equal(result.length, 0);
+  });
+});
+
+// ─── FRONTMATTER_SCHEMAS ──────────────────────────────────────────────────────
+
+describe('FRONTMATTER_SCHEMAS', () => {
+  test('plan schema has required field', () => {
+    assert.ok('required' in FRONTMATTER_SCHEMAS.plan);
+  });
+
+  test('plan schema has exactly 8 required fields', () => {
+    assert.equal(FRONTMATTER_SCHEMAS.plan.required.length, 8);
+  });
+
+  test('plan schema required fields are exact', () => {
+    assert.deepEqual(FRONTMATTER_SCHEMAS.plan.required, [
+      'phase', 'plan', 'type', 'wave', 'depends_on', 'files_modified', 'autonomous', 'must_haves',
+    ]);
+  });
+
+  test('summary schema has exactly 6 required fields', () => {
+    assert.equal(FRONTMATTER_SCHEMAS.summary.required.length, 6);
+  });
+
+  test('summary schema required fields are exact', () => {
+    assert.deepEqual(FRONTMATTER_SCHEMAS.summary.required, [
+      'phase', 'plan', 'subsystem', 'tags', 'duration', 'completed',
+    ]);
+  });
+
+  test('verification schema has exactly 4 required fields', () => {
+    assert.equal(FRONTMATTER_SCHEMAS.verification.required.length, 4);
+  });
+
+  test('verification schema required fields are exact', () => {
+    assert.deepEqual(FRONTMATTER_SCHEMAS.verification.required, [
+      'phase', 'verified', 'status', 'score',
+    ]);
+  });
+
+  test('four schemas exist: plan, plan-gap-closure, summary, verification (#2847)', () => {
+    assert.deepEqual(
+      Object.keys(FRONTMATTER_SCHEMAS).sort(),
+      ['plan', 'plan-gap-closure', 'summary', 'verification']
+    );
+  });
+
+  test('plan includes phase field', () => {
+    assert.ok(FRONTMATTER_SCHEMAS.plan.required.includes('phase'));
+  });
+
+  test('plan includes must_haves field', () => {
+    assert.ok(FRONTMATTER_SCHEMAS.plan.required.includes('must_haves'));
+  });
+
+  test('summary includes completed field', () => {
+    assert.ok(FRONTMATTER_SCHEMAS.summary.required.includes('completed'));
+  });
+
+  test('verification includes score field', () => {
+    assert.ok(FRONTMATTER_SCHEMAS.verification.required.includes('score'));
+  });
+
+  test('plan does not include score field', () => {
+    assert.ok(!FRONTMATTER_SCHEMAS.plan.required.includes('score'));
+  });
+
+  test('verification does not include completed field', () => {
+    assert.ok(!FRONTMATTER_SCHEMAS.verification.required.includes('completed'));
+  });
+});
+
+// ─── FRONTMATTER_SCHEMAS['plan-gap-closure'] (#2847) ──────────────────────────
+//
+// #2847: --gaps does not load planner-gap-closure.md's requirement into the
+// only machine-checked gate — gap-closure plans could pass validation
+// without `gap_closure: true`, so a subsequent `--gaps-only` execute run
+// silently matched zero plans. Fix: a dedicated schema that requires every
+// 'plan' field plus `gap_closure`, kept separate so standard/reviews-mode
+// plans (validated against 'plan', asserted unchanged above) are unaffected.
+
+describe("FRONTMATTER_SCHEMAS['plan-gap-closure'] (#2847)", () => {
+  // #2847 review: "has required field", "has exactly 9 required fields",
+  // "includes gap_closure field", and "is a superset of every plan-required
+  // field" were deleted here. Each was strictly subsumed by the deepEqual
+  // exact-list test below (a 9-element array that deepEquals a literal
+  // containing 'gap_closure' trivially has 9 elements, a 'required' key,
+  // and includes 'gap_closure' — none of those checks could ever fail
+  // independently of the deepEqual one). The "superset" test was additionally
+  // tautological on its own: plan-gap-closure.required is LITERALLY
+  // `[...PLAN_REQUIRED_FIELDS, 'gap_closure']` (src/frontmatter.cts), so it
+  // cannot fail while that spread exists, regardless of what the deepEqual
+  // test above catches.
+  test('plan-gap-closure schema required fields are exact', () => {
+    assert.deepEqual(FRONTMATTER_SCHEMAS['plan-gap-closure'].required, [
+      'phase', 'plan', 'type', 'wave', 'depends_on', 'files_modified', 'autonomous', 'must_haves', 'gap_closure',
+    ]);
+  });
+
+  test('plan schema (standard/reviews mode) does NOT include gap_closure — unaffected by #2847 fix', () => {
+    assert.ok(!FRONTMATTER_SCHEMAS.plan.required.includes('gap_closure'));
+  });
+
+  // requiredValues (#2847 review finding): presence alone let `gap_closure: false`
+  // validate as valid:true — --gaps-only filters strictly on gap_closure === true,
+  // so that was a live reproduction of #2847's reported symptom, one value away.
+  test('plan-gap-closure requires the value "true" for gap_closure, not mere presence', () => {
+    assert.ok('requiredValues' in FRONTMATTER_SCHEMAS['plan-gap-closure']);
+    assert.equal(FRONTMATTER_SCHEMAS['plan-gap-closure'].requiredValues.gap_closure, 'true');
+  });
+
+  test('plan schema has no requiredValues — every field is presence-only, unaffected by #2847 fix', () => {
+    assert.equal(FRONTMATTER_SCHEMAS.plan.requiredValues, undefined);
+  });
+
+  test('summary and verification schemas have no requiredValues — presence-only, unaffected', () => {
+    assert.equal(FRONTMATTER_SCHEMAS.summary.requiredValues, undefined);
+    assert.equal(FRONTMATTER_SCHEMAS.verification.requiredValues, undefined);
+  });
+});
+
+// ─── Tight branch / boundary tests ───────────────────────────────────────────
+
+describe('reconstructFrontmatter: array length boundary (<=3 vs >3)', () => {
+  test('exactly 3 items: uses inline format', () => {
+    const result = reconstructFrontmatter({ x: ['a', 'b', 'c'] });
+    assert.equal(result, 'x: [a, b, c]');
+    assert.ok(!result.includes('\n  - '));
+  });
+
+  test('exactly 4 items: uses block format', () => {
+    const result = reconstructFrontmatter({ x: ['a', 'b', 'c', 'd'] });
+    assert.ok(result.includes('  - a'));
+    assert.ok(result.includes('  - b'));
+    assert.ok(result.includes('  - c'));
+    assert.ok(result.includes('  - d'));
+  });
+
+  test('exactly 1 item: uses inline format', () => {
+    const result = reconstructFrontmatter({ x: ['only'] });
+    assert.equal(result, 'x: [only]');
+  });
+});
+
+describe('reconstructFrontmatter: array join length boundary (< 60)', () => {
+  test('3 items joining to exactly 59 chars uses inline', () => {
+    // 59 chars: 'aaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbb, ccccccccccccccccccc' = 60 chars, need 59
+    const a = 'aaaaaaaaaaaaaaaaaa'; // 18
+    const b = 'bbbbbbbbbbbbbbbbbb'; // 18
+    const c = 'ccccccccccccccccccc'; // 19 => join = 18+18+19 + 4 (', ', ', ') = 18+2+18+2+19 = 59
+    const joined = [a, b, c].join(', ');
+    assert.equal(joined.length, 59);
+    const result = reconstructFrontmatter({ x: [a, b, c] });
+    assert.equal(result, `x: [${joined}]`);
+  });
+
+  test('3 items joining to exactly 60 chars uses block', () => {
+    // 'x' repeated: 19, 19, 18 = 56 + 4 = 60
+    const x = 'aaaaaaaaaaaaaaaaaaa'; // 19
+    const y = 'bbbbbbbbbbbbbbbbbbb'; // 19
+    const z = 'cccccccccccccccccc'; // 18 => 19+2+19+2+18 = 60
+    const joined2 = [x, y, z].join(', ');
+    assert.equal(joined2.length, 60);
+    const result2 = reconstructFrontmatter({ x: [x, y, z] });
+    // 60 is NOT < 60, so should use block format
+    assert.ok(result2.startsWith('x:\n  - '), `Expected block format, got: ${result2}`);
+  });
+});
+
+describe('reconstructFrontmatter: subarray length boundary', () => {
+  test('nested 3 items short uses inline', () => {
+    const result = reconstructFrontmatter({ meta: { x: ['a', 'b', 'c'] } });
+    assert.equal(result, 'meta:\n  x: [a, b, c]');
+  });
+
+  test('nested 4 items uses block', () => {
+    const result = reconstructFrontmatter({ meta: { x: ['a', 'b', 'c', 'd'] } });
+    assert.equal(result, 'meta:\n  x:\n    - a\n    - b\n    - c\n    - d');
+  });
+});
+
+describe('spliceFrontmatter: exact delimiter handling', () => {
+  test('output always starts with ---', () => {
+    const result = spliceFrontmatter('', { k: 'v' });
+    assert.ok(result.startsWith('---\n'));
+  });
+
+  test('existing frontmatter: output uses LF delimiters', () => {
+    const input = '---\ntitle: Old\n---\nbody';
+    const result = spliceFrontmatter(input, { title: 'New' });
+    assert.ok(result.startsWith('---\ntitle: New\n---'));
+  });
+
+  test('no existing frontmatter: body follows after double newline', () => {
+    const result = spliceFrontmatter('body', { title: 'T' });
+    assert.equal(result, '---\ntitle: T\n---\n\nbody');
+  });
+
+  test('existing frontmatter: body immediately follows closing ---', () => {
+    const input = '---\ntitle: T\n---\nbody line';
+    const result = spliceFrontmatter(input, { k: 'v' });
+    assert.equal(result, '---\nk: v\n---\nbody line');
+  });
+
+  // Found while implementing #5105: an adjacent empty block has no line between its fences,
+  // but it was laid out as if it held one blank line, so the first key landed below a blank.
+  for (const [label, nl] of [['LF', '\n'], ['CRLF', '\r\n']]) {
+    test(`an adjacent empty block gains the key with no blank line (${label})`, () => {
+      assert.equal(spliceFrontmatter(`---${nl}---${nl}Body`, { a: 1 }), `---${nl}a: 1${nl}---${nl}Body`);
+    });
+  }
+
+  test('a block holding one blank line keeps it', () => {
+    assert.equal(spliceFrontmatter('---\n\n---\nBody', { a: 1 }), '---\n\na: 1\n---\nBody');
+  });
+});
+
+// spliceFrontmatter per-key identity preservation + fail-closed (#1572). These exercise
+// sliceTopLevelFrontmatterSegments, the per-key deepEqual/preserve/regenerate/drop/append
+// loop, and regenerateFrontmatterKey's "[object Object]" fail-closed directly.
+describe('spliceFrontmatter: per-key preservation + fail-closed (#1572)', () => {
+  const PLAN = [
+    '---', 'phase: 1', 'wave: 1',
+    'must_haves:', '  artifacts:', '    - path: src/foo.ts', '      provides: the foo',
+    '---', '# body', '',
+  ].join('\n');
+
+  test('unchanged object-list key keeps its original raw text (provides survives) when a scalar sibling changes', () => {
+    const parsed = extractFrontmatter(PLAN);
+    parsed.wave = '2'; // mutate one scalar; must_haves flattened-projection unchanged
+    const out = spliceFrontmatter(PLAN, parsed);
+    // must_haves.artifacts raw preserved verbatim (provides intact) — NOT regenerated.
+    assert.deepEqual(parseMustHavesBlock(out, 'artifacts'), [{ path: 'src/foo.ts', provides: 'the foo' }]);
+    // the changed scalar WAS regenerated.
+    assert.ok(/^wave: 2$/m.test(out), 'changed scalar wave must be regenerated to 2');
+    // original ordering preserved (phase before wave before must_haves).
+    const phaseIdx = out.indexOf('phase:');
+    const waveIdx = out.indexOf('wave:');
+    const mhIdx = out.indexOf('must_haves:');
+    assert.ok(phaseIdx < waveIdx && waveIdx < mhIdx, 'top-level key order preserved');
+  });
+
+  test('a changed scalar regenerates only that key (no other key touched)', () => {
+    const out = spliceFrontmatter(PLAN, { ...extractFrontmatter(PLAN), phase: '9' });
+    assert.ok(/^phase: 9$/m.test(out));
+    // wave unchanged → still 1
+    assert.ok(/^wave: 1$/m.test(out));
+  });
+
+  test('keys absent from newObj are dropped (key set is defined by newObj)', () => {
+    const out = spliceFrontmatter(PLAN, { phase: '1' });
+    assert.ok(/^phase: 1$/m.test(out));
+    assert.ok(!/wave:/.test(out), 'wave (absent from newObj) must be dropped');
+    assert.ok(!/must_haves:/.test(out), 'must_haves (absent from newObj) must be dropped');
+  });
+
+  test('genuinely-new keys (not in original) are appended', () => {
+    const out = spliceFrontmatter(PLAN, { ...extractFrontmatter(PLAN), brand_new: 'x' });
+    assert.ok(/^brand_new: x$/m.test(out), 'new key appended');
+    // existing keys still present
+    assert.ok(/^phase: 1$/m.test(out));
+  });
+
+  test('a nested indented block stays attached to its parent key (segment slicer respects indentation)', () => {
+    const multi = '---\na: 1\nmust_haves:\n  artifacts:\n    - path: x\n      provides: y\nb: 2\n---\n';
+    const out = spliceFrontmatter(multi, { ...extractFrontmatter(multi), b: '3' });
+    // The indented artifacts block must be preserved as part of must_haves (not split off),
+    // and b regenerated. proves the slicer grouped the nested lines under must_haves.
+    assert.deepEqual(parseMustHavesBlock(out, 'artifacts'), [{ path: 'x', provides: 'y' }]);
+    assert.ok(/^b: 3$/m.test(out));
+    assert.ok(/^a: 1$/m.test(out));
+  });
+
+  test('whole-document no-op returns the input verbatim', () => {
+    const out = spliceFrontmatter(PLAN, extractFrontmatter(PLAN));
+    assert.equal(out, PLAN);
+  });
+
+  test('changing must_haves to an unrepresentable object-list fails closed (throws, no [object Object])', () => {
+    const newObj = { ...extractFrontmatter(PLAN), must_haves: { artifacts: [{ path: 'p', provides: 'q' }] } };
+    assert.throws(
+      () => spliceFrontmatter(PLAN, newObj),
+      /cannot faithfully serialize key "must_haves"/,
+      'a changed object-list key must fail closed rather than emit [object Object]',
+    );
+  });
+
+  test('no-frontmatter path also fails closed for an unrepresentable object-list value', () => {
+    assert.throws(
+      () => spliceFrontmatter('body only', { must_haves: { artifacts: [{ path: 'p' }] } }),
+      /cannot faithfully serialize the requested frontmatter/,
+      'generating fresh frontmatter with an object-list must fail closed',
+    );
+  });
+});
+
+describe('extractFrontmatter: complex real-world documents', () => {
+  test('plan document', () => {
+    const doc = [
+      '---',
+      'phase: 1',
+      'plan: my-plan',
+      'type: feature',
+      'wave: 1',
+      'depends_on: []',
+      'files_modified: []',
+      'autonomous: true',
+      'must_haves:',
+      '  artifacts:',
+      '    - path: src/foo.ts',
+      '      provides: foo',
+      '---',
+      '# Plan body',
+    ].join('\n');
+    const result = extractFrontmatter(doc);
+    assert.equal(result.phase, '1');
+    assert.equal(result.plan, 'my-plan');
+    assert.equal(result.type, 'feature');
+    assert.equal(result.wave, '1');
+    assert.ok(Array.isArray(result.depends_on));
+    assert.equal(result.depends_on.length, 0);
+    assert.ok(Array.isArray(result.files_modified));
+    assert.equal(result.autonomous, 'true');
+  });
+
+  test('summary document', () => {
+    const doc = [
+      '---',
+      'phase: 2',
+      'plan: my-plan',
+      'subsystem: auth',
+      'tags: [security, backend]',
+      'duration: 120',
+      'completed: true',
+      '---',
+    ].join('\n');
+    const result = extractFrontmatter(doc);
+    assert.equal(result.phase, '2');
+    assert.equal(result.subsystem, 'auth');
+    assert.deepEqual(result.tags, ['security', 'backend']);
+    assert.equal(result['duration'], '120');
+    assert.equal(result.completed, 'true');
+  });
+
+  test('verification document', () => {
+    const doc = [
+      '---',
+      'phase: 3',
+      'verified: true',
+      'status: pass',
+      'score: 95',
+      '---',
+    ].join('\n');
+    const result = extractFrontmatter(doc);
+    assert.equal(result.verified, 'true');
+    assert.equal(result.status, 'pass');
+    assert.equal(result.score, '95');
+  });
+});
+
+describe('reconstructFrontmatter: round-trip', () => {
+  test('simple key-value round-trip', () => {
+    const original = { title: 'Hello', author: 'World' };
+    const reconstructed = reconstructFrontmatter(original);
+    const doc = `---\n${reconstructed}\n---\n`;
+    const parsed = extractFrontmatter(doc);
+    assert.equal(parsed.title, 'Hello');
+    assert.equal(parsed.author, 'World');
+  });
+
+  test('value with colon round-trips through quoting', () => {
+    const original = { url: 'http://example.com' };
+    const reconstructed = reconstructFrontmatter(original);
+    assert.equal(reconstructed, 'url: "http://example.com"');
+    const doc = `---\n${reconstructed}\n---\n`;
+    const parsed = extractFrontmatter(doc);
+    assert.equal(parsed.url, 'http://example.com');
+  });
+
+  test('array round-trip (inline)', () => {
+    const original = { tags: ['a', 'b', 'c'] };
+    const reconstructed = reconstructFrontmatter(original);
+    const doc = `---\n${reconstructed}\n---\n`;
+    const parsed = extractFrontmatter(doc);
+    assert.deepEqual(parsed.tags, ['a', 'b', 'c']);
+  });
+
+  test('empty array round-trip', () => {
+    const original = { tags: [] };
+    const reconstructed = reconstructFrontmatter(original);
+    assert.equal(reconstructed, 'tags: []');
+    const doc = `---\n${reconstructed}\n---\n`;
+    const parsed = extractFrontmatter(doc);
+    assert.ok(Array.isArray(parsed.tags));
+    assert.equal(parsed.tags.length, 0);
+  });
+});
+
+// #1779 — reconstructFrontmatter must emit valid YAML for scalars and block-
+// array items that carry an embedded `"`/`\`, a control char, an empty string,
+// a leading YAML indicator, or surrounding whitespace. The project's own lossy
+// `extractFrontmatter` tolerates the broken output, which is exactly why these
+// assert round-trip through a STRICT parser (js-yaml) instead — the strict path
+// fails on the unescaped/bare emission and passes only once every wrap site
+// escapes and every unsafe-bare value is routed through the quoted form.
+describe('reconstructFrontmatter: strict-YAML round-trip (#1779)', () => {
+  // Serialize via the production path, then load with a strict YAML parser.
+  const strictRoundTrip = (obj) => yaml.load(reconstructFrontmatter(obj));
+
+  test('top-level scalar with indicator + embedded quotes (the reported case)', () => {
+    const obj = { upstream: 'https://x (Tom; "Git. Ship. Done")' };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('nested scalar with indicator + embedded quotes', () => {
+    const obj = { meta: { note: 'see: "the docs"' } };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('top-level block-array item with indicator + embedded quotes', () => {
+    // 4 items forces block form (the inline `[a, b]` branch caps at 3).
+    const obj = { tags: ['a: "1"', 'b: "2"', 'c: "3"', 'd: "4"'] };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('nested block-array item with indicator + embedded quotes', () => {
+    const obj = { meta: { tags: ['a: "1"', 'b: "2"', 'c: "3"', 'd: "4"'] } };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('embedded backslash is escaped (not just quotes)', () => {
+    const obj = { path: 'a:\\b\\c "x"' };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('control chars in a wrapped value are escaped (newline, tab, NUL)', () => {
+    const obj = { note: 'line1: a\nline2\twith\x00nul' };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('CRLF round-trips (locks the \\r escape for Windows-authored values)', () => {
+    const obj = { note: 'line1: a\r\nline2' };
+    assert.deepEqual(strictRoundTrip(obj), obj);
+  });
+
+  test('empty string round-trips as "" (bare `k:` would reload as null)', () => {
+    assert.deepEqual(strictRoundTrip({ k: '' }), { k: '' });
+  });
+
+  test('embedded/leading quote with NO indicator still round-trips', () => {
+    assert.deepEqual(strictRoundTrip({ k: '"x' }), { k: '"x' });
+    assert.deepEqual(strictRoundTrip({ k: "'leading single" }), { k: "'leading single" });
+    assert.deepEqual(strictRoundTrip({ k: 'say "hi" there' }), { k: 'say "hi" there' });
+  });
+
+  test('leading YAML indicators with no `:`/`#` still round-trip', () => {
+    for (const v of ['>x', '|x', '&anchor', '*alias', '!tag', '[flow', '{map', '%pct', '@reserved', '`tick']) {
+      assert.deepEqual(strictRoundTrip({ k: v }), { k: v }, `value ${JSON.stringify(v)}`);
+    }
+  });
+
+  test('leading/trailing whitespace is preserved (bare would be trimmed)', () => {
+    assert.deepEqual(strictRoundTrip({ k: '  leading' }), { k: '  leading' });
+    assert.deepEqual(strictRoundTrip({ k: 'trailing  ' }), { k: 'trailing  ' });
+  });
+
+  test('plain values without indicators are unaffected (no spurious quoting)', () => {
+    const obj = { name: 'simple-value', label: 'plain' };
+    assert.equal(reconstructFrontmatter(obj), 'name: simple-value\nlabel: plain');
+    assert.deepEqual(yaml.load(reconstructFrontmatter(obj)), obj);
+  });
+});
+
+// #3497 — escape amplification. `escapeDoubleQuotedScalar` escapes `\`/`"`/control
+// chars on every serialize (#1779), but `parseGuardedYamlRegion` only stripped the
+// outer quote delimiters and never un-escaped the interior, so parse ∘ serialize
+// was NOT the identity: every read-modify-write cycle doubled the backslashes
+// (b → 2b+1, i.e. 2ⁿ−1 after n round-trips). A `last_activity_desc` containing
+// one embedded quote grew STATE.md to 134 MB in 26 state writes and OOMed
+// state.record-session. These tests pin the lossy-parser round trip (the actual
+// write seam: extractFrontmatter → reconstructFrontmatter/spliceFrontmatter),
+// not the strict-YAML path — the amplification lived in the project's own
+// parse/serialize pair.
+describe('frontmatter round-trip: escape amplification (#3497)', () => {
+  // One full document round trip through the production write seam:
+  // parse the frontmatter out of the document, re-serialize it back in.
+  const roundTripDoc = (content) => {
+    const fm = extractFrontmatter(content);
+    return `---\n${reconstructFrontmatter(fm)}\n---\nbody\n`;
+  };
+
+  test('single round trip is byte-exact for embedded double quotes', () => {
+    const original = 'Fixed "the bug" in parser';
+    const fm = extractFrontmatter(`---\ndesc: "Fixed \\"the bug\\" in parser"\n---\nbody\n`);
+    assert.equal(fm.desc, original);
+    assert.equal(reconstructFrontmatter({ desc: original }), 'desc: "Fixed \\"the bug\\" in parser"');
+  });
+
+  test('single round trip is byte-exact for embedded backslash', () => {
+    const original = 'path a:\\b\\c plus "quote"';
+    const fm = extractFrontmatter(`---\ndesc: "path a:\\\\b\\\\c plus \\"quote\\""\n---\nbody\n`);
+    assert.equal(fm.desc, original);
+    assert.equal(extractFrontmatter(`---\n${reconstructFrontmatter({ desc: original })}\n---\n`).desc, original);
+  });
+
+  test('single round trip is byte-exact for newline/tab/CR/control chars', () => {
+    const original = 'l1\nl2\ttab\rCR\x00NUL\x7fDEL';
+    const serialized = reconstructFrontmatter({ desc: original });
+    assert.equal(extractFrontmatter(`---\n${serialized}\n---\n`).desc, original);
+  });
+
+  test('repeated serialize→parse cycles do not grow (26 cycles, the reported OOM window)', () => {
+    let content = '---\ndesc: "he said \\"hi\\" and \\"bye\\""\n---\nbody\n';
+    const firstPass = roundTripDoc(content);
+    let current = firstPass;
+    for (let i = 0; i < 26; i++) {
+      current = roundTripDoc(current);
+      // After the first cycle the document must be a fixed point: byte-identical
+      // forever. Before the fix, backslashes followed b → 2b+1 and unbounded
+      // cycling hit a 134 M-char line within 26 passes (asserting per cycle,
+      // rather than only after the loop, so the buggy failure is a small clear
+      // diff on cycle 1 instead of a runner OOM).
+      assert.equal(current, firstPass, `cycle ${i + 1} changed the document`);
+    }
+    assert.equal(extractFrontmatter(current).desc, 'he said "hi" and "bye"');
+  });
+
+  test('block array items with quotes/backslashes round-trip and stay stable', () => {
+    // 4 items force the block `- "..."` form (inline caps at 3), which has its
+    // own escape call site and its own quote-strip on parse.
+    const original = ['a: "1"', 'b:\\path "x"', 'c: "3"', 'd: "4"'];
+    const serialized = reconstructFrontmatter({ tags: original });
+    assert.deepEqual(extractFrontmatter(`---\n${serialized}\n---\n`).tags, original);
+    const reparsed = extractFrontmatter(`---\n${serialized}\n---\n`);
+    assert.equal(reconstructFrontmatter(reparsed), serialized);
+  });
+
+  test('nested object subvalue with quotes/backslashes round-trips and stays stable', () => {
+    const original = { meta: { note: 'see: "the \\\\docs\\\\"' } };
+    const serialized = reconstructFrontmatter(original);
+    assert.deepEqual(extractFrontmatter(`---\n${serialized}\n---\n`).meta, original.meta);
+    const reparsed = extractFrontmatter(`---\n${serialized}\n---\n`);
+    assert.equal(reconstructFrontmatter(reparsed), serialized);
+  });
+
+  test('spliceFrontmatter write path is a fixed point under repeated no-op writes', () => {
+    // The state.cjs seam: read file → merge → spliceFrontmatter → write.
+    // Repeating it must not change bytes once the first write lands.
+    let content = `---\ndesc: "he said \\"hi\\""\nphase: executing\n---\nbody\n`;
+    content = spliceFrontmatter(content, { ...extractFrontmatter(content), phase: 'executing' });
+    const firstWrite = content;
+    for (let i = 0; i < 10; i++) {
+      content = spliceFrontmatter(content, { ...extractFrontmatter(content), phase: 'executing' });
+    }
+    assert.equal(content, firstWrite);
+    assert.equal(extractFrontmatter(content).desc, 'he said "hi"');
+  });
+
+  test('plain scalars that never need quoting still round-trip unquoted and unchanged', () => {
+    const obj = { name: 'simple-value', wave: 'W1', count: '42' };
+    const serialized = reconstructFrontmatter(obj);
+    assert.equal(serialized, 'name: simple-value\nwave: W1\ncount: 42');
+    assert.deepEqual(extractFrontmatter(`---\n${serialized}\n---\n`), obj);
+  });
+
+  test('single-quoted scalars keep their existing parse behavior (quotes stripped, no escape processing)', () => {
+    // The writer never emits single-quoted output; hand-authored files keep
+    // the historical strip-only behavior. A single-quoted scalar has no
+    // escape processing in YAML (only '' → '), and changing that is out of
+    // scope for #3497 — this pins the current contract so the unescape fix
+    // cannot silently broaden into single-quote handling.
+    const fm = extractFrontmatter("---\ntitle: 'C:\\real\\path'\n---");
+    assert.equal(fm.title, 'C:\\real\\path');
+  });
+});
+
+describe('extractFrontmatter: boundary — dash at start of file', () => {
+  test('--- at byte 0 is treated as frontmatter', () => {
+    const result = extractFrontmatter('---\nkey: val\n---\n');
+    assert.deepEqual(result, { key: 'val' });
+  });
+
+  test('content before --- means no frontmatter', () => {
+    const result = extractFrontmatter(' ---\nkey: val\n---\n');
+    assert.deepEqual(result, {});
+  });
+
+  test('newline before --- means no frontmatter', () => {
+    const result = extractFrontmatter('\n---\nkey: val\n---\n');
+    assert.deepEqual(result, {});
+  });
+});
+
+describe('parseMustHavesBlock: item accumulation', () => {
+  test('last item pushed after loop ends', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - only item\n---';
+    const result = parseMustHavesBlock(doc, 'truths');
+    assert.equal(result.length, 1);
+    assert.equal(result[0], 'only item');
+  });
+
+  test('items are pushed in order', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - first\n    - second\n    - third\n---';
+    const result = parseMustHavesBlock(doc, 'truths');
+    assert.equal(result[0], 'first');
+    assert.equal(result[1], 'second');
+    assert.equal(result[2], 'third');
+  });
+
+  test('three items total count', () => {
+    const doc = '---\nmust_haves:\n  truths:\n    - a\n    - b\n    - c\n---';
+    assert.equal(parseMustHavesBlock(doc, 'truths').length, 3);
+  });
+});
+
+describe('parseMustHavesBlock: indent stopping logic', () => {
+  test('items after block ends at same/lower indent are not included', () => {
+    const doc = [
+      '---',
+      'must_haves:',
+      '  truths:',
+      '    - item one',
+      'other_key: val',
+      '---',
+    ].join('\n');
+    const result = parseMustHavesBlock(doc, 'truths');
+    assert.equal(result.length, 1);
+    assert.equal(result[0], 'item one');
+  });
+});
+
+describe('reconstructFrontmatter: deeply nested subsubval null/undefined', () => {
+  test('3rd level null subsubval skipped', () => {
+    const result = reconstructFrontmatter({ top: { mid: { key: null } } });
+    assert.equal(result, 'top:\n  mid:');
+  });
+});
+
+describe('reconstructFrontmatter: nested subval plain string', () => {
+  test('nested subval without special chars unquoted', () => {
+    const result = reconstructFrontmatter({ meta: { name: 'plain' } });
+    assert.equal(result, 'meta:\n  name: plain');
+  });
+
+  test('nested subval with colon quoted', () => {
+    const result = reconstructFrontmatter({ meta: { ref: 'type: value' } });
+    assert.equal(result, 'meta:\n  ref: "type: value"');
+  });
+
+  test('nested subval with hash quoted', () => {
+    const result = reconstructFrontmatter({ meta: { tag: 'issue#42' } });
+    assert.equal(result, 'meta:\n  tag: "issue#42"');
+  });
+});
+
+// noOpObjectListSetError (#1660) — pure detection helper, unit-tested directly because the
+// cmdFrontmatterSet path is not in Stryker's property/unit set.
+describe('noOpObjectListSetError (#1660)', () => {
+  const ORIG = '---\nphase: 1\n---\n';
+  test('changed content (real update) → null', () => {
+    assert.equal(noOpObjectListSetError(ORIG, ORIG + 'x', { must_haves: 1 }), null);
+  });
+  test('scalar value no-op → null (idempotent scalar sets are fine)', () => {
+    for (const v of [1, 'str', true, 0, '']) assert.equal(noOpObjectListSetError(ORIG, ORIG, v), null, `scalar ${JSON.stringify(v)}`);
+  });
+  test('scalar-array value no-op → null (scalar arrays round-trip faithfully)', () => {
+    assert.equal(noOpObjectListSetError(ORIG, ORIG, ['a', 'b']), null);
+    assert.equal(noOpObjectListSetError(ORIG, ORIG, []), null);
+  });
+  test('null value no-op → null', () => {
+    assert.equal(noOpObjectListSetError(ORIG, ORIG, null), null);
+  });
+  test('dict value no-op → error message naming the object-list round-trip limit', () => {
+    const msg = noOpObjectListSetError(ORIG, ORIG, { artifacts: [{ path: 'p' }] });
+    assert.equal(typeof msg, 'string');
+    assert.ok(msg.includes('had no effect'), msg);
+    assert.ok(msg.includes('object-list'), msg);
+    assert.ok(msg.includes('Edit the file directly'), msg);
+  });
+});
+
+// ─── stripFrontmatter ─────────────────────────────────────────────────────────
+
+describe('stripFrontmatter', () => {
+  const stacked = ['---', 'a: 1', '---', '---', 'b: 2', '---', '', 'Real body.'].join('\n');
+
+  test('strips a single block', () => {
+    assert.strictEqual(stripFrontmatter(['---', 'a: 1', '---', '', 'Body.'].join('\n')), 'Body.');
+  });
+
+  test('is CRLF-tolerant', () => {
+    const crlf = ['---', 'a: 1', '---', '', 'Body.'].join('\r\n');
+    assert.strictEqual(stripFrontmatter(crlf), 'Body.');
+  });
+
+  test('defaults to stripping every stacked block (corruption recovery)', () => {
+    assert.strictEqual(stripFrontmatter(stacked), 'Real body.');
+  });
+
+  test('an omitted options argument keeps the greedy default', () => {
+    // Back-compat: state.cts and state-transition.cts call this with one arg.
+    assert.strictEqual(stripFrontmatter(stacked, {}), 'Real body.');
+  });
+
+  test('once: true stops after the first block', () => {
+    assert.strictEqual(
+      stripFrontmatter(stacked, { once: true }),
+      ['---', 'b: 2', '---', '', 'Real body.'].join('\n'),
+    );
+  });
+
+  test('once: false is the greedy default', () => {
+    assert.strictEqual(stripFrontmatter(stacked, { once: false }), 'Real body.');
+  });
+
+  test('returns content unchanged when there is no frontmatter', () => {
+    const plain = ['Just prose.', '', 'More prose.'].join('\n');
+    assert.strictEqual(stripFrontmatter(plain), plain);
+    assert.strictEqual(stripFrontmatter(plain, { once: true }), plain);
+  });
+
+  test('leaves an unterminated block alone under both modes', () => {
+    const unterminated = ['---', 'a: 1', 'b: 2'].join('\n');
+    assert.strictEqual(stripFrontmatter(unterminated), unterminated);
+    assert.strictEqual(stripFrontmatter(unterminated, { once: true }), unterminated);
+  });
+
+  test('empty string round-trips', () => {
+    assert.strictEqual(stripFrontmatter(''), '');
+  });
+
+  // Found while implementing #5105: the strip regex needed a line ending BEFORE the closing
+  // `---` that the opening fence's own line ending could not supply, so an adjacent empty
+  // block (`---\n---\n`) was invisible to it. It then either kept the block (and every STATE.md
+  // writer re-prepended a second one) or matched the first `---` in the BODY and stripped the
+  // heading and prose above it. The block is located by the one fence owner now.
+  for (const [label, nl] of [['LF', '\n'], ['CRLF', '\r\n']]) {
+    test(`an adjacent empty block is stripped (${label})`, () => {
+      assert.strictEqual(stripFrontmatter(`---${nl}---${nl}Body`), 'Body');
+      assert.strictEqual(stripFrontmatter(`---${nl}---${nl}Body`, { once: true }), 'Body');
+    });
+  }
+
+  test('an adjacent empty block followed by a thematic break strips only the empty block', () => {
+    const doc = '---\n---\n# T\n\n---\n\nmore';
+    assert.strictEqual(stripFrontmatter(doc), '# T\n\n---\n\nmore');
+    assert.strictEqual(stripFrontmatter(doc, { once: true }), '# T\n\n---\n\nmore');
+  });
+
+  test('a whole `---` line closes the block — `----` before it and `--- x` are block content', () => {
+    assert.strictEqual(stripFrontmatter('---\n----\nfoo: 1\n---\nbody'), 'body');
+    assert.strictEqual(stripFrontmatter('---\na: 1\n--- x\nb\n---\nBody'), 'Body');
+    assert.strictEqual(stripFrontmatter('---\na: 1\n--- \t\nBody'), 'Body');
+  });
+
+  test('with no whole `---` line, the first `----` line closes the block (the #1882 lenient parse)', () => {
+    assert.strictEqual(stripFrontmatter('---\na: 1\n----\nBody'), 'Body');
+    assert.strictEqual(stripFrontmatter('---\na: 1\n--- x\n----\nBody'), 'Body');
+    assert.strictEqual(stripFrontmatter('---\na: 1\n---- x\nBody'), '---\na: 1\n---- x\nBody');
+  });
+});
+
+// ─── agentScalarNeedsDoubleQuoting (#3706) ────────────────────────────────────
+//
+// Mutant-killing discipline: every boolean clause gets a true case AND a
+// near-miss false case one edit away, so flipping any operator/character
+// class in the source changes at least one assertion here.
+
+describe('agentScalarNeedsDoubleQuoting: delegates to scalarNeedsDoubleQuoting', () => {
+  test('empty string needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting(''), true);
+  });
+  test('embedded double quote needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a"b'), true);
+  });
+  test('embedded backslash needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a\\b'), true);
+  });
+  test('embedded control char needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a\u0001b'), true);
+  });
+  test('leading whitespace needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting(' abc'), true);
+  });
+  test('trailing whitespace needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('abc '), true);
+  });
+  for (const c of ['#', '&', '*', '!', '|', '>', '%', '@', '`', '[', ']', '{', '}', ',', "'"]) {
+    test(`leading indicator "${c}" needs quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(`${c}foo`), true);
+    });
+  }
+  test('near-miss: plain word does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('plainword'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: first character must be alphanumeric', () => {
+  for (const v of ['~', '.inf', '.nan', '+1', '-1', '-0', '.5']) {
+    test(`non-alphanumeric first char "${v}" needs quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), true);
+    });
+  }
+  test('near-miss: alphanumeric-first with internal hyphen does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a-b'), false);
+  });
+  test('near-miss: digit-first non-numeric word does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('0abc'), false);
+  });
+  test('near-miss: alphanumeric-first with trailing hyphen does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('x-'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: trailing colon', () => {
+  test('a bare trailing colon needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('foo:'), true);
+  });
+  test('near-miss: colon followed by more text does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('foo:bar'), false);
+  });
+  test('near-miss: single-char key:value shape does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a:b'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: embedded ": " (colon + whitespace)', () => {
+  test('colon followed by space needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a: b'), true);
+  });
+  test('colon followed by tab needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a:\tb'), true);
+  });
+  test('near-miss: colon with no following whitespace does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a:b'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: embedded " #" (whitespace + hash)', () => {
+  test('space followed by hash needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a #b'), true);
+  });
+  test('tab followed by hash needs quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a\t#b'), true);
+  });
+  test('near-miss: hash with no preceding whitespace does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a#b'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: boolean/null words (case-insensitive)', () => {
+  for (const v of ['y', 'n', 'yes', 'no', 'true', 'false', 'on', 'off', 'null']) {
+    test(`lowercase word "${v}" needs quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), true);
+    });
+  }
+  for (const v of ['YES', 'No', 'TRUE', 'Null']) {
+    test(`mixed-case word "${v}" needs quoting (case-insensitivity)`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), true);
+    });
+  }
+  test('near-miss: "yes1" is not an exact word match', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('yes1'), false);
+  });
+  test('near-miss: "nope" is not an exact word match', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('nope'), false);
+  });
+  test('near-miss: "nullish" is not an exact word match', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('nullish'), false);
+  });
+  test('near-miss: "onward" is not an exact word match', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('onward'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: numeric-looking values', () => {
+  for (const v of [
+    '1', '123', '1.5', '1.', '1e5', '1E5', '1e+5', '1e-5', '1_000',
+    '0x1F', '0b101', '0o17', '0X1f', '12:30', '1:2:3', '12:30.5',
+  ]) {
+    test(`numeric form "${v}" needs quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), true);
+    });
+  }
+  test('near-miss: "1a" (digit then letter) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('1a'), false);
+  });
+  test('near-miss: "a1" (letter then digit) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('a1'), false);
+  });
+  test('near-miss: "x1e5" (non-digit first char) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('x1e5'), false);
+  });
+  test('near-miss: "0xzz" (invalid hex digits) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('0xzz'), false);
+  });
+  // Verified against the real implementation: the sexagesimal group only
+  // consumes a leading [0-5]? then one mandatory digit per ":" segment, so
+  // "12:99" cannot fully match YAML_NUMERIC_RE (the second "9" is left over)
+  // and no other clause fires either. The code does NOT reject an
+  // out-of-range (60-99) minute-like group — pinned here as actual behavior,
+  // not the originally assumed "false because minutes must be 0-59".
+  test('"12:99" does not need quoting (sexagesimal regex cannot consume the trailing digit)', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('12:99'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: YAML timestamp', () => {
+  for (const v of [
+    '2026-08-25', '2026-8-5', '2026-08-25T10:00:00Z', '2026-08-25 10:00:00',
+  ]) {
+    test(`timestamp form "${v}" needs quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), true);
+    });
+  }
+  test('near-miss: "2026-08" (missing day) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('2026-08'), false);
+  });
+  // Verified against the real implementation: this string never reaches the
+  // timestamp clause at all — the pure-digit numeric clause (YAML_NUMERIC_RE's
+  // first alternative matches any \d[\d_]* string) fires first and returns
+  // true. So "20260825" IS true, but for a different reason than "looks like
+  // a date"; it does not exercise YAML_TIMESTAMP_RE.
+  test('"20260825" (no hyphens) needs quoting via the numeric clause, not the timestamp clause', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('20260825'), true);
+  });
+  // This is the case that actually pins YAML_TIMESTAMP_RE's trailing
+  // `(?:[Tt ].*)?$` anchor: the numeric clause cannot match (hyphens present,
+  // no colon), so only the timestamp regex is left to decide, and it rejects
+  // trailing text that isn't introduced by "T"/"t"/" ".
+  test('"2026-08-25x" (trailing junk not preceded by T/t/space) does not need quoting', () => {
+    assert.equal(agentScalarNeedsDoubleQuoting('2026-08-25x'), false);
+  });
+});
+
+describe('agentScalarNeedsDoubleQuoting: real-world values that must stay unquoted', () => {
+  for (const v of [
+    'sonnet', 'synthetic/hf:zai-org/GLM-5.2', 'gpt-5.6-luna', 'claude-opus-5',
+    'high', 'xhigh', 'minimal', 'a.b', 'GLM-5.2',
+  ]) {
+    test(`"${v}" does not need quoting`, () => {
+      assert.equal(agentScalarNeedsDoubleQuoting(v), false);
+    });
+  }
+});
+
+// ─── escapeDoubleQuotedScalar (#1779 / #3497) ────────────────────────────────────────
+
+describe('escapeDoubleQuotedScalar: exact output strings', () => {
+  test('backslash is escaped before the quote it precedes (ordering matters)', () => {
+    // Input: a, \, ", b. If the quote were escaped BEFORE the backslash, the
+    // backslash added in front of the quote would then itself get doubled by
+    // a subsequent backslash pass, producing a different (wrong) string. The
+    // real order (backslash first, then quote) yields exactly 3 backslashes
+    // followed by the quote.
+    const input = 'a' + '\\' + '"' + 'b';
+    const expected = 'a' + '\\'.repeat(3) + '"' + 'b';
+    assert.equal(escapeDoubleQuotedScalar(input), expected);
+  });
+
+  test('double quote alone', () => {
+    assert.equal(escapeDoubleQuotedScalar('"'), '\\"');
+  });
+
+  test('newline alone', () => {
+    assert.equal(escapeDoubleQuotedScalar('\n'), '\\n');
+  });
+
+  test('tab alone', () => {
+    assert.equal(escapeDoubleQuotedScalar('\t'), '\\t');
+  });
+
+  test('carriage return alone', () => {
+    assert.equal(escapeDoubleQuotedScalar('\r'), '\\r');
+  });
+
+  test('a C0 control char (0x01) becomes lowercase zero-padded \\xHH', () => {
+    assert.equal(escapeDoubleQuotedScalar('\u0001'), '\\x01');
+  });
+
+  test('DEL (0x7f) becomes \\x7f', () => {
+    assert.equal(escapeDoubleQuotedScalar('\u007f'), '\\x7f');
+  });
+
+  test('plain string with no specials is returned unchanged', () => {
+    assert.equal(escapeDoubleQuotedScalar('plain'), 'plain');
+  });
+
+  test('combined input exercising every escape in one pass', () => {
+    const input = 'a\\b"c\nd\te\rf\u0001g\u007fh';
+    const expected = 'a\\\\b\\"c\\nd\\te\\rf\\x01g\\x7fh';
+    assert.equal(escapeDoubleQuotedScalar(input), expected);
+  });
+});
+
+// ─── #3742: nested (path-shaped) comment channel + merge propagation ─────────
+// Direct unit coverage for the #3742 channel extension — the mutation shard
+// for frontmatter runs THIS file, so each clause of the new code needs a
+// paired positive/negative assertion here (the #1882/#3706/#3888 trap: tests
+// living only in tests/state.test.cjs do not constrain this shard).
+describe('#3742: extractCommentChannel — indented comments attach by dotted path', () => {
+  const channelOf = (doc) => {
+    const e = extractFrontmatter(doc);
+    const sym = Object.getOwnPropertySymbols(e).find((x) => String(x).includes('fullLineComments'));
+    return sym ? e[sym] : null;
+  };
+
+  // Keyed by the JSON-array form of the path (`commentPathKey`, #5105: a dot-joined path read
+  // a top-level key literally named `a.b` as sub-key `b` of map `a`), not a dot-joined string.
+  test('an indented comment above a nested key attaches to parent.key', () => {
+    const ch = channelOf(['---','a:','  # note','  b: 1','---'].join('\n'));
+    assert.ok(ch, 'channel must exist');
+    assert.deepEqual(ch.leading['["a","b"]'], ['  # note']);
+    assert.equal(ch.leading['b'], undefined, 'no top-level key named b exists');
+  });
+
+  test('two levels deep: parent.sub.subsub path', () => {
+    const ch = channelOf(['---','a:','  b:','    # deep','    c: 1','---'].join('\n'));
+    assert.deepEqual(ch.leading['["a","b","c"]'], ['    # deep']);
+  });
+
+  test('a MISALIGNED indent comment before a shallower key is dropped, not misattached', () => {
+    const ch = channelOf(['---','a:','  b: 1','      # misplaced','c: 2','---'].join('\n'));
+    assert.equal(ch, null, 'no comment attached to any key');
+  });
+
+  test('a comment above a LIST ITEM is dropped (list items are not keys)', () => {
+    const ch = channelOf(['---','a:','  # above item','  - one','b: 2','---'].join('\n'));
+    assert.equal(ch, null);
+  });
+
+  test('a list-item mapping line (- k: v) does not register a key', () => {
+    const ch = channelOf(['---','a:','  # n','  - k: v','---'].join('\n'));
+    assert.equal(ch, null, 'the comment must not attach to a "- k" pseudo-key');
+  });
+
+  test('column-0 semantics unchanged: attach to next top-level key, drop on non-key', () => {
+    const ch = channelOf(['---','a: 1','# c1','# c2','b: 2','---'].join('\n'));
+    assert.deepEqual(ch.leading['["b"]'], ['# c1', '# c2']);
+  });
+
+  test('quoted top-level keys still walk orderedKeys', () => {
+    const ch = channelOf(['---','"a b": 1','# q','c: 2','---'].join('\n'));
+    assert.deepEqual(ch.leading['["c"]'], ['# q']);
+  });
+});
+
+describe('#3742: reconstructFrontmatter — nested comments re-emit at their indent', () => {
+  test('level-1 and level-2 nested comments re-emit with matching indentation', () => {
+    const doc = ['---','a:','  # l1','  b:','    # l2','    c: 1','---'].join('\n');
+    const out = reconstructFrontmatter(extractFrontmatter(doc));
+    assert.ok(out.split('\n').includes('  # l1'), 'l1 comment re-emits at two-space indent');
+    assert.ok(out.split('\n').includes('    # l2'), 'l2 comment re-emits at four-space indent');
+    // order: l1 above b, l2 above c
+    assert.ok(out.indexOf('  # l1') < out.indexOf('  b:'), 'l1 comment precedes its key');
+    assert.ok(out.indexOf('    # l2') < out.indexOf('    c:'), 'l2 comment precedes its key');
+  });
+
+  test('round-trip is idempotent (extract→reconstruct twice is a fixpoint)', () => {
+    const doc = ['---','x:','  # keep','  y: 1','---'].join('\n');
+    const once = '---\n' + reconstructFrontmatter(extractFrontmatter(doc)) + '\n---';
+    const twice = '---\n' + reconstructFrontmatter(extractFrontmatter(once)) + '\n---';
+    assert.equal(twice, once);
+    assert.equal((twice.match(/# keep/g) || []).length, 1);
+  });
+});
+
+describe('#3742: propagateCommentChannel — merge, root filter, trailing dedupe', () => {
+  const symOf = (o) => Object.getOwnPropertySymbols(o).find((x) => String(x).includes('fullLineComments'));
+
+  // Keyed by the JSON-array form of the path (`commentPathKey`, #5105), not a dot-joined string.
+  test('a dotted-path key survives while its root section exists in the target', () => {
+    const src = extractFrontmatter(['---','p:','  # n','  q: 1','---'].join('\n'));
+    const target = { p: { q: 9 } };
+    propagateCommentChannel(src, target);
+    const ch = target[symOf(target)];
+    assert.deepEqual(ch.leading['["p","q"]'], ['  # n']);
+  });
+
+  test('a dotted-path key is DROPPED when the root section is absent from the target', () => {
+    const src = extractFrontmatter(['---','p:','  # n','  q: 1','---'].join('\n'));
+    const target = { other: 1 };
+    propagateCommentChannel(src, target);
+    const ch = target[symOf(target)];
+    assert.ok(!ch || !ch.leading['["p","q"]'], 'comment must die with its section');
+  });
+
+  test('target channel wins per key; source fills gaps (merge, not clobber)', () => {
+    const src = extractFrontmatter(['---','# from-source','a: 1','# from-source-2','b: 2','---'].join('\n'));
+    const target = extractFrontmatter(['---','# from-target','a: 1','b: 2','---'].join('\n'));
+    propagateCommentChannel(src, target);
+    const ch = target[symOf(target)];
+    assert.deepEqual(ch.leading['["a"]'], ['# from-target'], 'target entry wins');
+    assert.deepEqual(ch.leading['["b"]'], ['# from-source-2'], 'source fills the gap for a key the target owns but has no comment for');
+  });
+
+  test('trailing list comes from the target when it has a channel (no duplication)', () => {
+    const src = extractFrontmatter(['---','a: 1','# trail','---'].join('\n'));
+    const target = extractFrontmatter(['---','a: 1','# trail','---'].join('\n'));
+    propagateCommentChannel(src, target);
+    const ch = target[symOf(target)];
+    assert.deepEqual(ch.trailing, ['# trail'], 'exactly one trailing comment after merge');
+  });
+
+  test('a channel-less target inherits the source trailing comments', () => {
+    const src = extractFrontmatter(['---','a: 1','# trail','---'].join('\n'));
+    const target = { a: 2 };
+    propagateCommentChannel(src, target);
+    const ch = target[symOf(target)];
+    assert.deepEqual(ch.trailing, ['# trail']);
+  });
+});
+
+// ─── frontmatterListEntries (#3850) ───────────────────────────────────────────
+//
+// Direct coverage for the two exports #3850 added (#3879 review round 4, Minor
+// 1). They were previously exercised only through `uat.cts`' readers, so a
+// change in either primitive could only be caught by a test about something
+// else.
+
+describe('frontmatterListEntries: returns parsed entries, not display strings', () => {
+  const doc = ['---',
+    'gaps:',
+    '  - truth: "The widget renders"',
+    '    status: failed',
+    '    reason: "only on one platform"',
+    '  - truth: "The other thing"',
+    '    status: resolved',
+    '---',
+    '',
+    '# Body',
+    ''].join('\n');
+
+  test('object entries come back as objects with their fields intact', () => {
+    const entries = frontmatterListEntries(doc, 'gaps');
+    assert.equal(entries.length, 2);
+    assert.equal(entries[0].status, 'failed');
+    assert.equal(entries[0].truth, 'The widget renders');
+    assert.equal(entries[0].reason, 'only on one platform');
+    assert.equal(entries[1].status, 'resolved');
+  });
+
+  test('a field is readable as a field, not recoverable only from prose', () => {
+    // The whole reason this export exists: `extractFrontmatter` flattens the
+    // same entry to a display string in which a real `resolution:` field and
+    // the same text quoted inside `truth:` are indistinguishable.
+    const trap = ['---',
+      'gaps:',
+      '  - truth: "the report said resolution: done"',
+      '    status: failed',
+      '---',
+      ''].join('\n');
+    const [entry] = frontmatterListEntries(trap, 'gaps');
+    assert.equal(entry.resolution, undefined, 'prose inside truth is not a resolution field');
+    assert.equal(entry.status, 'failed');
+  });
+
+  test('EVERY element is returned at its own index, whatever its type', () => {
+    // #3850 review round 3, Blocker: filtering to objects compacted the array
+    // and renumbered a caller iterating by position.
+    const mixed = ['---',
+      'gaps:',
+      '  - truth: "an object"',
+      '  - a bare scalar',
+      '  -',
+      '  - - nested',
+      '    - sequence',
+      '---',
+      ''].join('\n');
+    const entries = frontmatterListEntries(mixed, 'gaps');
+    assert.equal(entries.length, 4);
+    assert.equal(typeof entries[0], 'object');
+    assert.equal(entries[1], 'a bare scalar');
+    assert.equal(entries[2], null);
+    assert.ok(Array.isArray(entries[3]));
+  });
+
+  test('null for every "nothing to iterate" case, never a throw', () => {
+    assert.equal(frontmatterListEntries('no frontmatter here', 'gaps'), null);
+    assert.equal(frontmatterListEntries('---\ngaps:\n  - a\n', 'gaps'), null, 'unterminated');
+    assert.equal(frontmatterListEntries('---\nother: 1\n---\n', 'gaps'), null, 'key absent');
+    assert.equal(frontmatterListEntries('---\ngaps: not-an-array\n---\n', 'gaps'), null, 'not an array');
+    assert.equal(frontmatterListEntries('---\n  : : :\n---\n', 'gaps'), null, 'unparseable');
+  });
+
+  test('agrees index-for-index with extractFrontmatter\'s display array', () => {
+    // `parsedEntriesFor` in uat.cts pairs these two by index and degrades to
+    // all-null if their lengths ever disagree. Pin the agreement here, where
+    // the two parsers actually live.
+    const display = extractFrontmatter(doc).gaps;
+    const parsed = frontmatterListEntries(doc, 'gaps');
+    assert.equal(display.length, parsed.length);
+  });
+});
+
+describe('flattenObjectListItem (#3850)', () => {
+  test('renders an object entry the way extractFrontmatter displays it', () => {
+    const entry = { test: 'Do the thing', expected: 'it works' };
+    const rendered = flattenObjectListItem(entry);
+    const viaExtract = extractFrontmatter(['---',
+      'human_verification:',
+      '  - test: "Do the thing"',
+      '    expected: "it works"',
+      '---',
+      ''].join('\n')).human_verification[0];
+    assert.equal(rendered, viaExtract,
+      'a caller naming an item from the parsed object must produce the byte-identical string');
+  });
+});
+
+// ─── Frontmatter CRUD commands and the writer's reader seam, in-process ───────
+//
+// `tests/frontmatter-cli.test.cjs` drives the same commands through a `gsd-tools` subprocess,
+// which the frontmatter Stryker shard excludes (a child process never loads the mutated module),
+// so every command branch was uncovered there. These call the commands directly: `output()` and
+// `error()` write through `fs.writeSync` (fd 1 / fd 2) and `error()` throws `ExitError`, so both
+// are observed in-process with a scoped `fs.writeSync` capture.
+
+describe('frontmatter commands and reader seam (in-process)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { createTempDir, cleanup } = require('./helpers.cjs');
+  const fm = require('../gsd-core/bin/lib/frontmatter.cjs');
+  const splice = require('../gsd-core/bin/lib/frontmatter-splice.cjs');
+  const { textEncodingError } = require('../gsd-core/bin/lib/validate.cjs');
+  const {
+    cmdFrontmatterGet,
+    cmdFrontmatterSet,
+    cmdFrontmatterMerge,
+    cmdFrontmatterValidate,
+    spliceSeam,
+  } = fm;
+
+  const CONTROL_CHAR_MSG =
+    'field name contains a control character (a line break, tab, NUL or other C0/DEL character) — use a plain key name';
+  const LOSSY_MSG = (field) =>
+    `frontmatter set refused — the existing "${field}" field cannot be faithfully round-tripped by ` +
+    'the frontmatter writer (its structure would be flattened and data, such as a nested object-list ' +
+    'field, silently dropped). Edit the file directly instead of using frontmatter set/merge.';
+  const UNPARSEABLE_REFUSAL =
+    'frontmatter: refusing to write — the existing frontmatter block is not parseable YAML, so ' +
+    'rewriting it would discard or hide the fields the author wrote. Fix the YAML syntax error in ' +
+    'the frontmatter block first, then re-run.';
+  const LOSSY_DOC = '---\nartifacts:\n  - path: a.md\n    provides: thing\n---\nbody\n';
+  const BAD_DOC = '---\ntitle: [unclosed\n---\nbody\n';
+
+  /**
+   * Run `fn` with fd 1 / fd 2 writes captured (and kept off the real streams). Returns the
+   * captured text and the error `fn` threw, if any.
+   */
+  function run(fn) {
+    const orig = fs.writeSync;
+    let out = '';
+    let err = '';
+    fs.writeSync = (fd, data, ...rest) => {
+      if (fd === 1 || fd === 2) {
+        const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+        if (fd === 1) out += text;
+        else err += text;
+        return Buffer.byteLength(text);
+      }
+      return orig.call(fs, fd, data, ...rest);
+    };
+    let thrown = null;
+    try {
+      fn();
+    } catch (e) {
+      thrown = e;
+    } finally {
+      fs.writeSync = orig;
+    }
+    return { out, err, thrown };
+  }
+
+  /** `run` for a command that must report through `output()` (no throw, nothing on stderr). */
+  function json(fn) {
+    const r = run(fn);
+    assert.equal(r.thrown, null);
+    assert.equal(r.err, '');
+    return JSON.parse(r.out);
+  }
+
+  /** `run` for a command that must fail through `error(message)`. */
+  function exitsWith(fn, message) {
+    const r = run(fn);
+    assert.ok(r.thrown, 'expected the command to throw');
+    assert.equal(r.thrown.name, 'ExitError');
+    assert.equal(r.err, `Error: ${message}\n`);
+    assert.equal(r.out, '');
+  }
+
+  let dir;
+  let seq = 0;
+  /** Write `content` to a fresh file in the fixture dir; returns its relative name. */
+  function file(content) {
+    seq += 1;
+    const name = `f${seq}.md`;
+    fs.writeFileSync(path.join(dir, name), content);
+    return name;
+  }
+  const read = (name) => fs.readFileSync(path.join(dir, name), 'utf8');
+
+  before(() => {
+    dir = createTempDir('gsd-fm-cmd-');
+  });
+  after(() => {
+    cleanup(dir);
+  });
+
+  // ─── cmdFrontmatterGet ────────────────────────────────────────────────────────
+
+  describe('cmdFrontmatterGet', () => {
+    test('missing file path is a usage error', () => {
+      exitsWith(() => cmdFrontmatterGet(dir, '', 'x', false), 'file path required');
+    });
+
+    test('a NUL byte in the path is refused', () => {
+      exitsWith(() => cmdFrontmatterGet(dir, 'a\0b.md', 'x', false), 'file path contains null bytes');
+    });
+
+    test('absent file reports File not found with the given path', () => {
+      assert.deepEqual(json(() => cmdFrontmatterGet(dir, 'nope.md', 'x', false)), {
+        error: 'File not found',
+        path: 'nope.md',
+      });
+    });
+
+    test('unparseable block is reported as such, not as a missing field', () => {
+      const name = file(BAD_DOC);
+      assert.deepEqual(json(() => cmdFrontmatterGet(dir, name, 'title', false)), {
+        error: 'Frontmatter is not parseable YAML — fix the syntax error in the frontmatter block',
+        path: name,
+      });
+    });
+
+    test('present field returns { field: value }; raw prints the JSON of the value', () => {
+      const name = file('---\nwave: 2\nphase: 1\n---\nbody\n');
+      assert.deepEqual(json(() => cmdFrontmatterGet(dir, name, 'wave', false)), { wave: '2' });
+      assert.equal(run(() => cmdFrontmatterGet(dir, name, 'wave', true)).out, '"2"');
+    });
+
+    test('absent field reports Field not found', () => {
+      const name = file('---\nwave: 2\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterGet(dir, name, 'zzz', false)), {
+        error: 'Field not found',
+        field: 'zzz',
+      });
+    });
+
+    test('no field returns the whole frontmatter', () => {
+      const name = file('---\nwave: 2\nphase: 1\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterGet(dir, name, undefined, false)), { wave: '2', phase: '1' });
+    });
+  });
+
+  // ─── cmdFrontmatterSet ────────────────────────────────────────────────────────
+
+  describe('cmdFrontmatterSet: argument guards', () => {
+    for (const [label, filePath, field, value] of [
+      ['file', '', 'x', '1'],
+      ['field', 'a.md', '', '1'],
+      ['value', 'a.md', 'x', undefined],
+    ]) {
+      test(`missing ${label} is a usage error`, () => {
+        exitsWith(() => cmdFrontmatterSet(dir, filePath, field, value, false), 'file, field, and value required');
+      });
+    }
+
+    test('an empty-string value is a value, not a missing one', () => {
+      const name = file('---\nwave: 2\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'note', '', false)), {
+        updated: true, field: 'note', value: '',
+      });
+    });
+
+    test('a NUL byte in the path is refused', () => {
+      exitsWith(() => cmdFrontmatterSet(dir, 'w\0.md', 'x', '1', false), 'file path contains null bytes');
+    });
+
+    // Boundary rows of the C0/DEL class: \u001f and \u007f are refused,   (space) is not.
+    for (const ch of ['\n', '\u001f', '\u007f']) {
+      test(`field name holding U+${ch.charCodeAt(0).toString(16).padStart(4, '0')} is refused`, () => {
+        const name = file('---\nwave: 2\n---\n');
+        exitsWith(() => cmdFrontmatterSet(dir, name, `a${ch}b`, '1', false), CONTROL_CHAR_MSG);
+        assert.equal(read(name), '---\nwave: 2\n---\n');
+      });
+    }
+
+    test('field name holding a plain space is written (quoted)', () => {
+      const name = file('---\nwave: 2\n---\nbody\n');
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'a b', '1', false)), {
+        updated: true, field: 'a b', value: 1,
+      });
+      assert.equal(read(name), '---\nwave: 2\n"a b": 1\n---\nbody\n');
+    });
+
+    test('absent file reports File not found', () => {
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, 'nope.md', 'x', '1', false)), {
+        error: 'File not found', path: 'nope.md',
+      });
+    });
+  });
+
+  describe('cmdFrontmatterSet: writes', () => {
+    test('changes an existing field; JSON value parsed; raw prints true', () => {
+      const name = file('---\nwave: 2\n---\nbody\n');
+      assert.equal(run(() => cmdFrontmatterSet(dir, name, 'wave', '3', true)).out, 'true');
+      assert.equal(read(name), '---\nwave: 3\n---\nbody\n');
+    });
+
+    test('appends a new field; a non-JSON value is kept as text', () => {
+      const name = file('---\nwave: 2\n---\nbody\n');
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'owner', 'alice', false)), {
+        updated: true, field: 'owner', value: 'alice',
+      });
+      assert.equal(read(name), '---\nwave: 2\nowner: alice\n---\nbody\n');
+    });
+
+    test('a changed scalar list is not a lossy field', () => {
+      const name = file('---\ntags:\n  - a\n  - b\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'tags', '["c"]', false)), {
+        updated: true, field: 'tags', value: ['c'],
+      });
+      assert.equal(read(name), '---\ntags: [c]\n---\n');
+    });
+  });
+
+  describe('cmdFrontmatterSet: refusals', () => {
+    test('changing an object-list field is refused and nothing is written', () => {
+      const name = file(LOSSY_DOC);
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'artifacts', '["path: a.md"]', false)), {
+        error: LOSSY_MSG('artifacts'), field: 'artifacts',
+      });
+      assert.equal(read(name), LOSSY_DOC);
+    });
+
+    test('re-supplying an object-list field\'s own value is not refused (no-op write)', () => {
+      const name = file(LOSSY_DOC);
+      const same = JSON.stringify(extractFrontmatter(LOSSY_DOC).artifacts);
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'artifacts', same, false)), {
+        updated: true, field: 'artifacts', value: ['path: a.md, provides: thing'],
+      });
+      assert.equal(read(name), LOSSY_DOC);
+    });
+
+    test('a list holding one mapping item among scalars is lossy', () => {
+      const doc = '---\nartifacts:\n  - plain\n  - path: a\n    provides: b\n---\n';
+      const name = file(doc);
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'artifacts', '["plain"]', false)), {
+        error: LOSSY_MSG('artifacts'), field: 'artifacts',
+      });
+      assert.equal(read(name), doc);
+    });
+
+    test('a mapping holding a scalar list and an object list is lossy', () => {
+      const doc = '---\nmust_haves:\n  truths:\n    - t1\n  artifacts:\n    - path: a\n      provides: b\n---\n';
+      const name = file(doc);
+      const value = '{"truths":["t1"],"artifacts":["path: a"]}';
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'must_haves', value, false)), {
+        error: LOSSY_MSG('must_haves'), field: 'must_haves',
+      });
+      assert.equal(read(name), doc);
+    });
+
+    test('a nested-object value the writer cannot represent throws (not a refusal) and writes nothing', () => {
+      const name = file(LOSSY_DOC);
+      const r = run(() => cmdFrontmatterSet(dir, name, 'artifacts', '[{"path":"x"}]', false));
+      assert.ok(r.thrown instanceof Error);
+      assert.notEqual(r.thrown.name, 'ExitError');
+      assert.match(r.thrown.message, /^frontmatter: cannot faithfully serialize key "artifacts"/);
+      assert.equal(r.out, '');
+      assert.equal(read(name), LOSSY_DOC);
+    });
+
+    test('an unparseable block is a write refusal reported with its code', () => {
+      const name = file(BAD_DOC);
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'title', '"x"', false)), {
+        error: UNPARSEABLE_REFUSAL, code: 'FRONTMATTER_UNPARSEABLE', path: name,
+      });
+      assert.equal(read(name), BAD_DOC);
+    });
+
+    test('a dict value equal to the field under the parser is reported as having no effect', () => {
+      const doc = '---\ntitle:\n  x: y\n---\n';
+      const name = file(doc);
+      assert.deepEqual(json(() => cmdFrontmatterSet(dir, name, 'title', '{"x":"y"}', false)), {
+        error: 'frontmatter set had no effect — the supplied value is equivalent to the existing field under the frontmatter parser, which cannot faithfully round-trip object-list fields like must_haves. Edit the file directly.',
+        field: 'title',
+      });
+      assert.equal(read(name), doc);
+    });
+  });
+
+  // ─── cmdFrontmatterMerge ──────────────────────────────────────────────────────
+
+  describe('cmdFrontmatterMerge', () => {
+    test('missing file or data is a usage error', () => {
+      exitsWith(() => cmdFrontmatterMerge(dir, '', '{}', false), 'file and data required');
+      exitsWith(() => cmdFrontmatterMerge(dir, 'a.md', '', false), 'file and data required');
+    });
+
+    test('absent file reports File not found', () => {
+      assert.deepEqual(json(() => cmdFrontmatterMerge(dir, 'nope.md', '{}', false)), {
+        error: 'File not found', path: 'nope.md',
+      });
+    });
+
+    test('invalid JSON is a usage error', () => {
+      const name = file('---\nwave: 2\n---\n');
+      exitsWith(() => cmdFrontmatterMerge(dir, name, '{x', false), 'Invalid JSON for --data');
+    });
+
+    for (const data of ['null', '[1]', '5', '"s"']) {
+      test(`--data ${data} (not a JSON object) is refused`, () => {
+        const name = file('---\nwave: 2\n---\n');
+        exitsWith(() => cmdFrontmatterMerge(dir, name, data, false), '--data must be a JSON object of field names to values');
+        assert.equal(read(name), '---\nwave: 2\n---\n');
+      });
+    }
+
+    test('a key holding a control character is refused', () => {
+      const name = file('---\nwave: 2\n---\n');
+      exitsWith(() => cmdFrontmatterMerge(dir, name, '{"a\\nb":"x"}', false), CONTROL_CHAR_MSG);
+    });
+
+    test('a lossy key is refused before any key is written', () => {
+      const name = file(LOSSY_DOC);
+      assert.deepEqual(json(() => cmdFrontmatterMerge(dir, name, '{"note":"n","artifacts":["path: a.md"]}', false)), {
+        error: LOSSY_MSG('artifacts'), field: 'artifacts',
+      });
+      assert.equal(read(name), LOSSY_DOC);
+    });
+
+    test('an unparseable block is a write refusal reported with its code', () => {
+      const name = file(BAD_DOC);
+      assert.deepEqual(json(() => cmdFrontmatterMerge(dir, name, '{"title":"x"}', false)), {
+        error: UNPARSEABLE_REFUSAL, code: 'FRONTMATTER_UNPARSEABLE', path: name,
+      });
+      assert.equal(read(name), BAD_DOC);
+    });
+
+    test('merges changed and new keys; raw prints true', () => {
+      const name = file('---\nwave: 2\n---\nbody\n');
+      assert.deepEqual(json(() => cmdFrontmatterMerge(dir, name, '{"wave":"4","phase":"9"}', false)), {
+        merged: true, fields: ['wave', 'phase'],
+      });
+      assert.equal(read(name), '---\nwave: 4\nphase: 9\n---\nbody\n');
+      assert.equal(run(() => cmdFrontmatterMerge(dir, name, '{"wave":"5"}', true)).out, 'true');
+      assert.equal(read(name), '---\nwave: 5\nphase: 9\n---\nbody\n');
+    });
+
+    test('a nested-object value the writer cannot represent throws and writes nothing', () => {
+      const name = file('---\nwave: 2\n---\n');
+      const r = run(() => cmdFrontmatterMerge(dir, name, '{"x":[{"a":"b"}]}', false));
+      assert.ok(r.thrown instanceof Error);
+      assert.match(r.thrown.message, /^frontmatter: cannot faithfully serialize key "x"/);
+      assert.equal(read(name), '---\nwave: 2\n---\n');
+    });
+  });
+
+  // ─── cmdFrontmatterValidate ───────────────────────────────────────────────────
+
+  describe('cmdFrontmatterValidate', () => {
+    const PLAN = 'phase: 1\nplan: 1\ntype: x\nwave: 1\ndepends_on: []\nfiles_modified: []\nautonomous: true\nmust_haves: x\n';
+    const PLAN_FIELDS = ['phase', 'plan', 'type', 'wave', 'depends_on', 'files_modified', 'autonomous', 'must_haves'];
+
+    test('missing file or schema is a usage error', () => {
+      exitsWith(() => cmdFrontmatterValidate(dir, '', 'plan', false), 'file and schema required');
+      exitsWith(() => cmdFrontmatterValidate(dir, 'a.md', '', false), 'file and schema required');
+    });
+
+    test('a NUL byte in the path is refused', () => {
+      exitsWith(() => cmdFrontmatterValidate(dir, 'a\0.md', 'plan', false), 'file path contains null bytes');
+    });
+
+    test('an unknown schema (including a prototype key) lists the available ones', () => {
+      for (const schema of ['bogus', '__proto__']) {
+        exitsWith(
+          () => cmdFrontmatterValidate(dir, 'a.md', schema, false),
+          `Unknown schema: ${schema}. Available: plan, plan-gap-closure, summary, verification`,
+        );
+      }
+    });
+
+    test('absent file reports File not found', () => {
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, 'nope.md', 'plan', false)), {
+        error: 'File not found', path: 'nope.md',
+      });
+    });
+
+    test('NUL-corrupted content is invalid with the encoding error; raw prints invalid', () => {
+      const content = '---\nphase: 1\n---\n\0\0';
+      const name = file(content);
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'plan', false)), {
+        valid: false, errors: [textEncodingError(content, name)], schema: 'plan',
+      });
+      assert.equal(run(() => cmdFrontmatterValidate(dir, name, 'plan', true)).out, 'invalid');
+    });
+
+    test('a complete document is valid; raw prints valid', () => {
+      const name = file('---\nphase: 1\nverified: yes\nstatus: ok\nscore: 5\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'verification', false)), {
+        valid: true, missing: [], present: ['phase', 'verified', 'status', 'score'], invalidValue: [], schema: 'verification',
+      });
+      assert.equal(run(() => cmdFrontmatterValidate(dir, name, 'verification', true)).out, 'valid');
+    });
+
+    test('a partial document lists what is missing; raw prints invalid', () => {
+      const name = file('---\nphase: 1\nstatus: ok\n---\n');
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'verification', false)), {
+        valid: false, missing: ['verified', 'score'], present: ['phase', 'status'], invalidValue: [], schema: 'verification',
+      });
+      assert.equal(run(() => cmdFrontmatterValidate(dir, name, 'verification', true)).out, 'invalid');
+    });
+
+    test('a required value that is present but wrong is missing AND invalidValue', () => {
+      const name = file(`---\n${PLAN}gap_closure: false\n---\n`);
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'plan-gap-closure', false)), {
+        valid: false, missing: ['gap_closure'], present: PLAN_FIELDS, invalidValue: ['gap_closure'], schema: 'plan-gap-closure',
+      });
+    });
+
+    test('a required value that is present and right satisfies the schema', () => {
+      const name = file(`---\n${PLAN}gap_closure: true\n---\n`);
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'plan-gap-closure', false)), {
+        valid: true, missing: [], present: [...PLAN_FIELDS, 'gap_closure'], invalidValue: [], schema: 'plan-gap-closure',
+      });
+    });
+
+    test('a schema with no required values accepts any value of a present field', () => {
+      const name = file(`---\n${PLAN}---\n`);
+      assert.deepEqual(json(() => cmdFrontmatterValidate(dir, name, 'plan', false)), {
+        valid: true, missing: [], present: PLAN_FIELDS, invalidValue: [], schema: 'plan',
+      });
+    });
+  });
+
+  // ─── writer re-exports ────────────────────────────────────────────────────────
+
+  describe('writer re-exports resolve to the splice module', () => {
+    test('FrontmatterWriteRefusedError and SPLICE_PARSE_BUDGET_CHARS are the splice module\'s own', () => {
+      assert.equal(fm.FrontmatterWriteRefusedError, splice.FrontmatterWriteRefusedError);
+      assert.equal(typeof fm.FrontmatterWriteRefusedError, 'function');
+      assert.equal(fm.SPLICE_PARSE_BUDGET_CHARS, splice.SPLICE_PARSE_BUDGET_CHARS);
+      assert.equal(typeof fm.SPLICE_PARSE_BUDGET_CHARS, 'number');
+    });
+  });
+
+  // ─── spliceSeam.segmentKeyOf ──────────────────────────────────────────────────
+
+  describe('spliceSeam.segmentKeyOf', () => {
+    const { segmentKeyOf } = spliceSeam;
+    for (const [line, indent, expected] of [
+      // double-quoted: JSON escapes decoded; an escape JSON rejects falls back to the raw text
+      ['"a\\"b": 1', 0, { key: 'a"b', valueStart: 7 }],
+      ['"bad\\x": 1', 0, { key: 'bad\\x', valueStart: 8 }],
+      // single-quoted: '' is one quote
+      ["'it''s': v", 0, { key: "it's", valueStart: 8 }],
+      ["'ab': v", 0, { key: 'ab', valueStart: 5 }],
+      ["'ab' : v", 0, { key: 'ab', valueStart: 6 }],
+      // a quoted segment only opens a key at the start of the line
+      ['x "a": 1', 0, { key: 'x "a"', valueStart: 6 }],
+      // spaced colon: key trimmed at its end, value after the colon
+      ['key : v', 0, { key: 'key', valueStart: 5 }],
+      ['-x: 1', 0, { key: '-x', valueStart: 3 }],
+      // bare `key:value` shorthand: top level only, whole ASCII word only
+      ['ab:c', 0, { key: 'ab', valueStart: 3 }],
+      ['a:b', 0, { key: 'a', valueStart: 2 }],
+      ['a:b', 1, null],
+      ['a:b', 2, null],
+      ['a.b:c', 0, null],
+    ]) {
+      test(`${JSON.stringify(line)} at indent ${indent}`, () => {
+        assert.deepEqual(segmentKeyOf(line, indent), expected);
+      });
+    }
+  });
+
+  // ─── spliceSeam.frontmatterDeepEqual ──────────────────────────────────────────
+
+  describe('spliceSeam.frontmatterDeepEqual', () => {
+    const { frontmatterDeepEqual: eq } = spliceSeam;
+    test('null/undefined rows', () => {
+      assert.equal(eq(null, null), true);
+      assert.equal(eq(null, undefined), false);
+      assert.equal(eq(null, {}), false);
+      assert.equal(eq({}, null), false);
+    });
+    test('an array never equals an index-keyed object', () => {
+      assert.equal(eq(['a'], { 0: 'a' }), false);
+      assert.equal(eq({ 0: 'a' }, ['a']), false);
+      assert.equal(eq(['a'], ['a']), true);
+    });
+    test('a string never equals an object, even an empty one', () => {
+      assert.equal(eq('', {}), false);
+      assert.equal(eq({}, ''), false);
+    });
+  });
+
+  // ─── parseMustHavesBlock ──────────────────────────────────────────────────────
+
+  describe('parseMustHavesBlock: degenerate regions and the unusable-block warning', () => {
+    function withStderr(fn) {
+      const orig = process.stderr.write;
+      let err = '';
+      process.stderr.write = (s) => { err += String(s); return true; };
+      try {
+        return { result: fn(), err };
+      } finally {
+        process.stderr.write = orig;
+      }
+    }
+
+    for (const [label, content] of [
+      ['an anchor (refused before parsing)', '---\nmust_haves:\n  truths:\n    - &a x\n---\n'],
+      ['a scalar region', '---\njust text\n---\n'],
+      ['an empty region', '---\n\n---\n'],
+      ['a null block', '---\nmust_haves:\n  truths:\n  other: 1\n---\n'],
+    ]) {
+      test(`${label} yields [] silently`, () => {
+        assert.deepEqual(withStderr(() => parseMustHavesBlock(content, 'truths')), { result: [], err: '' });
+      });
+    }
+
+    test('a block with content that is not a list yields [] with a warning', () => {
+      assert.deepEqual(withStderr(() => parseMustHavesBlock('---\nmust_haves:\n  truths: nope\n---\n', 'truths')), {
+        result: [],
+        err: '[gsd-tools] WARNING: must_haves.truths block has content but parsed 0 items. ' +
+          'Possible YAML formatting issue — verification will fall back to LLM-derived truths.\n',
+      });
+    });
+
+    test('continuation values are trimmed and coerced only when wholly digits; null items pass through', () => {
+      const content = '---\nmust_haves:\n  artifacts:\n    - path: a\n      count: " 7 "\n      x: a7\n      y: 7a\n' +
+        '  truths:\n    -\n    - x\n---\n';
+      assert.deepEqual(parseMustHavesBlock(content, 'artifacts'), [{ path: 'a', count: 7, x: 'a7', y: '7a' }]);
+      assert.deepEqual(parseMustHavesBlock(content, 'truths'), [null, 'x']);
+    });
+  });
+
+  // ─── stripFrontmatter ─────────────────────────────────────────────────────────
+
+  describe('stripFrontmatter: whitespace after the closing fence', () => {
+    test('blank lines after the block go with it', () => {
+      assert.equal(stripFrontmatter('---\na: 1\n---\n\n\nbody'), 'body');
+    });
+  });
+});

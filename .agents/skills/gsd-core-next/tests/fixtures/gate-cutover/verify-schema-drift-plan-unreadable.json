@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "1"
+  ],
+  "fixture": "schema-drift",
+  "failRead": "01-schema/01-01-PLAN.md",
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"unreadable\": true,\n  \"unreadable_file\": \"01-01-PLAN.md\",\n  \"read_error\": \"EACCES\",\n  \"message\": \"schema-drift could not read 01-01-PLAN.md (EACCES); drift was not evaluated\"\n}",
+  "stderr": "",
+  "exitCode": 69
+}

@@ -1,0 +1,1183 @@
+'use strict';
+
+/**
+ * Real-world I/O shell for the differential attribution check (#2723, ADR-2719).
+ *
+ * `emitted-diff.cjs` holds the pure conservation law; this module is the only place
+ * that touches git, the filesystem, or the installer. Keeping them apart is what makes
+ * the law's acceptance criteria testable in milliseconds — but the shell still has to
+ * exist and actually run, or the phase ships as interface-only, which an isolated
+ * reviewer correctly called out on the first cut of this work.
+ *
+ * ── Baseline source during the dual-run window ───────────────────────────────
+ * The baseline is the emitted manifest set at `next` HEAD. During Phase 3 that is
+ * available for FREE and for REAL via `git show origin/next:<fixture>` — the committed
+ * golden fixtures ARE next's recorded emitted state, and CI keeps them current there.
+ * No worktree, no rebuild, no 19 installer spawns for the baseline side.
+ *
+ * Critically this is NOT the same as reading the fixtures from the WORKING TREE: those
+ * are whatever the PR author regenerated, so comparing against them would be vacuous
+ * (current vs. the author's own regeneration). Reading them at `origin/next` is what
+ * makes the comparison a real differential against upstream state.
+ *
+ * Phase 4 (#2724) deletes the fixtures, at which point `resolveBaseline`'s cache path
+ * (already implemented and tested in emitted-baseline.cjs) becomes the source. That
+ * swap is the only change Phase 4 needs here.
+ *
+ * The CURRENT side is built for real — 19 installer spawns via the same
+ * `runMinimalInstall` + `buildParityManifest` the golden harness uses. It is the
+ * expensive half on purpose: if a PR forgot to regenerate, current-real differs from
+ * next's recorded state and the attribution actually runs, which is the whole point.
+ */
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+
+const { cleanup, runNpm } = require('../helpers.cjs');
+const {
+  MANIFEST_FAMILIES,
+  MINIMUM_MANIFEST_FAMILIES,
+  runMinimalInstall,
+  buildParityManifest,
+  extraEmitRootsFor,
+  PKG_VERSION,
+} = require('./install-shared.cjs');
+const { ACK_TRAILER_HASH, ACK_TRAILER_GROWTH, parseAckTrailers } = require('./emitted-diff.cjs');
+const { runGit, OUTCOME } = require('./process-seam.cjs');
+const { releasePipelinePrKind, RELEASE_PIPELINE_PR_KIND } = require('../../scripts/release-pipeline-pr.cjs');
+const { escapeRegex } = require('../../gsd-core/bin/lib/pattern.cjs');
+
+const REPO_ROOT = path.join(__dirname, '..', '..');
+const FIXTURE_SUBDIR = 'tests/fixtures/golden-install-parity';
+
+/**
+ * Repo paths whose presence in a PR diff attributes a CHANGE TO THE FAMILY SET —
+ * a runtime being added or removed — as opposed to a change in emitted content.
+ *
+ * Deliberately NARROW: only the two surfaces that actually define the family set —
+ * `RUNTIME_META`'s home, and a runtime's capability descriptor. Every extra path here
+ * widens what silently excuses an unattributed family delta, so adjacent surfaces that
+ * merely *accompany* a runtime addition (name-policy, capability registry) are left out
+ * on purpose. A PR that adds a runtime necessarily touches one of these two.
+ *
+ * Deliberately path-based rather than diff-hunk-parsing: asserting that a diff adds a
+ * specific `RUNTIME_META` key would be a source-grep test, which this repo prohibits.
+ * The residual — a PR touching one of these for an unrelated reason may permit an
+ * otherwise-unexplained family delta — is recorded in the ADR-2719 risk register and is
+ * one class weaker than the false-attribution risk already accepted there.
+ */
+const REGISTRY_SIGNAL_PATHS = [
+  'tests/helpers/install-shared.cjs',
+];
+
+/**
+ * A capability descriptor: `capabilities/<runtime>/capability.json`, exactly one segment deep.
+ *
+ * Anchored, with `[^/]+` for the runtime segment. A prefix+suffix pair is NOT equivalent and
+ * was wrong: `capabilities/capability.json` satisfies both `startsWith('capabilities/')` and
+ * `endsWith('/capability.json')` with no runtime segment at all, and
+ * `capabilities/a/b/capability.json` satisfies them at the wrong depth. Both would have
+ * excused an unattributed family delta.
+ */
+const REGISTRY_SIGNAL_PATTERN = /^capabilities\/[^/]+\/capability\.json$/;
+
+/**
+ * Reason codes for family reconciliation.
+ *
+ * Frozen and asserted as a set, so adding a code is a coordinated three-part change
+ * (enum, emitter, the test that locks the key list). Tests assert on these codes, never
+ * on rendered prose — the repo prohibits raw text matching on produced output.
+ */
+const FAMILY_REASON = Object.freeze({
+  BELOW_FLOOR: 'below_floor',
+  FIXTURE_WITHOUT_RUNTIME: 'fixture_without_runtime',
+  RUNTIME_WITHOUT_FIXTURE: 'runtime_without_fixture',
+  ADDED_UNATTRIBUTED: 'added_unattributed',
+  DROPPED_UNATTRIBUTED: 'dropped_unattributed',
+  MISSING_CLAUDE_LOCAL: 'missing_claude_local',
+  BASELINE_UNUSABLE: 'baseline_unusable',
+  CURRENT_UNUSABLE: 'current_unusable',
+  DERIVED_UNUSABLE: 'derived_unusable',
+  FIXTURES_UNUSABLE: 'fixtures_unusable',
+  BAD_CHANGED_PATHS: 'bad_changed_paths',
+});
+
+/** Path separators normalize UNCONDITIONALLY — backslash paths arrive on Linux too. */
+function toPosix(p) {
+  return String(p).replace(/\\/g, '/');
+}
+
+/** True when `changedPaths` plausibly alters the runtime registry. */
+function touchesRuntimeRegistry(changedPaths) {
+  return changedPaths.some((raw) => {
+    const p = toPosix(raw);
+    return REGISTRY_SIGNAL_PATHS.includes(p) || REGISTRY_SIGNAL_PATTERN.test(p);
+  });
+}
+
+/**
+ * Reconcile the emitted manifest FAMILY SET across the three independent signals.
+ *
+ * ── Why this is not a count ──────────────────────────────────────────────────
+ * #2723 shipped a single literal (`EXPECTED_MANIFEST_COUNT = 19`) asserted against both
+ * the baseline (built at the base ref) and the current tree (built at PR HEAD). Those
+ * two legitimately differ by one family whenever a PR adds or removes a runtime, so no
+ * value of that literal could satisfy both: 19 rejected the current side, 20 rejected
+ * the baseline side. Every PR adding a runtime was hard-blocked.
+ *
+ * Equally important, a count cannot see a MEMBERSHIP SWAP — add one family and remove
+ * another and the totals still match while both changes go unexamined. The contract is
+ * therefore set-based in both directions.
+ *
+ * ── The three signals ────────────────────────────────────────────────────────
+ *   derived   what the runtime registry says this tree emits   (MANIFEST_FAMILIES)
+ *   fixtures  what this tree has recorded                      (the committed glob)
+ *   baseline  what existed before this PR                      (families at the base ref)
+ *
+ * derived-vs-fixtures catches drift on a single tree; baseline-vs-current catches an
+ * unexplained change to the set; and the floor catches the case neither can — a universe
+ * that shrank uniformly, which a same-count self-check passes vacuously.
+ *
+ * Pure and IO-free by construction: the real-tree caller skips wherever no base ref
+ * exists (the gsd-test runner shallow-clones, so `origin/*` is absent), which would make
+ * a regression written at that altitude silently skip instead of proving anything.
+ *
+ * @param {object} o
+ * @param {Array<{name:string}>} o.derived     families the registry implies
+ * @param {string[]}             o.fixtures    family names recorded on this tree
+ * @param {object|null}          o.baseline    manifests at the base ref (keyed by family)
+ * @param {object|null}          o.current     manifests at PR HEAD (keyed by family)
+ * @param {string[]}             o.changedPaths repo-relative paths this PR changed
+ * @param {number}               [o.minimum]   absolute floor
+ * @returns {{ok: boolean, errors: Array<{code: string, family?: string}>}}
+ */
+function reconcileFamilies({
+  derived,
+  fixtures,
+  baseline,
+  current,
+  changedPaths,
+  minimum = MINIMUM_MANIFEST_FAMILIES,
+} = {}) {
+  const errors = [];
+  const add = (code, family) => errors.push(family ? { code, family } : { code });
+
+  // Hostile-input gates first, and EVERY input gets one. Each returns an explicit code —
+  // never a quiet ok (indistinguishable from "the tree is clean" for a gate) and never an
+  // unhandled TypeError, which would read as an infrastructure fault rather than a verdict.
+  if (!Array.isArray(changedPaths)) {
+    add(FAMILY_REASON.BAD_CHANGED_PATHS);
+    return { ok: false, errors };
+  }
+  if (!Array.isArray(derived) || derived.some((f) => !f || typeof f.name !== 'string')) {
+    add(FAMILY_REASON.DERIVED_UNUSABLE);
+    return { ok: false, errors };
+  }
+  if (!Array.isArray(fixtures) || fixtures.some((n) => typeof n !== 'string')) {
+    add(FAMILY_REASON.FIXTURES_UNUSABLE);
+    return { ok: false, errors };
+  }
+  if (baseline === null || baseline === undefined || typeof baseline !== 'object' || Array.isArray(baseline)) {
+    add(FAMILY_REASON.BASELINE_UNUSABLE);
+    return { ok: false, errors };
+  }
+  if (current === null || current === undefined || typeof current !== 'object' || Array.isArray(current)) {
+    add(FAMILY_REASON.CURRENT_UNUSABLE);
+    return { ok: false, errors };
+  }
+
+  const derivedNames = new Set(derived.map((f) => f.name));
+  const fixtureNames = new Set(fixtures);
+  const baselineNames = new Set(Object.keys(baseline));
+  const currentNames = new Set(Object.keys(current));
+
+  // The floor. Independent of every derivation, so a uniformly shrunken universe cannot
+  // satisfy it by moving both sides together.
+  if (derivedNames.size < minimum) add(FAMILY_REASON.BELOW_FLOOR);
+
+  // Single-tree drift: the registry and the recorded fixtures must describe one world.
+  for (const name of fixtureNames) {
+    if (!derivedNames.has(name)) add(FAMILY_REASON.FIXTURE_WITHOUT_RUNTIME, name);
+  }
+  for (const name of derivedNames) {
+    if (!fixtureNames.has(name)) add(FAMILY_REASON.RUNTIME_WITHOUT_FIXTURE, name);
+  }
+
+  // #2086: claude's local-scope layout is a family in its own right and was once dropped
+  // from both sides at once. Pinned by name on both, never inferred from a total.
+  if (!currentNames.has('claude-local')) add(FAMILY_REASON.MISSING_CLAUDE_LOCAL, 'claude-local');
+  if (!baselineNames.has('claude-local')) add(FAMILY_REASON.MISSING_CLAUDE_LOCAL, 'claude-local');
+
+  // Cross-tree set difference, both directions, with ONE permission path: the PR
+  // plausibly touched the runtime registry. Symmetric on purpose — an ack-style bypass on
+  // only one side would make removals easier to wave through than additions, and the
+  // drift-ack file exists for unattributable emitted-PATH deltas, not for family churn.
+  const attributed = touchesRuntimeRegistry(changedPaths);
+
+  if (!attributed) {
+    for (const name of currentNames) {
+      if (!baselineNames.has(name)) add(FAMILY_REASON.ADDED_UNATTRIBUTED, name);
+    }
+    for (const name of baselineNames) {
+      if (!currentNames.has(name)) add(FAMILY_REASON.DROPPED_UNATTRIBUTED, name);
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/** Bounded git invocation. CLAUDE.md → KNOWN DEFECTS: every git subprocess needs a
+ *  timeout (5-30s); an unbounded execFileSync is an indefinite hang, and it is how
+ *  macOS CI silently stops reporting. */
+const GIT_TIMEOUT_MS = 30_000;
+
+/**
+ * Prepend `-c safe.directory=<dir>` to a git argv.
+ *
+ * The remote test-runner container mounts the repository at a path owned by a
+ * different uid than the process running the suite; git's dubious-ownership
+ * protection then refuses EVERY operation there with "detected dubious ownership"
+ * (#2767 — surfaced when a previously-always-skipping regression test started
+ * actually executing in that container and its very first `git rev-parse HEAD`
+ * failed closed). GitHub Actions never hits this because `actions/checkout`
+ * registers the workspace as a safe directory automatically; this runner's
+ * container does not. `buildBaselineAtRef` is the PRODUCTION build-fallback path
+ * the sole remaining emitted gate depends on (`resolveBaseline`'s in-job-build leg,
+ * ADR-2719 §5) — not just a test helper — so the fix belongs here, not papered
+ * over by skipping the test that found it.
+ *
+ * Declares the SPECIFIC resolved directory each call site already operates on —
+ * never the `*` wildcard, which would mark every repository on the machine safe —
+ * so this cannot broaden trust beyond the one path the caller already intends to
+ * touch. Every git call in this module (and its production/test callers) passes
+ * through here so the fix cannot silently drift per call site.
+ */
+function safeDirArgs(dir) {
+  return ['-c', `safe.directory=${path.resolve(dir)}`];
+}
+
+function git(args, { cwd = REPO_ROOT } = {}) {
+  return execFileSync('git', [...safeDirArgs(cwd), ...args], {
+    cwd,
+    encoding: 'utf8',
+    timeout: GIT_TIMEOUT_MS,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+/**
+ * Repo paths the PR changed, via the three-dot form so the comparison is against the
+ * merge base rather than the tip of `base`.
+ *
+ * A git failure THROWS. It must never degrade to an empty array: reading "git broke" as
+ * "nothing changed" would make every moved hash unattributable and produce a failure
+ * storm that reads exactly like a real finding.
+ */
+function resolveChangedPaths(base = 'origin/next', { cwd = REPO_ROOT } = {}) {
+  let out;
+  try {
+    out = git(['diff', '--name-only', `${base}...HEAD`], { cwd });
+  } catch (err) {
+    throw new Error(
+      `emitted-attribution: could not resolve changed paths from "${base}...HEAD": ${err.message}. ` +
+      'This is a hard error on purpose — treating it as "no changes" would mark every ' +
+      'moved emitted path unattributable.',
+    );
+  }
+  return out.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
+/** Resolve `base` to a 40-hex sha, for the baseline cache-key discipline (ADR §5). */
+function resolveBaseSha(base = 'origin/next') {
+  return git(['rev-parse', base]).trim();
+}
+
+/**
+ * Base-ref candidates, most-specific first.
+ *
+ * The differential needs a ref for `next`, and that ref is NOT universally present:
+ *   - the gsd-test runner shallow-clones and merges base+head, so no `origin/*`
+ *     remote-tracking refs exist in the container (verified: `git rev-parse
+ *     origin/next` fails there, which is what turned this test red on its first run);
+ *   - GitHub Actions' checkout does not create remote-tracking branches for OTHER
+ *     branches by default, which is exactly why `changeset-required.yml` carries an
+ *     explicit `git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"` step.
+ *
+ * `GSD_EMITTED_BASE` lets a lane name the ref (or sha) directly. `GITHUB_BASE_REF` is
+ * set by Actions on pull_request events. Without either, prefer upstream's `next`
+ * over a fork's potentially stale `origin/next`, then the local `next` branch.
+ */
+function baseRefCandidates(env = process.env) {
+  const candidates = [];
+  if (env.GSD_EMITTED_BASE) candidates.push(env.GSD_EMITTED_BASE);
+  if (env.GITHUB_BASE_REF) {
+    candidates.push(`origin/${env.GITHUB_BASE_REF}`, env.GITHUB_BASE_REF);
+  }
+  candidates.push('upstream/next', 'origin/next', 'next');
+  return [...new Set(candidates)];
+}
+
+/**
+ * First candidate base ref that actually resolves, or null when none do.
+ *
+ * Returning null is NOT a pass — the caller turns it into an explicit `t.skip()` with
+ * the full candidate list in the message, so an environment where the gate did not run
+ * says so out loud. A bare `return` there would be a PASS (ADR-2719 §6), and a hard
+ * failure would make the suite permanently red in the gsd-test container, where no
+ * base ref can exist by construction.
+ */
+function resolveBase(env = process.env, { cwd = REPO_ROOT } = {}) {
+  for (const candidate of baseRefCandidates(env)) {
+    if (candidate.startsWith('-')) continue; // never let an env value reach git as an option
+    try {
+      const sha = git(['rev-parse', '--verify', `${candidate}^{commit}`], { cwd }).trim();
+      if (/^[0-9a-f]{40}$/.test(sha)) return { ref: candidate, sha };
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * True iff the running pull request is a release-merge PR (`release/X.Y.0` or
+ * `hotfix/X.Y.Z` -> `main`, same repository), classified by `releasePipelinePrKind` from
+ * the Actions environment (#5902).
+ *
+ * `sameRepo` comes from the event payload's `pull_request.head.repo.full_name` compared
+ * case-insensitively with `GITHUB_REPOSITORY`; a missing, unreadable or malformed payload
+ * is `false`, so the PR is never classified as a release-merge PR on guesswork.
+ *
+ * @param {object} [env] Actions environment.
+ * @param {object} [options]
+ * @param {function} [options.readFile] `(path) => string` seam for the event payload.
+ * @returns {boolean}
+ */
+function isReleaseMergePr(env = process.env, { readFile = (p) => fs.readFileSync(p, 'utf8') } = {}) {
+  let sameRepo = false;
+  try {
+    if (env.GITHUB_EVENT_PATH && env.GITHUB_REPOSITORY) {
+      const payload = JSON.parse(readFile(env.GITHUB_EVENT_PATH));
+      const headRepo = payload && payload.pull_request && payload.pull_request.head
+        && payload.pull_request.head.repo && payload.pull_request.head.repo.full_name;
+      sameRepo = typeof headRepo === 'string'
+        && headRepo.toLowerCase() === String(env.GITHUB_REPOSITORY).toLowerCase();
+    }
+  } catch { sameRepo = false; }
+  return releasePipelinePrKind({
+    headRef: env.GITHUB_HEAD_REF,
+    baseRef: env.GITHUB_BASE_REF,
+    sameRepo,
+  }) === RELEASE_PIPELINE_PR_KIND.RELEASE_MERGE;
+}
+
+/** Refs a release-merge PR tries, in order, to find `next`. */
+const RELEASE_MERGE_NEXT_CANDIDATES = Object.freeze(['origin/next', 'upstream/next', 'next']);
+
+/** First of RELEASE_MERGE_NEXT_CANDIDATES that resolves, or null. */
+function resolveNextRef({ cwd = REPO_ROOT } = {}) {
+  for (const candidate of RELEASE_MERGE_NEXT_CANDIDATES) {
+    try {
+      const sha = git(['rev-parse', '--verify', `${candidate}^{commit}`], { cwd }).trim();
+      if (/^[0-9a-f]{40}$/.test(sha)) return { ref: candidate, sha };
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+/**
+ * The commit the differential gate measures FROM: the merge-base of the resolved base
+ * ref and HEAD, alongside the base tip it was derived from.
+ *
+ * The baseline manifests, the changed-path range (`resolveChangedPaths`'s three-dot
+ * diff) and the ack-trailer range (`readAckTrailers`) must all start at ONE commit, or
+ * a change that landed only on the base side after HEAD forked shows up in
+ * baseline-vs-current while no path in `merge-base..HEAD` explains it (#5008). That is
+ * exactly what `release.yml`'s finalize lane hit: it tests `release/X.Y.Z` as is (never
+ * merged onto `next`), `next` gained #4937 between `create` and `finalize`, and a
+ * baseline built at the `next` TIP attributed that merge to the release branch.
+ *
+ * Ordinary PR lanes merge the tree onto `pull_request.base.sha` first, so there the
+ * merge-base IS the base tip and the cache key (`emitted-baseline-<base.sha>`) still hits.
+ * A release-merge PR (`release/X.Y.0` or `hotfix/X.Y.Z` -> `main`, #5902) is the exception:
+ * its base is the fork point on `next` (`origin/next`, `upstream/next`, `next`; first that
+ * resolves), `GSD_EMITTED_BASE`/`GITHUB_BASE_REF` are ignored, and that sha is not
+ * `base.sha`, so the `emitted-baseline-<base.sha>` cache key misses and the baseline is
+ * built in-job.
+ *
+ * Null when no base ref resolves (the caller's explicit-skip path, same as
+ * `resolveBase`). A merge-base failure once a base DOES resolve THROWS: the three-dot
+ * diff needs the same commit, so a silent fallback to the tip would reintroduce the
+ * mismatch this exists to close.
+ *
+ * @param {object} [env] base-ref environment overrides.
+ * @param {object} [options] resolution and reporting options.
+ * @param {string} [options.cwd] repository to resolve against.
+ * @param {function} [options.diagnostic] receives base context before any checks fail or skip.
+ * @param {function} [options.readFile] `(path) => string` seam for the Actions event payload
+ *   (`GITHUB_EVENT_PATH`) read when classifying a release-merge PR; defaults to `fs.readFileSync`.
+ * @returns {{ ref: string, tipSha: string, sha: string } | null} `sha` is the merge-base.
+ */
+function resolveAttributionBase(env = process.env, { cwd = REPO_ROOT, diagnostic, readFile } = {}) {
+  // #5902: a release-merge PR targets `main`, whose base would span the whole release
+  // cycle already checked on `next`. Measure from the release's fork point on `next`.
+  const releaseMerge = isReleaseMergePr(env, { readFile });
+  const resolved = releaseMerge ? resolveNextRef({ cwd }) : resolveBase(env, { cwd });
+  if (releaseMerge && diagnostic) {
+    diagnostic(
+      `emitted-attribution base chosen from next (${resolved ? resolved.ref : 'none'}) because this is a ` +
+      'release-merge PR (release/X.Y.0 or hotfix/X.Y.Z -> main); GSD_EMITTED_BASE is ignored.',
+    );
+  }
+  if (diagnostic) {
+    diagnostic(
+      `emitted-attribution resolved base: ${resolved ? `${resolved.ref}@${resolved.sha}` : 'none'}; ` +
+      (releaseMerge ? '' : 'set GSD_EMITTED_BASE=<ref|sha> to override. ') + 'Tried: ' +
+      (releaseMerge ? RELEASE_MERGE_NEXT_CANDIDATES : baseRefCandidates(env)).join(', '),
+    );
+  }
+  if (!resolved) return null;
+  let sha;
+  try {
+    sha = git(['merge-base', resolved.sha, 'HEAD'], { cwd }).trim();
+  } catch (err) {
+    throw new Error(
+      `emitted-attribution: could not resolve the merge-base of "${resolved.ref}" and HEAD: ${err.message}. ` +
+      'This is a hard error on purpose — measuring the baseline at the base tip instead ' +
+      'would attribute base-only merges to this tree.',
+    );
+  }
+  if (!/^[0-9a-f]{40}$/.test(sha)) {
+    throw new Error(`emitted-attribution: merge-base of "${resolved.ref}" and HEAD is not a 40-hex sha: ${JSON.stringify(sha)}`);
+  }
+  return { ref: resolved.ref, tipSha: resolved.sha, sha };
+}
+
+/**
+ * Family names present in the fixture directory AT `base`.
+ *
+ * Enumerated from the ref itself, NOT from `MANIFEST_FAMILIES` — that constant is
+ * imported at module load and therefore describes PR HEAD's registry. Deriving the
+ * baseline from it makes a REMOVED runtime invisible: the name is already gone from the
+ * current registry, so the loop never asks the base ref for it, `baseline` silently omits
+ * a family that genuinely existed, and the dropped-family check can never fire. Asking
+ * the ref what it actually contains is the only way the "before" side is really "before".
+ *
+ * NOT called by the real-tree test's production path as of #2724 (ADR-2719 Phase 4) —
+ * `buildBaselineAtRef` + `resolveBaseline()` replaced it, since the fixture directory
+ * this reads no longer exists at any ref from the cutover commit forward. Kept
+ * (alongside `baselineManifestsAtRef`/`baselineSizesAtRef` below) because it still
+ * answers a real question for a REF THAT PREDATES THE CUTOVER — bisecting into the
+ * dual-run window (#2723) or earlier — and its own regression test below pins a real
+ * property (the baseline must reflect the ref, not the current registry) that would
+ * otherwise go untested.
+ */
+function baselineFamilyNamesAtRef(base, { cwd = REPO_ROOT } = {}) {
+  let out;
+  try {
+    out = git(['ls-tree', '--name-only', base, `${FIXTURE_SUBDIR}/`], { cwd });
+  } catch {
+    return []; // fixtures absent at that ref (e.g. after Phase 4's cutover)
+  }
+  return out
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith('.json'))
+    .map((line) => line.slice(line.lastIndexOf('/') + 1).replace(/\.json$/, ''))
+    // These names become object keys below. They now come from git output rather than a
+    // trusted constant, so a fixture committed as `__proto__.json` would turn
+    // `manifests[name] = parsed` into a prototype write. Compared inline (not via a Set)
+    // because that is the form the prototype-pollution analysis recognizes.
+    .filter((name) => name !== '__proto__' && name !== 'constructor' && name !== 'prototype');
+}
+
+/**
+ * Emitted manifest set at `base`, read from the committed fixtures at that ref.
+ * Returns null when the fixtures are absent at `base` (i.e. after Phase 4's cutover),
+ * which is the signal to fall back to `resolveBaseline`'s cache path.
+ */
+function baselineManifestsAtRef(base = 'origin/next') {
+  const manifests = {};
+  let found = 0;
+  for (const name of baselineFamilyNamesAtRef(base)) {
+    let raw;
+    try {
+      raw = git(['show', `${base}:${FIXTURE_SUBDIR}/${name}.json`]);
+    } catch {
+      continue; // absent at that ref
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      throw new Error(`emitted-attribution: ${base}:${FIXTURE_SUBDIR}/${name}.json is not valid JSON: ${err.message}`);
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`emitted-attribution: ${base}:${FIXTURE_SUBDIR}/${name}.json must be an object of path->hash`);
+    }
+    manifests[name] = parsed;
+    found++;
+  }
+  return found === 0 ? null : manifests;
+}
+
+/**
+ * Build the baseline artifact at `ref` FOR REAL — a throwaway `git worktree` checked
+ * out at `ref`, MEASURED by `cwd`'s (the calling checkout's) OWN
+ * `scripts/gen-emitted-baseline.cjs` (#2724/#2767, ADR-2719 §5's "in-job build at
+ * origin/next" fallback).
+ *
+ * ── Why the generator runs from `cwd`, not from the worktree ─────────────────────
+ * `scripts/gen-emitted-baseline.cjs` was ADDED by the same PR that deleted the golden
+ * fixtures this fallback used to read instead (#2724). A base ref that predates that PR
+ * — which is every `next` this fallback is ever asked to measure, since the fallback
+ * only runs on a cache miss for a ref that has not been through the publish job yet —
+ * therefore never has the script at `<worktreeDir>/scripts/gen-emitted-baseline.cjs`,
+ * and invoking it there fails closed with `Cannot find module` on every single call: the
+ * fallback could never bootstrap. Running `cwd`'s copy instead, with `--dir worktreeDir`
+ * telling it WHICH tree's installer to measure, isn't merely the workaround for that —
+ * it is the more correct differential semantics regardless: a diff needs ONE measurement
+ * schema applied to BOTH sides, or the sides stop being comparable the moment that
+ * schema evolves (a new exclusion rule, a new manifest family) between the two commits.
+ * Letting each side measure itself with its own, potentially different, version of the
+ * script would silently reintroduce exactly that incomparability.
+ *
+ * This is the slow path, used only on a `resolveBaseline()` cache miss. The worktree
+ * needs no `npm ci`: `bin/install.js` and the `tests/helpers/*.cjs` real-tree shells are
+ * all Node-builtins-only (CONTRIBUTING.md's "No external dependencies in core"). It DOES
+ * need `npm run build:lib` run there first, though — `tests/helpers/install-shared.cjs`
+ * requires the TSC-COMPILED `gsd-core/bin/lib/runtime-artifact-layout.cjs`, which is
+ * gitignored, not committed, and therefore absent from a bare worktree checkout, and
+ * `<worktreeDir>/bin/install.js` (spawned BY `cwd`'s generator via `currentManifests`'s
+ * `repoRoot` override) needs its own compiled copy alongside it, not `cwd`'s. `node_modules`
+ * is symlinked in from the calling checkout (never copied — `npm ci` inside every
+ * fallback build would make an already-slow path far slower) so `tsc` is available
+ * without a second install; the worktree's OWN `src/*.cts` and `tsconfig.build.json`
+ * are what gets compiled, so the MEASURED installer reflects `ref`, not `cwd`'s tree —
+ * only the measurement CODE (the generator, install-shared.cjs, emitted-runtime.cjs)
+ * comes from `cwd`.
+ *
+ * Every subprocess is bounded. The worktree is always removed, success or failure —
+ * a leaked worktree would poison `git worktree list` for every subsequent run in the
+ * same checkout (CI runners reuse the same clone across jobs in some configurations).
+ *
+ * @param {string} ref     the ref/sha to build at (e.g. `origin/next`, a 40-hex sha)
+ * @param {object} [o]
+ * @param {string} [o.cwd] repo to run `git worktree` from AND whose generator measures it
+ * @returns {object} the parsed baseline artifact ({version, sha, manifests, sizes})
+ */
+const WORKTREE_TIMEOUT_MS = 60_000;
+const BUILD_LIB_TIMEOUT_MS = 180_000;
+// 360s for the generator step. NOT the 600000ms `local/no-unbounded-spawn`
+// ceiling: `scripts/run-tests.cjs:973` bounds the WHOLE chunk at 600000ms, so a
+// step bound equal to it loses the race — the chunk is killed first and the
+// failure arrives as an opaque "no failed step" kill instead of the per-step
+// message below. The bounds must escalate inward-out, and
+// `emitted-runtime-bounds` in tests/emitted-attribution.test.cjs locks that.
+//
+// Measured for this step: ~22s idle in a container, ~142s with 8 CPU burners on
+// 8 cores, 91.6s and 115.8s in the run that passed, and 300.1s in the run that
+// timed out (censored — its real need is unknown). 360s is ~3x the passing
+// observation and 20% above the censored one, while leaving 240s of chunk
+// headroom for every other file sharing the chunk.
+//
+// The old 300s sat INSIDE that variance band. Under gsd-test this slow path runs
+// on every verification, because the on-disk baseline cache is restored by
+// actions/cache keyed on github.event.pull_request.base.sha — a key that exists
+// only inside GitHub Actions. The real remedy is making that cache reachable from
+// the remote runner so the in-job build returns to being the rare fallback
+// ADR-2719 §5 describes; that is a gsd-test-runner change, not one this repo can
+// make.
+const BUILD_TIMEOUT_MS = 360_000;
+// Mirrors `scripts/run-tests.cjs:973`'s default. Duplicated deliberately and
+// narrowly: the bounds here must be checkable against it, and the alternative is
+// reading that script's source, which `local/no-source-grep` bans. The lock test
+// names this as the drift risk.
+const CHUNK_TIMEOUT_CEILING_MS = 600_000;
+
+function buildBaselineAtRef(ref, { cwd = REPO_ROOT } = {}) {
+  const worktreeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-emitted-baseline-wt-'));
+  // mkdtempSync already created the directory; `git worktree add` requires the
+  // target to not exist (or be empty) — remove it and let git recreate it.
+  fs.rmdirSync(worktreeDir);
+  const outFile = path.join(os.tmpdir(), `gsd-emitted-baseline-out-${crypto.randomBytes(8).toString('hex')}.json`);
+
+  // Per-step timings, carried into the thrown error. A bare "spawnSync ETIMEDOUT"
+  // names neither the step nor its elapsed time, which is exactly the information
+  // needed to tell a slow machine from a hung step — and the failure message is
+  // the only channel that survives into the remote runner's failures.json.
+  const timings = [];
+  const timed = (step, fn) => {
+    const started = Date.now();
+    try {
+      const value = fn();
+      timings.push(`${step}=${((Date.now() - started) / 1000).toFixed(1)}s`);
+      return value;
+    } catch (err) {
+      const elapsed = ((Date.now() - started) / 1000).toFixed(1);
+      timings.push(`${step}=FAILED@${elapsed}s`);
+      const partial = [
+        err && err.stdout ? `stdout tail: ${String(err.stdout).trim().slice(-400)}` : '',
+        err && err.stderr ? `stderr tail: ${String(err.stderr).trim().slice(-400)}` : '',
+      ].filter(Boolean).join('\n  ');
+      err.message =
+        `${step} failed after ${elapsed}s (bounds: worktree ${WORKTREE_TIMEOUT_MS}ms, ` +
+        `build:lib ${BUILD_LIB_TIMEOUT_MS}ms, generator ${BUILD_TIMEOUT_MS}ms). ` +
+        `Step timings: ${timings.join(' ')}. ${err.message}` +
+        (partial ? `\n  ${partial}` : '');
+      throw err;
+    }
+  };
+
+  try {
+    timed('git-worktree-add', () =>
+      execFileSync('git', [...safeDirArgs(cwd), 'worktree', 'add', '--detach', worktreeDir, ref], {
+        cwd, encoding: 'utf8', timeout: WORKTREE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'],
+      }));
+
+    const sharedNodeModules = path.join(cwd, 'node_modules');
+    if (fs.existsSync(sharedNodeModules)) {
+      fs.symlinkSync(sharedNodeModules, path.join(worktreeDir, 'node_modules'), 'dir');
+    }
+
+    timed('npm-run-build-lib', () =>
+      runNpm(['run', 'build:lib'], {
+        cwd: worktreeDir, timeout: BUILD_LIB_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'],
+      }));
+
+    // Run `cwd`'s OWN generator (not the worktree's — see the function doc for why),
+    // pointed at the worktree as the tree to measure.
+    timed('gen-emitted-baseline', () =>
+      execFileSync(
+        process.execPath,
+        [path.join(cwd, 'scripts', 'gen-emitted-baseline.cjs'), '--dir', worktreeDir, '--out', outFile],
+        { cwd, encoding: 'utf8', timeout: BUILD_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'] },
+      ));
+
+    return timed('read-artifact', () => JSON.parse(fs.readFileSync(outFile, 'utf8')));
+  } finally {
+    try {
+      execFileSync('git', [...safeDirArgs(cwd), 'worktree', 'remove', '--force', worktreeDir], {
+        cwd, encoding: 'utf8', timeout: WORKTREE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch {
+      // Best-effort: the checkout may already be gone (e.g. the build step failed
+      // before writing anything). Prune stale admin data rather than leaving it.
+      try {
+        execFileSync('git', [...safeDirArgs(cwd), 'worktree', 'prune'], {
+          cwd, encoding: 'utf8', timeout: WORKTREE_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch { /* best-effort cleanup; never mask the primary result/error */ }
+    }
+    // Same guarantee as the git cleanup above: an EBUSY/EPERM here must not replace
+    // whatever the `try` block was about to return or throw.
+    try {
+      fs.rmSync(outFile, { force: true });
+    } catch { /* best-effort cleanup; never mask the primary result/error */ }
+    try {
+      fs.rmSync(worktreeDir, { recursive: true, force: true });
+    } catch { /* best-effort cleanup; never mask the primary result/error */ }
+  }
+}
+
+/** Size maps at `base`, for the ratchet half. Null when absent at that ref. */
+function baselineSizesAtRef(base = 'origin/next') {
+  const sizes = {};
+  let found = 0;
+  for (const rel of ['tests/workflow-size-baseline.json', 'tests/agent-size-baseline.json']) {
+    try {
+      const parsed = JSON.parse(git(['show', `${base}:${rel}`]));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        Object.assign(sizes, parsed);
+        found++;
+      }
+    } catch { /* absent at that ref */ }
+  }
+  return found === 0 ? null : sizes;
+}
+
+/**
+ * The package version of the tree whose emitted output is about to be measured.
+ *
+ * `bin/install.js` bakes `{{GSD_VERSION}}` -> `pkg.version` into every emitted hook,
+ * and `buildParityManifest`'s `pkgVersion` normalization exists to collapse that stamp
+ * back to '<VERSION>' so a version bump alone never moves a hash. That normalization is
+ * only correct when `pkgVersion` matches the version of the tree that PRODUCED the
+ * content being hashed — for `repoRoot`-driven cross-tree measurement (#2767, #2891)
+ * that is NOT necessarily this checkout's own `PKG_VERSION`. This helper resolves the
+ * right version for whichever tree is actually being measured.
+ *
+ * Fails closed: a missing, unreadable, unparseable, or version-less `package.json` at
+ * `repoRoot` throws rather than silently falling back to this checkout's own version —
+ * a silent fallback here is exactly the cross-tree mis-attribution bug #2891 fixes
+ * (every emitted hook path would spuriously differ, and the differential attribution
+ * gate would blame nothing for it).
+ *
+ * @param {string} [repoRoot] - absolute path to the tree being measured. Only an
+ *   OMITTED (or explicit `undefined`) repoRoot means "this checkout" and returns this
+ *   module's own PKG_VERSION with no I/O. Any OTHER falsy value (`''`, `0`, `false`) is
+ *   NOT treated as "this checkout" — it is a caller-side bug (e.g. an unresolved path
+ *   variable) and must fail closed rather than silently measuring the wrong tree,
+ *   consistent with `currentManifests`' `installScript` gate below and with how
+ *   `buildParityManifest`'s `pkgVersion` treats an explicit-but-empty value as a caller
+ *   error rather than a fallback trigger (#2891 review FINDING 7).
+ * @returns {string} non-empty package version string.
+ */
+function measuredPackageVersion(repoRoot) {
+  if (repoRoot === undefined) return PKG_VERSION;
+  if (!repoRoot) {
+    throw new Error(
+      `measuredPackageVersion: repoRoot must be a non-empty path or omitted entirely, got ${JSON.stringify(repoRoot)}. ` +
+      'An omitted/undefined repoRoot means "this checkout"; any other falsy value is treated as a caller error.'
+    );
+  }
+
+  const pkgPath = path.join(repoRoot, 'package.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(pkgPath, 'utf8');
+  } catch (err) {
+    throw new Error(
+      `measuredPackageVersion: cannot read ${pkgPath} (${err.message}); cannot normalize ` +
+      'emitted version for the measured tree; a wrong version silently mis-attributes every hook.'
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `measuredPackageVersion: ${pkgPath} is not valid JSON (${err.message}); cannot normalize ` +
+      'emitted version for the measured tree; a wrong version silently mis-attributes every hook.'
+    );
+  }
+
+  const version = parsed && parsed.version;
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new Error(
+      `measuredPackageVersion: ${pkgPath} has no non-empty string "version" field; cannot ` +
+      'normalize emitted version for the measured tree; a wrong version silently mis-attributes every hook.'
+    );
+  }
+  return version;
+}
+
+/**
+ * Build the CURRENT emitted manifest set for real — one installer spawn per runtime.
+ * This is the expensive, honest half: it reflects what the tree actually emits now,
+ * not what the author regenerated into a fixture.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.repoRoot] - Measure a DIFFERENT checkout's installer instead of
+ *   this one's (#2767). When set, `<repoRoot>/bin/install.js` is spawned rather than
+ *   THIS checkout's `bin/install.js` — the measurement schema (this function, the
+ *   exclusion rules in install-shared.cjs) stays fixed at the caller's version while the
+ *   installer code being measured varies. This is what lets `gen-emitted-baseline.cjs`
+ *   apply ONE definition of "the emitted manifest" to two different trees (PR HEAD and a
+ *   base-ref worktree) so the two sides stay comparable even if the definition itself
+ *   evolves — running the OTHER tree's own (older, or absent) copy of this function would
+ *   defeat that.
+ *
+ *   The version normalized into '<VERSION>' inside each manifest entry is resolved via
+ *   `measuredPackageVersion(repoRoot)` — i.e. `<repoRoot>/package.json`'s own version,
+ *   NOT this checkout's — since `<repoRoot>/bin/install.js` is what stamped the emitted
+ *   content in the first place (#2891).
+ */
+function currentManifests({ repoRoot } = {}) {
+  // Gated the same way `measuredPackageVersion` gates its own repoRoot below: only an
+  // omitted/`undefined` repoRoot means "this checkout" (installScript stays the
+  // default). Any other falsy value falls through to `measuredPackageVersion`, which
+  // throws — this line never gets a chance to diverge from that same rule (#2891
+  // review FINDING 7).
+  const installScript = repoRoot !== undefined ? path.join(repoRoot, 'bin', 'install.js') : undefined;
+  const pkgVersion = measuredPackageVersion(repoRoot);
+  const manifests = {};
+  for (const { name, runtime, scope } of MANIFEST_FAMILIES) {
+    const { configDir, root } = runMinimalInstall({ runtime, scope, installScript });
+    try {
+      manifests[name] = buildParityManifest(configDir, root, {
+        pkgVersion,
+        // #3738: cover home-override emit roots outside configDir (antigravity
+        // → <HOME>/.gemini/config) so the differential keeps seeing them.
+        extraEmitRoots: extraEmitRootsFor(runtime, scope, root),
+      });
+    } finally {
+      cleanup(root);
+    }
+  }
+  return manifests;
+}
+
+/**
+ * Current on-disk sizes for the workflow + agent families the ratchet covers.
+ * @param {object} [opts]
+ * @param {string} [opts.repoRoot] - Read `<repoRoot>/gsd-core/workflows` and
+ *   `<repoRoot>/agents` instead of this checkout's own (#2767) — same rationale as
+ *   `currentManifests`'s `repoRoot`.
+ */
+function currentSizes({ repoRoot = REPO_ROOT } = {}) {
+  const sizes = {};
+  for (const [dir, filter] of [
+    [path.join(repoRoot, 'gsd-core', 'workflows'), (f) => f.endsWith('.md')],
+    [path.join(repoRoot, 'agents'), (f) => f.endsWith('.md')],
+  ]) {
+    if (!fs.existsSync(dir)) continue;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !filter(entry.name)) continue;
+      sizes[entry.name] = fs.statSync(path.join(dir, entry.name)).size;
+    }
+  }
+  return sizes;
+}
+
+/**
+ * Bounded git invocation for the #3942 commit-trailer ack reader, built on the
+ * never-throws process seam (`runGit`) rather than `git()` above: `readAckTrailers` must
+ * honor a PER-CALL `timeoutMs` (row 24's hostile-timeout row), and `git()` pins
+ * `GIT_TIMEOUT_MS` at import time with no per-call override. Throws on anything but a
+ * clean exit — same "a git failure is a hard error, never an empty result" law as
+ * `resolveChangedPaths` above.
+ */
+function ackTrailerGit(args, { cwd = REPO_ROOT, timeoutMs = GIT_TIMEOUT_MS, input } = {}) {
+  const spawnOpts = { cwd, timeoutMs };
+  if (input !== undefined) spawnOpts.input = input;
+  const result = runGit([...safeDirArgs(cwd), ...args], spawnOpts);
+  if (result.outcome === OUTCOME.EXITED && result.exitCode === 0) {
+    return result.stdout;
+  }
+  throw new Error(
+    `emitted-ack-trailer: \`git ${args.join(' ')}\` failed — outcome=${result.outcome} `
+    + `exitCode=${result.exitCode} stderr=${(result.stderr || '').trim()}`,
+  );
+}
+
+// #4454 follow-on — SQUASH-MERGE BURIAL. `%(trailers:...)` (used by readAckTrailers
+// below) only recognises a trailer block that is the TRUE TERMINAL block of a commit
+// message: consecutive `Token: value` lines running to the very end, nothing after.
+// GitHub's squash-merge commit body is every constituent commit's subject+body
+// concatenated in order, followed by its OWN appended `---------` separator and
+// `Co-authored-by:` trailers. Two independent commits landing after the one carrying
+// an ack trailer — including GitHub's own appended suffix, which follows EVERY squash
+// commit unconditionally — silently bury it: git's parser (correctly, by its own
+// contract) stops at the first non-conforming line scanning backward, so it never even
+// reaches past `---------` to see the real content underneath, let alone further back
+// to an earlier bullet. Confirmed directly against a real squash commit (gsd-core
+// 78013b3b74): `%(trailers)` there returns ONLY GitHub's own two `Co-authored-by:`
+// lines — not even the last original commit's own trailer survives, only GitHub's
+// appended one.
+//
+// FIX: independently trailer-parse each squash-BULLET sub-chunk of the raw message,
+// using `git interpret-trailers --parse` (the same underlying algorithm as
+// `%(trailers:...)`, but runnable against arbitrary TEXT via stdin rather than only a
+// real commit object) — so each original commit's own terminal trailer block is found
+// on its own terms, independent of what got concatenated after it.
+//
+// SCOPED TIGHTLY to avoid reintroducing the false-positive class `%(trailers:...)` was
+// chosen to prevent (row 32 — prose that merely MENTIONS trailer syntax must stay
+// inert): this sub-chunk pass activates ONLY when the raw body contains GitHub's own
+// distinctive squash suffix marker (a blank line, 9+ hyphens alone on a line, another
+// blank line) — an ordinary, non-squash commit whose body happens to contain markdown
+// bullets never matches this and is completely unaffected. Within an activated commit,
+// each bullet chunk still goes through git's own STRICT per-chunk terminal-block
+// algorithm (via `interpret-trailers`), so a mid-chunk MENTION of trailer syntax
+// (not at that chunk's own true end) is exactly as inert as it always was — the
+// protection is now granular per original commit instead of per whole squashed message,
+// never removed.
+// Review finding (2026-09-08): a bare `.match()` against this pattern returns the
+// FIRST occurrence scanning left-to-right, but GitHub's own appended suffix is always
+// the TRUE TAIL of the message — an earlier bullet's own body legitimately using a
+// markdown horizontal rule (also `---------`-shaped) before the bullet that actually
+// carries the ack would truncate `beforeSuffix` too early, silently excluding the real
+// ack bullet from the split/parse scan below and reintroducing the exact bug this
+// function exists to fix. `findLastGithubSquashSuffixIndex` below finds the LAST match
+// instead, via a global-flag scan (an anchor-and-backtrack trick with a leading
+// `[\s\S]*` was tried and rejected: it forces the match's OWN `.index` to 0, which
+// breaks the `rawBody.slice(0, match.index)` usage pattern this function needs).
+const GITHUB_SQUASH_SUFFIX_RE = /\n\n-{9,}\n\n/g;
+const SQUASH_BULLET_SPLIT_RE = /\n\n(?=\* )/;
+
+/** Index of the START of the LAST GitHub-squash-suffix occurrence in `text`, or -1. */
+function findLastGithubSquashSuffixIndex(text) {
+  GITHUB_SQUASH_SUFFIX_RE.lastIndex = 0;
+  let last = -1;
+  let m;
+  while ((m = GITHUB_SQUASH_SUFFIX_RE.exec(text)) !== null) {
+    last = m.index;
+    // A zero-length match cannot happen for this pattern (it requires literal
+    // characters), but guard against an infinite loop defensively regardless.
+    if (m[0].length === 0) GITHUB_SQUASH_SUFFIX_RE.lastIndex += 1;
+  }
+  return last;
+}
+const ACK_TRAILER_LINE_RE = new RegExp(
+  `^(${escapeRegex(ACK_TRAILER_HASH)}|${escapeRegex(ACK_TRAILER_GROWTH)}):\\s*(.*)$`,
+);
+
+/**
+ * Recover ack trailers buried mid-message by squash-merge concatenation. Returns
+ * `{ hash: string[], growth: string[] }` of any ADDITIONAL values found beyond what the
+ * whole-message `%(trailers:...)` pass in `readAckTrailers` already sees — callers
+ * merge both into the same value lists before the final `parseAckTrailers` call, so
+ * this never needs its own dedup or its own result-shape handling.
+ *
+ * A commit whose body does not contain GitHub's squash suffix signal is not a squash
+ * commit by this heuristic and is returned untouched (empty arrays) — this is the sole
+ * gate against widening false-positive risk to ordinary commits.
+ */
+function extractSquashBuriedTrailers(rawBody, { cwd, timeoutMs }) {
+  const suffixIndex = findLastGithubSquashSuffixIndex(rawBody);
+  if (suffixIndex === -1) return { hash: [], growth: [] };
+  const beforeSuffix = rawBody.slice(0, suffixIndex);
+  const chunks = beforeSuffix.split(SQUASH_BULLET_SPLIT_RE);
+  const hash = [];
+  const growth = [];
+  for (const chunk of chunks) {
+    // A chunk with no blank-line-separated body (a bare `* subject` bullet, or the
+    // pre-first-bullet PR-title preamble) cannot carry a trailer block at all —
+    // skipping it is an optimisation, not a correctness requirement (interpret-trailers
+    // would just return nothing for it).
+    if (!chunk.trim()) continue;
+    let parsed;
+    try {
+      parsed = ackTrailerGit(['interpret-trailers', '--parse'], { cwd, timeoutMs, input: chunk });
+    } catch {
+      // A single malformed/unparseable chunk must not abort the whole scan — the
+      // existing whole-message pass and every OTHER chunk still stand. Fail this
+      // chunk closed (recover nothing from it), never the whole function.
+      continue;
+    }
+    for (const line of parsed.split('\n')) {
+      const m = ACK_TRAILER_LINE_RE.exec(line);
+      if (!m) continue;
+      if (m[1] === ACK_TRAILER_HASH) hash.push(m[2]);
+      else growth.push(m[2]);
+    }
+  }
+  return { hash, growth };
+}
+
+// #5734: `.github/workflows/release.yml` titles the release -> main merge PR
+// `chore: merge release v<version> to main`, and GitHub appends ` (#<pr>)` when it
+// squashes it. That one commit re-carries every acknowledgment its squashed commits
+// already had checked against their own diff when they landed on `next`, so in the
+// main -> next back-merge range it is history, not a declaration about that PR's own
+// diff — and two release commits that acknowledged one key with different reasons
+// would read as an ambiguous declaration. Anchored whole-subject match: a subject that
+// merely mentions a release merge is an ordinary commit and keeps its acks.
+const RELEASE_MERGE_SUBJECT_RE = /^chore: merge release v\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)? to main(?: \(#\d+\))?$/;
+
+/** True iff `subject` is the release -> main merge commit's subject. */
+function isReleaseMergeSubject(subject) {
+  return RELEASE_MERGE_SUBJECT_RE.test(String(subject).trim());
+}
+
+/**
+ * The subject of a raw `%B` body the way `%s` renders it: the first paragraph with its
+ * line breaks folded to spaces, so the `%s` pass and the `%B` pass classify one commit
+ * identically even for a wrapped subject.
+ */
+function subjectOfBody(body) {
+  return body.split('\n\n', 1)[0].replace(/\n/g, ' ');
+}
+
+// Record/field/value separators for the `git log --format` trailer extraction below.
+// ASCII control characters (RS/US/GS) so they can never collide with real trailer
+// content, following the precedent at gsd-core/workflows/ship.md:312 (`%x1f`/`%x1e` for
+// a different `%(trailers:...)` extraction in this same repo).
+const ACK_TRAILER_RECORD_SEP = '\x1e'; // between commits
+const ACK_TRAILER_FIELD_SEP = '\x1f'; // between the hash-space list and growth-space list
+const ACK_TRAILER_VALUE_SEP = '\x1d'; // between multiple values of the SAME trailer key
+
+/**
+ * Read #3942 commit-trailer acknowledgments over `<mergeBase>..<headRef>`.
+ *
+ * ── Why the merge-base is resolved here, not taken as `baseRef` verbatim ──────
+ * `changedPaths` (`resolveChangedPaths` above) is three-dot (merge-base) by construction,
+ * and 40-design.md's Correction 2 requires the trailer range to agree — otherwise a
+ * trailer could excuse a delta structurally outside the diff. Reading
+ * `<mergeBase>..<headRef>` (never `<baseRef>..<headRef>`) is what makes a trailer on the
+ * OTHER side of a fork correctly out of range (row 7/8 — structural spentness).
+ *
+ * ── Why an uncomputable range THROWS, never returns empty ─────────────────────
+ * A shallow clone (or any ref sharing no history with `headRef`) makes the merge-base
+ * uncomputable. Returning an empty result here would read as "no acks needed" — a false
+ * GREEN that silently disarms the gate. This is 40-design.md's Correction 1 (row 15/22):
+ * every failure path below throws, naming "range"/"merge-base"/"shallow".
+ *
+ * Trailer values are read with git's OWN trailer parser
+ * (`%(trailers:key=...,valueonly)`), never a regex over the message body, so a mid-body
+ * mention of the trailer syntax (row 32 — this PR's own docs teach the grammar) is
+ * correctly inert. `\r` is stripped from every value before parsing (row 27 — a CRLF
+ * commit message must parse identically to LF).
+ *
+ * @param {{baseRef: string, headRef?: string, cwd?: string, timeoutMs?: number}} opts
+ * @returns {{hash: Map<string, {reason: string}>, growth: Map<string, {reason: string}>, errors: string[]}}
+ */
+function readAckTrailers({ baseRef, headRef = 'HEAD', cwd = REPO_ROOT, timeoutMs = GIT_TIMEOUT_MS } = {}) {
+  let mergeBaseOut;
+  try {
+    mergeBaseOut = ackTrailerGit(['merge-base', baseRef, headRef], { cwd, timeoutMs });
+  } catch (err) {
+    throw new Error(
+      `emitted-ack-trailer: could not compute a merge-base range for "${baseRef}..${headRef}" `
+      + '(a bad ref, a shallow clone with no common ancestor, or another git failure): '
+      + err.message,
+    );
+  }
+  const mergeBase = mergeBaseOut.trim();
+  if (!/^[0-9a-f]{40}$/.test(mergeBase)) {
+    throw new Error(
+      `emitted-ack-trailer: git merge-base for "${baseRef}..${headRef}" returned no usable `
+      + `commit (${JSON.stringify(mergeBase)}) — the range is structurally uncomputable `
+      + '(possibly a shallow clone with no common ancestor).',
+    );
+  }
+
+  // `separator=` inside a `%(trailers:...)` placeholder is itself a PRETTY-FORMAT
+  // string, not a literal — git substitutes `%x<hex>` escapes within it (same as it
+  // does for the top-level `--format` string). The hex code alone (no `%x` prefix) is
+  // therefore emitted as its own two literal characters, never the control byte, and
+  // the `.split(ACK_TRAILER_VALUE_SEP)` below then never finds a real separator: two
+  // trailers of the SAME key on one commit collapse into a single joined value instead
+  // of splitting into separate entries (silent data loss — the exact failure class
+  // `MAX_ACK_TRAILERS` exists to prevent). Fixed by emitting the `%x` escape.
+  const ackValueSepHex = `%x${ACK_TRAILER_VALUE_SEP.codePointAt(0).toString(16).padStart(2, '0')}`;
+  // The subject leads each record (#5734) so a release -> main merge commit can be
+  // recognised and left out; see `isReleaseMergeSubject`.
+  const format =
+    `${ACK_TRAILER_RECORD_SEP}%s${ACK_TRAILER_FIELD_SEP}`
+    + `%(trailers:key=${ACK_TRAILER_HASH},valueonly,separator=${ackValueSepHex})`
+    + `${ACK_TRAILER_FIELD_SEP}%(trailers:key=${ACK_TRAILER_GROWTH},valueonly,separator=${ackValueSepHex})`;
+
+  let raw;
+  try {
+    raw = ackTrailerGit(['log', `${mergeBase}..${headRef}`, `--format=${format}`], { cwd, timeoutMs });
+  } catch (err) {
+    throw new Error(`emitted-ack-trailer: could not read commit trailers over the range: ${err.message}`);
+  }
+
+  const normalized = raw.replace(/\r/g, '');
+  const hashValues = [];
+  const growthValues = [];
+  // index 0 is the (empty) text before the FIRST record separator — every real record
+  // starts with one, by construction of the `--format` string above.
+  const records = normalized.split(ACK_TRAILER_RECORD_SEP).slice(1);
+  for (const record of records) {
+    const [subject = '', hashField = '', growthFieldRaw = ''] = record.split(ACK_TRAILER_FIELD_SEP);
+    if (isReleaseMergeSubject(subject)) continue;
+    const growthField = growthFieldRaw.replace(/\n+$/, ''); // git's own between-commit newline
+    for (const v of hashField.split(ACK_TRAILER_VALUE_SEP)) if (v !== '') hashValues.push(v);
+    for (const v of growthField.split(ACK_TRAILER_VALUE_SEP)) if (v !== '') growthValues.push(v);
+  }
+
+  // #4454 follow-on: recover any ack trailer the whole-message pass above cannot see
+  // because a squash-merge concatenated other commits' bodies after it (see
+  // extractSquashBuriedTrailers's doc comment for the full mechanism and the
+  // false-positive scoping that keeps this from widening risk on ordinary commits).
+  // A SEPARATE `%B` read (rather than reusing the format above) because the raw body
+  // is needed verbatim, including the exact blank-line/hyphen/bullet structure the
+  // squash-suffix and bullet-boundary regexes key on — `%(trailers:...)` already
+  // discards everything but the trailers themselves and cannot supply this.
+  let rawBodies;
+  try {
+    rawBodies = ackTrailerGit(
+      ['log', `${mergeBase}..${headRef}`, `--format=${ACK_TRAILER_RECORD_SEP}%B`],
+      { cwd, timeoutMs },
+    );
+  } catch (err) {
+    throw new Error(`emitted-ack-trailer: could not read commit bodies over the range: ${err.message}`);
+  }
+  const bodyRecords = rawBodies.replace(/\r/g, '').split(ACK_TRAILER_RECORD_SEP).slice(1);
+  for (const body of bodyRecords) {
+    if (isReleaseMergeSubject(subjectOfBody(body))) continue;
+    const recovered = extractSquashBuriedTrailers(body, { cwd, timeoutMs });
+    hashValues.push(...recovered.hash);
+    growthValues.push(...recovered.growth);
+  }
+
+  return parseAckTrailers({ hash: hashValues, growth: growthValues });
+}
+
+/**
+ * Pin ALL THREE "before" inputs of the differential gate to the ONE merge-base sha
+ * `resolveAttributionBase` returned (#5008): the baseline, the changed-path range
+ * (`resolveChangedPaths`), and the ack-trailer range (`readAckTrailers`) must share one
+ * origin, or a change that landed only on the base side after HEAD forked shows up in
+ * baseline-vs-current while nothing in `merge-base..HEAD` explains it — the release-lane
+ * shape #5008 fixes (see `resolveAttributionBase`'s doc comment for the full story).
+ *
+ * Passing the RESOLVED SHA to each of the three, never the ref NAME, closes the other
+ * half of that bug: a ref name re-resolves live inside each call, so a fetch landing
+ * mid-run could move the changed-path range and the ack range to a newer commit than
+ * the one the baseline was built at, even though all three started from the same
+ * `attributionBase`. A sha is inert — nothing can move what it resolves to.
+ *
+ * Every dependency is injected (`resolveBaselineFn`, `buildBaselineFn`, `readJson`) so
+ * this wiring — previously inlined and untested at the real-tree test's call site — is
+ * itself testable without a real installer spawn or a live baseline cache/build.
+ *
+ * @param {{ref: string, tipSha: string, sha: string}} attributionBase `resolveAttributionBase`'s result.
+ * @param {object} [opts]
+ * @param {string} [opts.cwd]
+ * @param {function} opts.resolveBaselineFn required: a `resolveBaseline`-shaped function, `(opts) => result`
+ * @param {function} [opts.buildBaselineFn] defaults to `buildBaselineAtRef`
+ * @param {function} [opts.readJson] passed through to `resolveBaselineFn` as its own `readJson`
+ * @returns {{resolvedBaseline: object, changedPaths: string[], ack: object}} `ack` is `readAckTrailers`'s
+ *   own return shape (`{hash, growth, errors}`).
+ */
+function resolveAttributionInputs(attributionBase, {
+  cwd = REPO_ROOT,
+  resolveBaselineFn,
+  buildBaselineFn = buildBaselineAtRef,
+  readJson,
+} = {}) {
+  if (typeof resolveBaselineFn !== 'function') {
+    throw new Error('resolveAttributionInputs: resolveBaselineFn must be supplied');
+  }
+  const resolvedBaseline = resolveBaselineFn({
+    expectedSha: attributionBase.sha,
+    readJson,
+    buildFallback: () => buildBaselineFn(attributionBase.sha, { cwd }),
+  });
+  const changedPaths = resolveChangedPaths(attributionBase.sha, { cwd });
+  const ack = readAckTrailers({ baseRef: attributionBase.sha, cwd });
+  return { resolvedBaseline, changedPaths, ack };
+}
+
+module.exports = {
+  REPO_ROOT,
+  isReleaseMergeSubject,
+  FIXTURE_SUBDIR,
+  MANIFEST_FAMILIES,
+  MINIMUM_MANIFEST_FAMILIES,
+  REGISTRY_SIGNAL_PATHS,
+  FAMILY_REASON,
+  touchesRuntimeRegistry,
+  reconcileFamilies,
+  GIT_TIMEOUT_MS,
+  safeDirArgs,
+  git,
+  resolveChangedPaths,
+  resolveBaseSha,
+  baseRefCandidates,
+  resolveBase,
+  isReleaseMergePr,
+  RELEASE_MERGE_NEXT_CANDIDATES,
+  resolveAttributionBase,
+  resolveAttributionInputs,
+  baselineFamilyNamesAtRef,
+  baselineManifestsAtRef,
+  baselineSizesAtRef,
+  buildBaselineAtRef,
+  measuredPackageVersion,
+  currentManifests,
+  currentSizes,
+  readAckTrailers,
+  WORKTREE_TIMEOUT_MS,
+  BUILD_LIB_TIMEOUT_MS,
+  BUILD_TIMEOUT_MS,
+  CHUNK_TIMEOUT_CEILING_MS,
+};

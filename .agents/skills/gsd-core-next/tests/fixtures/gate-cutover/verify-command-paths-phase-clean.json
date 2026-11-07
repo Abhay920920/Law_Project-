@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-command-paths",
+    "2"
+  ],
+  "fixture": "vp",
+  "stdout": "{\n  \"status\": \"ok\",\n  \"commands\": [\n    {\n      \"command\": \"cd web && npm test\",\n      \"status\": \"ok\",\n      \"severity\": \"none\",\n      \"reason\": null,\n      \"form\": \"cd\",\n      \"rawTarget\": \"web\",\n      \"target\": \"<TMP>/web\",\n      \"manifest\": \"package.json\",\n      \"script\": null,\n      \"sentinel\": false,\n      \"base\": \"<TMP>\",\n      \"plan\": \"02-01-PLAN.md\",\n      \"task\": \"Run web tests\"\n    }\n  ],\n  \"counts\": {\n    \"blocker\": 0,\n    \"warning\": 0,\n    \"total\": 1\n  },\n  \"readError\": null\n}",
+  "stderr": "",
+  "exitCode": 0
+}

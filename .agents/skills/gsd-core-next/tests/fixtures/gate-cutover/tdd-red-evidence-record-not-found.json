@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.tdd-red-evidence",
+    "records/absent.json"
+  ],
+  "fixture": "red",
+  "stdout": "{\n  \"passed\": false,\n  \"block\": true,\n  \"verdict\": \"INVALID_RED\",\n  \"reason\": \"unreadable_record\",\n  \"record\": \"<TMP>/records/absent.json\",\n  \"readError\": \"record not found or unreadable: <TMP>/records/absent.json\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

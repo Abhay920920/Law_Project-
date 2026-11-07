@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-verify",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT-verify.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"skipped\": false,\n  \"blocking\": false,\n  \"total\": 5,\n  \"honored\": 4,\n  \"not_honored\": [\n    {\n      \"id\": \"D-05\",\n      \"text\": \"Never reached anywhere\",\n      \"category\": \"\"\n    }\n  ],\n  \"message\": \"### Decision Coverage (warning)\\n\\n1 decision(s) not found in shipped artifacts:\\n\\n- **D-05** (uncategorized): Never reached anywhere\\n\\nThis is a soft warning - verification status is unchanged.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

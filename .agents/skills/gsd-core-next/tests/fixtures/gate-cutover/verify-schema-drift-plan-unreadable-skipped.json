@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "1"
+  ],
+  "fixture": "schema-drift",
+  "failRead": "01-schema/01-01-PLAN.md",
+  "env": {
+    "GSD_SKIP_SCHEMA_CHECK": "true"
+  },
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"schema_files\": [],\n  \"orms\": [],\n  \"unpushed_orms\": [],\n  \"message\": \"\",\n  \"skipped\": false\n}",
+  "stderr": "",
+  "exitCode": 0
+}

@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.gap-analysis-plan-post"
+  ],
+  "fixture": "gap",
+  "stdout": "",
+  "stderr": "Error: gap-analysis.plan-post requires a phase-dir argument: check gap-analysis.plan-post <phase-dir> [phase-req-ids]\n",
+  "exitCode": 1
+}

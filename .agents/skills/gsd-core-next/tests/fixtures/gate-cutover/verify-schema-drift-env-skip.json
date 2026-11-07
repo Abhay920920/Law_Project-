@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "1"
+  ],
+  "fixture": "schema-drift",
+  "env": {
+    "GSD_SKIP_SCHEMA_CHECK": "true"
+  },
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": true,\n  \"blocking\": false,\n  \"schema_files\": [\n    \"prisma/schema.prisma\"\n  ],\n  \"orms\": [\n    \"prisma\"\n  ],\n  \"unpushed_orms\": [\n    \"prisma\"\n  ],\n  \"message\": \"Schema drift detected but check was skipped (GSD_SKIP_SCHEMA_CHECK=true).\",\n  \"skipped\": true\n}",
+  "stderr": "",
+  "exitCode": 0
+}

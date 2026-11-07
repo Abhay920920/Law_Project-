@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.predicate"
+  ],
+  "fixture": "pred",
+  "stdout": "",
+  "stderr": "Error: predicate requires --predicate <json> (the gate hook check.predicate object)\n",
+  "exitCode": 1
+}

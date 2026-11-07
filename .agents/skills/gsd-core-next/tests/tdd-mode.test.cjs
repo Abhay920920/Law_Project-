@@ -1,0 +1,241 @@
+/**
+ * GSD Tools Tests — workflow.tdd_mode config key (capability-owned)
+ *
+ * Validates that the tdd_mode workflow toggle is a capability-owned config key
+ * (owned by the tdd capability). Post ADR-857 phase-6 migration, workflow.tdd_mode
+ * is no longer a central config key — it is owned by capabilities/tdd/capability.json
+ * and resolved via the capability registry's federated config layer.
+ *
+ * Requirements: #1871 / ADR-857 phase 6 (#1139)
+ */
+
+const { test, describe, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const { runGsdTools, createTempProject, createTempDir, cleanup, homeSandboxEnv, withIsolatedProcessState } = require('./helpers.cjs');
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function readConfig(tmpDir) {
+  const configPath = path.join(tmpDir, '.planning', 'config.json');
+  return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+}
+
+// ─── capability ownership ─────────────────────────────────────────────────────
+
+describe('workflow.tdd_mode capability ownership (ADR-857 phase 6)', () => {
+  test('workflow.tdd_mode is owned by the tdd capability in the registry', () => {
+    const registry = require('../gsd-core/bin/lib/capability-registry.cjs');
+    assert.strictEqual(
+      registry.configKeys['workflow.tdd_mode'],
+      'tdd',
+      'workflow.tdd_mode must be owned by the tdd capability'
+    );
+  });
+
+  test('workflow.tdd_mode is NOT in VALID_CONFIG_KEYS (no longer a central key)', () => {
+    const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config.cjs');
+    assert.ok(
+      !VALID_CONFIG_KEYS.has('workflow.tdd_mode'),
+      'workflow.tdd_mode must NOT be in central VALID_CONFIG_KEYS — it is capability-owned'
+    );
+  });
+
+  test('isCentralConfigKey returns false for workflow.tdd_mode', () => {
+    const { isCentralConfigKey } = require('../gsd-core/bin/lib/config-schema.cjs');
+    assert.strictEqual(
+      isCentralConfigKey('workflow.tdd_mode'),
+      false,
+      'workflow.tdd_mode must not be a central config key post-migration'
+    );
+  });
+
+  test('tdd capability has role:feature with plan:pre contribution and execute:post gate', () => {
+    const registry = require('../gsd-core/bin/lib/capability-registry.cjs');
+    const tdd = registry.capabilities['tdd'];
+    assert.ok(tdd, 'tdd capability must be registered');
+    assert.strictEqual(tdd.role, 'feature');
+    assert.ok(tdd.contributions && tdd.contributions.length > 0, 'tdd must have at least one contribution');
+    assert.ok(tdd.gates && tdd.gates.length > 0, 'tdd must have at least one gate');
+    const contribution = tdd.contributions[0];
+    assert.strictEqual(contribution.point, 'plan:pre');
+    assert.ok(contribution.fragment && contribution.fragment.inline.includes('<tdd_mode_active>'), 'contribution must include tdd_mode_active block');
+    const gate = tdd.gates[0];
+    assert.strictEqual(gate.point, 'execute:post');
+    assert.strictEqual(gate.blocking, false, 'execute:post gate must be advisory (non-blocking)');
+  });
+});
+
+// ─── config round-trip (set / get) ─────────────────────────────────────────
+// workflow.tdd_mode is capability-owned: config-set/config-get still work via
+// raw config.json read/write (capability-owned keys bypass the central whitelist
+// but are still persisted to config.json by config-set).
+
+describe('workflow.tdd_mode config round-trip', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Create a config file first
+    runGsdTools('config-ensure-section', tmpDir, homeSandboxEnv(tmpDir));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('config-set workflow.tdd_mode true round-trips via config-get', () => {
+    const setResult = runGsdTools('config-set workflow.tdd_mode true', tmpDir);
+    assert.ok(setResult.success, `config-set failed: ${setResult.error}`);
+
+    const getResult = runGsdTools('config-get workflow.tdd_mode', tmpDir);
+    assert.ok(getResult.success, `config-get failed: ${getResult.error}`);
+    assert.strictEqual(getResult.output, 'true');
+  });
+
+  test('config-set workflow.tdd_mode false round-trips via config-get', () => {
+    // First set to true, then back to false
+    runGsdTools('config-set workflow.tdd_mode true', tmpDir);
+
+    const setResult = runGsdTools('config-set workflow.tdd_mode false', tmpDir);
+    assert.ok(setResult.success, `config-set failed: ${setResult.error}`);
+
+    const getResult = runGsdTools('config-get workflow.tdd_mode', tmpDir);
+    assert.ok(getResult.success, `config-get failed: ${getResult.error}`);
+    assert.strictEqual(getResult.output, 'false');
+  });
+
+  test('persists in config.json as boolean', () => {
+    runGsdTools('config-set workflow.tdd_mode true', tmpDir);
+
+    const config = readConfig(tmpDir);
+    assert.strictEqual(config.workflow.tdd_mode, true);
+    assert.strictEqual(typeof config.workflow.tdd_mode, 'boolean');
+  });
+});
+
+// ─── init JSON exposure ────────────────────────────────────────────────────
+// init plan-phase and init execute-phase still emit tdd_mode in their JSON
+// output from options['tdd'] (CLI flag) or config.tdd_mode (raw config.json
+// value — now undefined when not set, so defaults to false).
+
+describe('tdd_mode in init plan-phase JSON output', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Create ROADMAP.md with a phase so init plan-phase can find it
+    const roadmap = [
+      '# Roadmap',
+      '',
+      '## Phase 1 — Foundation',
+      '**Status:** Planned',
+      '**Requirements:** [R1]',
+    ].join('\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmap);
+    // Ensure config exists
+    runGsdTools('config-ensure-section', tmpDir, homeSandboxEnv(tmpDir));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('init plan-phase includes tdd_mode: false by default', () => {
+    const result = runGsdTools('init plan-phase 1', tmpDir);
+    assert.ok(result.success, `init plan-phase failed: ${result.error}`);
+    const json = JSON.parse(result.output);
+    assert.strictEqual(json.tdd_mode, false);
+  });
+
+  test('init plan-phase --tdd overrides to tdd_mode: true', () => {
+    const result = runGsdTools('init plan-phase 1 --tdd', tmpDir);
+    assert.ok(result.success, `init plan-phase --tdd failed: ${result.error}`);
+    const json = JSON.parse(result.output);
+    assert.strictEqual(json.tdd_mode, true);
+  });
+});
+
+describe('tdd_mode in init execute-phase JSON output', () => {
+  let tmpDir;
+
+  beforeEach(() => {
+    tmpDir = createTempProject();
+    // Create ROADMAP.md with a phase so init execute-phase can find it
+    const roadmap = [
+      '# Roadmap',
+      '',
+      '## Phase 1 — Foundation',
+      '**Status:** Planned',
+      '**Requirements:** [R1]',
+    ].join('\n');
+    fs.writeFileSync(path.join(tmpDir, '.planning', 'ROADMAP.md'), roadmap);
+    // Ensure config exists
+    runGsdTools('config-ensure-section', tmpDir, homeSandboxEnv(tmpDir));
+  });
+
+  afterEach(() => {
+    cleanup(tmpDir);
+  });
+
+  test('init execute-phase includes tdd_mode: false by default', () => {
+    const result = runGsdTools('init execute-phase 1', tmpDir);
+    assert.ok(result.success, `init execute-phase failed: ${result.error}`);
+    const json = JSON.parse(result.output);
+    assert.strictEqual(json.tdd_mode, false);
+  });
+
+  test('init execute-phase --tdd overrides to tdd_mode: true', () => {
+    const result = runGsdTools('init execute-phase 1 --tdd', tmpDir);
+    assert.ok(result.success, `init execute-phase --tdd failed: ${result.error}`);
+    const json = JSON.parse(result.output);
+    assert.strictEqual(json.tdd_mode, true);
+  });
+});
+
+// ─── #5276 canary: sandboxed seed ignores ambient defaults.json ────────────
+// Positive control: an unsandboxed seed must pick up workflow.tdd_mode from a
+// poisoned ambient home (reachable via both home variables). The sandboxed
+// seed must leave the key absent from the persisted config.json.
+
+describe('#5276 homeSandboxEnv canary for tdd_mode defaults', () => {
+  test('sandboxed config-ensure-section ignores poisoned ambient defaults.json', (t) => {
+    const ambientHome = createTempDir('gsd-5276-ambient-home-');
+    t.after(() => cleanup(ambientHome));
+    fs.mkdirSync(path.join(ambientHome, '.gsd'));
+    fs.writeFileSync(
+      path.join(ambientHome, '.gsd', 'defaults.json'),
+      JSON.stringify({ workflow: { tdd_mode: true } }),
+    );
+
+    const controlDir = createTempProject();
+    const seededDir = createTempProject();
+    t.after(() => { cleanup(controlDir); cleanup(seededDir); });
+
+    const [control, seeded] = withIsolatedProcessState(() => {
+      Object.assign(process.env, homeSandboxEnv(ambientHome));
+      return [
+        runGsdTools('config-ensure-section', controlDir),
+        runGsdTools('config-ensure-section', seededDir, homeSandboxEnv(seededDir)),
+      ];
+    });
+
+    assert.ok(control.success, `Control seed failed: ${control.error}`);
+    assert.strictEqual(
+      readConfig(controlDir).workflow?.tdd_mode,
+      true,
+      'unsandboxed seed must inherit workflow.tdd_mode from ambient defaults.json',
+    );
+
+    assert.ok(seeded.success, `Sandboxed seed failed: ${seeded.error}`);
+    assert.ok(
+      !Object.prototype.hasOwnProperty.call(readConfig(seededDir).workflow || {}, 'tdd_mode'),
+      'homeSandboxEnv seed must not inherit tdd_mode from ambient defaults.json',
+    );
+  });
+
+  // The HOME-only control that still leaks on Windows (os.homedir() does not read
+  // HOME there) lives in tests/tdd-mode.platform.test.cjs, so it runs on
+  // the real-OS conformance lane instead of skipping in the base file.
+});

@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.verify-context-drift"
+  ],
+  "fixture": "ctx-drift",
+  "env": {
+    "GSD_EXIT_CONTRACT": "v2"
+  },
+  "stdout": "",
+  "stderr": "Error: Usage: verify context-drift <phase>\n",
+  "exitCode": 1
+}

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{not json"
+  ],
+  "fixture": "pred",
+  "stdout": "",
+  "stderr": "Error: predicate --predicate value must be valid JSON\n",
+  "exitCode": 1
+}

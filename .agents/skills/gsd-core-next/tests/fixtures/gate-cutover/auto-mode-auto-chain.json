@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.auto-mode"
+  ],
+  "fixture": "auto-chain",
+  "stdout": "{\n  \"active\": true,\n  \"source\": \"auto_chain\",\n  \"auto_chain_active\": true,\n  \"auto_advance\": false\n}",
+  "stderr": "",
+  "exitCode": 0
+}

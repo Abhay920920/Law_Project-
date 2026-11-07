@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-failure-directions",
+    "2"
+  ],
+  "fixture": "vp",
+  "stdout": "{\n  \"status\": \"ok\",\n  \"commands\": [\n    {\n      \"command\": \"cd web && npm test\",\n      \"statement\": \"non-zero exit\",\n      \"status\": \"ok\",\n      \"severity\": \"none\",\n      \"plan\": \"02-01-PLAN.md\",\n      \"task\": \"Run web tests\"\n    }\n  ],\n  \"counts\": {\n    \"blocker\": 0,\n    \"warning\": 0,\n    \"total\": 1\n  },\n  \"readError\": null\n}",
+  "stderr": "",
+  "exitCode": 0
+}

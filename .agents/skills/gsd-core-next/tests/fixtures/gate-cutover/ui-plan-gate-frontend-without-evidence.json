@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.ui-plan-gate",
+    "1"
+  ],
+  "fixture": "ui-plain",
+  "stdout": "{\n  \"frontend\": true,\n  \"hasFrontendEvidence\": false,\n  \"hasUiSpec\": false,\n  \"block\": false,\n  \"uiSpecPath\": null,\n  \"matchedToken\": \"frontend\",\n  \"matchedLine\": \"## Phase 1: Frontend Dashboard\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

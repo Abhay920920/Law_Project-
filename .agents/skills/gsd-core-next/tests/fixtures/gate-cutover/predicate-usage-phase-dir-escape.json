@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{\"kind\":\"command-exit-zero\",\"command\":\"true\"}",
+    "--phase-dir",
+    "../../outside"
+  ],
+  "fixture": "pred",
+  "stdout": "",
+  "stderr": "Error: path escapes its allowed directory: ../../outside\n",
+  "exitCode": 1
+}

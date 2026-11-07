@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT.md"
+  ],
+  "fixture": "dc-disabled",
+  "stdout": "{\n  \"passed\": true,\n  \"skipped\": true,\n  \"reason\": \"workflow.context_coverage_gate is false\",\n  \"total\": 0,\n  \"covered\": 0,\n  \"uncovered\": [],\n  \"message\": \"Decision coverage gate disabled by config.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

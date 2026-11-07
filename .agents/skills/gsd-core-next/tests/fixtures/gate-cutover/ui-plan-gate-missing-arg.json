@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.ui-plan-gate"
+  ],
+  "fixture": "ui",
+  "stdout": "",
+  "stderr": "Error: ui-plan-gate requires a phase argument: check ui-plan-gate <phase>\n",
+  "exitCode": 1
+}

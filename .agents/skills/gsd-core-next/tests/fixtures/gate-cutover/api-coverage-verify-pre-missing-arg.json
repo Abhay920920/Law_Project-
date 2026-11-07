@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre"
+  ],
+  "fixture": "api",
+  "stdout": "",
+  "stderr": "Error: api-coverage.verify-pre requires a phase argument: check api-coverage.verify-pre <phase-dir-or-token>\n",
+  "exitCode": 1
+}

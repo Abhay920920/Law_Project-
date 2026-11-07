@@ -1540,6 +1540,22 @@
         }
 
         $(document).ready(function() {
+            // Prevent duplicate form submissions (double/multiple click on submit button)
+            $('form').on('submit', function (e) {
+                var $form = $(this);
+                if ($form.data('submitted') === true) {
+                    e.preventDefault();
+                    return false;
+                }
+                if ($form.valid && !$form.valid()) {
+                    return false;
+                }
+                $form.data('submitted', true);
+                var $submitBtns = $form.find('button[type="submit"]');
+                $submitBtns.prop('disabled', true);
+                $submitBtns.html('<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving Case...');
+            });
+
             // Case Type Change Logic (Arising & Working Status Filtering)
 
 

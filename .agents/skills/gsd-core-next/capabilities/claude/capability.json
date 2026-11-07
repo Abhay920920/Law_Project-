@@ -1,0 +1,195 @@
+{
+  "id": "claude",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "Claude Code",
+  "description": "Anthropic Claude Code — primary development runtime; tier-1 support with full hook surface and skills-based global install.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home",
+      "name": ".claude",
+      "env": [
+        "CLAUDE_CONFIG_DIR"
+      ]
+    },
+    "localConfigDir": ".claude",
+    "configFormat": "settings-json",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToClaudeSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": null
+        }
+      ],
+      "local": [
+        {
+          "kind": "commands",
+          "destSubpath": "commands",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": null
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": null
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "slash-hyphen",
+    "hooksSurface": "settings-json",
+    "hookEvents": "claude",
+    "sandboxTier": "none",
+    "supportTier": 1,
+    "installSurface": "settings-json",
+    "writesSharedSettings": true,
+    "permissionWriter": null,
+    "extendedHookEvents": [
+      "SubagentStop",
+      "Stop",
+      "PreCompact",
+      "FileChanged"
+    ],
+    "hostIntegration": {
+      "embeddingMode": "imperative",
+      "commandSurface": "slash-file",
+      "dispatch": {
+        "namedDispatch": true,
+        "nested": true,
+        "maxDepth": 5,
+        "background": true,
+        "subagentToolkit": "full",
+        "backgroundDispatch": false,
+        "isolation": "harness-worktree",
+        "maxConcurrency": 20
+      },
+      "modelMode": "passive",
+      "hookBus": "host",
+      "stateIO": "filesystem",
+      "transport": "mcp",
+      "runtime": "node",
+      "effortSurface": "argv"
+    },
+    "harnessIsolationFlag": "isolation=\"worktree\"",
+    "hostBehaviors": {
+      "attributionSource": "settings-json-commit",
+      "authorsCanonicalWorkflow": true,
+      "localInstallStyle": "legacy-flat",
+      "permissionsSchema": "claude",
+      "settingsFileByScope": {
+        "local": "settings.local.json",
+        "global": "settings.json"
+      },
+      "sourceMarkerFile": ".gsd-source",
+      "agentFrontmatterExtensions": [
+        "effort"
+      ],
+      "ownsClaudePaths": true,
+      "nativeModelAliases": true,
+      "skillsGlobalOnboarding": true,
+      "legacyCommandsGsdInstallMigration": true,
+      "legacyCommandsGsdUninstall": "global",
+      "hyphenNameAgentBody": true,
+      "skipCompactAgents": true,
+      "omitBashRunnerOnWindows": true,
+      "specRootSkillPass": true,
+      "restoreAtRefTildeInAgents": true,
+      "restoreAtRefTildeInSpecTree": true,
+      "skipRuntimeDefaultsStamp": true,
+      "contentRewriteProfile": "slash-tilde-restore"
+    }
+  },
+  "reviewer": {
+    "slug": "claude",
+    "flags": [
+      "--claude"
+    ],
+    "transport": "spawn",
+    "probe": {
+      "kind": "command-exists",
+      "binary": "claude"
+    },
+    "invoke": {
+      "binary": "claude",
+      "args": [
+        "{{model}}",
+        "{{effort}}",
+        "-p",
+        "-"
+      ],
+      "promptChannel": "stdin",
+      "outputChannel": "stdout",
+      "modelArg": "--model",
+      "effortChannel": "argv",
+      "env": {
+        "CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1",
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"
+      }
+    },
+    "timeoutFloorMs": 1200000,
+    "timeoutConfigKey": "review.timeouts.claude",
+    "emptyOutput": "stub-with-stderr",
+    "reviewsSection": "Claude",
+    "evidenceClass": "source-grounded",
+    "requiresBinaries": [],
+    "promptBudgetKey": "review.max_prompt_tokens_per_reviewer.claude",
+    "contextWindowTokens": 200000,
+    "contextWindowConfigKey": "review.context_window_tokens.claude",
+    "modelConfigKey": "review.models.claude",
+    "effortConfigKey": "review.effort.claude",
+    "defaultEffort": "high",
+    "handler": null
+  },
+  "config": {
+    "review.models.claude": {
+      "type": "string",
+      "default": "",
+      "description": "Model passed to the Claude reviewer lane."
+    },
+    "review.max_prompt_tokens_per_reviewer.claude": {
+      "type": "number",
+      "default": -1,
+      "description": "Prompt-token budget for the Claude reviewer lane. Unset is -1, a sentinel that inherits the global cap and then the lane's context-window default; 0 is a legitimate value meaning \"no prompt cap for this lane\", so it cannot double as \"not configured\"."
+    },
+    "review.context_window_tokens.claude": {
+      "type": "number",
+      "default": -1,
+      "description": "Context window in tokens used to derive the default prompt cap for the claude reviewer lane at 65% of the window. Unset is -1: use the lane's declared window of 200000 tokens; 0 disables the derived cap; a positive number overrides the window."
+    },
+    "review.timeouts.claude": {
+      "type": "number",
+      "default": -1,
+      "description": "Outer wall-clock timeout override (seconds) for the Claude reviewer lane. Unset is -1, a sentinel: 0 or a negative number is also treated as unset (a timeout has no legitimate zero/negative value), so no second sentinel is needed. Falls back to the lane's built-in timeoutFloorMs when unset."
+    },
+    "review.effort.claude": {
+      "type": "string",
+      "default": "",
+      "description": "Reasoning effort for the Claude reviewer lane: minimal, low, medium, high, xhigh, max, or inherit. Unset falls back to the lane's declared review default (high); inherit emits no effort argument so the CLI's own configuration decides. An unrecognized value falls back to the lane default rather than being forwarded."
+    }
+  }
+}

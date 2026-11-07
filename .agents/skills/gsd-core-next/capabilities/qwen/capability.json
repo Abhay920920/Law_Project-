@@ -1,0 +1,161 @@
+{
+  "id": "qwen",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "Qwen Code",
+  "description": "Qwen Code (Alibaba) — nested-skill artifact layout; settings-json hook surface; Claude hook event dialect; tier-2 support.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home",
+      "name": ".qwen",
+      "env": [
+        "QWEN_CONFIG_DIR"
+      ]
+    },
+    "localConfigDir": ".qwen",
+    "configFormat": "settings-json",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "nested",
+          "recursive": false,
+          "converter": "convertClaudeCommandToClaudeSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToQwenAgent"
+        }
+      ],
+      "local": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "nested",
+          "recursive": false,
+          "converter": "convertClaudeCommandToClaudeSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToQwenAgent"
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "slash-hyphen",
+    "hooksSurface": "settings-json",
+    "hookEvents": "claude",
+    "sandboxTier": "none",
+    "supportTier": 2,
+    "installSurface": "settings-json",
+    "writesSharedSettings": true,
+    "permissionWriter": null,
+    "extendedHookEvents": [
+      "SubagentStop",
+      "Stop",
+      "PreCompact",
+      "SubagentStart"
+    ],
+    "hostIntegration": {
+      "embeddingMode": "imperative",
+      "commandSurface": "slash-file",
+      "dispatch": {
+        "namedDispatch": true,
+        "nested": false,
+        "maxDepth": 1,
+        "background": true,
+        "subagentToolkit": "full",
+        "backgroundDispatch": false,
+        "isolation": "undocumented",
+        "maxConcurrency": "undocumented"
+      },
+      "modelMode": "passive",
+      "hookBus": "host",
+      "stateIO": "filesystem",
+      "transport": "mcp",
+      "runtime": "node",
+      "effortSurface": "undocumented"
+    },
+    "hostBehaviors": {
+      "unsupportedFeatures": [
+        "context-warnings"
+      ],
+      "skillPriorityFrontmatter": true,
+      "brandingRewrites": {
+        "CLAUDE.md": "QWEN.md",
+        "Claude Code": "Qwen Code",
+        ".claude/": ".qwen/"
+      },
+      "legacyCommandsGsdCleanup": true,
+      "legacyCommandsGsdInstallMigration": true,
+      "legacyCommandsGsdUninstall": true,
+      "hyphenNameAgentBody": true,
+      "contentRewriteProfile": "branded-lookahead-own-derived"
+    }
+  },
+  "reviewer": {
+    "slug": "qwen",
+    "flags": [
+      "--qwen"
+    ],
+    "transport": "spawn",
+    "probe": {
+      "kind": "command-exists",
+      "binary": "qwen"
+    },
+    "invoke": {
+      "binary": "qwen",
+      "args": [
+        "-"
+      ],
+      "promptChannel": "stdin",
+      "outputChannel": "stdout",
+      "modelArg": null,
+      "effortChannel": "none"
+    },
+    "timeoutFloorMs": 900000,
+    "timeoutConfigKey": null,
+    "emptyOutput": "stub-with-stderr",
+    "reviewsSection": "Qwen",
+    "evidenceClass": "source-grounded",
+    "requiresBinaries": [],
+    "promptBudgetKey": "review.max_prompt_tokens_per_reviewer.qwen",
+    "contextWindowTokens": 131072,
+    "contextWindowConfigKey": "review.context_window_tokens.qwen",
+    "modelConfigKey": null,
+    "effortConfigKey": null,
+    "defaultEffort": null,
+    "handler": null
+  },
+  "config": {
+    "review.max_prompt_tokens_per_reviewer.qwen": {
+      "type": "number",
+      "default": -1,
+      "description": "Prompt-token budget for the Qwen Code reviewer lane. Unset is -1, a sentinel that inherits the global cap and then the lane's context-window default; 0 is a legitimate value meaning \"no prompt cap for this lane\", so it cannot double as \"not configured\"."
+    },
+    "review.context_window_tokens.qwen": {
+      "type": "number",
+      "default": -1,
+      "description": "Context window in tokens used to derive the default prompt cap for the qwen reviewer lane at 65% of the window. Unset is -1: use the lane's declared window of 131072 tokens; 0 disables the derived cap; a positive number overrides the window."
+    }
+  }
+}

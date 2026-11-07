@@ -1,0 +1,111 @@
+{
+  "id": "pi",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "pi",
+  "description": "pi (pi.dev) — node-runtime programmatic-CLI (managed pi 1.3.0 install); TS ExtensionAPI (registerCommand/registerTool/registerProvider/pi.on); single native-extension file at ~/.pi/agent/extensions/gsd.js (.js, not .cjs — pi's extension auto-discovery accepts only .ts/.js, #2470); no shared-settings hook surface; tier-2 support.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.7.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home-nested",
+      "name": "agent",
+      "parent": ".pi",
+      "env": [
+        "PI_CODING_AGENT_DIR"
+      ]
+    },
+    "localConfigDir": ".pi",
+    "configFormat": "none",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToPiSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "excludeSuffixes": [
+            ".compact.md"
+          ],
+          "converter": "convertClaudeAgentToPiAgent"
+        }
+      ],
+      "local": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeCommandToPiSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "excludeSuffixes": [
+            ".compact.md"
+          ],
+          "converter": "convertClaudeAgentToPiAgent"
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "slash-hyphen",
+    "hooksSurface": "none",
+    "extensionEvents": "pi",
+    "sandboxTier": "none",
+    "supportTier": 2,
+    "installSurface": "profile-marker-only",
+    "writesSharedSettings": false,
+    "permissionWriter": null,
+    "extendedHookEvents": [],
+    "hostIntegration": {
+      "embeddingMode": "imperative",
+      "commandSurface": "slash-programmatic",
+      "dispatch": {
+        "namedDispatch": false,
+        "nested": false,
+        "maxDepth": 0,
+        "background": false,
+        "backgroundDispatch": false,
+        "subagentToolkit": "undocumented",
+        "isolation": "none",
+        "maxConcurrency": "undocumented"
+      },
+      "modelMode": "active",
+      "hookBus": "host",
+      "stateIO": "session-log-append",
+      "transport": "native-extension",
+      "runtime": "node",
+      "effortSurface": "argv"
+    },
+    "hostBehaviors": {
+      "nativePlugin": {
+        "dir": "extensions",
+        "file": "gsd.js",
+        "source": "pi/gsd.cjs"
+      },
+      "pluginOnlyInstall": true,
+      "contentRewriteProfile": "slash-lookahead-tilde-restore",
+      "sharedHooksDirName": "gsd-hooks"
+    }
+  }
+}

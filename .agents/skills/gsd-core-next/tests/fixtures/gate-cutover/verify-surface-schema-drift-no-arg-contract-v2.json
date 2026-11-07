@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "verify",
+    "schema-drift"
+  ],
+  "fixture": "schema-drift",
+  "env": {
+    "GSD_EXIT_CONTRACT": "v2"
+  },
+  "stdout": "",
+  "stderr": "Error: Usage: verify schema-drift <phase> [--skip]\n",
+  "exitCode": 1
+}

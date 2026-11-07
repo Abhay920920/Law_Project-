@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.prohibition-enforcement"
+  ],
+  "fixture": "prohibition",
+  "env": {
+    "GSD_EXIT_CONTRACT": "v2"
+  },
+  "stdout": "",
+  "stderr": "Error: prohibition-enforcement requires a JSON request: check prohibition-enforcement <request.json> | --json '{\"prohibition\":{...},\"check\":{...}}'\n",
+  "exitCode": 64
+}

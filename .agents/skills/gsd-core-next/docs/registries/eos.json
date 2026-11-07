@@ -1,0 +1,135 @@
+[
+  {
+    "id": "gsd-cursor",
+    "name": "GSD Cursor Model Profiles",
+    "type": "eos",
+    "repo": "clezcoding/gsd-cursor",
+    "description": "Adds six researched Cursor runtime profiles (max / hybrid / value / budget / frontier / openweight) to GSD, writes current and legacy tier-map surfaces, routes all six GSD phases, validates local model availability, and restores prior managed settings on uninstall without modifying gsd-core.",
+    "author": "clezcoding",
+    "license": "MIT",
+    "enginesGsd": ">=1.0.0",
+    "protocolVersion": 1,
+    "install": "npm install --global github:clezcoding/gsd-cursor#v1.1.0 && gsd-cursor install",
+    "uninstall": "gsd-cursor uninstall && npm uninstall --global gsd-cursor",
+    "interactions": {
+      "interfacePoints": [
+        "model",
+        "state"
+      ],
+      "profile": "declarative-cli",
+      "axes": {
+        "embeddingMode": "declarative",
+        "commandSurface": "prose-only",
+        "dispatch": "Writes a Cursor model tier map and six phase-aware profile presets into the GSD config without dispatching tasks",
+        "modelMode": "active",
+        "hookBus": "none",
+        "stateIO": "filesystem",
+        "transport": "native-extension",
+        "runtime": "node"
+      }
+    },
+    "discussion": "https://github.com/open-gsd/gsd-core/discussions/2578"
+  },
+  {
+    "id": "gsd-omp",
+    "name": "GSD for Oh My Pi",
+    "type": "eos",
+    "repo": "tchivs/gsd-omp",
+    "description": "Embeds GSD in Oh My Pi through OMP's native ExtensionAPI, programmatic slash commands, task isolation, lifecycle events, filesystem state, and managed agent and skill projection.",
+    "author": "tchivs",
+    "license": "MIT",
+    "enginesGsd": ">=1.7.0",
+    "protocolVersion": 1,
+    "install": "npm install --global github:tchivs/gsd-omp#v1.0.0 && gsd-omp install",
+    "uninstall": "gsd-omp uninstall && npm uninstall --global gsd-omp",
+    "interactions": {
+      "interfacePoints": [
+        "command",
+        "dispatch",
+        "model",
+        "hooks",
+        "state",
+        "artifact"
+      ],
+      "profile": "programmatic-cli",
+      "axes": {
+        "embeddingMode": "imperative",
+        "commandSurface": "slash-programmatic",
+        "dispatch": "Native named and nested OMP task dispatch with background execution, full subagent tools, and host-managed isolation",
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "native-extension",
+        "runtime": "bun"
+      }
+    },
+    "discussion": "https://github.com/open-gsd/gsd-core/discussions/2342"
+  },
+  {
+    "id": "gsd-qoder",
+    "name": "GSD for Qoder",
+    "type": "eos",
+    "repo": "cainiao1992/gsd-qoder",
+    "description": "Embeds GSD in Qoder — Alibaba's AI coding product family (Qoder CLI and Qoder Desktop) — by projecting GSD's agents, skills, and hook scripts into the Qoder config directory (~/.qoder, or ~/.qoder-cn for the China edition, or QODER_CONFIG_DIR), applying Qoder-specific path and subagent-frontmatter conversions, merging GSD's lifecycle hooks into settings.json without disturbing existing user settings, and recording an install manifest so uninstall removes exactly what was projected.",
+    "author": "cainiao1992",
+    "license": "Apache-2.0",
+    "enginesGsd": "1.12.0",
+    "protocolVersion": 1,
+    "install": "npm install --global github:cainiao1992/gsd-qoder#v0.3.4 && gsd-qoder install",
+    "uninstall": "gsd-qoder uninstall && npm uninstall --global gsd-qoder",
+    "interactions": {
+      "interfacePoints": [
+        "command",
+        "dispatch",
+        "model",
+        "hooks",
+        "state",
+        "artifact"
+      ],
+      "profile": "declarative-cli",
+      "axes": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": "Named and nested Qoder subagent dispatch with background execution and a full subagent toolkit; no numeric nesting depth is documented, and isolation is none because Qoder's worktree is a frontmatter-declared, per-agent-definition property rather than a dispatch-time parameter",
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "node",
+        "effortSurface": "argv"
+      }
+    },
+    "discussion": "https://github.com/open-gsd/gsd-core/discussions/4122"
+  },
+  {
+    "id": "gsd-reasonix",
+    "name": "GSD for Reasonix",
+    "type": "eos",
+    "repo": "onionviolet/gsd-reasonix",
+    "description": "Renders the GSD workflow set as native Reasonix slash-command launchers, mapping GSD's host-neutral instructions onto Reasonix's own tools (task/fleet for subagents, ask for questions, todo_write for plans, complete_step for evidence-backed sign-off), and excludes the shared ~/.agents/skills convention root so the Codex launcher tree stops shadowing them.",
+    "author": "onionviolet",
+    "license": "MIT",
+    "enginesGsd": ">=1.10.0",
+    "protocolVersion": 1,
+    "install": "npm install --global github:onionviolet/gsd-reasonix#v1.0.0 && gsd-reasonix install",
+    "uninstall": "gsd-reasonix uninstall && npm uninstall --global gsd-reasonix",
+    "interactions": {
+      "interfacePoints": [
+        "command",
+        "artifact"
+      ],
+      "profile": "declarative-cli",
+      "axes": {
+        "embeddingMode": "declarative",
+        "commandSurface": "slash-file",
+        "dispatch": "Named and nested Reasonix subagent dispatch to a documented depth of 2 with background execution, and a subagent toolkit and isolation model that Reasonix's own documentation does not state",
+        "modelMode": "passive",
+        "hookBus": "host",
+        "stateIO": "filesystem",
+        "transport": "mcp",
+        "runtime": "go"
+      }
+    },
+    "discussion": "https://github.com/open-gsd/gsd-core/discussions/3379"
+  }
+]

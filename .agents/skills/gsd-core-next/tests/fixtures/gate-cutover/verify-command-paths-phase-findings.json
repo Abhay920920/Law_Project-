@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-command-paths",
+    "1"
+  ],
+  "fixture": "vp",
+  "stdout": "{\n  \"status\": \"broken\",\n  \"commands\": [\n    {\n      \"command\": \"cd web && npm test\",\n      \"status\": \"ok\",\n      \"severity\": \"none\",\n      \"reason\": null,\n      \"form\": \"cd\",\n      \"rawTarget\": \"web\",\n      \"target\": \"<TMP>/web\",\n      \"manifest\": \"package.json\",\n      \"script\": null,\n      \"sentinel\": false,\n      \"base\": \"<TMP>\",\n      \"plan\": \"01-01-PLAN.md\",\n      \"task\": \"Run web tests\"\n    },\n    {\n      \"command\": \"npm run lint --prefix ./missing\",\n      \"status\": \"broken\",\n      \"severity\": \"blocker\",\n      \"reason\": \"missing_dir\",\n      \"form\": \"prefix\",\n      \"rawTarget\": \"./missing\",\n      \"target\": \"<TMP>/missing\",\n      \"manifest\": null,\n      \"script\": null,\n      \"sentinel\": false,\n      \"base\": \"<TMP>\",\n      \"plan\": \"01-01-PLAN.md\",\n      \"task\": \"Lint the missing package\"\n    }\n  ],\n  \"counts\": {\n    \"blocker\": 1,\n    \"warning\": 0,\n    \"total\": 2\n  },\n  \"readError\": null\n}",
+  "stderr": "",
+  "exitCode": 0
+}

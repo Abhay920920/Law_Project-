@@ -1,0 +1,226 @@
+name: CI timeout budget report
+
+# Scheduled aggregator for #4036: polls GitHub's own Actions REST API for
+# recently completed jobs across test.yml / mutation.yml / install-smoke.yml,
+# computes elapsed-vs-timeout-minutes per job via scripts/ci-timeout-report.cjs,
+# and appends any new records to tests/ci-timeout-budget-history.jsonl. `next`
+# is a protected branch — nothing pushes to it directly, even from a scheduled
+# bot run (see auto-backmerge.yml for the same constraint) — so the records
+# travel in ONE rolling, data-only PR (#5115) on branch
+# chore/4036-ci-timeout-budget-history. Each run seeds the history with the open
+# rolling PR's pending rows (the branch is untrusted, so only in-schema rows
+# the Actions API confirms are kept), appends only unseen records, rebuilds
+# the branch on the current `next` tip and force-pushes it, so the PR never
+# conflicts and never goes stale. The workflow approves the PR only when it is
+# provably its own tests-data-only PR (see evaluateRollingPrApproval), then arms
+# auto-merge.
+#
+# A separate `shard-balance` step (#5101) evaluates the #5071 Windows
+# conformance shard-balance criteria (median gap, per-shard p90 vs. frozen
+# baselines) from live `next` push runs and opens/updates one tracking issue
+# on a breach. It runs independently of the report step above.
+
+on:
+  schedule:
+    - cron: '15 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: write
+
+# #5115: overlapping runs (a dispatch during the schedule) would race on the
+# one rolling branch; queue them instead of cancelling a run mid-push.
+concurrency:
+  group: ci-timeout-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    # #5115: a workflow_dispatch on any other ref must not run that ref's copy
+    # of this workflow with the bot token.
+    if: github.ref == 'refs/heads/next'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          # #5115: the bot PAT is never written to .git/config; it is passed
+          # only to the push and gh calls that need it.
+          persist-credentials: false
+          fetch-depth: 0
+
+      # The github-script step below require()s scripts/ci-timeout-report.cjs,
+      # which require()s js-yaml (a devDependency) to read each job's
+      # `timeout-minutes` out of the workflow YAML. github-script runs its
+      # script from the action's own directory but resolves that absolute
+      # require against the WORKSPACE, so the workspace needs node_modules/ —
+      # without these two steps every run died in `Cannot find module 'js-yaml'`
+      # before polling anything (#5006). `--ignore-scripts` matches test.yml:
+      # devDependencies are installed by default, lifecycle scripts are not
+      # needed here.
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: 24
+      - name: Install dev dependencies
+        run: npm ci --ignore-scripts
+
+      # #5115: one read of ROLLING_PR; later steps use these env vars.
+      - name: Resolve rolling PR settings
+        run: |
+          set -euo pipefail
+          node -e "const fs=require('fs');const {ROLLING_PR:r}=require('./scripts/ci-timeout-report.cjs');const body=process.env.RUNNER_TEMP+'/rolling-pr-body.md';fs.writeFileSync(body,r.body);fs.appendFileSync(process.env.GITHUB_ENV,['RP_BRANCH='+r.branch,'RP_BASE='+r.base,'RP_FILE='+r.historyFile,'RP_TITLE='+r.title,'RP_BODY_FILE='+body,'RP_OPEN_PR_JQ=[.[] | select(.isCrossRepository == false)][0].number // empty',''].join('\n'));"
+
+      # #5115: start from the open rolling PR's pending rows so the poll step's
+      # dedupe covers them and the rebuilt branch keeps them. A closed,
+      # unmerged PR's rows were rejected, so only an OPEN same-repo PR seeds.
+      # The rolling branch is writable by collaborators, so only rows the
+      # Actions API confirms (same run, job name, completion time and span)
+      # are seeded. A seed failure stops the publish step, so pending rows are
+      # never force-pushed away.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        id: seed
+        name: Seed history with the open rolling PR's verified pending records
+        with:
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/scripts/ci-timeout-report.cjs`);
+            const result = await report.seedFromRollingPr({ github, context, core });
+            core.info(`seed: ${result.status}`);
+            return result.status;
+
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        id: poll
+        with:
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/scripts/ci-timeout-report.cjs`);
+            const result = await report.main({ github, context, core });
+            core.info(`ci-timeout-report: added ${result.added} record(s), ${result.nearCap} near-cap`);
+            return result;
+
+      # #5101: evaluates the #5071 Windows conformance shard-balance criteria
+      # from live `next` push runs and opens/updates one tracking issue on a
+      # breach. A separate step so it runs even if the per-job report above fails.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        id: shard-balance
+        if: always()
+        with:
+          script: |
+            const report = require(`${process.env.GITHUB_WORKSPACE}/scripts/ci-timeout-report.cjs`);
+            const result = await report.checkShardBalance({ github, context, core });
+            core.info(`shard-balance: ${result.status}`);
+            return result.status;
+
+      # #5115: rebuild the rolling branch on the `next` tip with the (seeded)
+      # history, force-push only when the result differs, keep the one PR's
+      # title/body current, approve it only when the gate says it is ours, and
+      # arm auto-merge.
+      - name: Update the rolling PR
+        # A failed or skipped seed must not force-push a branch that is
+        # missing its pending rows; a failed poll may still publish.
+        if: always() && steps.seed.outcome == 'success'
+        env:
+          PUSH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || github.token }}
+          APPROVE_TOKEN: ${{ github.token }}
+          HAS_BOT_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$HAS_BOT_TOKEN" != "true" ]; then
+            echo "::warning title=ci-timeout-report::GSD_BOT_PR_TOKEN is not set — pushes/PRs made with github.token do not trigger required checks and cannot be self-approved; the rolling PR will not merge on its own"
+          fi
+
+          find_pr() {
+            gh pr list --repo "$GITHUB_REPOSITORY" --head "$RP_BRANCH" --base "$RP_BASE" --state open --json number,isCrossRepository -q "$RP_OPEN_PR_JQ"
+          }
+
+          git fetch --no-tags origin "$RP_BASE"
+
+          # Publish candidate: next's copy first, then this run's rows, so rows
+          # that landed on next after checkout are never reverted.
+          if git cat-file -e "origin/$RP_BASE:$RP_FILE" 2>/dev/null; then
+            git show "origin/$RP_BASE:$RP_FILE" > "$RUNNER_TEMP/next-raw.jsonl"
+          else
+            : > "$RUNNER_TEMP/next-raw.jsonl"
+          fi
+          # Compare normalized content (CRLF, blank lines and a missing trailing
+          # newline never count as a difference), so a formatting-only delta
+          # never publishes a commit.
+          node -e "const fs=require('fs');const {mergeHistoryTexts}=require('./scripts/ci-timeout-report.cjs');const read=(p)=>{try{return fs.readFileSync(p,'utf8')}catch{return ''}};const next=mergeHistoryTexts(read(process.argv[1]));fs.writeFileSync(process.argv[3],next);fs.writeFileSync(process.argv[4],mergeHistoryTexts(next,read(process.argv[2])));" "$RUNNER_TEMP/next-raw.jsonl" "$RP_FILE" "$RUNNER_TEMP/next-history.jsonl" "$RUNNER_TEMP/history.jsonl"
+
+          if cmp -s "$RUNNER_TEMP/history.jsonl" "$RUNNER_TEMP/next-history.jsonl"; then
+            OPEN_PR=$(find_pr)
+            if [ -n "$OPEN_PR" ]; then
+              gh pr close "$OPEN_PR" --repo "$GITHUB_REPOSITORY" --comment "Closed by ci-timeout-report: every record in this PR is already on next." --delete-branch
+            fi
+            echo "history matches $RP_BASE — nothing to publish"
+            exit 0
+          fi
+
+          git checkout -f -B "$RP_BRANCH" "origin/$RP_BASE"
+          cp "$RUNNER_TEMP/history.jsonl" "$RP_FILE"
+          git add "$RP_FILE"
+          git -c user.name="gsd-bot" -c user.email="gsd-bot@users.noreply.github.com" \
+            commit -m "$RP_TITLE"
+
+          # The push token is handed to git for this one call only (never
+          # persisted in .git/config) and masked in logs.
+          echo "::add-mask::$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')"
+          push_rolling() {
+            git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 | tr -d '\n')" push "$@"
+          }
+
+          # Skip the push when the remote branch already has the same tree on
+          # the same parent, so an unchanged day causes no CI churn.
+          PUSHED=1
+          if git ls-remote --exit-code --heads origin "$RP_BRANCH" >/dev/null 2>&1; then
+            git fetch --no-tags origin "$RP_BRANCH"
+            REMOTE_OID=$(git rev-parse FETCH_HEAD)
+            if [ "$(git rev-parse 'FETCH_HEAD^{tree}')" = "$(git rev-parse 'HEAD^{tree}')" ] \
+              && [ "$(git rev-parse 'FETCH_HEAD^')" = "$(git rev-parse "origin/$RP_BASE")" ]; then
+              git reset --hard "$REMOTE_OID"
+              PUSHED=0
+            else
+              push_rolling --force-with-lease="refs/heads/$RP_BRANCH:$REMOTE_OID" origin "HEAD:refs/heads/$RP_BRANCH"
+            fi
+          else
+            push_rolling origin "HEAD:refs/heads/$RP_BRANCH"
+          fi
+          echo "pushed=$PUSHED"
+          HEAD_OID=$(git rev-parse HEAD)
+
+          PR=$(find_pr)
+          if [ -z "$PR" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base "$RP_BASE" --head "$RP_BRANCH" \
+              --title "$RP_TITLE" --body-file "$RP_BODY_FILE" \
+              --label automation --label no-changelog
+            PR=$(find_pr)
+          else
+            gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --title "$RP_TITLE" --body-file "$RP_BODY_FILE"
+          fi
+
+          # Approve only when the gate proves this is our own data-only PR at
+          # the commit we pushed.
+          gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json state,baseRefName,headRefName,headRefOid,isCrossRepository,files >"$RUNNER_TEMP/pr.json"
+          DECISION=$(node -e "const {evaluateRollingPrApproval}=require('./scripts/ci-timeout-report.cjs');const pr=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));const d=evaluateRollingPrApproval({pr,expectedHeadOid:process.argv[2]});process.stdout.write(d.approve?'approve':d.reason)" "$RUNNER_TEMP/pr.json" "$HEAD_OID")
+          # An APPROVED review already pinned to the current head commit needs no
+          # second approval; this does not depend on dismiss_stale_reviews. The
+          # approval below is pinned to the commit the gate checked.
+          APPROVED_AT_HEAD=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" --paginate --jq "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_OID\")] | length" | awk '{s+=$1} END {print s+0}')
+          if [ "$APPROVED_AT_HEAD" -gt 0 ]; then
+            echo "PR #$PR already approved at $HEAD_OID — not re-approving"
+          elif [ "$DECISION" = "approve" ]; then
+            GH_TOKEN="$APPROVE_TOKEN" gh api -X POST "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" -f event=APPROVE -f commit_id="$HEAD_OID" -f body="Auto-approved by ci-timeout-report: this repository's rolling data-only PR at $HEAD_OID, changing only $RP_FILE." >/dev/null \
+              || echo "::warning title=ci-timeout-report::approval refused (GitHub Actions may not be allowed to approve PRs in this org/repo); auto-merge stays armed for one human approval"
+          else
+            echo "::warning title=ci-timeout-report::not approving PR #$PR: $DECISION"
+          fi
+
+          # Arm auto-merge only for a PR the gate accepts (a refused bot approval
+          # still leaves auto-merge for one human approval).
+          if [ "$DECISION" = "approve" ]; then
+            gh pr merge "$PR" --repo "$GITHUB_REPOSITORY" --auto --squash --match-head-commit "$HEAD_OID" \
+              || echo "::warning title=ci-timeout-report::could not enable auto-merge on #$PR"
+          fi

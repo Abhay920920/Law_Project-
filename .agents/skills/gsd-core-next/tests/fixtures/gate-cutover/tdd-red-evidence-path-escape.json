@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.tdd-red-evidence",
+    "../../outside.json"
+  ],
+  "fixture": "red",
+  "stdout": "",
+  "stderr": "Error: path escapes its allowed directory: ../../outside.json\n",
+  "exitCode": 1
+}

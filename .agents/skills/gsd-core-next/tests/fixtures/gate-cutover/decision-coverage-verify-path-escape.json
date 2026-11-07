@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-verify",
+    "../../outside",
+    ".planning/phases/01-decisions/CONTEXT.md"
+  ],
+  "fixture": "dc",
+  "stdout": "",
+  "stderr": "Error: path escapes its allowed directory: ../../outside\n",
+  "exitCode": 1
+}

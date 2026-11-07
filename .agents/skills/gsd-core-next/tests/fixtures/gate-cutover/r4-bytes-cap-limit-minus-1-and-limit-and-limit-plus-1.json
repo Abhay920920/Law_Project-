@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-verify",
+    ".planning/phases/01-caps",
+    ".planning/phases/01-caps/CONTEXT.md"
+  ],
+  "fixture": "cap-bytes",
+  "stdout": "{\n  \"skipped\": false,\n  \"blocking\": false,\n  \"total\": 3,\n  \"honored\": 2,\n  \"not_honored\": [\n    {\n      \"id\": \"D-03\",\n      \"text\": \"Gamma rule\",\n      \"category\": \"\"\n    }\n  ],\n  \"message\": \"### Decision Coverage (warning)\\n\\n1 decision(s) not found in shipped artifacts:\\n\\n- **D-03** (uncategorized): Gamma rule\\n\\nThis is a soft warning - verification status is unchanged.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

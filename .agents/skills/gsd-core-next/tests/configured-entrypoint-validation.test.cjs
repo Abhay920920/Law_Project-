@@ -1,0 +1,909 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+
+// #5017: pinned GSD_HOME (next to HOME) is put back after each test so it never leaks into the next one.
+const __ORIG_GSD_HOME = process.env.GSD_HOME;
+require('node:test').afterEach(() => {
+  if (__ORIG_GSD_HOME === undefined) delete process.env.GSD_HOME;
+  else process.env.GSD_HOME = __ORIG_GSD_HOME;
+});
+
+const helpers = require('./helpers.cjs');
+const { runNode } = require('./helpers/process-seam.cjs');
+const { INSTALL_TIMEOUT_MS } = require('./helpers/timeouts.cjs');
+
+const hooksSurface = require('../gsd-core/bin/lib/runtime-hooks-surface.cjs');
+const { install, installAllRuntimes, finishInstall, selectConfiguredEntrypointsForValidation } = require('../bin/install.js');
+
+/**
+ * Run `fn` with HOME/USERPROFILE pointed at a fresh temp dir and every
+ * config-location env var scrubbed, so a real install() never touches the
+ * developer's own config. Restores all of it, and cleans the dir, afterwards.
+ */
+function withSandboxedHome(t, prefix, fn) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  t.after(() => helpers.cleanup(root));
+  const savedHome = process.env.HOME;
+  const savedUserProfile = process.env.USERPROFILE;
+  process.env.HOME = root;
+  process.env.GSD_HOME = root; // #5017: the defaults store root follows HOME
+  process.env.USERPROFILE = root;
+  const restoreConfigLocationEnv = helpers.scrubConfigLocationEnv();
+  try {
+    return fn(root);
+  } finally {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUserProfile;
+    restoreConfigLocationEnv();
+  }
+}
+
+test('configured entrypoint validation exposes an aggregate typed boundary', () => {
+  assert.equal(
+    typeof hooksSurface.validateConfiguredEntrypoints,
+    'function',
+    'the Runtime Hooks Surface must export configured-entrypoint validation',
+  );
+});
+
+test('finishInstall rejects an invalid configured entrypoint before Done output', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-finish-'));
+  t.after(() => helpers.cleanup(root));
+  const logs = [];
+  const originalLog = console.log;
+  console.log = (...args) => logs.push(args.join(' '));
+  // #2665/#4249: finishInstall asserts configured entrypoints before any of its
+  // own writes now, but still sandbox HOME (+ USERPROFILE for os.homedir() on
+  // Windows) and config-location env defensively, so a future reordering that
+  // reintroduces a pre-assertion write can never redirect it to a live config dir.
+  const savedHome = process.env.HOME;
+  const savedUserProfile = process.env.USERPROFILE;
+  process.env.HOME = root;
+  process.env.GSD_HOME = root; // #5017: the defaults store root follows HOME
+  process.env.USERPROFILE = root;
+  const restoreConfigLocationEnv = helpers.scrubConfigLocationEnv();
+  try {
+    assert.throws(() => finishInstall(null, null, null, false, 'cline', false, root, {
+      configuredEntrypoints: [{ runtime: 'cline', configPath: path.join(root, 'config'), scriptPath: path.join(root, 'missing.js') }],
+    }), /Configured entrypoint validation failed/);
+    // #4249 review, Major: the message must name the actual consequence for
+    // the failing runtime, not just that something failed — Cline has no
+    // revert path, so its entry must be flagged "NOT reverted".
+    assert.throws(() => finishInstall(null, null, null, false, 'cline', false, root, {
+      configuredEntrypoints: [{ runtime: 'cline', configPath: path.join(root, 'config'), scriptPath: path.join(root, 'missing.js') }],
+    }), /NOT reverted/);
+  } finally {
+    console.log = originalLog;
+    restoreConfigLocationEnv();
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    if (savedUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = savedUserProfile;
+  }
+  assert.equal(logs.some(line => line.includes('Done!')), false);
+});
+
+test('a hook already registered under a stale command is still tracked for validation on re-install (#4154 Blocker)', (t) => {
+  withSandboxedHome(t, 'configured-entrypoint-stale-', () => {
+    const first = install(true, 'claude');
+    assert.ok(first.settingsPath, 'a fresh global install must produce a settings path');
+    finishInstall(first.settingsPath, first.settings, first.statuslineCommand, false, 'claude', true, first.configDir, {
+      configuredEntrypoints: first.configuredEntrypoints,
+    });
+
+    // Simulate an entry registered by an older installer under a DIFFERENT
+    // node install (e.g. an nvm switch, #4087/#4098/#4137): same real
+    // scriptPath under <configDir>/hooks/ (that never changes across
+    // installer versions) and still shaped as the modern runtime-resolving
+    // chain (rewriteLegacyManagedNodeHookCommands deliberately never touches
+    // an already-current-format entry — #3662), but baked with a node path
+    // this install would never produce. `hasGsdUpdateHook` still finds it and
+    // applySettingsJsonHooks takes its register-only-if-absent branch on the
+    // next install (never rewriting it).
+    const onDisk = JSON.parse(fs.readFileSync(first.settingsPath, 'utf8'));
+    const staleEntry = (onDisk.hooks.SessionStart || []).find(entry =>
+      entry.hooks && entry.hooks.some(h => h.command && h.command.includes('gsd-check-update.js'))
+    );
+    assert.ok(staleEntry, 'a fresh install must register the check-update hook');
+    const staleCommand = hooksSurface.buildHookCommand(first.configDir, 'gsd-check-update.js', {
+      execPath: '/old/nvm/pinned/node',
+      platform: process.platform,
+      runtime: 'claude',
+    });
+    for (const h of staleEntry.hooks) {
+      if (h.command && h.command.includes('gsd-check-update.js')) {
+        h.command = staleCommand;
+      }
+    }
+    fs.writeFileSync(first.settingsPath, JSON.stringify(onDisk, null, 2));
+
+    const second = install(true, 'claude');
+    const trackedNames = (second.configuredEntrypoints || []).map(entry => path.basename(entry.scriptPath));
+    assert.ok(
+      trackedNames.includes('gsd-check-update.js'),
+      `a hook already registered under a stale command must still be tracked for validation, got: ${trackedNames.join(', ')}`,
+    );
+  });
+});
+
+test('configured entrypoint validation aggregates file and interpreter failures without execution', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-'));
+  t.after(() => helpers.cleanup(root));
+  const directory = path.join(root, 'directory');
+  fs.mkdirSync(directory);
+
+  const unreadablePath = path.join(root, 'unreadable.js');
+  const notExecutablePath = path.join(root, 'not-executable.js');
+
+  const result = hooksSurface.validateConfiguredEntrypoints([
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath: path.join(root, 'missing.js') },
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath: directory },
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath: __filename, interpreterCandidates: ['missing-node'] },
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath: unreadablePath },
+    // #4249: selfExecutable means this entry is invoked directly via its own
+    // shebang (e.g. a Windows-Claude .sh hook) — must itself be +x.
+    // platform pinned to non-win32: the X_OK check itself is a POSIX-only
+    // concept (skipped entirely on win32, matching production) — this case
+    // must exercise it deterministically regardless of which OS runs the test.
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath: notExecutablePath, selfExecutable: true, platform: 'linux' },
+  ], {
+    resolveExecutableBinary: () => null,
+    statSync: (p) => {
+      if (p === unreadablePath) {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      }
+      return fs.statSync(p === notExecutablePath ? __filename : p);
+    },
+    accessSync: (p, mode) => {
+      if (p === notExecutablePath && mode === fs.constants.X_OK) {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      }
+      // notExecutablePath is never written to disk (its statSync mock above
+      // redirects to a real file instead) — its R_OK call must redirect too,
+      // or this falls through to a real accessSync on a nonexistent path.
+      return fs.accessSync(p === notExecutablePath ? __filename : p, mode);
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.invalid.map(({ role, reason }) => [role, reason]), [
+    ['script', 'missing'],
+    ['script', 'wrong-file-type'],
+    ['interpreter', 'unresolved-interpreter'],
+    ['script', 'unreadable'],
+    ['script', 'not-executable'],
+  ]);
+});
+
+test('an interpreter-invoked script that exists but has no read permission is reported unreadable, not ok (#4249 agy review)', (t) => {
+  // statSync only needs search (+x) permission on the parent directories, so
+  // it succeeds on a chmod-000 file even though `node <script>` would fail
+  // with EACCES at hook-fire time.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-unreadable-interp-'));
+  t.after(() => helpers.cleanup(root));
+  const scriptPath = path.join(root, 'hook.js');
+  fs.writeFileSync(scriptPath, '// unreadable to the invoking user at hook-fire time\n');
+
+  const result = hooksSurface.validateConfiguredEntrypoints([
+    {
+      runtime: 'claude',
+      configPath: path.join(root, 'settings.json'),
+      scriptPath,
+      interpreterCandidates: ['/usr/bin/node'],
+    },
+  ], {
+    resolveExecutableBinary: () => '/usr/bin/node',
+    accessSync: (p, mode) => {
+      if (p === scriptPath && mode === fs.constants.R_OK) {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      }
+      return fs.accessSync(p, mode);
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.invalid.map(({ role, reason }) => [role, reason]), [
+    ['script', 'unreadable'],
+  ]);
+});
+
+test('an EPERM from statSync (Windows equivalent of EACCES on a parent directory) is also reported unreadable, not missing (#4249 agy review)', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-eperm-'));
+  t.after(() => helpers.cleanup(root));
+  const scriptPath = path.join(root, 'hook.js');
+
+  const result = hooksSurface.validateConfiguredEntrypoints([
+    { runtime: 'claude', configPath: path.join(root, 'settings.json'), scriptPath },
+  ], {
+    statSync: () => {
+      const err = new Error('EPERM: operation not permitted');
+      err.code = 'EPERM';
+      throw err;
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.invalid.map(({ role, reason }) => [role, reason]), [
+    ['script', 'unreadable'],
+  ]);
+});
+
+test('a selfExecutable + interpreterCandidates entry checks both the execute bit and the interpreter (#4249 CodeRabbit review — Cline\'s hybrid `env node` shebang)', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-self-exec-'));
+  t.after(() => helpers.cleanup(root));
+  const okScript = path.join(root, 'ok.js');
+  const notExecScript = path.join(root, 'not-exec.js');
+  fs.writeFileSync(okScript, '#!/usr/bin/env node\n');
+  fs.writeFileSync(notExecScript, '#!/usr/bin/env node\n');
+
+  const makeEntry = (scriptPath) => ({
+    runtime: 'cline',
+    configPath: path.join(root, '.clinerules', 'hooks', 'PreToolUse'),
+    scriptPath,
+    interpreterCandidates: ['node'],
+    selfExecutable: true,
+    // X_OK is a POSIX-only concept (skipped entirely on win32, matching
+    // production) — pinned here so the execute-bit case below is exercised
+    // deterministically regardless of which OS runs the test.
+    platform: 'linux',
+  });
+
+  // plain writeFileSync never sets the execute bit (and the repo bans chmod
+  // in tests), so every case below stubs accessSync to simulate the exact
+  // permission state under test rather than relying on the real filesystem.
+  const alwaysOk = () => {};
+
+  // node missing from PATH entirely: caught even though the script itself is fine.
+  const missingInterpreter = hooksSurface.validateConfiguredEntrypoints([makeEntry(okScript)], {
+    resolveExecutableBinary: () => null,
+    accessSync: alwaysOk,
+  });
+  assert.equal(missingInterpreter.ok, false);
+  assert.deepEqual(missingInterpreter.invalid.map(({ role, reason }) => [role, reason]), [
+    ['interpreter', 'unresolved-interpreter'],
+  ]);
+
+  // node resolves fine, but the script itself lost its execute bit: caught too —
+  // interpreterCandidates being present must not skip the X_OK check here.
+  const notExecutable = hooksSurface.validateConfiguredEntrypoints([makeEntry(notExecScript)], {
+    resolveExecutableBinary: () => '/usr/bin/node',
+    accessSync: (p, mode) => {
+      if (p === notExecScript && mode === fs.constants.X_OK) {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      }
+    },
+  });
+  assert.equal(notExecutable.ok, false);
+  assert.deepEqual(notExecutable.invalid.map(({ role, reason }) => [role, reason]), [
+    ['script', 'not-executable'],
+  ]);
+
+  // both hold: clean pass.
+  const clean = hooksSurface.validateConfiguredEntrypoints([makeEntry(okScript)], {
+    resolveExecutableBinary: () => '/usr/bin/node',
+    accessSync: alwaysOk,
+  });
+  assert.equal(clean.ok, true);
+});
+
+test('a win32 selfExecutable entry (Codex .cmd shim) skips the execute-bit check (#4249 agy review)', (t) => {
+  // POSIX mode bits don't mean executable on win32 — this must not depend on
+  // Node's own accessSync(X_OK)-as-F_OK no-op (which only protects a real
+  // Windows machine), or a test simulating win32 on a POSIX runner would see
+  // a spurious 'not-executable' for a .cmd shim that was never chmod'd +x.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-win32-cmd-'));
+  t.after(() => helpers.cleanup(root));
+  const cmdPath = path.join(root, 'gsd-check-update.cmd');
+  fs.writeFileSync(cmdPath, '@echo off\r\n');
+
+  const result = hooksSurface.validateConfiguredEntrypoints([
+    {
+      runtime: 'codex',
+      configPath: path.join(root, 'hooks.json'),
+      scriptPath: cmdPath,
+      platform: 'win32',
+      selfExecutable: true,
+    },
+  ], {
+    accessSync: (p, mode) => {
+      if (mode === fs.constants.X_OK) {
+        const err = new Error('EACCES: permission denied');
+        err.code = 'EACCES';
+        throw err;
+      }
+    },
+  });
+
+  assert.equal(result.ok, true, JSON.stringify(result));
+});
+
+test('runtime config writers expose the exact configured entrypoints they emit', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'configured-entrypoint-writers-'));
+  t.after(() => helpers.cleanup(root));
+  const sourceRoot = path.join(__dirname, '..');
+
+  const codexRoot = path.join(root, 'codex');
+  // On win32, ensureCodexHooksJsonSessionStart writes a .cmd shim under
+  // <codexRoot>/hooks/; the real installer only calls this once that dir
+  // (and gsd-check-update.js) already exist, so create it here too.
+  fs.mkdirSync(path.join(codexRoot, 'hooks'), { recursive: true });
+  const codex = hooksSurface.ensureCodexHooksJsonSessionStart(codexRoot, {
+    absoluteRunner: JSON.stringify(process.execPath),
+  });
+  // win32 emits two entries (the .cmd shim plus the underlying script);
+  // every other platform emits the script alone — assert the shape common
+  // to both rather than a platform-fixed array.
+  assert.ok(codex.configuredEntrypoints.length >= 1);
+  assert.ok(codex.configuredEntrypoints.every(entry => entry.runtime === 'codex'
+    && entry.configPath === path.join(codexRoot, 'hooks.json')
+    && entry.platform === process.platform));
+  assert.ok(codex.configuredEntrypoints.some(
+    entry => path.basename(entry.scriptPath) === 'gsd-check-update.js'
+      && Array.isArray(entry.interpreterCandidates)
+      && entry.interpreterCandidates.length === 1,
+  ));
+
+  const cursorRoot = path.join(root, 'cursor');
+  const cursor = hooksSurface.writeCursorHooksJson(cursorRoot, sourceRoot, {
+    managedHookEvents: ['sessionStart'],
+  });
+  assert.deepEqual(
+    cursor.configuredEntrypoints.map(entry => path.basename(entry.scriptPath)),
+    ['gsd-cursor-session-start.js'],
+  );
+  assert.ok(cursor.configuredEntrypoints.every(entry => entry.configPath === cursor.hooksJsonPath));
+
+  const windsurfRoot = path.join(root, 'windsurf');
+  const windsurf = hooksSurface.writeWindsurfHooksJson(windsurfRoot, sourceRoot);
+  assert.deepEqual(
+    windsurf.configuredEntrypoints.map(entry => path.basename(entry.scriptPath)).sort(),
+    ['gsd-windsurf-pre-command.js', 'gsd-windsurf-pre-write.js'],
+  );
+
+  const kimiRoot = path.join(root, 'kimi');
+  fs.cpSync(path.join(sourceRoot, 'hooks'), path.join(kimiRoot, 'hooks'), { recursive: true });
+  const kimiConfig = path.join(root, 'kimi-config.toml');
+  const kimi = hooksSurface.writeKimiHooksToml(kimiConfig, kimiRoot, {
+    hookOpts: { runtime: 'kimi' },
+  });
+  assert.equal(kimi.configuredEntrypoints.length, kimi.entryCount);
+  assert.ok(kimi.configuredEntrypoints.every(entry => entry.configPath === kimiConfig));
+
+  const clineRoot = path.join(root, 'cline');
+  const cline = hooksSurface.writeClineArtifacts(clineRoot, false);
+  assert.deepEqual(
+    cline.configuredEntrypoints.map(entry => path.basename(entry.scriptPath)),
+    ['PreToolUse'],
+  );
+  // #4249 (CodeRabbit): Cline's `#!/usr/bin/env node` hook is a hybrid —
+  // self-executable (needs its own execute bit checked) AND PATH-dependent
+  // on `node` (needs an interpreter candidate resolved), unlike GSD's other
+  // JS hooks which bake an absolute node path specifically to avoid this.
+  assert.equal(cline.configuredEntrypoints[0].selfExecutable, true);
+  assert.deepEqual(cline.configuredEntrypoints[0].interpreterCandidates, ['node']);
+
+  const portable = [];
+  assert.ok(hooksSurface.buildHookCommand(root, 'gsd-context-monitor.js', {
+    runtime: 'claude',
+    portableHooks: true,
+    configPath: path.join(root, 'settings.json'),
+    configuredEntrypoints: portable,
+  }));
+  assert.deepEqual(
+    portable.map(entry => path.basename(entry.scriptPath)),
+    ['gsd-node-runner.sh', 'gsd-context-monitor.js'],
+  );
+});
+
+test('a minimal Codex rollback restores skills from the alternate skills home (#4249 CodeRabbit)', (t) => {
+  withSandboxedHome(t, 'configured-entrypoint-codex-skills-', (root) => {
+    const first = install(true, 'codex');
+    // Codex resolves skills to $HOME/.agents/skills, NOT configDir (ADR-1239
+    // skills-kind `home` override) — the surface #3245's own snapshot owns and
+    // the manifest-driven pass deliberately leaves to it.
+    const skillsRoot = path.join(root, '.agents', 'skills');
+    const skillDir = fs.readdirSync(skillsRoot).find(name => name.startsWith('gsd-'));
+    assert.ok(skillDir, `a Codex install must write gsd-* skills under ${skillsRoot}`);
+    const skillFile = path.join(skillsRoot, skillDir, 'SKILL.md');
+
+    const priorBytes = '# bytes only this test wrote\n';
+    fs.writeFileSync(skillFile, priorBytes);
+
+    // Marker-driven core profile — the `gsd update` path into minimal mode.
+    fs.writeFileSync(path.join(first.configDir, '.gsd-profile'), 'core\n');
+    const second = install(true, 'codex');
+    second.rollbackPreInstallSnapshot();
+
+    assert.equal(
+      fs.existsSync(skillFile),
+      true,
+      'a minimal-mode rollback must not delete a skill dir it never snapshotted',
+    );
+    assert.equal(
+      fs.readFileSync(skillFile, 'utf8'),
+      priorBytes,
+      'a minimal-mode rollback must restore alternate-home skills byte-for-byte',
+    );
+  });
+});
+
+test('an aggregate entrypoint validation failure rolls the Codex install back (#4249)', (t) => {
+  withSandboxedHome(t, 'configured-entrypoint-aggregate-', () => {
+    const first = install(true, 'codex');
+    // config.toml is the surface #3245's snapshot restores and the one this
+    // runtime's writer rewrites on every install, so a sentinel surviving here
+    // can only be the rollback's doing.
+    const configPath = path.join(first.configDir, 'config.toml');
+    const priorBytes = '# bytes only this test wrote\n';
+    fs.writeFileSync(configPath, priorBytes);
+
+    // Cline's `#!/usr/bin/env node` hook records interpreterCandidates: ['node'],
+    // resolved off PATH. Emptying PATH makes exactly that entry fail, which is
+    // the only way to drive a REAL aggregate failure through installAllRuntimes:
+    // every other entrypoint is a path the installer just wrote. Codex installs
+    // first, so the reversed rollback loop reaches its restoreCodexSnapshot.
+    const savedPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      assert.throws(
+        () => installAllRuntimes(['codex', 'cline'], true, false),
+        /Configured entrypoint validation failed/,
+        'an unresolvable interpreter must fail the aggregate gate',
+      );
+    } finally {
+      process.env.PATH = savedPath;
+    }
+
+    assert.equal(
+      fs.readFileSync(configPath, 'utf8'),
+      priorBytes,
+      'the aggregate failure must reach restoreCodexSnapshot, not just throw',
+    );
+  });
+});
+
+test('an aggregate entrypoint validation failure leaves Cline\'s own config file on disk, unreverted (#4249 review, Major)', (t) => {
+  withSandboxedHome(t, 'configured-entrypoint-unreverted-', () => {
+    // Cline is one of the four runtimes (Cursor/Windsurf/Kimi/Cline) that
+    // write their config file inside install(), ahead of the validation
+    // gate, with no snapshot/restore path — see the rollback-matrix
+    // paragraph in the update-gsd how-to. Unlike the Codex companion test above,
+    // this asserts the POSITIVE case that same paragraph discloses in
+    // prose but no prior test proved: the file the failing runtime itself
+    // just wrote is still there afterward, broken and unreverted.
+    const clineFirst = install(true, 'cline');
+    const clineHookPath = path.join(clineFirst.configDir, '.clinerules', 'hooks', 'PreToolUse');
+    assert.equal(fs.existsSync(clineHookPath), true, 'precondition: Cline hook must exist before the failing install');
+
+    // Same technique as the Codex rollback test: an emptied PATH makes
+    // Cline's own `#!/usr/bin/env node` hook fail interpreter resolution,
+    // driving a REAL aggregate failure through installAllRuntimes.
+    const savedPath = process.env.PATH;
+    process.env.PATH = '';
+    try {
+      assert.throws(
+        () => installAllRuntimes(['codex', 'cline'], true, false),
+        /Configured entrypoint validation failed/,
+        'an unresolvable interpreter must fail the aggregate gate',
+      );
+    } finally {
+      process.env.PATH = savedPath;
+    }
+
+    assert.equal(
+      fs.existsSync(clineHookPath),
+      true,
+      'Cline has no snapshot/restore path — its already-written hook file must remain on disk, not be deleted',
+    );
+  });
+});
+
+test('a NON-entrypoint finalize failure leaves an already-successful Codex install in place (#4249)', (t) => {
+  withSandboxedHome(t, 'configured-entrypoint-nonentry-', () => {
+    const first = install(true, 'codex');
+    // config.toml sits inside surface #3245's pre-install snapshot, so these
+    // bytes come back if — and only if — the full restoreCodexSnapshot() runs.
+    const configPath = path.join(first.configDir, 'config.toml');
+    const priorBytes = '# bytes only this test wrote\n';
+    fs.writeFileSync(configPath, priorBytes);
+
+    // Kilo is the smallest real non-Codex runtime whose finishInstall still
+    // writes: plan.finishPermissionWriter === 'kilo' makes it call
+    // configureKiloPermissions unconditionally (that writer, unlike OpenCode's,
+    // is NOT GSD_TEST_MODE-gated), ending in an unguarded
+    // fs.writeFileSync(<configDir>/kilo.json). Cline can't stand in here — its
+    // plan is writesSharedSettings:false + finishPermissionWriter:null, so its
+    // finishInstall performs no write at all and has no non-entrypoint failure
+    // path to force. EACCES on the Kilo write is injected by monkeypatching
+    // node:fs and restoring it in a finally — never chmod 0o000, which root
+    // bypasses under Docker/CI and would give this test zero real coverage.
+    const realWriteFileSync = fs.writeFileSync;
+    fs.writeFileSync = function poisonedWriteFileSync(target, ...args) {
+      const targetStr = typeof target === 'string' ? target : String(target);
+      if (/[\\/]kilo\.jsonc?$/.test(targetStr)) {
+        const injected = new Error(`EACCES: permission denied, open '${targetStr}'`);
+        injected.code = 'EACCES';
+        throw injected;
+      }
+      return realWriteFileSync.apply(fs, [target, ...args]);
+    };
+    try {
+      assert.throws(
+        () => installAllRuntimes(['codex', 'kilo'], true, false),
+        /EACCES: permission denied/,
+        'a failed Kilo permission write must abort the aggregate install',
+      );
+    } finally {
+      fs.writeFileSync = realWriteFileSync;
+    }
+
+    // Codex installs first and finishInstall prints its "Done!" summary before
+    // Kilo's throws, so the reversed rollback loop does reach Codex's entry —
+    // but with a non-entrypoint error it must take the installer-migrations-only
+    // closure, not restoreCodexSnapshot. A configured-entrypoint validation
+    // failure is the only trigger the update-gsd how-to documents for
+    // reverting a runtime install that otherwise succeeded; un-installing (on
+    // update, downgrading) Codex because an unrelated runtime hit EACCES would
+    // contradict the "Done!" the user has already been shown.
+    assert.notEqual(
+      fs.readFileSync(configPath, 'utf8'),
+      priorBytes,
+      'a non-entrypoint finalize failure must not restore the Codex pre-install snapshot',
+    );
+  });
+});
+
+// #5100: a bare win32 bash token is the "Git Bash was not found" sentinel.
+// The gate must resolve it through the Git Bash policy, not a PATH scan that
+// accepts WSL's System32 launcher. These cases inject that launcher.
+const GSD_5100_GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe';
+const GSD_5100_WSL_BASH = 'C:\\WINDOWS\\System32\\bash.exe';
+
+function gsd5100WslStandIn(candidate) {
+  if (typeof candidate !== 'string') return null;
+  if (candidate.includes('/') || candidate.includes('\\')) {
+    if (/node/i.test(candidate)) return candidate;
+    if (/git[\\/]+bin[\\/]+bash\.exe$/i.test(candidate)) return candidate;
+    return null;
+  }
+  const lower = candidate.toLowerCase();
+  if (lower === 'bash' || lower === 'bash.exe') return GSD_5100_WSL_BASH;
+  if (lower === 'node' || lower === 'node.exe') return 'C:\\Program Files\\nodejs\\node.exe';
+  return null;
+}
+
+function gsd5100HookTree(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-5100-'));
+  t.after(() => helpers.cleanup(root));
+  const configDir = path.join(root, '.claude');
+  fs.mkdirSync(path.join(configDir, 'hooks'), { recursive: true });
+  for (const name of ['gsd-foo.js', 'gsd-bar.sh', 'gsd-node-runner.sh']) {
+    fs.writeFileSync(path.join(configDir, 'hooks', name), '');
+  }
+  return configDir;
+}
+
+test('#5100 win32 portable JS and .sh hooks stay unresolved when only WSL bash is on PATH', (t) => {
+  const configDir = gsd5100HookTree(t);
+  const missing = { platform: 'win32', env: {}, existsSync: () => false };
+  const jsEntries = [];
+  const jsCmd = hooksSurface.buildHookCommand(configDir, 'gsd-foo.js', {
+    ...missing,
+    runtime: 'claude',
+    portableHooks: true,
+    configuredEntrypoints: jsEntries,
+    execPath: 'C:\\Program Files\\nodejs\\node.exe',
+  });
+  assert.equal(jsCmd, null, 'portable JS must not fall back to a bare bash command');
+  assert.ok(jsEntries.some(entry => (entry.interpreterCandidates || []).includes('bash')));
+
+  const shEntries = [];
+  const shCmd = hooksSurface.buildHookCommand(configDir, 'gsd-bar.sh', {
+    ...missing,
+    runtime: 'codex',
+    portableHooks: true,
+    configuredEntrypoints: shEntries,
+  });
+  assert.equal(shCmd, null, '.sh hooks already return null when Git Bash is missing');
+  assert.ok(shEntries.some(entry => (entry.interpreterCandidates || []).includes('bash')));
+
+  // #5100 (review, Nit 12): the Antigravity portable path reaches the same
+  // null branch — previously only claude and codex pinned it here.
+  const agyEntries = [];
+  const agyCmd = hooksSurface.buildHookCommand(configDir, 'gsd-foo.js', {
+    ...missing,
+    runtime: 'antigravity',
+    portableHooks: true,
+    configuredEntrypoints: agyEntries,
+    execPath: 'C:\\Program Files\\nodejs\\node.exe',
+  });
+  assert.equal(agyCmd, null, 'Antigravity portable JS must not fall back to a bare bash command');
+  assert.ok(agyEntries.some(entry => (entry.interpreterCandidates || []).includes('bash')));
+
+  const gateDeps = { env: {}, existsSync: () => false, resolveExecutableBinary: gsd5100WslStandIn };
+  for (const entries of [jsEntries, shEntries, agyEntries]) {
+    const gate = hooksSurface.validateConfiguredEntrypoints(entries, gateDeps);
+    assert.equal(gate.ok, false);
+    assert.ok(gate.invalid.some(item => item.reason === 'unresolved-interpreter' && String(item.path).includes('bash')));
+  }
+});
+
+test('#5100 a bare win32 bash candidate follows the Git Bash policy, not PATH', (t) => {
+  const configDir = gsd5100HookTree(t);
+  const entry = {
+    runtime: 'codex',
+    configPath: configDir,
+    scriptPath: path.join(configDir, 'hooks', 'gsd-bar.sh'),
+    platform: 'win32',
+    interpreterCandidates: ['bash'],
+  };
+  const missing = hooksSurface.validateConfiguredEntrypoints([entry], {
+    env: {},
+    existsSync: () => false,
+    resolveExecutableBinary: () => GSD_5100_WSL_BASH,
+  });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.invalid[0].reason, 'unresolved-interpreter');
+
+  const found = hooksSurface.validateConfiguredEntrypoints([entry], {
+    env: { ProgramFiles: 'C:\\Program Files' },
+    existsSync: (candidate) => candidate === GSD_5100_GIT_BASH,
+    resolveExecutableBinary: () => null,
+  });
+  assert.equal(found.ok, true);
+});
+
+test('#5100 Git Bash found by policy still emits a portable JS command and passes the gate', (t) => {
+  const configDir = gsd5100HookTree(t);
+  const entries = [];
+  const cmd = hooksSurface.buildHookCommand(configDir, 'gsd-foo.js', {
+    platform: 'win32',
+    runtime: 'claude',
+    portableHooks: true,
+    env: { ProgramFiles: 'C:\\Program Files' },
+    existsSync: (candidate) => candidate === GSD_5100_GIT_BASH,
+    configuredEntrypoints: entries,
+    execPath: 'C:\\Program Files\\nodejs\\node.exe',
+  });
+  assert.equal(typeof cmd, 'string');
+  assert.match(cmd, /Git\/bin\/bash\.exe/);
+  // Not `assert.equal(/^bash(\s|$)/.test(cmd), false)`: on win32 the resolved
+  // runner is JSON.stringify'd, so the command opens with a quote and that
+  // pattern is false for any value — it could not fail. Assert the two facts
+  // that matter instead: the command names the Git Bash path, and it never
+  // names the WSL launcher the gate exists to reject.
+  assert.doesNotMatch(cmd, /System32|Sysnative|SysWOW64/i);
+  const gate = hooksSurface.validateConfiguredEntrypoints(entries, {
+    env: { ProgramFiles: 'C:\\Program Files' },
+    existsSync: (candidate) => candidate === GSD_5100_GIT_BASH,
+    resolveExecutableBinary: gsd5100WslStandIn,
+  });
+  assert.equal(gate.ok, true, JSON.stringify(gate));
+});
+
+test('#5100 a GSD_BASH_PATH-only Git Bash satisfies the gate for a bare win32 bash candidate', (t) => {
+  const configDir = gsd5100HookTree(t);
+  const entry = {
+    runtime: 'codex',
+    configPath: configDir,
+    scriptPath: path.join(configDir, 'hooks', 'gsd-bar.sh'),
+    platform: 'win32',
+    interpreterCandidates: ['bash'],
+  };
+
+  // GSD_BASH_PATH is the only candidate resolveBashExecutable consults here:
+  // no ProgramFiles, no ProgramFiles(x86), no SystemDrive.
+  const found = hooksSurface.validateConfiguredEntrypoints([entry], {
+    env: { GSD_BASH_PATH: GSD_5100_GIT_BASH },
+    existsSync: (candidate) => candidate === GSD_5100_GIT_BASH,
+    resolveExecutableBinary: () => null,
+  });
+  assert.equal(found.ok, true, JSON.stringify(found));
+
+  // A GSD_BASH_PATH that does not exist must not satisfy the gate - the
+  // policy finds nothing, so the bare token stays unresolved even though a
+  // PATH scan would happily hand back WSL's System32 launcher.
+  const stale = hooksSurface.validateConfiguredEntrypoints([entry], {
+    env: { GSD_BASH_PATH: 'D:\\tools\\git\\bin\\bash.exe' },
+    existsSync: () => false,
+    resolveExecutableBinary: gsd5100WslStandIn,
+  });
+  assert.equal(stale.ok, false);
+  assert.equal(stale.invalid[0].reason, 'unresolved-interpreter');
+
+  // GSD_BASH_PATH is the user's explicit override, so the policy accepts
+  // whatever it names — including System32\bash.exe, the WSL launcher this
+  // issue is about. That is opt-in semantics, unchanged by #5100, but it is
+  // the one path where the WSL launcher can still reach a hook, so it is
+  // pinned here rather than left implicit: if a future change ever tightens
+  // the override, this row goes red and the behaviour change is deliberate.
+  const explicit = hooksSurface.validateConfiguredEntrypoints([entry], {
+    env: { GSD_BASH_PATH: 'C:\\Windows\\System32\\bash.exe' },
+    existsSync: (candidate) => candidate === 'C:\\Windows\\System32\\bash.exe',
+    resolveExecutableBinary: gsd5100WslStandIn,
+  });
+  assert.equal(explicit.ok, true, JSON.stringify(explicit));
+});
+
+test('#5100 non-win32 bare bash still resolves through the executable scan', () => {
+  const gate = hooksSurface.validateConfiguredEntrypoints([{
+    runtime: 'claude',
+    configPath: '/tmp/cfg',
+    scriptPath: '/tmp/cfg/hooks/gsd-foo.js',
+    platform: 'linux',
+    interpreterCandidates: ['bash'],
+  }], {
+    statSync: () => ({ isFile: () => true }),
+    accessSync: () => {},
+    resolveExecutableBinary: (candidate) => (candidate === 'bash' ? '/usr/bin/bash' : null),
+  });
+  assert.equal(gate.ok, true);
+});
+
+test('#5100 installer surfaces command-less unresolved-bash entries on fresh and upgrade installs', (t) => {
+  const configDir = gsd5100HookTree(t);
+  // The entry exactly as the installer sees it: buildHookCommand with no Git
+  // Bash pushes command-less entries (no `command` key at all).
+  const produced = [];
+  const cmd = hooksSurface.buildHookCommand(configDir, 'gsd-foo.js', {
+    platform: 'win32',
+    env: {},
+    existsSync: () => false,
+    runtime: 'claude',
+    portableHooks: true,
+    configuredEntrypoints: produced,
+    execPath: 'C:\\Program Files\\nodejs\\node.exe',
+  });
+  assert.equal(cmd, null);
+  assert.equal(produced.length, 2);
+  assert.ok(produced.every(entry => entry.command === undefined));
+  assert.ok(produced.some(entry => (entry.interpreterCandidates || []).includes('bash')));
+  const sentinel = produced[0];
+
+  const entryFor = (hookFile) => ({
+    runtime: 'claude',
+    configPath: path.join(configDir, 'settings.json'),
+    scriptPath: path.join(configDir, 'hooks', hookFile),
+    platform: 'win32',
+    interpreterCandidates: ['node'],
+    command: `"node" "/cfg/hooks/${hookFile}"`,
+  });
+  const tracked = [sentinel, entryFor('gsd-unreferenced.js'), entryFor('gsd-live.js')];
+
+  // Fresh install: nothing registered yet — the sentinel must still surface,
+  // while entries no hook references stay dropped (the #4154 contract).
+  const fresh = selectConfiguredEntrypointsForValidation(tracked, []);
+  assert.ok(fresh.includes(sentinel), 'fresh installs must surface the unresolved-bash entry');
+  assert.equal(fresh.length, 1, 'fresh installs still drop entries no hook references');
+
+  // Upgrade: commands persisted by the earlier install keep entries alive —
+  // the sentinel must surface there too, so both paths reach the gate instead
+  // of diverging into silent-pass vs hard-fail.
+  const upgraded = selectConfiguredEntrypointsForValidation(tracked, [
+    'bash "C:/old/hooks/gsd-foo.js"',
+    '"node" "/cfg/hooks/gsd-live.js"',
+  ]);
+  assert.ok(upgraded.includes(sentinel), 'upgrades must surface the unresolved-bash entry too');
+  assert.ok(
+    upgraded.some(entry => path.basename(entry.scriptPath) === 'gsd-live.js'),
+    'upgrades keep entries whose hook is still registered',
+  );
+  assert.ok(
+    upgraded.every(entry => path.basename(entry.scriptPath) !== 'gsd-unreferenced.js'),
+    'the registered-command filter still discards entries no hook references',
+  );
+
+  // The surfaced entry fails the gate loudly on a host with no Git Bash —
+  // the fresh-install silent pass Major 1 removed.
+  const gate = hooksSurface.validateConfiguredEntrypoints(fresh, {
+    env: {},
+    existsSync: () => false,
+    resolveExecutableBinary: gsd5100WslStandIn,
+  });
+  assert.equal(gate.ok, false);
+  // Name bash explicitly: any other unresolved interpreter would satisfy a
+  // bare reason check, which is the sibling rows at :605-625 shape.
+  assert.ok(gate.invalid.some(item => item.reason === 'unresolved-interpreter' && String(item.path).includes('bash')));
+  // And nothing else may be flagged — the gate must fail on the bash entry
+  // alone, not on a node entry the filter wrongly let through.
+  assert.deepEqual(
+    gate.invalid.map(item => item.reason),
+    ['unresolved-interpreter'],
+  );
+});
+
+// #5100 Minor 1 (review of 611a5eeb): the rows above drive
+// selectConfiguredEntrypointsForValidation directly, so they cannot see the
+// installer's CALL SITE. Reverting bin/install.js's call back to the pre-PR
+// inline filter — or deleting it — leaves every one of them green, while the
+// Major 1 defect (a fresh install silently passing the gate with zero entries)
+// returns. This row therefore runs a REAL install() and asserts on what the
+// caller actually received.
+//
+// `process.platform` is a configurable own property of `process`, so a child
+// process can present itself as win32 before bin/install.js is required. The
+// child's install() writes only under the sandboxed HOME it is handed, and
+// GSD_TEST_MODE keeps it off the interactive main() block.
+const GSD_5100_WIN32_INSTALL_PROBE = `
+Object.defineProperty(process, 'platform', { value: 'win32' });
+// Host-independent: a real Windows host carries a real Git Bash, and blanking the discovery
+// env vars is spelling-sensitive there (ProgramFiles / PROGRAMFILES). Make no bash.exe exist
+// for this probe, whatever the host has, so the 'no Git Bash found' host is the one under test.
+const nodeFs = require('node:fs');
+const realExistsSync = nodeFs.existsSync;
+nodeFs.existsSync = (p) => (/[\\\\/]bash\\.exe$/i.test(String(p)) ? false : realExistsSync(p));
+const path = require('node:path');
+const { install } = require(path.join(process.env.PROBE_REPO, 'bin', 'install.js'));
+const result = install(true, 'claude');
+const entries = result.configuredEntrypoints || [];
+const unresolvedBash = entries.filter(entry => (
+  entry.command === undefined
+  && (entry.interpreterCandidates || []).some(c => c.trim().toLowerCase().startsWith('bash'))
+));
+process.stdout.write('PROBE_JSON ' + JSON.stringify({
+  total: entries.length,
+  unresolvedBash: unresolvedBash.length,
+}) + '\\n');
+`;
+
+function gsd5100RunWin32InstallProbe(t) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-5100-win32-'));
+  t.after(() => helpers.cleanup(home));
+  const result = runNode(['-e', GSD_5100_WIN32_INSTALL_PROBE], {
+    cwd: path.join(__dirname, '..'),
+    env: helpers.installSpawnEnv({
+      HOME: home,
+      USERPROFILE: home,
+      PROBE_REPO: path.join(__dirname, '..'),
+      GSD_TEST_MODE: '1',
+      // #5100: portable hooks are what route a JS hook through the Git Bash
+      // policy at all; without them the win32 branch never runs.
+      GSD_PORTABLE_HOOKS: '1',
+      // Blank every Git Bash discovery input so resolveBashExecutable cannot
+      // find one — the host this PR is about. Empty string, not unset:
+      // resolveBashExecutable reads truthiness, so either works, and an
+      // explicit blank survives an env-inheriting host that exports one.
+      GSD_BASH_PATH: '',
+      ProgramFiles: '',
+      'ProgramFiles(x86)': '',
+      SystemDrive: '',
+    }),
+    timeoutMs: INSTALL_TIMEOUT_MS,
+  });
+  const marker = 'PROBE_JSON ';
+  const line = result.stdout.split('\n').find(entry => entry.startsWith(marker));
+  assert.ok(
+    line,
+    `the win32 install probe must report its summary on stdout; got outcome=${result.outcome} `
+      + `exitCode=${result.exitCode} stderr=${result.stderr.slice(-800)}`,
+  );
+  return JSON.parse(line.slice(marker.length));
+}
+
+test('#5100 the installer CALL SITE surfaces command-less unresolved-bash entries on a fresh install', (t) => {
+  const probe = gsd5100RunWin32InstallProbe(t);
+  // The pre-PR inline filter matched every entry by its registered command
+  // segment; a command-less entry never registered one, so a fresh install
+  // kept ZERO entries and the gate passed silently. The call site must now
+  // hand the unresolved-bash entry through.
+  assert.ok(
+    probe.unresolvedBash > 0,
+    'install() on a win32 host with no Git Bash must return command-less bash '
+      + `entries to the validation gate; got ${JSON.stringify(probe)}`,
+  );
+  });

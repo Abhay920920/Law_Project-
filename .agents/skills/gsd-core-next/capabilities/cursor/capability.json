@@ -1,0 +1,177 @@
+{
+  "id": "cursor",
+  "role": "runtime",
+  "version": "1.20.1",
+  "title": "Cursor",
+  "description": "Cursor IDE — skills-only workflow surface; hooks.json surface; Claude hook event dialect; recursive skill loader (flat nesting); tier-2 support.",
+  "tier": "core",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtime": {
+    "configHome": {
+      "kind": "dot-home",
+      "name": ".cursor",
+      "env": [
+        "CURSOR_CONFIG_DIR"
+      ]
+    },
+    "localConfigDir": ".cursor",
+    "configFormat": "none",
+    "artifactLayout": {
+      "global": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": true,
+          "converter": "convertClaudeCommandToCursorSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToCursorAgent"
+        }
+      ],
+      "local": [
+        {
+          "kind": "skills",
+          "destSubpath": "skills",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": true,
+          "converter": "convertClaudeCommandToCursorSkill"
+        },
+        {
+          "kind": "agents",
+          "destSubpath": "agents",
+          "prefix": "gsd-",
+          "nesting": "flat",
+          "recursive": false,
+          "converter": "convertClaudeAgentToCursorAgent"
+        }
+      ]
+    },
+    "triggerPrecedence": [
+      "skills",
+      "commands"
+    ],
+    "commandStyle": "slash-hyphen",
+    "hooksSurface": "cursor-hooks-json",
+    "hookEvents": "claude",
+    "sandboxTier": "none",
+    "supportTier": 2,
+    "installSurface": "cursor-hooks-json",
+    "writesSharedSettings": false,
+    "permissionWriter": null,
+    "extendedHookEvents": [],
+    "hostIntegration": {
+      "embeddingMode": "imperative",
+      "commandSurface": "slash-file",
+      "dispatch": {
+        "namedDispatch": true,
+        "nested": true,
+        "maxDepth": 2,
+        "background": true,
+        "subagentToolkit": "full",
+        "backgroundDispatch": true,
+        "isolation": "harness-worktree",
+        "maxConcurrency": "undocumented"
+      },
+      "modelMode": "passive",
+      "hookBus": "host",
+      "stateIO": "filesystem",
+      "transport": "mcp",
+      "runtime": "node",
+      "effortSurface": "undocumented"
+    },
+    "harnessIsolationFlag": "--worktree",
+    "hostBehaviors": {
+      "reapplyCommand": "gsd-update --reapply (mention the skill name)",
+      "frontmatterDialect": "cursor",
+      "hooksJsonSurface": true,
+      "skipSharedHooksInstall": true,
+      "retiredArtifacts": [
+        {
+          "destSubpath": "commands",
+          "prefix": "gsd-",
+          "suffix": ".md"
+        }
+      ],
+      "skipUpdateBannerCommand": true,
+      "skipSettingsUi": true,
+      "managedHookEvents": [
+        "sessionStart",
+        "postToolUse",
+        "preToolUse",
+        "stop",
+        "subagentStart",
+        "subagentStop"
+      ],
+      "contentRewriteProfile": "slash-lookahead-own-tilde"
+    }
+  },
+  "reviewer": {
+    "slug": "cursor",
+    "flags": [
+      "--cursor"
+    ],
+    "transport": "spawn",
+    "probe": {
+      "kind": "command-exists",
+      "binary": "cursor-agent"
+    },
+    "invoke": {
+      "binary": "cursor-agent",
+      "args": [
+        "-p",
+        "{{model}}",
+        "--mode",
+        "ask",
+        "--trust",
+        "--output-format",
+        "text",
+        "{{prompt}}"
+      ],
+      "promptChannel": "argv-file-ref",
+      "outputChannel": "stdout",
+      "modelArg": "--model",
+      "effortChannel": "none"
+    },
+    "timeoutFloorMs": 900000,
+    "timeoutConfigKey": null,
+    "emptyOutput": "stub-with-stderr",
+    "reviewsSection": "Cursor",
+    "evidenceClass": "source-grounded",
+    "requiresBinaries": [],
+    "promptBudgetKey": "review.max_prompt_tokens_per_reviewer.cursor",
+    "contextWindowTokens": null,
+    "contextWindowConfigKey": "review.context_window_tokens.cursor",
+    "modelConfigKey": "review.models.cursor",
+    "effortConfigKey": null,
+    "defaultEffort": null,
+    "handler": null
+  },
+  "config": {
+    "review.models.cursor": {
+      "type": "string",
+      "default": "",
+      "description": "Model passed to the Cursor reviewer lane."
+    },
+    "review.max_prompt_tokens_per_reviewer.cursor": {
+      "type": "number",
+      "default": -1,
+      "description": "Prompt-token budget for the Cursor reviewer lane. Unset is -1, a sentinel that inherits the global cap and then the lane's context-window default; 0 is a legitimate value meaning \"no prompt cap for this lane\", so it cannot double as \"not configured\"."
+    },
+    "review.context_window_tokens.cursor": {
+      "type": "number",
+      "default": -1,
+      "description": "Context window in tokens used to derive the default prompt cap for the cursor reviewer lane at 65% of the window. Unset is -1: use none (no declared window, so no derived cap); 0 disables the derived cap; a positive number overrides the window."
+    }
+  }
+}

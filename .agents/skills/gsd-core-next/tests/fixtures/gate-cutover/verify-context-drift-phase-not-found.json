@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-context-drift",
+    "99"
+  ],
+  "fixture": "ctx-drift",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": true,\n  \"reason\": \"phase-not-found\",\n  \"stale_artifacts\": [],\n  \"message\": \"Phase directory not found: 99\"\n}",
+  "stderr": "",
+  "exitCode": 69
+}

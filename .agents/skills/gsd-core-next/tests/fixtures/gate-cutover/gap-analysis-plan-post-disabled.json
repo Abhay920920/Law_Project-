@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.gap-analysis-plan-post",
+    ".planning/phases/01-gap",
+    "REQ-01"
+  ],
+  "fixture": "gap-disabled",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"enabled\": false,\n  \"table\": \"\",\n  \"summary\": \"workflow.post_planning_gaps disabled — skipping post-planning gap analysis\",\n  \"counts\": {\n    \"total\": 0,\n    \"covered\": 0,\n    \"uncovered\": 0\n  },\n  \"message\": \"workflow.post_planning_gaps disabled — skipping post-planning gap analysis\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

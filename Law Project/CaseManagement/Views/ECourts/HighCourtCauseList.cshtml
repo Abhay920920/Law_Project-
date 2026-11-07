@@ -1668,60 +1668,59 @@ function loadHcCourtBenches() {
 
 
 
-    const queryEst = (estCode === "ALL") ? "KAHC01" : estCode;
-
-
-
-    fetch(`/ECourts/GetHighCourtCauselistBenches?estCode=${encodeURIComponent(queryEst)}&causelistDate=${encodeURIComponent(date)}`)
-
+    fetch(`/ECourts/GetHighCourtCauselistBenches?estCode=${encodeURIComponent(estCode)}&causelistDate=${encodeURIComponent(date)}`)
         .then(r => r.json())
-
         .then(res => {
-
             const addedIds = new Set();
-
             addedIds.add('ALL');
 
-
-
             if (res && res.success && res.data) {
-
                 let items = extractArrayFromData(res.data);
-
                 if (items.length > 0) {
+                    if (estCode === 'ALL') {
+                        // Group sitting benches by high court branch
+                        const groups = {};
+                        items.forEach(b => {
+                            const grpKey = b.court_est_name || (b.est_code === 'KAHC02' ? 'Dharwad Bench' : (b.est_code === 'KAHC01' ? 'Principal Bench (Bengaluru)' : (b.est_code === 'KAHC03' ? 'Kalaburagi Bench' : 'High Court of Karnataka')));
+                            if (!groups[grpKey]) groups[grpKey] = [];
+                            groups[grpKey].push(b);
+                        });
 
-                    const group = document.createElement('optgroup');
+                        Object.keys(groups).forEach(gName => {
+                            const optGroup = document.createElement('optgroup');
+                            optGroup.label = `${gName} (Today's Sitting Benches)`;
+                            groups[gName].forEach((b, idx) => {
+                                const id = String(b.court_no || b.bench_id || b.bench_code || idx);
+                                const name = b.judge_name || b.bench_name || `Court Hall ${id}`;
+                                const uniqueKey = `${b.est_code || 'HC'}_${id}`;
+                                if (!addedIds.has(uniqueKey)) {
+                                    addedIds.add(uniqueKey);
+                                    const opt = document.createElement('option');
+                                    opt.value = id;
+                                    opt.textContent = `${name} (Court Hall #${id})`;
+                                    optGroup.appendChild(opt);
+                                }
+                            });
+                            if (optGroup.children.length > 0) benchSelect.appendChild(optGroup);
+                        });
+                    } else {
+                        const group = document.createElement('optgroup');
+                        group.label = 'Live Listed Benches (Today)';
 
-                    group.label = 'Live Listed Benches (Today)';
-
-
-
-                    items.forEach((b, idx) => {
-
-                        const id = String(b.bench_id || b.bench_code || b.court_no || b.id || idx);
-
-                        const name = b.bench_name || b.judge_name || b.court_name || b.name || `Court Hall ${id}`;
-
-                        if (!addedIds.has(id)) {
-
-                            addedIds.add(id);
-
-                            const opt = document.createElement('option');
-
-                            opt.value = id;
-
-                            opt.textContent = `${name} (Bench #${id})`;
-
-                            group.appendChild(opt);
-
-                        }
-
-                    });
-
-                    if (group.children.length > 0) benchSelect.appendChild(group);
-
+                        items.forEach((b, idx) => {
+                            const id = String(b.court_no || b.bench_id || b.bench_code || idx);
+                            const name = b.judge_name || b.bench_name || `Court Hall ${id}`;
+                            if (!addedIds.has(id)) {
+                                addedIds.add(id);
+                                const opt = document.createElement('option');
+                                opt.value = id;
+                                opt.textContent = `${name} (Court Hall #${id})`;
+                                group.appendChild(opt);
+                            }
+                        });
+                        if (group.children.length > 0) benchSelect.appendChild(group);
+                    }
                 }
-
             }
 
 
@@ -2181,11 +2180,12 @@ function switchCauseListViewMode(mode) {
 
     const liveSummary = document.getElementById('liveHeaderSummary');
     if (liveSummary) {
+        const benchDesc = (!window.__currentTargetBench || window.__currentTargetBench === 'All Benches') ? 'All Benches (Bengaluru, Dharwad, Kalaburagi)' : window.__currentTargetBench;
         liveSummary.innerHTML = (mode === 'today')
             ? (listedCount > 0
-                ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${activeDate}</strong>`
-                : `0 matters listed for hearing on <strong>${activeDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
-            : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${window.__currentTargetBench})`;
+                ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${activeDate}</strong> (${benchDesc})`
+                : `0 matters listed for hearing on <strong>${activeDate}</strong> across ${benchDesc}`)
+            : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${benchDesc})`;
     }
 
     filterLiveCauselistRows();
@@ -2289,7 +2289,7 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
                 <tr>
 
-                    <th style="width: 45px;" class="text-center">#</th>
+                    <th style="width: 80px;" class="text-center" title="Official High Court Calling Serial Number (Sl.No.)">Sl.No.</th>
 
                     <th style="min-width: 140px;">Case Number & Year</th>
 
@@ -2627,16 +2627,35 @@ function renderHcCauselistPage() {
 
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
 
-        let rawCourtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : (item.highCourtBench || 'Dharwad Bench'));
+        let itemBench = item.highCourtBench || (item.cnrNumber && item.cnrNumber.startsWith('KAHC01') ? 'Principal Bench (Bengaluru)' : (item.cnrNumber && item.cnrNumber.startsWith('KAHC03') ? 'Kalaburagi Bench' : (item.cnrNumber && item.cnrNumber.startsWith('KAHC02') ? 'Dharwad Bench' : (targetBench !== 'All Benches' ? targetBench : 'High Court of Karnataka'))));
+        let rawCourtNo = item.courtHall || (benchId !== "ALL" ? `Court Hall ${benchId}` : itemBench);
         let courtNo = rawCourtNo;
-        if (courtNo && (courtNo.length > 35 || courtNo.includes('Cause List') || courtNo.includes('Sl.No'))) {
-            const m = courtNo.match(/(?:COURT\s+HALL\s+(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
-            const slM = courtNo.match(/Serial\s+No\.?\s*(\d+(?:\.\d+)?)/i);
-            if (m) {
-                courtNo = `Court Hall ${m[1]}` + (slM ? ` (Serial No. ${slM[1]})` : (item.causeListItemNo ? ` (Serial No. ${item.causeListItemNo})` : ''));
+
+        // Extract and sanitize Serial Number
+        const slM = courtNo ? courtNo.match(/Serial\s+No\.?\s*(\d+(?:\.\d+)?)/i) : null;
+        let effectiveSerial = item.causeListItemNo || (slM ? slM[1] : '');
+        const serialSuffix = effectiveSerial ? ` (Serial No. ${effectiveSerial})` : '';
+
+        // Format clean Court Hall / Bench name without stripping named benches
+        let cleanHallName = 'Court Hall';
+        if (courtNo) {
+            const numM = courtNo.match(/(?:COURT\s+(?:HALL\s+)?(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
+            if (numM) {
+                let hallNum = numM[1];
+                if (hallNum === '98') hallNum = '9'; // Normalize OCR artifact Hall 98 -> Hall 9
+                cleanHallName = `Court Hall ${hallNum}`;
+                courtNo = `${cleanHallName}${serialSuffix}`;
             } else {
-                courtNo = item.highCourtBench || 'Court Hall';
+                // Registrar / Named benches: e.g. "Court Hall (ADDL. REGISTRAR GENERAL)"
+                cleanHallName = courtNo.replace(/\s*\(\s*Serial\s+No\.?[^\)]*\)/gi, '').replace(/\(\s*\)/g, '').replace(/[\(\s\-,:]+$/, '').trim();
+                if (!cleanHallName || cleanHallName.toLowerCase().includes('cause list')) {
+                    cleanHallName = itemBench || 'Court Hall';
+                }
+                courtNo = `${cleanHallName}${serialSuffix}`;
             }
+        } else {
+            cleanHallName = itemBench || 'Court Hall';
+            courtNo = `${cleanHallName}${serialSuffix}`;
         }
 
         const clNo = item.causeListNo || (item.causeListType ? (item.causeListType.match(/(?:No\.?|#)\s*(\d+)/i)?.[1] || (item.causeListType.includes('No. 1') ? '1' : '')) : '');
@@ -2700,42 +2719,39 @@ function renderHcCauselistPage() {
 
                      data-role="${item.nwkrtcRole || ''}">
 
-            <td class="fw-bold text-center text-muted">${sr}</td>
+            <td class="text-center align-middle">
+                ${effectiveSerial ? `
+                <span class="badge bg-danger text-white font-monospace fw-bold fs-6 px-2 py-1 shadow-xs" title="Official High Court Cause List Serial / Calling Turn">
+                    ${effectiveSerial}
+                </span>` : `<span class="badge bg-secondary-subtle text-muted font-monospace fw-bold">—</span>`}
+                <div class="extra-small text-muted mt-0.5" title="Table Row Counter">#${sr}</div>
+            </td>
 
             <td class="text-nowrap">
                 <div class="d-flex align-items-center gap-1">
                     <strong class="text-primary font-monospace fs-6">${caseNo}</strong>
                     ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
                 </div>
-                <div class="extra-small text-muted">${item.highCourtBench || targetBench}</div>
+                <div class="extra-small text-muted">${itemBench}</div>
             </td>
 
             <td>
-
-                <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold d-inline-block text-nowrap mb-1">
-
-                    <i class="bi bi-bank2 me-1"></i>${courtNo}
-
-                </span>
+                <div class="d-flex align-items-center gap-1.5 flex-wrap mb-1">
+                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold text-nowrap">
+                        <i class="bi bi-bank2 me-1"></i>${cleanHallName}
+                    </span>
+                </div>
 
                 ${clNo ? `
-
                 <div class="extra-small text-dark fw-bold mb-0.5">
-
                     <span class="badge bg-primary-subtle text-primary border border-primary font-monospace extra-small text-nowrap">
-
                         <i class="bi bi-card-checklist me-1"></i>Cause List No: ${clNo}
-
                     </span>
-
                 </div>` : ''}
 
                 <div class="extra-small text-muted text-nowrap">
-
-                    <i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}
-
+                    <i class="bi bi-geo-alt me-0.5"></i>${itemBench}
                 </div>
-
             </td>
 
             <td class="actions-col text-nowrap" style="min-width: 260px; width: 260px; white-space: nowrap !important;">
@@ -2805,18 +2821,17 @@ function renderHcCauselistPage() {
             <!-- Card Header: Serial #, Case Number, and Bench -->
             <div class="d-flex justify-content-between align-items-center mb-1.5 pb-1.5 border-bottom gap-2">
                 <div class="d-flex align-items-center gap-1.5 min-w-0">
-                    <span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>
+                    ${effectiveSerial ? `<span class="badge bg-danger text-white fw-bold font-monospace extra-small flex-shrink-0 shadow-xs" title="Official Cause List Serial No.">Sl.No. ${effectiveSerial}</span>` : `<span class="badge bg-secondary-subtle text-dark border fw-bold extra-small flex-shrink-0">#${sr}</span>`}
                     <span class="fw-bold text-primary font-monospace fs-6 text-truncate">${caseNo}</span>
                     ${item.subjectCategory ? `<span class="badge bg-light text-dark border font-monospace extra-small" title="High Court Subject Classification">${escapeHtml(item.subjectCategory)}</span>` : ''}
                 </div>
-                <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${item.highCourtBench || targetBench}</span>
+                <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${itemBench}</span>
             </div>
 
-            <!-- Court Hall & Cause List Badge Row (Dedicated full-width row to prevent horizontal overflow) -->
+            <!-- Court Hall & Cause List Badge Row -->
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-2 p-1.5 rounded-2 bg-warning-subtle bg-opacity-40 border border-warning border-opacity-50">
-                <div class="extra-small fw-bold text-dark d-flex align-items-center gap-1 min-w-0" style="line-height: 1.25;">
-                    <i class="bi bi-bank2 text-dark flex-shrink-0"></i>
-                    <span class="text-break">${courtNo || 'Court Hall Active'}</span>
+                <div class="extra-small fw-bold text-dark d-flex align-items-center gap-1.5 flex-wrap min-w-0" style="line-height: 1.25;">
+                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace"><i class="bi bi-bank2 me-1"></i>${cleanHallName}</span>
                 </div>
                 ${clNo ? `<span class="badge bg-primary text-white extra-small font-monospace flex-shrink-0"><i class="bi bi-card-checklist me-0.5"></i>CL No: ${clNo}</span>` : ''}
             </div>

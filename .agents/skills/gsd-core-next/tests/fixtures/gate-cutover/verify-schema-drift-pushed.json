@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "3"
+  ],
+  "fixture": "schema-drift",
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"schema_files\": [\n    \"prisma/schema.prisma\"\n  ],\n  \"orms\": [\n    \"prisma\"\n  ],\n  \"unpushed_orms\": [],\n  \"message\": \"\",\n  \"skipped\": false\n}",
+  "stderr": "",
+  "exitCode": 0
+}

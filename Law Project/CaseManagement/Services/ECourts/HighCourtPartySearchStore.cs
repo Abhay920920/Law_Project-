@@ -165,7 +165,8 @@ namespace MVCCaseManagement.Services.ECourts
 
                 string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                     ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
-                    : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
+                    : (item.HighCourtBench != null && (item.HighCourtBench.IndexOf("Bengaluru", StringComparison.OrdinalIgnoreCase) >= 0 || item.HighCourtBench.IndexOf("Principal", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC01" :
+                      (item.HighCourtBench != null && item.HighCourtBench.IndexOf("Kalaburagi", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC03" : "KAHC02"));
 
                 bool petIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
                 bool resIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
@@ -239,7 +240,9 @@ namespace MVCCaseManagement.Services.ECourts
                 NwkrtcRole = x.NwkrtcRole,
                 MatchedDesignation = x.MatchedDesignation,
                 EstablishmentName = x.EstablishmentName,
-                HighCourtBench = x.HighCourtBench,
+                HighCourtBench = !string.IsNullOrWhiteSpace(x.HighCourtBench) ? x.HighCourtBench :
+                    (!string.IsNullOrEmpty(x.CNRNumber) && x.CNRNumber.StartsWith("KAHC01", StringComparison.OrdinalIgnoreCase) ? "Principal Bench (Bengaluru)" :
+                    (!string.IsNullOrEmpty(x.CNRNumber) && x.CNRNumber.StartsWith("KAHC03", StringComparison.OrdinalIgnoreCase) ? "Kalaburagi Bench" : "Dharwad Bench")),
                 NextHearingDate = (x.NextHearingDate.HasValue && x.NextHearingDate.Value.Year >= 2000 && x.NextHearingDate.Value.Year <= 2050) ? x.NextHearingDate : null,
                 CaseStage = x.CaseStage ?? "Hearing Active",
                 CourtHall = x.CourtHall,

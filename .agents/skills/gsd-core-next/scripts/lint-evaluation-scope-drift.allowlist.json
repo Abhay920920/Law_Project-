@@ -1,0 +1,14 @@
+[
+  {
+    "file": "gsd-core/workflows/complete-milestone.md",
+    "rule": "S5",
+    "command": "git log --oneline --grep=\"feat(\" | head -20",
+    "reason": "Milestone accomplishments summary across the whole milestone, not an evaluation scope for a gate or step (#5164 Phase 7 census)."
+  },
+  {
+    "file": "gsd-core/workflows/session-report.md",
+    "rule": "S3",
+    "command": "git diff --stat HEAD~10 HEAD 2>/dev/null | tail -1 || echo \"No diff available\"",
+    "reason": "Informational diffstat of the session's last commits in a report, not an evaluation scope (#5164 Phase 7 census)."
+  }
+]

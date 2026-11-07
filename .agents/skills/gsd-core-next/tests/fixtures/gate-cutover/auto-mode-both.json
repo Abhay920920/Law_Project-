@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.auto-mode"
+  ],
+  "fixture": "auto-both",
+  "stdout": "{\n  \"active\": true,\n  \"source\": \"both\",\n  \"auto_chain_active\": true,\n  \"auto_advance\": true\n}",
+  "stderr": "",
+  "exitCode": 0
+}

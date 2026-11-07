@@ -387,7 +387,7 @@
 
             // Notifications fetch
             function loadNotifications() {
-                $.get('/Notification/GetUnread', function(data) {
+                $.get('/Notification/GetUnread').done(function(data) {
                     if (data && data.count > 0) {
                         $('#notificationBadge').text(data.count).removeClass('d-none');
                     } else {

@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.verify-codebase-drift"
+  ],
+  "fixture": "cb-no-map",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": true,\n  \"reason\": \"no-structure-md\",\n  \"action_required\": false,\n  \"directive\": \"none\",\n  \"elements\": []\n}",
+  "stderr": "",
+  "exitCode": 0
+}

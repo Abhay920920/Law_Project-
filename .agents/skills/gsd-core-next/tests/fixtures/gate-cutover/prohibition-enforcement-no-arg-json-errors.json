@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.prohibition-enforcement"
+  ],
+  "fixture": "prohibition",
+  "env": {
+    "GSD_JSON_ERRORS": "1"
+  },
+  "stdout": "",
+  "stderr": "{\"ok\":false,\"reason\":\"sdk_missing_arg\",\"message\":\"prohibition-enforcement requires a JSON request: check prohibition-enforcement <request.json> | --json '{\\\"prohibition\\\":{...},\\\"check\\\":{...}}'\"}\n",
+  "exitCode": 1
+}

@@ -226,7 +226,13 @@ namespace MVCCaseManagement.DAL
                     a.CorpMFANumber AS MFANumber,
                     a.CorpMFAYear AS MFAYear,
                     a.CorpMFACNRNumber AS CNRNumber,
-                    ISNULL(NULLIF(a.HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    CASE 
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN a.HighCourtBench IS NOT NULL AND a.HighCourtBench <> '' THEN a.HighCourtBench
+                        ELSE 'Dharwad Bench'
+                    END AS HighCourtBench,
                     NULLIF(a.CourtHall, '') AS CourtHall,
                     c.MVCNo AS ArisingMVCNo,
                     c.MVCYear AS ArisingMVCYear,
@@ -254,7 +260,13 @@ namespace MVCCaseManagement.DAL
                     a.ClaimantMFANumber AS MFANumber,
                     a.ClaimantMFAYear AS MFAYear,
                     a.ClaimantMFACNRNumber AS CNRNumber,
-                    ISNULL(NULLIF(a.HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    CASE 
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN a.HighCourtBench IS NOT NULL AND a.HighCourtBench <> '' THEN a.HighCourtBench
+                        ELSE 'Dharwad Bench'
+                    END AS HighCourtBench,
                     NULLIF(a.CourtHall, '') AS CourtHall,
                     ISNULL(a.ClaimantMVCNumber, c.MVCNo) AS ArisingMVCNo,
                     ISNULL(a.ClaimantMVCYear, c.MVCYear) AS ArisingMVCYear,
@@ -282,7 +294,13 @@ namespace MVCCaseManagement.DAL
                     l.CO_WP_CaseNumber AS MFANumber,
                     l.CO_WP_Year AS MFAYear,
                     l.CO_WP_CNRNumber AS CNRNumber,
-                    ISNULL(NULLIF(l.CO_WP_HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    CASE 
+                        WHEN l.CO_WP_CNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN l.CO_WP_CNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN l.CO_WP_CNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN l.CO_WP_HighCourtBench IS NOT NULL AND l.CO_WP_HighCourtBench <> '' THEN l.CO_WP_HighCourtBench
+                        ELSE 'Dharwad Bench'
+                    END AS HighCourtBench,
                     NULL AS CourtHall,
                     l.CaseNumber AS ArisingMVCNo,
                     l.CaseYear AS ArisingMVCYear,
@@ -308,7 +326,13 @@ namespace MVCCaseManagement.DAL
                     l.CO_Claimant_CaseNumber AS MFANumber,
                     l.CO_Claimant_CaseYear AS MFAYear,
                     l.CO_Claimant_CNRNumber AS CNRNumber,
-                    ISNULL(NULLIF(l.CO_Claimant_HighCourtBench, ''), 'Dharwad') AS HighCourtBench,
+                    CASE 
+                        WHEN l.CO_Claimant_CNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN l.CO_Claimant_CNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN l.CO_Claimant_CNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN l.CO_Claimant_HighCourtBench IS NOT NULL AND l.CO_Claimant_HighCourtBench <> '' THEN l.CO_Claimant_HighCourtBench
+                        ELSE 'Dharwad Bench'
+                    END AS HighCourtBench,
                     NULL AS CourtHall,
                     l.CaseNumber AS ArisingMVCNo,
                     l.CaseYear AS ArisingMVCYear,

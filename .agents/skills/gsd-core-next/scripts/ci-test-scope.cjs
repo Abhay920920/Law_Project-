@@ -1,0 +1,739 @@
+#!/usr/bin/env node
+'use strict';
+
+const path = require('path');
+const { execFileSync } = require('child_process');
+const { existsSync, readdirSync, appendFileSync, readFileSync } = require('fs');
+
+const { ExitError, runMain } = require('./lib/cli-exit.cjs');
+const { classifyContent, NOISY_FOR_SOURCE_REACHABILITY } = require('./gen-platform-conformance-tier.cjs');
+
+// Workflow files that are purely administrative / policy bots. Changes to these
+// files do NOT require the cross-platform test matrix — only a lightweight
+// ubuntu lane running workflow-lint tests is needed.
+// FAIL-SAFE: any .github/workflows/*.yml NOT listed here is treated as a
+// pipeline workflow and gets the full matrix. New workflow files default to full.
+const INERT_WORKFLOWS = new Set([
+  'stale.yml',
+  'branch-cleanup.yml',
+  'branch-naming.yml',
+  'auto-label-issues.yml',
+  'auto-branch.yml',
+  'auto-backmerge.yml',
+  'close-draft-prs.yml',
+  'dismiss-unauthorized-pr-approvals.yml',
+  'pr-target-validator.yml',
+  'pr-template-format.yml',
+  'require-issue-link.yml',
+  'changeset-required.yml',
+  'docs-required.yml',
+  'discord-changelog.yml',
+]);
+
+// Workflows that gate merges, ship the product, or run security/cross-platform
+// suites — these must ALWAYS get the full pipeline treatment and can never be
+// added to INERT_WORKFLOWS. A module-load assertion enforces this so a mistaken
+// or malicious addition fails CI loudly in the `changes` job on every PR.
+const PROTECTED_WORKFLOWS = new Set([
+  'test.yml',
+  'install-smoke.yml',
+  'mutation.yml',
+  'security-scan.yml',
+  'release.yml',
+  // #3833: the reusable gate every `pull_request` compute lane depends on —
+  // marking it inert would let a change to the gate itself ship without ever
+  // running the full matrix it is responsible for enforcing.
+  'pr-mergeable-preflight.yml',
+]);
+for (const wf of PROTECTED_WORKFLOWS) {
+  if (INERT_WORKFLOWS.has(wf)) {
+    throw new Error(`ci-test-scope: protected workflow "${wf}" must not be in INERT_WORKFLOWS (it requires the full test matrix).`);
+  }
+}
+
+/**
+ * Returns true if the path is an inert (non-pipeline) workflow file.
+ * Only `.github/workflows/<name>` where <name> is in INERT_WORKFLOWS qualifies.
+ */
+function isInertCi(filePath) {
+  if (!filePath.startsWith('.github/workflows/')) return false;
+  const name = filePath.slice('.github/workflows/'.length);
+  // Must be a direct child (no further slashes) and in the allowlist.
+  return !name.includes('/') && INERT_WORKFLOWS.has(name);
+}
+
+// Tests shared by both the 'workflow automation' and 'inert CI' rules.
+const WORKFLOW_LINT_TESTS = [
+  'tests/workflow-shell-pinning.test.cjs',
+  'tests/pr-template-policy.test.cjs',
+  'tests/lint-pr-check-project-dir.test.cjs',
+];
+
+const RULES = [
+  {
+    name: 'workflow automation',
+    // Only NON-inert .github/workflows/* and all .github/rulesets/* trigger full matrix.
+    // FAIL-SAFE: any .github/workflows/*.yml not in INERT_WORKFLOWS is treated as pipeline.
+    match: filePath => (filePath.startsWith('.github/workflows/') && !isInertCi(filePath)) ||
+      filePath.startsWith('.github/rulesets/'),
+    fullMatrix: true,
+    tests: [
+      ...WORKFLOW_LINT_TESTS,
+      'tests/release-tarball-smoke-workflow.test.cjs',
+    ],
+  },
+  {
+    name: 'inert CI',
+    match: filePath => isInertCi(filePath),
+    fullMatrix: false,
+    tests: [
+      ...WORKFLOW_LINT_TESTS,
+      'tests/policy-lint-shallow-checkout.test.cjs',
+    ],
+  },
+  {
+    name: 'test harness',
+    match: path => path === 'scripts/run-tests.cjs',
+    fullMatrix: true,
+    tests: [
+      'tests/run-tests-harness.test.cjs',
+      'tests/workflow-shell-pinning.test.cjs',
+      // #4220: the run-scoped temp root + computeSweepProtectSet ancestor-walk
+      // termination coverage — was previously not re-selected by an edit to
+      // scripts/run-tests.cjs, the exact file that shipped the #4020 hang.
+      'tests/run-tests-temp-root.test.cjs',
+    ],
+  },
+  {
+    name: 'environment and dependency gates',
+    match: path => [
+      'scripts/check-env.cjs',
+      'scripts/check-npm-integrity.cjs',
+      'package.json',
+      'package-lock.json',
+    ].includes(path),
+    fullMatrix: true,
+    tests: [
+      'tests/check-env.test.cjs',
+      'tests/npm-integrity-gate.test.cjs', // #2758: absorbs the former tests/bug-3588-npm-audit-clean.test.cjs (folded into it by consolidation epic #1969 B6 #1975; the stale filename here was a silent coverage hole this rule never actually re-selected)
+      'tests/package-manifest.test.cjs',
+    ],
+  },
+  {
+    name: 'TS runtime sources (ADR-457 build-at-publish)',
+    // src/*.cts compiles into gsd-core/bin/lib/*.cjs; a source-only edit must
+    // still trigger the migrated module's tests (otherwise CI silently skips them).
+    match: path => path.startsWith('src/') || path === 'tsconfig.build.json',
+    tests: [
+      'tests/semver-compare.test.cjs', // #2758: absorbs the former tests/bug-10-semver-policy-consolidation.test.cjs (folded into it by consolidation epic #1969 B3 #1972; the stale filename here was a silent coverage hole this rule never actually re-selected)
+      'tests/emitted-provenance.test.cjs', // any src/installer change can alter emitted install artifacts → re-verify provenance totality (#2724: golden-install-parity retired, this is the sole gate)
+      'tests/emitted-attribution.test.cjs',
+    ],
+  },
+  {
+    name: 'installer and package layout',
+    match: path => path.startsWith('bin/') ||
+      path.startsWith('gsd-core/bin/') ||
+      path.includes('install') ||
+      path.includes('release-tarball-smoke'),
+    fullMatrix: true,
+    tests: [
+      'tests/install.test.cjs',
+      'tests/install-regressions.test.cjs',
+      'tests/install-runtime-artifacts.test.cjs',
+      'tests/install-path-detection.test.cjs',
+      // NOTE: release-tarball-smoke.install.test.cjs is intentionally NOT here.
+      // It is a 3–6 min `npm pack` + `npm install -g` integration test with its
+      // OWN dedicated workflow (.github/workflows/install-smoke.yml, triggered on
+      // the production install paths). Running it in the scoped/targeted lane too
+      // is redundant and blows the per-chunk Windows timeout when a broad PR
+      // bundles it with many other changed test files (epic #1969). See the
+      // SCOPED_LANE_EXCLUDE guard below, which also drops it when it is itself a
+      // changed test file.
+      'tests/runtime-artifact-layout.test.cjs',
+      'tests/emitted-provenance.test.cjs', // any src/installer change can alter emitted install artifacts → re-verify provenance totality (#2724: golden-install-parity retired, this is the sole gate)
+      'tests/emitted-attribution.test.cjs',
+    ],
+  },
+  {
+    name: 'shipped install content (emitted-attribution drift guard, #2267/#2724)',
+    // Every source file the installer EMITS into a runtime layout is captured by
+    // the emitted-attribution differential + the install-tree snapshot. A source
+    // edit here that changes emitted output MUST re-verify (#2266: a
+    // hooks/gsd-statusline.js edit changed installed output but no rule selected
+    // the drift guard, so a stale emitted state shipped to next undetected).
+    // Union semantics: this ADDS the drift guard on top of each path's existing
+    // content-specific tests. Targeted lane only (the real-tree test skips win32
+    // by design), no fullMatrix.
+    // #2724: golden-install-parity.test.cjs is retired (ADR-2719 Phase 4); the
+    // emitted differential (ADR-2719 Phase 2/3) is now the sole gate for a PR
+    // editing only shipped content, the archetypal emitted-ripple case.
+    // NOTE: intentionally NOT a blanket 'gsd-core/' prefix, for two reasons:
+    // (1) gsd-core/bin/** is tsc-compiled runtime output — EXCLUDED_PREFIXES-
+    //     excluded from both manifests, and already covered by the 'installer and
+    //     package layout' rule (path.startsWith('gsd-core/bin/')) — so matching it
+    //     here would be pure noise; and
+    // (2) enumerating only the installer-shipped content subtrees preserves the
+    //     bug-408 unit-fallback contract: a gsd-core/ path that is NOT shipped
+    //     verbatim (the bug-408 test uses gsd-core/src/some-util.js) must still
+    //     fall back to ['unit'] when no rule matches.
+    // Listed: the four gsd-core content subtrees the installer ships verbatim
+    // (contexts, references, templates, workflows) + bin/shared/*.json data files.
+    // Verify against Object.keys(golden fixture) grouped by gsd-core/<subdir>.
+    match: path =>
+      ['hooks/', 'commands/', 'agents/', 'skills/', 'gsd-core/workflows/', 'gsd-core/templates/', 'gsd-core/references/', 'gsd-core/contexts/', 'scripts/changeset/', 'scripts/lib/'].some(p => path.startsWith(p)) ||
+      (path.startsWith('gsd-core/bin/shared/') && path.endsWith('.json')) ||
+      ['scripts/fix-slash-commands.cjs', 'scripts/gen-capability-registry.cjs', 'scripts/gen-loop-host-contract.cjs'].includes(path),
+    tests: [
+      'tests/golden-install-tree.test.cjs',
+      'tests/emitted-provenance.test.cjs',
+      'tests/emitted-attribution.test.cjs',
+    ],
+  },
+  {
+    name: 'hooks',
+    match: path => path.startsWith('hooks/'),
+    fullMatrix: true,
+    tests: [
+      'tests/hook-validation.test.cjs',
+      'tests/managed-hooks.test.cjs',
+      'tests/hooks-opt-in.test.cjs',
+      'tests/sh-hook-paths.test.cjs',
+      'tests/precommit-alias-drift-hook.test.cjs',
+      'tests/prepush-enterprise-email-hook.test.cjs',
+    ],
+  },
+  {
+    name: 'changeset tooling',
+    match: path => path.startsWith('scripts/changeset/') || path.startsWith('.changeset/'),
+    tests: [
+      'tests/changeset-cli.test.cjs',
+      'tests/changeset-lint.test.cjs',
+      'tests/changeset-new.test.cjs',
+      'tests/changeset-parse.test.cjs',
+      'tests/changeset-render.test.cjs',
+      'tests/changeset-serialize.test.cjs',
+      'tests/changeset-github-release-notes.test.cjs',
+    ],
+  },
+  {
+    name: 'security scanners',
+    match: path => path.includes('secret-scan') ||
+      path.includes('base64-scan') ||
+      path.includes('prompt-injection-scan') ||
+      path.startsWith('tests/fixtures/adversarial/security/'),
+    tests: [
+      'tests/secret-scan-lint.security.test.cjs',
+      'tests/prompt-injection-scan.security.test.cjs',
+      'tests/security-prompt-injection.security.test.cjs',
+      'tests/read-injection-scanner.security.test.cjs',
+      'tests/security-scan.security.test.cjs',
+    ],
+  },
+  {
+    name: 'command definitions',
+    match: path => path.startsWith('commands/'),
+    tests: [
+      'tests/command-contract.test.cjs',
+      'tests/command-routing-hub.test.cjs',
+      'tests/commands.test.cjs',
+      'tests/docs-parity-live-registry.test.cjs',
+      'tests/phase-command-router.test.cjs',
+      'tests/roadmap-command-router.test.cjs',
+    ],
+  },
+  {
+    name: 'workflow prompts',
+    match: path => path.startsWith('gsd-core/workflows/'),
+    tests: [
+      'tests/workflow-compat.test.cjs',
+      'tests/workflow-size-budget.test.cjs',
+      'tests/workflow-guard-registration.test.cjs',
+      'tests/commands.test.cjs',
+      // #2758: was 'tests/bug-3683-workflow-colon-namespace-leak.test.cjs', deleted by
+      // consolidation epic #1969 (B6 #1975) and folded into slash-command-namespace.test.cjs
+      // ("folded:bug-3683-workflow-colon-namespace-leak" describe block). The stale filename
+      // here was itself an instance of this issue's defect class — silently dropped by
+      // existingTests() below, so gsd-core/workflows/ changes stopped re-running this
+      // regression's coverage with nothing signaling it.
+      'tests/slash-command-namespace.test.cjs',
+    ],
+  },
+  {
+    name: 'agent prompts',
+    match: path => path.startsWith('agents/'),
+    tests: [
+      'tests/agent-frontmatter.test.cjs',
+      'tests/agent-size-budget.test.cjs',
+      'tests/agent-skills.test.cjs',
+      'tests/agent-skills-awareness.test.cjs',
+      'tests/agent-required-reading-consistency.test.cjs',
+      'tests/docs-parity-live-registry.test.cjs',
+    ],
+  },
+  {
+     name: 'configuration',
+     match: path => ['config', 'configuration', 'model-catalog', 'model-profile'].some(k => path.includes(k)),
+     tests: [
+       'tests/config.test.cjs',
+       'tests/config-get-default.test.cjs',
+       'tests/configuration-migrate-config.test.cjs',
+       'tests/model-catalog-runtime-defaults.test.cjs',
+       'tests/model-profiles.test.cjs',
+     ],
+   },
+  {
+    // ADR-1703 portability lint surface. Editing a rule, the shared vocab/guard
+    // helpers, or the eslint config that wires them must re-run the rule suites
+    // + the disable-ban. The disable-ban also scans bin/install.js and
+    // scripts/build-hooks.js (the Phase 6 glob-expansion surface), so changes
+    // to those files re-run it too.
+    name: 'portability lint rules (ADR-1703)',
+    match: path => path.startsWith('eslint-rules/') ||
+      path === 'eslint.config.mjs' ||
+      path === 'bin/install.js' ||
+      path === 'scripts/build-hooks.js',
+    tests: [
+      'tests/portability-rule-disable-ban.test.cjs',
+      'tests/portability-vocab-drift.test.cjs',
+      // All nine RuleTester suites (P1–P6) — editing any rule / the shared
+      // vocab+guard helpers / the eslint config re-runs the full rule family.
+      'tests/no-path-literal-in-assert.rule.test.cjs',
+      'tests/no-posix-mode-bit-assert.rule.test.cjs',
+      'tests/no-unguarded-nonportable-exec.rule.test.cjs',
+      'tests/no-crlf-fragile-split.rule.test.cjs',
+      'tests/no-hardcoded-tmp.rule.test.cjs',
+      'tests/no-bare-npm-exec.rule.test.cjs',
+      'tests/require-userprofile-with-home.rule.test.cjs',
+      'tests/normalize-path-in-content.rule.test.cjs',
+      'tests/require-fs-op-fallback.rule.test.cjs',
+      // #4244 (origin #4020/#4220 Windows CI hang) — see ADR-1703 amendment.
+      'tests/require-full-tmpdir-triad.rule.test.cjs',
+      'tests/no-unbounded-dirname-walk.rule.test.cjs',
+    ],
+  },
+  {
+    // ADR-3212 Phase 4 (#3415): no-unbounded-quantifier and the shared
+    // readfilesync-trace helper it uses (also now imported by
+    // no-crlf-fragile-split). NOT part of the ADR-1703 portability family above
+    // — kept as its own bucket so this rule's tests re-run without pulling in
+    // the ADR-1703 disable-ban / vocab-drift suites it is not governed by.
+    name: 'no-unbounded-quantifier + readfilesync-trace (ADR-3212 Phase 4)',
+    match: path => [
+      'eslint-rules/no-unbounded-quantifier.cjs',
+      'eslint-rules/lib/readfilesync-trace.cjs',
+      'eslint-rules/no-crlf-fragile-split.cjs',
+    ].includes(path),
+    tests: [
+      'tests/no-unbounded-quantifier.rule.test.cjs',
+      'tests/readfilesync-trace-parity.test.cjs',
+    ],
+  },
+ ];
+
+/**
+ * Every RULES[].tests entry (deduped, across every rule) that does NOT exist on
+ * disk. #2758: a rule naming a test file that no longer exists is not merely
+ * inert — existingTests() below silently drops it out of targeted_tests, with
+ * nothing in the CI output signaling why. Phase 4 (#2724) deletes
+ * tests/golden-install-parity.test.cjs; without this check, any rule still
+ * naming it would stop selecting the guard entirely and CI would stay green
+ * throughout. Pure and independent of which rule / which file: it catches ANY
+ * phantom entry, not only the two names this issue is about.
+ * Paths resolve relative to the repo root (this file's parent directory), not
+ * the caller's cwd, so the check behaves identically whether invoked as the CLI
+ * (`node scripts/ci-test-scope.cjs ...`, cwd == repo root by convention) or
+ * required directly by a test.
+ */
+function missingRuleTestFiles(rules) {
+  const referenced = new Set();
+  for (const rule of rules) {
+    for (const f of rule.tests) referenced.add(f);
+  }
+  return [...referenced].filter(f => !existsSync(path.join(__dirname, '..', f))).sort();
+}
+
+/**
+ * Every PROTECTED_WORKFLOWS member that does not exist on disk.
+ * The name list and the real filenames are two surfaces over one fact
+ * (#3833): without this, renaming or deleting a gating workflow silently
+ * un-protects it and CI stays green while the protection is gone. Same
+ * shape and rationale as missingRuleTestFiles() above.
+ */
+function missingProtectedWorkflows(names = PROTECTED_WORKFLOWS) {
+  return [...names]
+    .filter(name => !existsSync(path.join(__dirname, '..', '.github', 'workflows', name)))
+    .sort();
+}
+
+/**
+ * Shared module-load assertion for the two "this list names something that
+ * does not exist on disk" guards above. Both are silent-coverage-hole guards:
+ * a name that no longer resolves stops selecting/protecting anything while CI
+ * stays green, so both must fail loudly at load rather than at test time.
+ */
+function assertNoneMissing(missing, summary, issueRef) {
+  if (missing.length === 0) return;
+  throw new Error(`ci-test-scope: ${summary} (${issueRef}):\n  ${missing.join('\n  ')}`);
+}
+
+// Fail loudly at module load — this fires on EVERY invocation of the CLI
+// (including the real `changes` job in .github/workflows/test.yml), not only
+// when a test suite happens to run.
+assertNoneMissing(
+  missingRuleTestFiles(RULES),
+  'RULES reference test file(s) that do not exist on disk (silent coverage hole)',
+  'see #2758',
+);
+
+// A PROTECTED_WORKFLOWS entry naming a file that does not exist means the
+// workflow was renamed or deleted without updating this list, silently
+// un-protecting it while CI stays green.
+assertNoneMissing(
+  missingProtectedWorkflows(PROTECTED_WORKFLOWS),
+  'PROTECTED_WORKFLOWS reference workflow file(s) that do not exist on disk (silent protection hole)',
+  'see #3833',
+);
+
+function usage() {
+  return [
+    'Usage:',
+    '  node scripts/ci-test-scope.cjs --base <sha> --head <sha>',
+    '  node scripts/ci-test-scope.cjs --files <path-list>',
+    '',
+    'Prints JSON by default. With GITHUB_OUTPUT set, also writes workflow outputs.',
+  ].join('\n');
+}
+
+function parseArgs(argv) {
+  const out = { base: null, head: null, files: null };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--base') {
+      out.base = argv[++i];
+      if (!out.base || out.base.startsWith('--')) throw new Error('--base requires a value');
+    } else if (arg.startsWith('--base=')) {
+      out.base = arg.slice('--base='.length);
+      if (!out.base) throw new Error('--base requires a value');
+    } else if (arg === '--head') {
+      out.head = argv[++i];
+      if (!out.head || out.head.startsWith('--')) throw new Error('--head requires a value');
+    } else if (arg.startsWith('--head=')) {
+      out.head = arg.slice('--head='.length);
+      if (!out.head) throw new Error('--head requires a value');
+    } else if (arg === '--files') {
+      out.files = argv[++i];
+      if (!out.files || out.files.startsWith('--')) throw new Error('--files requires a value');
+    } else if (arg.startsWith('--files=')) {
+      out.files = arg.slice('--files='.length);
+      if (!out.files) throw new Error('--files requires a value');
+    } else if (arg === '--help' || arg === '-h') {
+      console.log(usage());
+      throw new ExitError(0);
+    } else {
+      throw new Error(`unknown argument: ${arg}`);
+    }
+  }
+  return out;
+}
+
+function splitFiles(value) {
+  if (!value) return [];
+  const SEPARATORS = new Set([',', ' ', '\t', '\n', '\r', '\f', '\v']);
+  const tokens = [];
+  let current = '';
+  for (const ch of value) {
+    if (SEPARATORS.has(ch)) {
+      if (current) tokens.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens.map(v => v.trim()).filter(Boolean);
+}
+
+function changedFiles(args) {
+  if (args.files) return splitFiles(args.files);
+  if (!args.base || !args.head) {
+    throw new Error('--base/--head or --files is required');
+  }
+  // Three-dot diff (merge-base...head) matches GitHub's PR "Files changed" semantics.
+  // A two-dot `git diff base head` would surface every file `next` gained after this
+  // branch's merge-base, mis-flagging product_changed/full_matrix on docs-only PRs cut
+  // from a slightly stale base (#837). The `changes` job checks out with fetch-depth: 0,
+  // so the merge-base is always available.
+  const stdout = execFileSync('git', ['diff', '--name-only', `${args.base}...${args.head}`], {
+    encoding: 'utf8',
+  });
+  return splitFiles(stdout);
+}
+
+function existingTests(files) {
+  const all = new Set(readdirSync('tests').filter(f => f.endsWith('.test.cjs')).map(f => `tests/${f}`));
+  return files.filter(file => all.has(file) && existsSync(file));
+}
+
+function addAll(set, values) {
+  for (const value of values) set.add(value);
+}
+
+// Windows-sensitive filename hints — deliberately narrow. 'workflow',
+// 'install', and 'hook' were dropped from this list: workflow-lint tests are
+// platform-independent YAML/policy checks, and the installer/hooks RULES set
+// fullMatrix=true, so the full Windows lane already runs when those paths
+// change. The old six-hint list pulled 102 of ~633 test files into the scoped
+// windows lane, turning it into a ~10-minute job on every PR.
+// #4641: the scoped windows lane itself is gone. These hints now drive
+// full_matrix instead — a matched RULE whose tests[] includes a
+// windows-hint filename AND that hinted file is itself in the conformance
+// tier (per reachesConformanceTierOrSeam) escalates straight to full_matrix
+// (routed to test-conformance, the sole Windows selector) rather than
+// feeding a side lane. Tier-backed on purpose: full_matrix only ever runs
+// CONFORMANCE_TIER_FILES, so a hint on a non-tier file would cost 4 CI jobs
+// with zero Windows coverage of that file. See
+// docs/adr/4641-windows-selector-consolidation.md.
+const WINDOWS_HINTS = ['windows', 'win32', 'shell', 'path'];
+const isWindowsHint = s => WINDOWS_HINTS.some(k => s.toLowerCase().includes(k));
+
+// A change to the classification mechanism itself cannot be presumed safe by
+// the very mechanism being changed (#4592).
+const CLASSIFIER_DEFINITION_FILES = new Set([
+  'scripts/gen-platform-conformance-tier.cjs',
+  'scripts/lib/platform-conformance-tier.generated.cjs',
+  'scripts/lib/suite-detection.cjs',
+]);
+
+/**
+ * Does `file`'s blast radius reach (a) Phase 2's conformance-tier test-file
+ * list or (b) a live platform-conditional signal in src/? Fail-safe: any
+ * thrown error (a require failure, a readFileSync failure, a malformed
+ * generated module, etc.) is treated as uncertainty and returns true — per
+ * #4592's explicit "fail-safe to full_matrix=true on any reachability-
+ * computation error or uncertainty" requirement.
+ * `loadConformanceTier` is injectable (defaults to the real generated module)
+ * solely so tests can simulate a load failure without touching the real,
+ * committed generated file.
+ * @param {string} file
+ * @param {{loadConformanceTier?: () => {CONFORMANCE_TIER_FILES: string[]}}} [deps]
+ * @returns {boolean}
+ */
+function reachesConformanceTierOrSeam(file, deps = {}) {
+  const loadConformanceTier =
+    deps.loadConformanceTier || (() => require('./lib/platform-conformance-tier.generated.cjs'));
+  try {
+    if (file.startsWith('tests/') && file.endsWith('.test.cjs')) {
+      const { CONFORMANCE_TIER_FILES } = loadConformanceTier();
+      return CONFORMANCE_TIER_FILES.includes(file);
+    }
+
+    if (file.startsWith('src/')) {
+      const content = readFileSync(file, 'utf8');
+      const { signals } = classifyContent(content);
+      const narrowSignals = signals.filter(signal => !NOISY_FOR_SOURCE_REACHABILITY.has(signal));
+      return narrowSignals.length > 0;
+    }
+
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+// `reachabilityDeps` is injectable (defaults to {}, which makes
+// reachesConformanceTierOrSeam use the real generated module) solely so
+// tests can simulate a reachability-computation failure without touching
+// the real, committed generated file.
+function classify(files, reachabilityDeps = {}) {
+  const targeted = new Set();
+  const reasons = [];
+  let productOrPipelineChanged = false; // product/pipeline code (excludes docs)
+  let inertCiChanged = false;           // inert workflow files
+  let fullMatrix = false;
+
+  for (const file of files) {
+    // Determine if this file is product/pipeline code.
+    // docs/ and root-level .md files are intentionally excluded.
+    // 'skills/' is shipped agent-skill content installed into every runtime by
+    // the installer (see the 'shipped install content' RULES entry below) — it
+    // must be product code, or a skills/-only change silently gets
+    // code_changed=false and skips the ENTIRE CI matrix, not merely golden-parity
+    // (found while verifying the #2267 golden-parity rule against skills/**: the
+    // rule fired in `reasons` but classify()'s codeChanged gate zeroed out every
+    // targeted test because 'skills/' was absent from this list).
+    if (
+      ['bin/', 'src/', 'gsd-core/', 'agents/', 'commands/', 'hooks/', 'skills/', 'tests/', 'scripts/', 'eslint-rules/'].some(p => file.startsWith(p)) ||
+      file === 'package.json' || file === 'package-lock.json' ||
+      (file.startsWith('tsconfig') && file.endsWith('.json')) ||
+      file.startsWith('.github/rulesets/')
+    ) {
+      productOrPipelineChanged = true;
+    }
+
+    // Non-inert .github/workflows/* are pipeline code → full matrix.
+    if (file.startsWith('.github/workflows/') && !isInertCi(file)) {
+      productOrPipelineChanged = true;
+    }
+
+    // Inert workflow files set a lightweight signal.
+    if (isInertCi(file)) {
+      inertCiChanged = true;
+    }
+
+    if (file.startsWith('tests/') && file.endsWith('.test.cjs')) {
+      targeted.add(file);
+      // #494 originally narrowed this to skip full_matrix for changed test
+      // files, on the theory that ubuntu targeted_tests + the scoped windows
+      // lane already covered them. Rescinded per #4421: PR #4384 landed a
+      // macOS-only regression on 2026-09-06 that stayed invisible pre-merge
+      // precisely because this carve-out suppressed the only macOS signal.
+      // #4592: the blanket rule is replaced with a reachability check — only
+      // a changed test file that actually reaches Phase 2's conformance-tier
+      // list (or is the classification mechanism itself) forces full_matrix.
+      if (reachesConformanceTierOrSeam(file, reachabilityDeps)) {
+        fullMatrix = true;
+        reasons.push(`${file}: conformance-tier reachability`);
+      }
+    }
+
+    // #4592: a src/-only diff (no test file touched) must still be able to
+    // set full_matrix=true when it carries a live platform-conditional
+    // signal — this is independent of the tests/ branch above.
+    if (file.startsWith('src/') && reachesConformanceTierOrSeam(file, reachabilityDeps)) {
+      fullMatrix = true;
+      reasons.push(`${file}: platform seam reachability`);
+    }
+
+    // #4592: a changed file that IS the classification mechanism itself
+    // (neither under tests/ nor src/, so neither branch above reaches it)
+    // must also force full_matrix — a change to the mechanism cannot be
+    // presumed safe by the very mechanism being changed.
+    if (CLASSIFIER_DEFINITION_FILES.has(file)) {
+      fullMatrix = true;
+      reasons.push(`${file}: reachability classifier definition changed`);
+    }
+
+    for (const rule of RULES) {
+      if (rule.match(file)) {
+        addAll(targeted, rule.tests);
+        reasons.push(`${file}: ${rule.name}`);
+        if (rule.fullMatrix) fullMatrix = true;
+        // #4641: a rule that pulls in a test file matching a Windows-sensitive
+        // filename hint is the one non-redundant residue of the deleted
+        // scoped windows lane — escalate to full_matrix (test-conformance)
+        // instead of feeding a side lane. TIER-BACKED (measured): full_matrix
+        // routes to test-conformance, which runs ONLY CONFORMANCE_TIER_FILES —
+        // escalating on the filename hint alone can fire on a hinted test that
+        // isn't in that tier, costing 4 CI jobs while never actually running it
+        // on Windows. The predicate below requires BOTH the hint AND tier
+        // membership (via reachesConformanceTierOrSeam, the same fail-safe
+        // reachability helper used elsewhere in this file, so error/uncertainty
+        // behavior stays identical). Measured: over the 16 RULES entries this
+        // narrowed form fires on the same rules as the un-narrowed form today
+        // (no behavior change now, correct-by-construction going forward). The
+        // broader alternative — escalate on ANY tier member a rule pulls in,
+        // ignoring the filename hint — was measured and rejected: it fires on
+        // 14 of 16 rules, newly escalating most ordinary product-code PRs
+        // (src/, agents/, commands/, hooks/, skills/, config paths). Only one
+        // rule's escalation is live today: 'portability lint rules (ADR-1703)'.
+        // Four others already had fullMatrix: true (no-op here), and 'inert
+        // CI''s escalation is overridden downstream by the inert-CI reset.
+        // Distinct, greppable reason so the conformance-lane coverage for it
+        // is traceable per rule.
+        if (rule.tests.some(t => isWindowsHint(t) && reachesConformanceTierOrSeam(t, reachabilityDeps))) {
+          fullMatrix = true;
+          reasons.push(`${file}: ${rule.name} (windows-hint rule test, #4641)`);
+        }
+      }
+    }
+  }
+
+  // Heavy integration tests that own a dedicated workflow must never run in the
+  // scoped/targeted lane — they carry a multi-minute cost that overruns the
+  // per-chunk timeout (worst on Windows) when a broad PR bundles them with many
+  // other changed test files, and their production paths already trigger their
+  // own workflow. Drop them however they entered (matched rule OR changed-file).
+  const SCOPED_LANE_EXCLUDE = new Set([
+    // covered by .github/workflows/install-smoke.yml
+    'tests/release-tarball-smoke.install.test.cjs',
+  ]);
+  for (const f of SCOPED_LANE_EXCLUDE) { targeted.delete(f); }
+
+  // code_changed: true when product/pipeline OR inert CI changed.
+  // Docs-only PRs (neither flag set) get code_changed=false → full matrix skip.
+  const codeChanged = productOrPipelineChanged || inertCiChanged;
+
+  const targetedTests = existingTests([...targeted].sort());
+
+  // When code changed but no rule matched any changed file, fall back to the
+  // unit suite so the targeted lane always runs something meaningful (#408).
+  if (codeChanged && targetedTests.length === 0) {
+    targetedTests.push('unit');
+  }
+
+  // Inert-CI-only: full_matrix must be false (override any RULES that fired).
+  if (inertCiChanged && !productOrPipelineChanged) {
+    fullMatrix = false;
+  }
+
+  // Normalize: when code_changed is false, the output must be self-consistent.
+  // A docs file can coincidentally match a coarse content RULE (e.g. docs/installer-migrations.md
+  // matches the installer rule via path.includes('install')), leaving full_matrix=true and
+  // non-empty targeted_tests. The workflow skips correctly (gated on code_changed)
+  // but the output object would be self-contradictory. Force a clean "nothing to run" result.
+  if (!codeChanged) {
+    fullMatrix = false;
+    targetedTests.length = 0;
+  }
+
+  return {
+    code_changed: codeChanged,
+    product_changed: productOrPipelineChanged,
+    full_matrix: fullMatrix,
+    targeted_tests: targetedTests,
+    reasons: [...new Set(reasons)].sort(),
+  };
+}
+
+function writeOutputs(result) {
+  if (!process.env.GITHUB_OUTPUT) return;
+  const lines = [
+    `code_changed=${result.code_changed}`,
+    `product_changed=${result.product_changed}`,
+    `full_matrix=${result.full_matrix}`,
+    `targeted_tests=${result.targeted_tests.join(' ')}`,
+  ];
+  appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
+}
+
+function main() {
+  try {
+    const args = parseArgs(process.argv.slice(2));
+
+    const files = changedFiles(args);
+    const result = classify(files);
+    result.changed_files = files;
+    writeOutputs(result);
+    console.log(JSON.stringify(result, null, 2));
+  } catch (error) {
+    if (error instanceof ExitError) throw error;
+    console.error(`ci-test-scope: ${error.message}`);
+    console.error(usage());
+    throw new ExitError(2);
+  }
+}
+
+if (require.main === module) {
+  runMain(main);
+}
+
+module.exports = {
+  RULES,
+  missingRuleTestFiles,
+  PROTECTED_WORKFLOWS,
+  INERT_WORKFLOWS,
+  missingProtectedWorkflows,
+  classify,
+  reachesConformanceTierOrSeam,
+};

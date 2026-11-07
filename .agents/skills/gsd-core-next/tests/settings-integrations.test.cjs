@@ -1,0 +1,606 @@
+'use strict';
+
+// allow-test-rule: source-text-is-the-product
+// Reads .md/.json/.yml product files whose deployed text IS what the
+// runtime loads — testing text content tests the deployed contract.
+
+/**
+ * #2529 — /gsd-settings-integrations: configure third-party search and review integrations.
+ *
+ * Covers:
+ *   - Artifacts exist (command, workflow, skill stub) with correct frontmatter
+ *   - Workflow references the four search API key fields
+ *   - Workflow exposes review.models.{claude,codex,opencode} routing
+ *   - Workflow exposes agent_skills.<agent-type> injection input
+ *   - #3651: workflow states the registry-derived review.models settable rule (no
+ *     dynamic-pattern claim) and enumerates exactly the registry's settable lanes
+ *   - #3651: workflow prescribes the JSON array agent_skills write form (never a
+ *     comma-joined string); behavioral pins for array/comma/single shapes
+ *   - Masking convention (****last4) is documented in the workflow and the displayed
+ *     confirmation pattern does not echo plaintext
+ *   - config-set round-trips all integration keys through VALID_CONFIG_KEYS,
+ *     dynamic patterns, and the federated capability registry
+ *   - Config merge preserves unrelated keys
+ *   - /gsd:settings confirmation output mentions /gsd:settings-integrations
+ *   - Negative: invalid agent-type name (path traversal / special char) is rejected
+ *   - Negative: malformed review.models key is rejected
+ *   - Logging: plaintext API keys do not appear in any file written under .planning/
+ *     by the config-set flow other than config.json itself
+ */
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { createTempProject, cleanup, runGsdTools } = require('./helpers.cjs');
+const {
+  VALID_CONFIG_KEYS,
+  isValidConfigKey,
+} = require('../gsd-core/bin/lib/config-schema.cjs');
+
+const REPO_ROOT = path.join(__dirname, '..');
+// #2790: settings-integrations.md was consolidated into config.md as the --integrations flag.
+const COMMAND_PATH = path.join(REPO_ROOT, 'commands', 'gsd', 'config.md');
+const WORKFLOW_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'settings-integrations.md');
+const SKILL_PATH = path.join(REPO_ROOT, '.claude', 'skills', 'gsd-settings-integrations.md');
+const SETTINGS_WORKFLOW_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'settings.md');
+
+// ─── Artifacts ───────────────────────────────────────────────────────────────
+
+describe('#2529 artifacts', () => {
+  test('consolidated config.md command exists (#2790: settings-integrations absorbed)', () => {
+    // #2790: settings-integrations.md was absorbed into config.md as the --integrations flag.
+    assert.ok(fs.existsSync(COMMAND_PATH), `missing ${COMMAND_PATH}`);
+  });
+
+  test('config.md frontmatter declares name gsd:config and routes to --integrations', () => {
+    const src = fs.readFileSync(COMMAND_PATH, 'utf-8');
+    // #2790: consolidated command uses gsd:config name
+    assert.match(src, /name:\s*gsd:config/);
+    assert.match(src, /description:\s*.+/);
+    assert.match(src, /allowed-tools:/);
+    assert.match(src, /AskUserQuestion/);
+  });
+
+  test('workflow exists at gsd-core/workflows/settings-integrations.md', () => {
+    assert.ok(fs.existsSync(WORKFLOW_PATH), `missing ${WORKFLOW_PATH}`);
+  });
+
+  test('skill stub or canonical command surface ships (#2790: via config.md --integrations)', () => {
+    // #2790: The command surface is now config.md + settings-integrations.md workflow.
+    const hasStub = fs.existsSync(SKILL_PATH);
+    const hasCanonical =
+      fs.existsSync(COMMAND_PATH) && fs.existsSync(WORKFLOW_PATH);
+    assert.ok(
+      hasStub || hasCanonical,
+      `neither ${SKILL_PATH} nor the canonical command/workflow pair exists`
+    );
+  });
+
+  test('config.md routes --integrations to the settings-integrations workflow', () => {
+    const src = fs.readFileSync(COMMAND_PATH, 'utf-8');
+    assert.ok(
+      src.includes('workflows/settings-integrations.md') || src.includes('--integrations'),
+      'config.md must reference settings-integrations workflow or --integrations flag'
+    );
+  });
+});
+
+// ─── Content: search API keys ────────────────────────────────────────────────
+
+describe('#2529 workflow — search integrations', () => {
+  test('workflow references all four search fields', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    for (const key of ['brave_search', 'firecrawl', 'exa_search', 'search_gitignored']) {
+      assert.ok(src.includes(key), `workflow must reference ${key}`);
+    }
+  });
+});
+
+// ─── Content: review.models routing ──────────────────────────────────────────
+
+describe('#2529 workflow — review.models routing', () => {
+  test('workflow references all three reviewer CLIs', () => {
+    // #4709: the gemini reviewer lane was retired (Google sunset Gemini CLI), and the
+    // integrations wizard's AskUserQuestion options dropped its "Gemini" choice along with it —
+    // the workflow's `AskUserQuestion` block at settings-integrations.md:198-200 now offers
+    // exactly Claude, Codex, OpenCode.
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    for (const cli of ['claude', 'codex', 'opencode']) {
+      assert.ok(
+        src.includes(`review.models.${cli}`),
+        `workflow must reference review.models.${cli}`
+      );
+    }
+  });
+
+  test('review.models.<cli> keys validate via the federated capability registry', () => {
+    // #3651: these pass because the capability registry federates each lane's
+    // modelConfigKey into the valid-key set — NOT via a dynamicKeyPatterns regex
+    // (no such pattern exists; see the #3651 describe below).
+    // #4709: gemini dropped from this list along with the retired lane — review.models.gemini
+    // no longer validates because REVIEWER_LANES no longer declares a gemini modelConfigKey.
+    for (const cli of ['claude', 'codex', 'opencode']) {
+      assert.ok(
+        isValidConfigKey(`review.models.${cli}`),
+        `review.models.${cli} must pass isValidConfigKey`
+      );
+    }
+  });
+});
+
+// ─── Content: agent_skills.<agent-type> injection ────────────────────────────
+
+describe('#2529 workflow — agent_skills injection', () => {
+  test('workflow references agent_skills.<agent-type> injection concept', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    assert.ok(src.includes('agent_skills'), 'workflow must reference agent_skills');
+    assert.ok(
+      // eslint-disable-next-line local/no-unbounded-quantifier -- parses maintainer-authored workflow markdown, bounded prose, not adversarial input
+      /agent_skills\.<[^>]+>|agent_skills\.\w+/.test(src),
+      'workflow must reference agent_skills.<agent-type> or concrete agent_skills.<slug>'
+    );
+  });
+
+  test('agent_skills.<valid-slug> passes validator', () => {
+    assert.ok(isValidConfigKey('agent_skills.gsd-executor'));
+    assert.ok(isValidConfigKey('agent_skills.gsd-planner'));
+    assert.ok(isValidConfigKey('agent_skills.my_custom_agent'));
+  });
+});
+
+// ─── #3651: prescribed writes must match the real config-set contract ───────
+
+// The set `config-set` actually accepts for review.models.*: the frozen
+// first-party registry's configSchema — the exact map isCapabilityConfigKey
+// consults (hasOwnProperty), so this helper cannot drift from the validator.
+function collectReviewerModelConfigKeys() {
+  const registry = require('../gsd-core/bin/lib/capability-registry.cjs');
+  const schema = registry.configSchema || {};
+  return new Set(
+    Object.keys(schema)
+      .filter((k) => k.startsWith('review.models.'))
+      .map((k) => k.slice('review.models.'.length))
+  );
+}
+
+// Shared shape for the #3651 behavioral rows: write agent_skills for a slug,
+// then read back the resolver's structured diagnostic.
+function resolveSkillsCount(tmp, slug) {
+  const diag = runGsdTools(['agent-skills', slug, '--json'], tmp);
+  assert.ok(diag.success, `agent-skills failed: ${diag.error}`);
+  return JSON.parse(diag.output);
+}
+
+describe('#3651 workflow — review.models settable-set rule', () => {
+  test('workflow states the registry-derived review.models rule, not a dynamic-pattern claim (#3651)', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    assert.ok(
+      !src.includes('^review\\.models\\.'),
+      'workflow must not claim a review.models dynamic-key pattern — dynamicKeyPatterns has no review.models entry'
+    );
+    assert.ok(
+      /modelConfigKey/.test(src),
+      'workflow must name the per-lane modelConfigKey rule'
+    );
+    assert.ok(
+      /capability registry/i.test(src),
+      'workflow must state that the settable set is derived from the capability registry'
+    );
+  });
+
+  test("workflow enumerates exactly the registry's settable review.models lanes (#3651)", () => {
+    const registryKeys = collectReviewerModelConfigKeys();
+    assert.ok(
+      registryKeys.size >= 9,
+      `expected the shipped model-bearing lane set from the registry, found ${registryKeys.size}`
+    );
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    const mentioned = new Set(
+      [...src.matchAll(/review\.models\.([a-zA-Z0-9_-]+)/g)].map((m) => m[1])
+    );
+    for (const key of registryKeys) {
+      assert.ok(
+        mentioned.has(key),
+        `workflow must enumerate settable lane review.models.${key} (registry truth)`
+      );
+    }
+    for (const slug of mentioned) {
+      assert.ok(
+        registryKeys.has(slug),
+        `workflow mentions review.models.${slug} but the registry declares no such settable key`
+      );
+    }
+  });
+
+  test('keyless reviewer lanes have no settable review.models key (#3651)', (t) => {
+    // Lanes whose capability declares modelConfigKey: null — the workflow used
+    // to walk users into writing these keys, and config-set rejects them.
+    // `cursor` gained a real modelConfigKey (#3653) and is no longer keyless.
+    for (const keyless of ['qwen', 'coderabbit']) {
+      assert.ok(
+        !isValidConfigKey(`review.models.${keyless}`),
+        `review.models.${keyless} must not validate (lane declares no modelConfigKey)`
+      );
+    }
+    for (const settable of collectReviewerModelConfigKeys()) {
+      assert.ok(
+        isValidConfigKey(`review.models.${settable}`),
+        `review.models.${settable} must validate`
+      );
+    }
+
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+    const r = runGsdTools(['config-set', 'review.models.qwen', 'qwen-model'], tmp);
+    assert.ok(
+      !r.success,
+      'config-set must reject a keyless lane — the exact error the old workflow steered users into'
+    );
+  });
+});
+
+describe('#3651 workflow — agent_skills array-form write', () => {
+  test('workflow prescribes the JSON array agent_skills write, not a comma-joined string (#3651)', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    assert.ok(
+      !src.includes('"<skill-a,skill-b,skill-c>"'),
+      'the comma-joined string write prescription must be gone — the resolver never splits it'
+    );
+    assert.ok(
+      /config-set agent_skills\.<slug> '\["[^"]{0,80}"(?:,\s*"[^"]{0,80}"){0,20}\]'/.test(src),
+      'workflow must show the JSON array write form (config-set agent_skills.<slug> \'["…","…"]\')'
+    );
+    assert.ok(
+      /[Ss]plit/.test(src) && /comma/i.test(src),
+      'workflow must instruct the driving agent to split comma-separated input before the write'
+    );
+  });
+
+  test('JSON array agent_skills write round-trips and resolves per-element (#3651)', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'agent_skills.gsd-planner', '["skills/alpha","skills/beta"]'],
+      tmp
+    );
+    assert.ok(r.success, `array-form set failed: ${r.error}`);
+
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.deepStrictEqual(
+      cfg.agent_skills?.['gsd-planner'],
+      ['skills/alpha', 'skills/beta'],
+      'stored value must be the JSON array, element per skill'
+    );
+
+    const parsed = resolveSkillsCount(tmp, 'gsd-planner');
+    assert.strictEqual(
+      parsed.skills_count,
+      2,
+      `array form must resolve as 2 skill paths, got ${parsed.skills_count}`
+    );
+  });
+
+  test('comma-joined agent_skills value resolves as ONE path — the hazard the array form avoids (#3651)', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'agent_skills.gsd-planner', 'skills/alpha,skills/beta'],
+      tmp
+    );
+    assert.ok(r.success, `comma-string set is accepted by config-set (shape is legal): ${r.error}`);
+
+    const parsed = resolveSkillsCount(tmp, 'gsd-planner');
+    assert.strictEqual(
+      parsed.skills_count,
+      1,
+      `a comma-joined string is ONE path (never split) — got ${parsed.skills_count}; if this changes, the workflow prescription and this pin must change together`
+    );
+  });
+
+  test('single bare-string agent_skills path keeps working (#3651)', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'agent_skills.gsd-planner', 'skills/solo'],
+      tmp
+    );
+    assert.ok(r.success, `single-string set failed: ${r.error}`);
+
+    const parsed = resolveSkillsCount(tmp, 'gsd-planner');
+    assert.strictEqual(parsed.configured, true, 'a single string path is a configured entry');
+    assert.strictEqual(parsed.skills_count, 1, 'one string = one skill path');
+  });
+
+  test('one-element array agent_skills write resolves identically to the bare string (#3651)', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'agent_skills.gsd-planner', '["skills/solo"]'],
+      tmp
+    );
+    assert.ok(r.success, `one-element-array set failed: ${r.error}`);
+
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.deepStrictEqual(
+      cfg.agent_skills?.['gsd-planner'],
+      ['skills/solo'],
+      'one-element array must persist verbatim'
+    );
+
+    const parsed = resolveSkillsCount(tmp, 'gsd-planner');
+    assert.strictEqual(parsed.configured, true);
+    assert.strictEqual(parsed.skills_count, 1, 'one-element array = one skill path, same as the bare string');
+  });
+});
+
+// ─── Content: masking ────────────────────────────────────────────────────────
+
+describe('#2529 workflow — API key masking', () => {
+  test('workflow documents the **** masking convention', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    // Must reference the **** mask pattern
+    assert.ok(src.includes('****'), 'workflow must document the **** mask pattern');
+    // Must explicitly state that plaintext is not displayed
+    assert.ok(
+      // eslint-disable-next-line local/no-unbounded-quantifier -- parses maintainer-authored workflow markdown, bounded prose, not adversarial input
+      /never\s+(echo|display|log|show)[^.]*plaintext|plaintext[^.]*never\s+(echo|display|log|shown)|plaintext[^.]*not\s+(echoed|displayed|logged|shown)|not\s+(echoed|displayed|logged|shown)[^.]*plaintext/i.test(src),
+      'workflow must explicitly forbid displaying plaintext API keys'
+    );
+  });
+
+  test('workflow shows masked-value confirmation pattern, not raw secrets', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    // The confirmation table in the workflow must describe the masked display
+    assert.ok(
+      /\*\*\*\*\w{0,4}|\*\*\*\* *already set|\*\*\*\*<last.?4>/i.test(src),
+      'workflow must describe a masked confirmation pattern (e.g. ****last4 or **** already set)'
+    );
+  });
+
+  test('workflow includes a Leave / Replace / Clear flow for already-set keys', () => {
+    const src = fs.readFileSync(WORKFLOW_PATH, 'utf-8');
+    assert.ok(/Leave/i.test(src) && /Replace/i.test(src) && /Clear/i.test(src),
+      'workflow must offer Leave / Replace / Clear when a key is already set');
+  });
+});
+
+// ─── config-set round-trip ───────────────────────────────────────────────────
+
+describe('#2529 config-set round-trip', () => {
+  test('brave_search, firecrawl, exa_search, search_gitignored are valid keys', () => {
+    for (const k of ['brave_search', 'firecrawl', 'exa_search', 'search_gitignored']) {
+      assert.ok(VALID_CONFIG_KEYS.has(k), `${k} must be in VALID_CONFIG_KEYS`);
+    }
+  });
+
+  test('config-set writes brave_search, firecrawl, exa_search values to config.json', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r1 = runGsdTools(['config-set', 'brave_search', 'BSKY-111111112222'], tmp);
+    assert.ok(r1.success, `brave_search set failed: ${r1.error}`);
+    const r2 = runGsdTools(['config-set', 'firecrawl', 'fc-aaaaaaaabbbbcccc'], tmp);
+    assert.ok(r2.success, `firecrawl set failed: ${r2.error}`);
+    const r3 = runGsdTools(['config-set', 'exa_search', 'ex-000011112222dddd'], tmp);
+    assert.ok(r3.success, `exa_search set failed: ${r3.error}`);
+    const r4 = runGsdTools(['config-set', 'search_gitignored', 'true'], tmp);
+    assert.ok(r4.success, `search_gitignored set failed: ${r4.error}`);
+
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(cfg.brave_search, 'BSKY-111111112222');
+    assert.strictEqual(cfg.firecrawl, 'fc-aaaaaaaabbbbcccc');
+    assert.strictEqual(cfg.exa_search, 'ex-000011112222dddd');
+    assert.ok(
+      cfg.search_gitignored === true || cfg.search_gitignored === 'true',
+      `search_gitignored round-trip mismatch: got ${JSON.stringify(cfg.search_gitignored)}`
+    );
+  });
+
+  test('config-set round-trips review.models.<cli>', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'review.models.codex', 'codex exec --model gpt-5'],
+      tmp
+    );
+    assert.ok(r.success, `review.models.codex set failed: ${r.error}`);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(cfg.review?.models?.codex, 'codex exec --model gpt-5');
+  });
+
+  test('config-set round-trips agent_skills.<agent-type> (array form — the shape the workflow prescribes, #3651)', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(
+      ['config-set', 'agent_skills.gsd-executor', '["skill-a","skill-b"]'],
+      tmp
+    );
+    assert.ok(r.success, `agent_skills.gsd-executor set failed: ${r.error}`);
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    // #3651: the prescribed write form must persist as a real JSON array — the
+    // either-shape acceptance this row used to allow hid the comma-string hazard.
+    assert.deepStrictEqual(
+      cfg.agent_skills?.['gsd-executor'],
+      ['skill-a', 'skill-b'],
+      `expected the array form to persist verbatim, got ${JSON.stringify(cfg.agent_skills?.['gsd-executor'])}`
+    );
+  });
+});
+
+// ─── Config merge preserves unrelated keys ───────────────────────────────────
+
+describe('#2529 config merge safety', () => {
+  test('setting brave_search preserves unrelated workflow.research key', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+    runGsdTools(['config-set', 'workflow.research', 'false'], tmp);
+
+    const r = runGsdTools(['config-set', 'brave_search', 'BSKY-preserve-me-9999'], tmp);
+    assert.ok(r.success, `set failed: ${r.error}`);
+
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(cfg.workflow?.research, false, 'unrelated workflow.research must be preserved');
+    assert.strictEqual(cfg.brave_search, 'BSKY-preserve-me-9999');
+  });
+
+  test('setting agent_skills.gsd-executor preserves unrelated review.models.codex', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+    runGsdTools(['config-set', 'review.models.codex', 'codex exec'], tmp);
+
+    const r = runGsdTools(['config-set', 'agent_skills.gsd-planner', 'a,b'], tmp);
+    assert.ok(r.success, `set failed: ${r.error}`);
+
+    const cfg = JSON.parse(fs.readFileSync(path.join(tmp, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(cfg.review?.models?.codex, 'codex exec', 'unrelated review.models.codex must be preserved');
+    assert.ok(cfg.agent_skills?.['gsd-planner'], 'agent_skills.gsd-planner must be set');
+  });
+});
+
+// ─── /gsd-settings mentions /gsd-settings-integrations ──────────────────────
+
+describe('#2529 /gsd-settings mentions new command', () => {
+  test('settings workflow mentions canonical /gsd-config --integrations', () => {
+    const src = fs.readFileSync(SETTINGS_WORKFLOW_PATH, 'utf-8');
+    assert.ok(
+      src.includes('/gsd:config --integrations'),
+      'settings.md must mention /gsd:config --integrations'
+    );
+    assert.ok(
+      !src.includes('/gsd-settings-integrations'),
+      'settings.md must not mention the legacy /gsd-settings-integrations variant'
+    );
+  });
+});
+
+// ─── Negative scenarios ──────────────────────────────────────────────────────
+
+describe('#2529 negative — invalid inputs rejected', () => {
+  test('invalid agent-type with path separators is rejected by validator', () => {
+    assert.ok(!isValidConfigKey('agent_skills.../etc/passwd'),
+      'agent_skills.../etc/passwd must be rejected');
+    assert.ok(!isValidConfigKey('agent_skills./evil'),
+      'agent_skills./evil must be rejected');
+    assert.ok(!isValidConfigKey('agent_skills.a b c'),
+      'agent_skills with spaces must be rejected');
+    assert.ok(!isValidConfigKey('agent_skills.$(whoami)'),
+      'agent_skills with shell metacharacters must be rejected');
+  });
+
+  test('config-set rejects agent_skills with path traversal', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const r = runGsdTools(['config-set', 'agent_skills.../etc/passwd', 'x'], tmp);
+    assert.ok(!r.success, 'config-set must reject path-traversal agent-type slug');
+  });
+
+  test('malformed review.models entry (empty cli) is rejected', () => {
+    assert.ok(!isValidConfigKey('review.models.'),
+      'review.models. (empty) must be rejected');
+    assert.ok(!isValidConfigKey('review.models'),
+      'review.models (no cli) must be rejected');
+    assert.ok(!isValidConfigKey('review.models.claude/../../x'),
+      'review.models with path separators must be rejected');
+  });
+});
+
+// ─── Security: plaintext never leaks to disk outside config.json ─────────────
+
+describe('#2529 security — plaintext containment', () => {
+  test('after setting brave_search, plaintext appears only in config.json', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    // Build sentinel via concat so secret-scanners do not flag the literal.
+    const marker = ['MASKCHECK', '9f3a7b2c'].join('-');
+    const r = runGsdTools(['config-set', 'brave_search', marker], tmp);
+    assert.ok(r.success, `set failed: ${r.error}`);
+
+    const planning = path.join(tmp, '.planning');
+    const hits = [];
+    function walk(dir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!entry.isFile()) continue;
+        let buf;
+        try { buf = fs.readFileSync(full, 'utf-8'); } catch { continue; }
+        if (buf.includes(marker)) hits.push(full);
+      }
+    }
+    walk(planning);
+
+    assert.deepStrictEqual(
+      hits.map(h => path.basename(h)).sort(),
+      ['config.json'],
+      `plaintext marker leaked outside config.json: found in ${hits.join(', ')}`
+    );
+  });
+
+  test('config-set does not echo plaintext secret on stdout/stderr', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const marker = ['ECHOCHECK', '77aa33bb'].join('-');
+    const r = runGsdTools(['config-set', 'brave_search', marker], tmp);
+    assert.ok(r.success, `set failed: ${r.error}`);
+    const combined = `${r.output || ''}\n${r.error || ''}`;
+    assert.ok(
+      !combined.includes(marker),
+      `config-set output must not echo the plaintext marker. Got:\n${combined}`
+    );
+  });
+
+  test('config-get masks secrets and never echoes plaintext for brave_search/firecrawl/exa_search', (t) => {
+    const tmp = createTempProject();
+    t.after(() => cleanup(tmp));
+    runGsdTools(['config-ensure-section'], tmp);
+
+    const cases = [
+      { key: 'brave_search', marker: ['GETMASK', 'brave', 'aaaa1111'].join('-') },
+      { key: 'firecrawl',    marker: ['GETMASK', 'fc',    'bbbb2222'].join('-') },
+      { key: 'exa_search',   marker: ['GETMASK', 'ex',    'cccc3333'].join('-') },
+    ];
+
+    for (const { key, marker } of cases) {
+      const set = runGsdTools(['config-set', key, marker], tmp);
+      assert.ok(set.success, `${key} set failed: ${set.error}`);
+
+      const get = runGsdTools(['config-get', key], tmp);
+      assert.ok(get.success, `${key} get failed: ${get.error}`);
+      const combined = `${get.output || ''}\n${get.error || ''}`;
+      assert.ok(
+        !combined.includes(marker),
+        `config-get must not echo plaintext for ${key}. Got:\n${combined}`
+      );
+      // Must contain the masked tail (last 4 of marker)
+      const expectedMask = '****' + marker.slice(-4);
+      assert.ok(
+        combined.includes(expectedMask),
+        `config-get must show masked form (${expectedMask}) for ${key}. Got:\n${combined}`
+      );
+    }
+  });
+});

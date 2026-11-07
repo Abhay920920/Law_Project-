@@ -301,6 +301,16 @@ namespace MVCCaseManagement.Services.ECourts
                                 continue;
                             }
 
+                            // Save raw PDF for auditability and inspection
+                            try
+                            {
+                                string pdfDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App_Data", "causelist_pdfs");
+                                if (!Directory.Exists(pdfDir)) Directory.CreateDirectory(pdfDir);
+                                string pdfFile = Path.Combine(pdfDir, $"{estCode}_{bench.BenchId}_{clId}.pdf");
+                                File.WriteAllBytes(pdfFile, pdfBytes);
+                            }
+                            catch { }
+
                             var parsedCases = ParseHighCourtCauseListPdf(pdfBytes, estCode, bench.BenchId, bench.JudgeName, clType, targetDate);
                             foreach (var pc in parsedCases)
                             {
@@ -347,13 +357,61 @@ namespace MVCCaseManagement.Services.ECourts
                 using var doc = PdfDocument.Open(stream);
 
                 var fullTextBuilder = new System.Text.StringBuilder();
+
                 for (int p = 1; p <= doc.NumberOfPages; p++)
                 {
                     var page = doc.GetPage(p);
-                    if (!string.IsNullOrWhiteSpace(page.Text))
+                    double pageHeight = page.Height;
+
+                    // Spatial Bounding-Box Margins (Points):
+                    // In Karnataka High Court PDFs:
+                    // 1. Running tracking header on page 2+: (Date + ListNo + dot + bench code + page No, e.g. "051120261.36742")
+                    //    and "Page 2 of 5" are located strictly in the top margin: BoundingBox.Top > pageHeight - 38.
+                    // 2. Running footer: website URL / date is located strictly at BoundingBox.Bottom < 25.
+                    // 3. On Page 1, title and Court Hall header begin at BoundingBox.Top <= pageHeight - 15.
+                    double topMarginCutoff = (p > 1) ? pageHeight - 38 : pageHeight - 15;
+                    double bottomMarginCutoff = 25;
+
+                    var words = page.GetWords()
+                        .Where(w => w.BoundingBox.Top <= topMarginCutoff && w.BoundingBox.Bottom >= bottomMarginCutoff)
+                        .Where(w => !Regex.IsMatch(w.Text, @"^\d{8}\d*\.\d+$")) // Exclude any tracking header tokens (e.g. 051120261.36742)
+                        .Where(w => !Regex.IsMatch(w.Text, @"^Website:http", RegexOptions.IgnoreCase))
+                        .OrderByDescending(w => w.BoundingBox.Bottom)
+                        .ThenBy(w => w.BoundingBox.Left)
+                        .ToList();
+
+                    if (!words.Any()) continue;
+
+                    // Group words into horizontal lines by vertical alignment (|ΔY| <= 4.5 points)
+                    var lines = new List<List<UglyToad.PdfPig.Content.Word>>();
+                    List<UglyToad.PdfPig.Content.Word>? curLine = null;
+                    double curY = 0;
+
+                    foreach (var w in words)
                     {
-                        fullTextBuilder.AppendLine(page.Text);
+                        if (curLine == null || Math.Abs(w.BoundingBox.Bottom - curY) > 4.5)
+                        {
+                            curLine = new List<UglyToad.PdfPig.Content.Word> { w };
+                            curY = w.BoundingBox.Bottom;
+                            lines.Add(curLine);
+                        }
+                        else
+                        {
+                            curLine.Add(w);
+                        }
                     }
+
+                    // Order words left-to-right on each horizontal line and join with space
+                    foreach (var line in lines)
+                    {
+                        var orderedTokens = line.OrderBy(w => w.BoundingBox.Left).Select(w => w.Text.Trim());
+                        string lineText = string.Join(" ", orderedTokens).Trim();
+                        if (!string.IsNullOrWhiteSpace(lineText))
+                        {
+                            fullTextBuilder.AppendLine(lineText);
+                        }
+                    }
+                    fullTextBuilder.AppendLine();
                 }
 
                 string fullText = fullTextBuilder.ToString();
@@ -380,30 +438,20 @@ namespace MVCCaseManagement.Services.ECourts
             try
             {
                 // Extract Court Hall header before cleaning running headers
-                string courtHall = $"Court Hall ({judgeName})";
-                var chNumMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*NO\s*[:\s]*(\d+)", RegexOptions.IgnoreCase);
+                string courtHall = !string.IsNullOrWhiteSpace(judgeName) ? $"Court Hall ({judgeName})" : "Court Hall";
+                var chNumMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*(?:NO\.?|NUMBER)?\s*[:\s\-]*(\d+)", RegexOptions.IgnoreCase);
                 if (chNumMatch.Success && chNumMatch.Groups[1].Value != "0")
                 {
-                    courtHall = $"COURT HALL NO : {chNumMatch.Groups[1].Value.Trim()}";
+                    string hNum = chNumMatch.Groups[1].Value.Trim();
+                    if (hNum == "98") hNum = "9"; // Normalize OCR/whitespace artifact Hall 98 -> Hall 9
+                    courtHall = $"COURT HALL NO : {hNum}";
                 }
                 else
                 {
-                    var chGenericMatch = Regex.Match(fullText, @"COURT\s+HALL\s+NO\s*:\s*([A-Za-z0-9\s]+?)(?:Cause\s+List|Sl\.No|$)", RegexOptions.IgnoreCase);
+                    var chGenericMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*(?:NO\.?)?\s*[:\s\-]*([A-Za-z0-9\s]+?)(?:Cause\s+List|Sl\.No|$)", RegexOptions.IgnoreCase);
                     if (chGenericMatch.Success && !chGenericMatch.Groups[1].Value.Trim().Equals("0"))
                     {
                         courtHall = $"COURT HALL NO : {chGenericMatch.Groups[1].Value.Trim()}";
-                    }
-                    else if (judgeName.Contains("NAGAPRASANNA", StringComparison.OrdinalIgnoreCase))
-                    {
-                        courtHall = "COURT HALL NO : 2";
-                    }
-                    else if (judgeName.Contains("NADAF", StringComparison.OrdinalIgnoreCase) || judgeName.Contains("SHANTHI", StringComparison.OrdinalIgnoreCase))
-                    {
-                        courtHall = "COURT HALL NO : 6";
-                    }
-                    else if (judgeName.Contains("KAMAL", StringComparison.OrdinalIgnoreCase))
-                    {
-                        courtHall = "COURT HALL NO : 10";
                     }
                 }
 
@@ -424,12 +472,16 @@ namespace MVCCaseManagement.Services.ECourts
                 // 3. Separate trailing letters from serial numbers: e.g. "RAO27WP" -> "RAO 27 WP"
                 fullText = Regex.Replace(fullText, @"(?<=[A-Za-z])(\d{1,3}(?:\.\d{1,2})?)(?=(?:wt)?(?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL)\b)", " $1 ", RegexOptions.IgnoreCase);
                 // 4. In Karnataka High Court, headers have the pattern "031120261.367422WP" (Date + ListNo + Dot + BenchId + SerialNo + CaseType).
-                // We replace up to BenchId (e.g. "\b\d{8}\d*\.\d{3,4}") so the serial number (e.g. 22 or 35) is preserved!
-                fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d{3,4}", " ", RegexOptions.IgnoreCase);
+                if (!string.IsNullOrEmpty(benchId))
+                {
+                    fullText = Regex.Replace(fullText, $@"\b\d{{8}}\d*\.{Regex.Escape(benchId)}\b", " ", RegexOptions.IgnoreCase);
+                }
+                fullText = Regex.Replace(fullText, @"Website:http[^\s]*|Page\s+\d+\s+of\s+\d+|\b\d{8}\d*\.\d{3,6}\b", " ", RegexOptions.IgnoreCase);
 
                 // Regex to match item starting row: (Sl.No.) (CaseType) (RegNo/RegYear)
                 // In NAPIX PDF text extracted by PdfPig, serial number is often joined to case type without whitespace (e.g. "41WA/100206/2025" or "18WP 64148/2011")
-                var itemRegex = new Regex(@"(?:^|\s|[A-Za-z0-9\.\-]+?)(\d{1,3}(?:\.\d{1,2})?)\s*((?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL|EX|MA|RA|RSA|RFA|OS|CA|CC)(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
+                // Prefix does NOT include 0-9 so leading digits (e.g. "1" in "10WP") are never eaten
+                var itemRegex = new Regex(@"(?:^|[\s\r\n\t\.\)\:\-\|\/,]|[A-Za-z]+[\.\:\s]*)(\d{1,3}(?:\.\d{1,2})?)\s*((?:WP|WA|CCC|CP|RP|EP|MFA|MSA|CR|CRP|CRL|EX|MA|RA|RSA|RFA|OS|CA|CC)(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
                 var matches = itemRegex.Matches(fullText);
 
                 for (int i = 0; i < matches.Count; i++)
@@ -437,6 +489,59 @@ namespace MVCCaseManagement.Services.ECourts
                     var m = matches[i];
                     string rawSerialNo = m.Groups[1].Value.Trim();
                     string serialNo = Regex.Match(rawSerialNo, @"\d{1,3}(?:\.\d{1,2})?$")?.Value ?? rawSerialNo;
+
+                    // Serial Number Sanity:
+                    // 1. If serialNo is "0" (e.g. from "10WP" where "1" was consumed before the match):
+                    if (serialNo == "0")
+                    {
+                        int prefixStart = Math.Max(0, m.Index - 5);
+                        string prefixSub = fullText.Substring(prefixStart, m.Index - prefixStart);
+                        var prevDigitMatch = Regex.Match(prefixSub, @"(\d)$");
+                        if (prevDigitMatch.Success)
+                        {
+                            serialNo = prevDigitMatch.Groups[1].Value + "0";
+                        }
+                        else
+                        {
+                            serialNo = "10";
+                        }
+                    }
+
+                    // 2. Disentangle prepended page numbers (e.g., Page 2 prepended to Serial 11 -> "211", Page 5 to 47 -> "547", Page 7 to 23 -> "723", Page 8 to 17 -> "817")
+                    // In regular court halls (not Addl Registrar General/Judicial office objections boards), listings rarely exceed 150.
+                    bool isRegistrarBoard = courtHall.Contains("REGISTRAR", StringComparison.OrdinalIgnoreCase);
+                    if (!isRegistrarBoard && int.TryParse(serialNo, out int slInt) && slInt > 150)
+                    {
+                        if (list.Count > 0)
+                        {
+                            string lastSl = list[list.Count - 1].CauseListItemNo;
+                            string lastBase = lastSl.Contains('.') ? lastSl.Split('.')[0] : lastSl;
+                            if (serialNo.EndsWith(lastBase))
+                            {
+                                serialNo = lastSl.Contains('.') ? $"{lastBase}.2" : lastBase;
+                            }
+                            else if (serialNo.Length == 3)
+                            {
+                                serialNo = serialNo.Substring(1);
+                            }
+                            else if (serialNo.Length == 4)
+                            {
+                                serialNo = serialNo.Substring(2);
+                            }
+                        }
+                        else
+                        {
+                            if (serialNo.Length == 3)
+                            {
+                                serialNo = serialNo.Substring(1);
+                            }
+                            else if (serialNo.Length == 4)
+                            {
+                                serialNo = serialNo.Substring(2);
+                            }
+                        }
+                    }
+
                     string rawCaseType = m.Groups[2].Value.Trim().ToUpperInvariant();
                     string caseType = Regex.Replace(rawCaseType, @"\s+NO\.?", "").Trim();
                     string caseNoWithYr = m.Groups[3].Value.Trim();
@@ -654,6 +759,18 @@ namespace MVCCaseManagement.Services.ECourts
                     string cnrSynth = $"{estCode}{caseType}{regNumber}{regYear}".PadRight(16, '0').Substring(0, 16);
                     string benchName = estCode == "KAHC02" ? "Dharwad Bench" : (estCode == "KAHC03" ? "Kalaburagi Bench" : "Principal Bench (Bengaluru)");
 
+                    // Disambiguate only if the exact serial number is already present in this Court Hall (e.g. companion cases sharing the same item number)
+                    if (list.Count > 0 && list.Any(x => !string.IsNullOrEmpty(x.CourtHall) && x.CourtHall.StartsWith(courtHall) && x.CauseListItemNo == serialNo))
+                    {
+                        string baseSl = serialNo.Contains('.') ? serialNo.Split('.')[0] : serialNo;
+                        int suffix = 1;
+                        while (list.Any(x => !string.IsNullOrEmpty(x.CourtHall) && x.CourtHall.StartsWith(courtHall) && x.CauseListItemNo == $"{baseSl}.{suffix}"))
+                        {
+                            suffix++;
+                        }
+                        serialNo = $"{baseSl}.{suffix}";
+                    }
+
                     list.Add(new PartyCaseSearchResultItem
                     {
                         CNRNumber = cnrSynth,
@@ -681,6 +798,7 @@ namespace MVCCaseManagement.Services.ECourts
                     // Companion cases extraction (e.g. WITH WP 104857/2024 or CONNECTED WITH MFA 100234/2019)
                     var companionRegex = new Regex(@"(?:WITH|CONNECTED\s+WITH|C/W)[\s:]*([A-Za-z]+(?:\.[A-Za-z]+|\([A-Za-z0-9\-]+\))?(?:\s*NO\.?)?)[\s/]+(\d+/\d{4})", RegexOptions.IgnoreCase);
                     var compMatches = companionRegex.Matches(blockText);
+                    int compIdx = 1;
                     foreach (Match cm in compMatches)
                     {
                         string cRawType = cm.Groups[1].Value.Trim().ToUpperInvariant();
@@ -692,6 +810,8 @@ namespace MVCCaseManagement.Services.ECourts
                             string cRegNo = cParts[0].Trim();
                             string cRegYr = cParts[1].Trim();
                             string cCnrSynth = $"{estCode}{cType}{cRegNo}{cRegYr}".PadRight(16, '0').Substring(0, 16);
+                            string baseSl = serialNo.Contains('.') ? serialNo.Split('.')[0] : serialNo;
+                            string cSerialNo = $"{baseSl}.{compIdx++}";
                             list.Add(new PartyCaseSearchResultItem
                             {
                                 CNRNumber = cCnrSynth,
@@ -708,9 +828,9 @@ namespace MVCCaseManagement.Services.ECourts
                                 HighCourtBench = benchName,
                                 NextHearingDate = targetDate,
                                 CaseStage = stage,
-                                CourtHall = $"{courtHall} (Serial No. {serialNo} - Companion)",
+                                CourtHall = $"{courtHall} (Serial No. {cSerialNo})",
                                 CauseListNo = causeListNo,
-                                CauseListItemNo = serialNo,
+                                CauseListItemNo = cSerialNo,
                                 IsListedToday = true,
                                 IsTrackedInMyCases = false
                             });

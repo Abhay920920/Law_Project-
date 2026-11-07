@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.tdd-review-checkpoint",
+    "99"
+  ],
+  "fixture": "tdd",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"tddPlans\": 0,\n  \"violations\": 0,\n  \"table\": \"\",\n  \"rows\": [],\n  \"message\": \"No type:tdd plans found in phase 99. TDD review skipped.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

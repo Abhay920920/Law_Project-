@@ -1,0 +1,297 @@
+name: Install Smoke
+
+# Exercises the real install paths:
+#   tarball: `npm pack` → `npm install -g <tarball>` → assert gsd-tools on PATH
+#   unpacked: `npm install -g <dir>` (no pack) → assert gsd-tools on PATH + executable
+#
+# The tarball path is the canonical ship path. The unpacked path reproduces the
+# mode-644 failure class (issue #2453): npm does NOT chmod bin targets when
+# installing from an unpacked local directory, so any stale tsc output lacking
+# execute bits will be caught by the unpacked job before release.
+#
+# - PRs: path-filtered, minimal runner (ubuntu + Node 24) for fast signal.
+# - Push to release branches / main: full matrix.
+# - workflow_call: invoked from release.yml as a pre-publish gate.
+
+on:
+  pull_request:
+    branches:
+      - next
+      - main
+    paths:
+      - 'bin/install.js'
+      - 'gsd-core/bin/gsd-tools.cjs'
+      - 'gsd-core/bin/**'
+      - 'src/**'
+      - 'tsconfig.build.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/release-tarball-smoke.cjs'
+      - 'tests/release-tarball-smoke.install.test.cjs'
+      - '.github/workflows/install-smoke.yml'
+      - '.github/workflows/release.yml'
+  push:
+    branches:
+      - main
+      - 'release/**'
+      - 'hotfix/**'
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to check out (branch or SHA). Defaults to the triggering ref.'
+        required: false
+        type: string
+        default: ''
+  workflow_dispatch:
+
+concurrency:
+  group: install-smoke-${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: tarball install (existing canonical path)
+  # ---------------------------------------------------------------------------
+  # #3833: no compute lane runs while the PR has a merge conflict.
+  #
+  # This workflow is ALSO a workflow_call target (release.yml calls it for the
+  # rc and finalize actions). Two consequences the design depends on:
+  #   1. On those runs the event is workflow_dispatch, so the script no-ops in
+  #      ~15s with zero API calls and both smoke jobs run exactly as before.
+  #   2. A nested reusable workflow may only DOWNGRADE its caller's token, so
+  #      release.yml's two calling jobs grant `pull-requests: read` — without
+  #      it the release run fails to start on a permissions escalation.
+  preflight:
+    name: PR mergeability
+    uses: ./.github/workflows/pr-mergeable-preflight.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  smoke:
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    timeout-minutes: 12
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # PRs run the minimal path (ubuntu + Node 24, the engines.node floor).
+        # Pushes / release branches and workflow_call add macOS coverage.
+        # (Node floor is 24 everywhere now, so the prior "ubuntu + Node 24,
+        # full_only" row is identical to this minimal row and was dropped —
+        # it would otherwise re-run the same os/node combo twice on push.)
+        include:
+          - os: ubuntu-latest
+            node-version: 24
+            full_only: false
+            shell: bash
+          - os: macos-latest
+            node-version: 24
+            full_only: true
+            shell: 'zsh {0}'
+
+    steps:
+      - name: Skip full-only matrix entry on PR
+        id: skip
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL_ONLY: ${{ matrix.full_only }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$FULL_ONLY" = "true" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        if: steps.skip.outputs.skip != 'true'
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          # Need enough history to merge origin/main for stale-base detection.
+          fetch-depth: 0
+
+      - name: Record job start time (near-cap check)
+        if: steps.skip.outputs.skip != 'true'
+        run: echo "CI_JOB_START_EPOCH_MS=$(( $(date +%s) * 1000 ))" >> "$GITHUB_ENV"
+
+      # The default `refs/pull/N/merge` ref GitHub produces for PRs is cached
+      # against the recorded merge-base, not the current target branch. When the
+      # target advances
+      # after the PR was opened, the merge ref stays stale and CI can fail on
+      # issues that were already fixed upstream. Explicitly merge the current
+      # target branch into the PR head so smoke always tests the PR against the
+      # latest target. If the merge conflicts, emit a clear rebase diagnostic
+      # instead of a downstream build error that looks unrelated.
+      - name: Rebase check — merge PR base branch into PR head
+        if: steps.skip.outputs.skip != 'true' && github.event_name == 'pull_request'
+        run: node scripts/ci-rebase-check.cjs
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install root deps
+        if: steps.skip.outputs.skip != 'true'
+        run: npm ci
+
+      # `npm pack` runs prepack/prepare (build:lib) but NOT prepublishOnly, so
+      # a packed tarball is missing hooks/dist — the very launch targets the
+      # published package ships and the lifecycle smoke is meant to exercise.
+      # Build them here so the smoked tarball is publish-shaped (#4154).
+      - name: Build hooks (prepublishOnly parity)
+        if: steps.skip.outputs.skip != 'true'
+        run: npm run build:hooks
+
+      - name: Pack root tarball
+        if: steps.skip.outputs.skip != 'true'
+        id: pack
+        run: |
+          set -euo pipefail
+          TARBALL=$(npm pack --silent)
+          # npm pack --silent prints the filename on stdout; no glob needed.
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "Packed: $TARBALL"
+
+      - name: Ensure npm global bin is on PATH (CI runner default may differ)
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          NPM_BIN="$(npm config get prefix)/bin"
+          echo "$NPM_BIN" >> "$GITHUB_PATH"
+          echo "npm global bin: $NPM_BIN"
+
+      - name: Install tarball globally
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          TMPDIR_ROOT=$(mktemp -d)
+          cd "$TMPDIR_ROOT"
+          npm install -g "$WORKSPACE/$TARBALL"
+          command -v gsd-core
+          # `--claude --local` is the non-interactive code path. Don't swallow
+          # non-zero exit — if the installer fails, that IS the CI failure, and
+          # its own error message is more useful than the downstream "shim
+          # regression" assertion masking the real cause.
+          if ! gsd-core --claude --local; then
+            echo "::error::gsd-core --claude --local failed. See the install.js output above for the real error."
+            exit 1
+          fi
+
+      - name: Assert gsd-tools resolves on PATH
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if ! command -v gsd-tools >/dev/null 2>&1; then
+            echo "::error::gsd-tools is not on PATH after tarball install"
+            NPM_BIN="$(npm config get prefix)/bin"
+            echo "npm global bin: $NPM_BIN"
+            ls -la "$NPM_BIN" | grep -i gsd || true
+            exit 1
+          fi
+          echo "✓ gsd-tools resolves at: $(command -v gsd-tools)"
+
+      - name: Assert gsd-tools is executable
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          gsd-tools --help
+          echo "✓ gsd-tools is executable"
+
+      - name: Lifecycle smoke
+        if: steps.skip.outputs.skip != 'true'
+        id: lifecycle-smoke
+        run: |
+          set -euo pipefail
+          node scripts/release-tarball-smoke.cjs --json | tee /tmp/release-smoke.json
+          jq -e '.code == "ok"' /tmp/release-smoke.json
+
+      - name: Upload lifecycle smoke result on failure
+        if: steps.skip.outputs.skip != 'true' && failure() && steps.lifecycle-smoke.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-smoke-${{ matrix.os }}-node${{ matrix.node-version }}
+          path: /tmp/release-smoke.json
+          retention-days: 7
+
+      - name: Check job budget (near-cap advisory)
+        if: always()
+        continue-on-error: true
+        env:
+          CI_JOB_LABEL: "smoke (${{ matrix.os }}, ${{ matrix.node-version }}, ${{ matrix.full_only }}, ${{ matrix.shell }})"
+          CI_JOB_TIMEOUT_MINUTES: '12'
+        run: node scripts/ci-check-job-near-cap.cjs
+
+  # ---------------------------------------------------------------------------
+  # Job 2: unpacked-dir install
+  # ---------------------------------------------------------------------------
+  smoke-unpacked:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      # See the `smoke` job above for rationale — refs/pull/N/merge is cached
+      # against the recorded merge-base, not the current target branch.
+      # Explicitly merge the PR base so smoke-unpacked also runs against the
+      # latest target.
+      - name: Rebase check — merge PR base branch into PR head
+        if: github.event_name == 'pull_request'
+        run: node scripts/ci-rebase-check.cjs
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Ensure npm global bin is on PATH
+        run: |
+          NPM_BIN="$(npm config get prefix)/bin"
+          echo "$NPM_BIN" >> "$GITHUB_PATH"
+          echo "npm global bin: $NPM_BIN"
+
+      - name: Install from unpacked directory (no npm pack)
+        run: |
+          set -euo pipefail
+          TMPDIR_ROOT=$(mktemp -d)
+          cd "$TMPDIR_ROOT"
+          npm install -g "$GITHUB_WORKSPACE"
+          command -v gsd-core
+          gsd-core --claude --local || true
+
+      - name: Assert gsd-tools resolves on PATH after unpacked install
+        run: |
+          set -euo pipefail
+          if ! command -v gsd-tools >/dev/null 2>&1; then
+            echo "::error::gsd-tools is not on PATH after unpacked install"
+            NPM_BIN="$(npm config get prefix)/bin"
+            for f in "$NPM_BIN"/*gsd* "$NPM_BIN"/*GSD*; do [ -e "$f" ] && ls -la "$f"; done || true
+            exit 1
+          fi
+          echo "✓ gsd-tools resolves at: $(command -v gsd-tools)"
+
+      - name: Assert gsd-tools is executable after unpacked install
+        run: |
+          set -euo pipefail
+          gsd-tools --help
+          echo "✓ gsd-tools is executable after unpacked install"

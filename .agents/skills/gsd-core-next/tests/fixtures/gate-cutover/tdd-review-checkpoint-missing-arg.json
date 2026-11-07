@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.tdd-review-checkpoint"
+  ],
+  "fixture": "tdd",
+  "stdout": "",
+  "stderr": "Error: tdd.review-checkpoint requires a phase argument: check tdd.review-checkpoint <phase>\n",
+  "exitCode": 1
+}

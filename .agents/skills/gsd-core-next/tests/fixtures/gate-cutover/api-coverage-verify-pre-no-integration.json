@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/02-plain"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"coverage_present\": false,\n  \"detected\": false,\n  \"message\": \"api-coverage: no external-API integration detected; coverage matrix not required\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

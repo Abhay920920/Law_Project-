@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.verify-codebase-drift"
+  ],
+  "fixture": "cb-no-stamp",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": true,\n  \"reason\": \"no-mapped-commit\",\n  \"action_required\": false,\n  \"directive\": \"none\",\n  \"elements\": [],\n  \"last_mapped_commit\": null\n}",
+  "stderr": "",
+  "exitCode": 0
+}

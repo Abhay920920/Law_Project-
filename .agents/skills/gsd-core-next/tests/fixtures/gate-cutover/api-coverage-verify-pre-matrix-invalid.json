@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/04-matrix-bad"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": true,\n  \"passed\": false,\n  \"coverage_present\": true,\n  \"matrix\": \"COVERAGE.md\",\n  \"error_count\": 1,\n  \"errors\": [\n    \"row[0]: OPT-OUT missing reason\"\n  ],\n  \"message\": \"api-coverage: COVERAGE.md has 1 problem(s) — fix the matrix (every capability INTEGRATE or OPT-OUT with a reason) before sealing\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

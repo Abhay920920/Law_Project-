@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT-partial.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": false,\n  \"skipped\": false,\n  \"reason\": \"could-not-parse\",\n  \"total\": null,\n  \"covered\": null,\n  \"unreadable\": [\n    \"D4x-01\"\n  ],\n  \"message\": \"Decision coverage gate: decisions could not be fully parsed — one or more `- **D-NN ...**` bullets appear malformed (missing `:` or ` — ` separator, or a phase prefix that is not a digit run, e.g. `D4x-01`). Fix the bullet format so all decisions can be read before re-running the gate. Unreadable ids: D4x-01.\"\n}",
+  "stderr": "parseDecisions: ignored unparseable decision bullet: - **D4x-01:** Malformed prefix\n",
+  "exitCode": 0
+}

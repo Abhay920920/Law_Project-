@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.tdd-red-evidence"
+  ],
+  "fixture": "red",
+  "stdout": "",
+  "stderr": "Error: tdd-red-evidence requires a record path: check tdd-red-evidence <record.json>\n",
+  "exitCode": 1
+}

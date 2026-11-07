@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "verify",
+    "schema-drift",
+    "--skip"
+  ],
+  "fixture": "schema-drift",
+  "stdout": "",
+  "stderr": "Error: Usage: verify schema-drift <phase> [--skip]\n",
+  "exitCode": 1
+}

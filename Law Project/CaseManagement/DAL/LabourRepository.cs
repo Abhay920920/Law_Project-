@@ -320,7 +320,6 @@ namespace MVCCaseManagement.DAL
                 FROM LABOUR_CASES c
                 LEFT JOIN LABOUR_COURTS lc ON c.CourtID = lc.CourtID
                 LEFT JOIN DIVISION_MASTER dm ON c.DivisionID = dm.DivisionID
-                LEFT JOIN LABOUR_CASE_VIEW_TRACKING vt ON c.CaseID = vt.CaseID
                 LEFT JOIN LABOUR_ADVOCATES la ON c.AdvocateID = la.AdvocateID
                 LEFT JOIN HIGH_COURT_ADVOCATES hca ON c.AdvocateID = hca.AdvocateID
                 LEFT JOIN ADVOCATE_MASTER am ON c.AdvocateID = am.AdvocateID
@@ -414,9 +413,8 @@ namespace MVCCaseManagement.DAL
             paramsList.Add(new SqlParameter("@Search", string.IsNullOrEmpty(search) ? (object)DBNull.Value : "%" + search.Trim() + "%"));
 
             string query = $@"
-                SELECT COUNT(*) 
+                SELECT COUNT(DISTINCT c.CaseID) 
                 FROM LABOUR_CASES c
-                LEFT JOIN LABOUR_CASE_VIEW_TRACKING vt ON c.CaseID = vt.CaseID
                 WHERE (@DivisionID = 0 OR c.DivisionID = @DivisionID)
                   AND {searchCondition}
                   AND (
@@ -610,6 +608,41 @@ namespace MVCCaseManagement.DAL
                 {
                     try
                     {
+                        // Guard against duplicate case registration in the same division
+                        if (!string.IsNullOrWhiteSpace(model.CaseNumber) && model.CaseYear > 0 && model.DivisionID > 0)
+                        {
+                            string checkDupSql = @"
+                                SELECT TOP 1 CaseID 
+                                FROM LABOUR_CASES 
+                                WHERE DivisionID = @DivisionID 
+                                  AND CourtID = @CourtID 
+                                  AND CaseYear = @CaseYear
+                                  AND (
+                                      LTRIM(RTRIM(CaseNumber)) = LTRIM(RTRIM(@CaseNumber))
+                                      OR REPLACE(LTRIM(RTRIM(CaseNumber)), ' ', '') = REPLACE(LTRIM(RTRIM(@CaseNumber)), ' ', '')
+                                      OR (ISNUMERIC(CaseNumber) = 1 AND ISNUMERIC(@CaseNumber) = 1 AND CAST(CaseNumber AS BIGINT) = CAST(@CaseNumber AS BIGINT))
+                                      OR (@CNRNumber IS NOT NULL AND @CNRNumber <> '' AND UPPER(LTRIM(RTRIM(CNRNumber))) = UPPER(LTRIM(RTRIM(@CNRNumber))))
+                                  )";
+
+                            var dupParams = new[]
+                            {
+                                new SqlParameter("@DivisionID", model.DivisionID),
+                                new SqlParameter("@CourtID", model.CourtID),
+                                new SqlParameter("@CaseYear", model.CaseYear),
+                                new SqlParameter("@CaseNumber", (object)model.CaseNumber?.Trim() ?? string.Empty),
+                                new SqlParameter("@CNRNumber", (object)model.CNRNumber?.Trim() ?? string.Empty)
+                            };
+
+                            var existingIdObj = _db.ExecuteScalar(checkDupSql, dupParams, connection, transaction);
+                            if (existingIdObj != null && existingIdObj != DBNull.Value && Convert.ToInt32(existingIdObj) > 0)
+                            {
+                                int existingCaseId = Convert.ToInt32(existingIdObj);
+                                model.CaseID = existingCaseId;
+                                transaction.Commit();
+                                return existingCaseId;
+                            }
+                        }
+
                         newId = Convert.ToInt32(_db.ExecuteScalar(query, parameters.ToArray(), connection, transaction));
 
                         // Save Connected Cases

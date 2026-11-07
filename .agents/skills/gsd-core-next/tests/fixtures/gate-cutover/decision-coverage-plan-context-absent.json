@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT-nonexistent.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": true,\n  \"skipped\": true,\n  \"reason\": \"CONTEXT.md missing\",\n  \"total\": 0,\n  \"covered\": 0,\n  \"uncovered\": [],\n  \"message\": \"No CONTEXT.md - nothing to check.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

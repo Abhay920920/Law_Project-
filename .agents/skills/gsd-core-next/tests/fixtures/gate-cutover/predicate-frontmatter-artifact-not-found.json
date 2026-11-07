@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{\"kind\":\"artifact-frontmatter-equals\",\"artifact\":\"NOPE.md\",\"field\":\"status\",\"equals\":\"done\"}",
+    "--phase-dir",
+    ".planning/phases/01-pred"
+  ],
+  "fixture": "pred",
+  "stdout": "{\n  \"block\": true,\n  \"message\": \"Artifact matching NOPE.md not found in <TMP>/.planning/phases/01-pred\",\n  \"details\": {\n    \"kind\": \"artifact-frontmatter-equals\",\n    \"artifactNotFound\": true\n  }\n}",
+  "stderr": "",
+  "exitCode": 0
+}

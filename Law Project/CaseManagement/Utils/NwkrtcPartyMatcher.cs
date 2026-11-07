@@ -352,7 +352,9 @@ namespace MVCCaseManagement.Utils
         /// </summary>
         public static List<string> GetDefaultSearchAliases(string? estCode = null)
         {
-            if (string.IsNullOrEmpty(estCode) || estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(estCode) || 
+                estCode.Equals("ALL", StringComparison.OrdinalIgnoreCase) || 
+                estCode.Equals("KAHC02", StringComparison.OrdinalIgnoreCase))
             {
                 return new List<string>
                 {
@@ -360,8 +362,10 @@ namespace MVCCaseManagement.Utils
                     "DIVISIONAL CONTROLLER",
                     "MANAGING DIRECTOR",
                     "NORTH WEST",
+                    "NORTH WESTERN",
                     "DEPOT MANAGER",
-                    "NKWRTC"
+                    "NKWRTC",
+                    "NWKSRTC"
                 };
             }
 
@@ -369,8 +373,10 @@ namespace MVCCaseManagement.Utils
             {
                 "NWKRTC",
                 "NORTH WEST",
+                "NORTH WESTERN",
                 "NKWRTC",
-                "NWKSRTC"
+                "NWKSRTC",
+                "MANAGING DIRECTOR"
             };
         }
     }

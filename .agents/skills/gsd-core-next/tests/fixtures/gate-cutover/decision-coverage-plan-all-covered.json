@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT-allcovered.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": true,\n  \"skipped\": false,\n  \"total\": 2,\n  \"covered\": 2,\n  \"uncovered\": [],\n  \"message\": \"All trackable CONTEXT.md decisions are covered by plans.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

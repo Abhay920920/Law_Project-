@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "verify",
+    "context-drift"
+  ],
+  "fixture": "ctx-drift",
+  "stdout": "",
+  "stderr": "Error: Usage: verify context-drift <phase>\n",
+  "exitCode": 1
+}

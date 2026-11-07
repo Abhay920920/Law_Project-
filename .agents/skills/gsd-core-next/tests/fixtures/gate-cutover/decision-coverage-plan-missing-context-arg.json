@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": false,\n  \"skipped\": false,\n  \"reason\": \"missing context path argument\",\n  \"total\": 0,\n  \"covered\": 0,\n  \"uncovered\": [],\n  \"message\": \"Decision coverage gate called without a context path argument — the caller (e.g. the plan-phase workflow) must pass the CONTEXT.md path. An empty argument is a caller error, not evidence there is nothing to check (#2770).\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

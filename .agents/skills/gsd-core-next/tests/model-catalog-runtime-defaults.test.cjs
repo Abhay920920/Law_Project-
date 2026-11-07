@@ -1,0 +1,81 @@
+// allow-test-rule: source-text-is-the-product
+// These docs tables are the shipped operator surface for runtime model tiers.
+
+'use strict';
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const { catalog, KNOWN_RUNTIMES } = require('../gsd-core/bin/lib/model-catalog.cjs');
+const { allRuntimes } = require('../bin/install.js');
+
+const ROOT = path.join(__dirname, '..');
+const SETTINGS_ADVANCED = fs.readFileSync(path.join(ROOT, 'gsd-core', 'workflows', 'settings-advanced.md'), 'utf8');
+const CONFIG_DOC = fs.readFileSync(path.join(ROOT, 'docs', 'CONFIGURATION.md'), 'utf8');
+const catalogPath = path.join(ROOT, 'gsd-core', 'bin', 'shared', 'model-catalog.json');
+const CATALOG_RAW = fs.readFileSync(catalogPath, 'utf8');
+
+describe('model catalog runtime defaults parity (#3229)', () => {
+  test('known runtimes include hermes and match catalog keys', () => {
+    assert.ok(KNOWN_RUNTIMES.has('hermes'));
+    assert.ok(KNOWN_RUNTIMES.has('kimi'));
+    assert.deepStrictEqual([...KNOWN_RUNTIMES].sort(), Object.keys(catalog.runtimeTierDefaults).sort());
+  });
+
+  test('installer-supported runtimes are all known to the model catalog', () => {
+    assert.deepStrictEqual([...allRuntimes].sort(), [...KNOWN_RUNTIMES].sort());
+  });
+
+  test('settings-advanced runtime defaults table matches catalog for concrete runtimes', () => {
+    for (const [runtime, tiers] of Object.entries(catalog.runtimeTierDefaults)) {
+      if (!tiers.opus) continue; // Group B runtimes intentionally have no built-ins
+      assert.ok(SETTINGS_ADVANCED.includes(`| \`${runtime}\``), `settings-advanced.md missing ${runtime} row`);
+      for (const alias of ['opus', 'sonnet', 'haiku']) {
+        const entry = tiers[alias];
+        assert.ok(entry?.model, `${runtime}.${alias} missing model in catalog`);
+        assert.ok(
+          SETTINGS_ADVANCED.includes(`\`${entry.model}\``),
+          `settings-advanced.md missing ${runtime}.${alias} model ${entry.model}`,
+        );
+      }
+    }
+  });
+
+  test('CONFIGURATION runtime defaults table matches catalog for concrete runtimes', () => {
+    for (const [runtime, tiers] of Object.entries(catalog.runtimeTierDefaults)) {
+      if (!tiers.opus) continue;
+      assert.ok(CONFIG_DOC.includes(`| \`${runtime}\``), `CONFIGURATION.md missing ${runtime} row`);
+      for (const alias of ['opus', 'sonnet', 'haiku']) {
+        const entry = tiers[alias];
+        assert.ok(
+          CONFIG_DOC.includes(`\`${entry.model}\``),
+          `CONFIGURATION.md missing ${runtime}.${alias} model ${entry.model}`,
+        );
+      }
+    }
+  });
+
+  test('Group B runtimes remain documented as having no built-in defaults', () => {
+    const groupB = Object.keys(catalog.runtimeTierDefaults)
+      .filter(runtime => !catalog.runtimeTierDefaults[runtime].opus);
+    assert.ok(groupB.length > 0, 'expected at least one Group B runtime in catalog');
+    for (const runtime of groupB) {
+      const tiers = catalog.runtimeTierDefaults[runtime];
+      assert.equal(tiers.opus, null);
+      assert.equal(tiers.sonnet, null);
+      assert.equal(tiers.haiku, null);
+    }
+    assert.ok(SETTINGS_ADVANCED.includes('Group B'));
+    assert.ok(CONFIG_DOC.includes('Group B'));
+  });
+
+  test('catalog contains no retired/invalid model IDs', () => {
+    // Retired per issue #779 verify-first audit (gemini-cli source + OpenAI Codex models page).
+    const RETIRED = ['"gemini-3-pro"', '"gpt-5.3-codex"'];
+    for (const id of RETIRED) {
+      assert.ok(!CATALOG_RAW.includes(id), `retired model ID ${id} must not appear in model-catalog.json (see #779)`);
+    }
+  });
+});

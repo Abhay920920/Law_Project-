@@ -1,0 +1,909 @@
+# Host Integration Capability Matrix
+
+This document is the maintainer-facing source of truth for the `hostIntegration` block in every
+`capabilities/<cli>/capability.json` runtime descriptor. Every per-CLI axis value is either:
+
+- **documented** — backed by a cited authoritative source and evidence quote, or
+- **`undocumented`** — the explicit fail-closed sentinel used when the CLI's public documentation
+  does not state a value for that axis. `undocumented` validates in the registry but never
+  propagates into effective axes: negotiation degrades closed to the safe default.
+
+Values are generated from per-CLI documentation research (Context7 + official docs). They are
+consumed verbatim by `gen:capability-registry` and validated by `capability-validator.cjs`.
+
+---
+
+## Axes legend
+
+| Axis | Meaning |
+|---|---|
+| `embeddingMode` | Whether the CLI exposes an in-process programmatic API (`imperative`) or integrates purely through configuration files (`declarative`). |
+| `commandSurface` | How slash commands are registered: `slash-file` (markdown), `slash-toml` (TOML), `slash-programmatic` (code API), `palette`, `prose-only`. |
+| `modelMode` | Whether extensions can programmatically request or supply a model (`active`) or select only by config (`passive`). |
+| `hookBus` | Who owns the hook lifecycle: `host` (the CLI fires hooks), `engine` (VS Code/Electron extension host), `none`. |
+| `stateIO` | Filesystem access model: `filesystem` (full local FS), `sandboxed-storage`, `session-log-append`. |
+| `transport` | Integration transport: `mcp` (Model Context Protocol), `native-extension`. |
+| `runtime` | Plugin/extension execution runtime: `node`, `bun`, `python`, `go`, `rust`, `electron`, `sandboxed-web`, `other`. |
+| `effortSurface` | How reasoning effort reaches this host: `argv` (deliverable as an argument on the host's own invocation), `none` (the host exposes no reasoning-effort mechanism), or `undocumented`. Added by #2481; there is deliberately **no** config-file member — the only host that ever had one (Gemini CLI's `thinkingConfig`) was removed as a sunset runtime, and naming a member with no host would be a guess. |
+
+### dispatch sub-axes
+
+| Sub-axis | Meaning |
+|---|---|
+| `namedDispatch` | Whether agents can be invoked by name (true/false/`undocumented`). |
+| `nested` | Whether subagents can themselves spawn subagents (true/false/`undocumented`). |
+| `maxDepth` | Maximum nesting depth (integer; -1 = unbounded; `undocumented`). |
+| `background` | Whether subagents can run asynchronously in the background (true/false/`undocumented`). |
+| `subagentToolkit` | Tool surface available to subagents: `full`, `read-only`, `built-in-only`, or `undocumented`. `built-in-only` means the host ships a fixed set of built-in subagent types whose tool surfaces differ from one another, so no single `full`/`read-only` value describes them; it degrades closed to `read-only` in the negotiated axes. |
+| `backgroundDispatch` | Whether a BACKGROUND-dispatched sub-agent can itself spawn further named sub-agents — the #853 discriminator (true/false/`undocumented`). |
+
+### Interface points
+
+| Point | Meaning |
+|---|---|
+| `command` | Slash-command routing and invocation capability. |
+| `dispatch` | Subagent/multi-agent dispatch capability. |
+| `model` | Programmatic model selection capability. |
+| `hooks` | Lifecycle hook registration capability. |
+| `state` | Filesystem/state I/O capability. |
+| `artifact` | Artifact delivery (skills, commands) surface capability. |
+
+### Trigger precedence (#2871 Phase 2 — adjacent to, not part of, `hostIntegration`)
+
+`runtime.triggerPrecedence` (an ordered list of trigger-bearing kind names, highest priority
+first) is declared as a sibling of `hostIntegration` in `capability.json`'s `runtime` body, not
+inside it — it is not researched per-CLI documentation the way the axes above are, so it carries
+no per-host `Source`/`Evidence` row. Only `commands` and `skills` are members of the vocabulary;
+`agents`/`kimi-agents` are excluded because they are not trigger-bearing (a `/gsd-<name>` a user
+types) — an agent is invoked through named/`subagent_type` dispatch, the separate `dispatch`
+interface point above, never through the `command` interface point. Every shipped runtime
+descriptor declares the same value, `["skills", "commands"]` (skills wins a same-scope collision),
+matching `capability-validator.cjs`'s `DEFAULT_TRIGGER_PRECEDENCE` — the axis is
+required-with-default (absence resolves to that default) so a third-party descriptor authored
+before this phase keeps validating unchanged. `runtime-artifact-layout.cts`'s
+`resolveTriggerSurface` reads it to decide the winner among same-trigger candidates once scope
+rank (Install Scope Module) has already been applied. See CONTEXT.md's Runtime Artifact Layout
+Module entry and `.gsd/phase/feat-2871-trigger-resolution/40-design.md`.
+
+---
+
+## claude
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://code.claude.com/docs/en/agent-sdk/overview | "The Agent SDK offers hooks to execute custom code at critical points within the agent's lifecycle. These callback functions enable developer" |
+| commandSurface | slash-file | https://code.claude.com/docs/en/agent-sdk/slash-commands | "Each custom command is a markdown file where the filename (without the `.md` extension) becomes the command name. The file content defines w" |
+| modelMode | passive | https://code.claude.com/docs/en/agent-sdk/typescript | "setModel(model?: string): Changes the model (only available in streaming input mode) ... model overrides the default model for this subagent" |
+| hookBus | host | https://code.claude.com/docs/en/agent-sdk/python | "HookEvent = Literal['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'Stop', 'SubagentStop', 'PreCompact', 'Notificati" |
+| stateIO | filesystem | https://code.claude.com/docs/en/sandboxing | "The sandboxed Bash tool restricts file system access, granting read and write access to the current working directory and session temp direc" |
+| transport | mcp | https://code.claude.com/docs/en/mcp | "Project-Scoped MCP Server Configuration in .mcp.json ... This JSON structure illustrates the format for a project-scoped MCP server configur" |
+| runtime | node | https://code.claude.com/docs/en/agent-sdk/typescript | "import { query } from \"@anthropic-ai/claude-agent-sdk\"; ... pathToClaudeCodeExecutable (string) - Specifies the path to the Claude Code CLI" |
+| effortSurface | argv | https://code.claude.com/docs/en/cli-reference ; `claude --help` | `--effort <level>` is a documented flag on the host's own invocation, so GSD renders the resolved universal effort straight onto the argv it spawns (#2481). |
+| dispatch.namedDispatch | true | https://code.claude.com/docs/en/agent-sdk/subagents | "agents: { 'code-reviewer': AgentDefinition({ description: 'Expert code reviewer.', ... }) } ... subagent_type: block.inp" |
+| dispatch.nested | true | https://code.claude.com/docs/en/sub-agents | "As of Claude Code v2.1.172, a subagent can spawn its own subagents, allowing delegated tasks to split into parallel subt" |
+| dispatch.maxDepth | 5 | https://code.claude.com/docs/en/sub-agents | "foreground subagents can spawn at any depth, blocking their parent until completion. Background subagents are limited to" |
+| dispatch.background | true | https://code.claude.com/docs/en/sub-agents | "Subagents can run in the foreground, blocking the main conversation and passing permission prompts to you, or in the bac" |
+| dispatch.subagentToolkit | full | https://code.claude.com/docs/en/sub-agents | "If all tools remain selected, the subagent inherits all tools available to the main conversation." |
+| dispatch.backgroundDispatch | false | https://code.claude.com/docs/en/sub-agents | "Background subagents are limited to a depth of five and cannot spawn further, " |
+| dispatch.isolation | harness-worktree | https://code.claude.com/docs/en/sub-agents ; Claude Code Agent tool (`Agent(isolation="worktree")`) | The Claude Code Agent tool accepts an `isolation="worktree"` harness primitive — the host's own harness creates + binds a git worktree per executor; GSD passes the flag and calls no git itself (#2584) |
+| dispatch.maxConcurrency | 20 | https://code.claude.com/docs/en/sub-agents | The subagent documentation states a default concurrent-subagent limit of 20, configurable via the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` environment variable (#3673). |
+
+Sources consulted:
+- https://code.claude.com/docs/en/sub-agents
+- https://code.claude.com/docs/en/agent-sdk/slash-commands
+- https://code.claude.com/docs/en/agent-sdk/subagents
+- https://code.claude.com/docs/en/agent-sdk/python
+- https://code.claude.com/docs/en/agent-sdk/typescript
+- https://code.claude.com/docs/en/agent-sdk/overview
+- https://code.claude.com/docs/en/mcp
+- https://code.claude.com/docs/en/sandboxing
+- Context7 /websites/code_claude
+- Context7 /llmstxt/code_claude_llms_txt
+
+**Cross-scope trigger shadowing and spec-root reachability (#2873, epic #2866 Phase 4, resolving #2218).** GSD's claude `artifactLayout` installs `global=[skills]` and `local=[commands, agents]` (see "Trigger precedence" above). Claude Code's own documented precedence — personal overrides project, and a same-named skill overrides a same-named command — means both rules point the same direction when a user installs both scopes: the global skill always wins the `/gsd-<name>` trigger, and the project-local `.claude/gsd-core/` spec tree the local command correctly points at becomes unreachable through that trigger, silently. GSD Core now (a) detects this at install time and from `/gsd-health` (diagnostic `W028`) and prints which scope wins — an advisory only, exit code unchanged; and (b) for claude at **global** scope only, resolves the winning skill's own workflow-spec `@`-include at runtime rather than pre-expanding it: the skill body carries an explicit imperative instruction that resolves `.claude/gsd-core/workflows/<name>.md` relative to the working directory first, falling back to `~/.claude/gsd-core/workflows/<name>.md` when no local tree exists. This is instruction-following, not the guaranteed inclusion a real `@`-include provides — it costs the agent one file read — and is deliberately confined to this one reference, in this one runtime, at this one scope: the skill's `references/`/`templates/` includes and the local scope's own emission are unchanged. See [Interpret install-shadow warnings](../how-to/interpret-install-shadow-warnings.md) and [Install on your runtime — Claude Code](../how-to/install-on-your-runtime.md#claude-code).
+
+---
+
+## codex
+
+> **Note:** ADR-1239's host matrix lists Codex as `prose-only`; current OpenAI Codex dev docs document slash-commands, so `commandSurface` is `slash-file` here (docs are the source of truth).
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://developers.openai.com/codex/plugins/build | "No in-process programmatic API exists. Plugins integrate through: External command execution (hooks), MCP server processes, Configuration fi" |
+| commandSurface | slash-file | https://github.com/openai/codex/blob/main/codex-rs/core-skills/src/loader.rs | "const SKILLS_FILENAME: &str = \"SKILL.md\"; ... Each skill is a folder with a SKILL.md file containing YAML frontmatter with name and descript" |
+| modelMode | passive | https://github.com/openai/codex/blob/main/codex-rs/config/src/config_toml.rs | "pub model_provider: Option<String> ... model is selected by config field; no programmatic model request API" |
+| hookBus | host | https://github.com/openai/codex/blob/main/codex/codex-rs/hooks/src/lib.rs | "pub const HOOK_EVENT_NAMES: [&str; 10] = [\"PreToolUse\", \"PermissionRequest\", \"PostToolUse\", \"PreCompact\", \"PostCompact\", \"SessionStart\", \"Us" |
+| stateIO | filesystem | https://developers.openai.com/codex/concepts/sandboxing | "workspace-write: The default mode allowing Codex to read files, edit within the workspace, and run routine local commands inside that bounda" |
+| transport | mcp | https://github.com/openai/codex/blob/main/codex-rs/config/src/config_toml.rs | "pub mcp_servers: HashMap<String, McpServerConfig> ... Definition for MCP servers that Codex can reach out to for tool calls." |
+| runtime | node | https://github.com/openai/codex/blob/main/codex-cli/package.json | "\"engines\": {\"node\": \">=16\"} ... The npm-distributed CLI wrapper is a Node.js script (#!/usr/bin/env node)" |
+| effortSurface | argv | https://github.com/openai/codex/blob/main/codex-rs/exec/src/cli.rs ; https://developers.openai.com/codex/config-reference | `model_reasoning_effort` is a `config.toml` key and **not** a dedicated CLI flag, so the generic `-c <key>=<value>` override is the only argv route — which is still argv, hence `argv` rather than a config-file member (#2481). |
+| dispatch.namedDispatch | true | https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/multi_agents_spec.rs | "\"agent_type\".to_string(), JsonSchema::string(Some(agent_type_description.to_string())) ... apply_role_to_config(&mut con" |
+| dispatch.nested | true | https://developers.openai.com/codex/multi-agent | "agents.max_depth defaults to 1, which allows a direct child agent to spawn but prevents deeper nesting." |
+| dispatch.maxDepth | 1 | https://developers.openai.com/codex/config-reference | "agents.max_depth: Maximum nesting depth allowed for spawned agent threads (root sessions start at depth 0; default: 1)" |
+| dispatch.background | true | https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/multi_agents_spec.rs | "spawn_agent returns the spawned agent id immediately; a separate wait_agent tool polls for final status." |
+| dispatch.subagentToolkit | full | https://developers.openai.com/codex/multi-agent | "Subagents inherit the sandbox policy and tool surface from the parent session." |
+| dispatch.backgroundDispatch | true | https://github.com/openai/codex/blob/main/codex-rs/core/templates/collab/experimental_prompt.md | "Sub-agents have access to the same set of tools as you do so you must tell them if they are allowed to spawn sub-agents themselves or not." The config (codex-rs/config/src/config_toml.rs) exposes an |
+| dispatch.isolation | orchestrator-worktree | https://learn.chatgpt.com/docs/environments/git-worktrees ; https://github.com/openai/codex/blob/main/codex-rs/utils/cli/src/shared_options.rs | "Worktrees are available only in Codex in the ChatGPT desktop app." (no native CLI worktree) + `codex exec --cd <dir>` sets an explicit working root, so GSD creates+manages the worktree and points the executor at it (#2584) |
+| dispatch.maxConcurrency | undocumented | https://developers.openai.com/codex/config-reference | `agents.max_concurrent_threads_per_session` is a documented config key, but the reference states no numeric default — "Codex chooses the default" — so there is no single value to cite (#3673). |
+
+**GSD integration status — Phase D dogfood complete (#2088, ADR-1239).** Codex installs through the `declarative` embedding adapter (`createDeclarativeAdapter` → `installRuntimeArtifacts`); the hardcoded `runtime === 'codex'`/`isCodex` projection is folded into descriptor-driven `runtime.hostBehaviors`, and install/uninstall output is byte-parity-gated at the time (`tests/fixtures/golden-install-parity/codex.json`; superseded by the differential attribution check, #2724). Three capability upgrades land, each with a test driving the user-reachable surface:
+
+- **Skill root** — global skills install to the canonical `$HOME/.agents/skills` (Codex core-skills `loader.rs` user-scope root), not the deprecated `$CODEX_HOME/skills` fallback; local skills install to `<project>/.codex/skills`. The global path is declared via the global skills-kind `home: ".agents"` override, while the local kind intentionally has no home override. Pre-move global installs are migrated (stale `~/.codex/skills/gsd-*` cleaned on both install and uninstall); local installs do not remove `$HOME/.agents/skills` because those skills may be intentionally global.
+- **Hook events (corrected #2586)** — GSD registers the `SessionStart` event only, wired to `gsd-check-update.js`. The `SubagentStart`/`Stop`/`PostToolUse` (#772) + six #2088 extended events (`PreToolUse`, `PermissionRequest`, `PreCompact`, `PostCompact`, `SubagentStop`, `UserPromptSubmit`) described in earlier revisions of this doc were routed through `gsd-context-monitor.js`, which reads a remaining-context-percentage bridge file (`${TMPDIR}/claude-ctx-{session_id}.json`) that only `gsd-statusline.js` writes — a Claude-only mechanism Codex never installs. Every one of those events was therefore a guaranteed silent no-op on Codex (confirmed: `readSentinel` throws `ENOENT` on every invocation, unconditionally). #2586 stops copying/registering `gsd-context-monitor.js` on fresh installs and cleans up a pre-#2586 install's stale registrations + orphaned script on reinstall/uninstall. Agent-facing context warnings and GSD phase/lifecycle display are consequently **unsupported on Codex** (`capabilities/codex/capability.json`'s `hostBehaviors.unsupportedFeatures: ["context-warnings","phase-lifecycle-display"]`) — no working warning path existed before this change either, so nothing regresses. Native Codex `/statusline` configuration remains a separate, out-of-scope surface. (The descriptor `extendedHookEvents` field's `SubagentStop`/`Stop`/`PreCompact` value is a pre-existing, unrelated drift against the fuller event set `bin/install.js` used to register — not corrected by #2586.)
+- **Context monitor on the other hosts (#4840)** — the same silent no-op applied to every host that registers `gsd-context-monitor.js` without a `gsd-statusline.js` writer: the installer wires that writer for Claude Code alone, yet registered the monitor on Antigravity, Augment, CodeBuddy, Hermes and Qwen (settings.json) and on Kimi and Kimi Code (`config.toml`). Those seven now declare `hostBehaviors.unsupportedFeatures: ["context-warnings"]`, the installer no longer registers the tool-event monitor for them (their lifecycle-event wiring is unchanged), and a reinstall strips a registration left by an earlier install (a user-authored hook on the same event is left alone). `tests/context-monitor-host-contract.test.cjs` holds every settings.json / Kimi host to the contract against the real installer. See [context-monitor.md](../context-monitor.md#supported-hosts-4840).
+- **Dispatch tuning** — `[agents] max_depth = 1` is written explicitly into the managed `config.toml` block, pinning the `dispatch.maxDepth: 1` axis instead of relying on codex-cli's implicit default. Because `maxDepth === 1`, `degradationFor` flattens GSD-hosted wave dispatch to single-level even though `dispatch.nested`/`background`/`backgroundDispatch` are all `true`. The block is a bare `[agents]` AgentsToml scalar table; it does **not** carry per-role `[agents.gsd-*]` sub-tables — those pointed `config_file` back at the standalone `agents/gsd-*.toml` files Codex already auto-discovers, so emitting them was a duplicate role registration (Codex logged "Ignoring malformed agent role definition: duplicate agent role name" once per agent) removed in #2406. `validateCodexConfigSchema` permits a known-scalar-only `[agents]` while still rejecting `[[agents]]` and unknown-key forms.
+
+Sources consulted:
+- https://github.com/openai/codex (repo via gh CLI)
+- /openai/codex (Context7 library ID)
+- https://github.com/openai/codex/blob/main/codex-rs/config/src/config_toml.rs
+- https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/multi_agents_spec.rs
+- https://github.com/openai/codex/blob/main/codex-rs/core-skills/src/loader.rs
+- https://developers.openai.com/codex/config-reference
+- https://developers.openai.com/codex/plugins/build
+- https://developers.openai.com/codex/multi-agent
+- https://developers.openai.com/codex/cli/slash-commands
+
+Documentation gaps:
+- dispatch.maxDepth is configurable (Option<i32> with no documented upper bound); the documented default is 1 but the actual enforced maximum is not stated.
+- dispatch.subagentToolkit: docs say subagents 'inherit the tool surface' but do not enumerate whether any tools are excluded.
+- runtime: the Node.js entry point is a thin launcher shim; the actual agent execution runtime is a compiled Rust binary — axis classification is ambiguous.
+
+---
+
+
+## opencode
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://opencode.ai/docs/plugins | "Plugins are JavaScript/TypeScript modules that export plugin functions; they register hooks via `import type { Plugin } from '@opencode-ai/p'" |
+| commandSurface | slash-file | https://opencode.ai/docs/commands | "\"Create markdown files in the `commands/` directory to define custom commands.\" and \"The markdown file name becomes the command name." |
+| modelMode | active | /anomalyco/opencode (Context7) — packages/plugin/src/v2/promise/README.md | "`ctx.aisdk.sdk(async (event) => { ... event.sdk = mod.createXai(event.options) })` and `ctx.aisdk.language((event) => { ... event.language =" |
+| hookBus | host | https://opencode.ai/docs/plugins | "Host fires events including: `tool.execute.before`, `tool.execute.after`, `session.created`, `session.compacted`, `session.deleted`" |
+| stateIO | filesystem | https://opencode.ai/docs/plugins | "Plugin context includes `directory` (working directory path), `worktree` (git worktree path), and `$` (\"Bun's shell API\")" |
+| transport | mcp | https://opencode.ai/docs/mcp-servers | "\"OpenCode supports both local and remote servers.\" and \"Once added, MCP tools are automatically available to the LLM\"" |
+| runtime | bun | https://opencode.ai/docs/plugins | "\"$\": Bun's shell API for executing commands\" (plugin context property); \"OpenCode runs `bun install` at startup\"" |
+| effortSurface | argv | https://opencode.ai/docs/cli ; `opencode run --help` | `--variant` is accepted on `opencode run`, so the resolved effort is deliverable as an invocation argument (#2481). |
+| dispatch.namedDispatch | true | https://opencode.ai/docs/agents | "\"Subagents can be invoked: Automatically by primary agents for specialized tasks based on their descriptions. Manually b" |
+| dispatch.nested | false | https://opencode.ai/v2/docs/tools § Subagent; observed on 1.18.29 and 2.0.27 (`tests/opencode-matrix.smoke.test.cjs` A4) | "Only subagent-mode agents can be used, and the default nesting depth is one." A child session's model request is offered no `subagent`/`task` tool on either generation (Phase 3 matrix). |
+| dispatch.maxDepth | 1 | https://opencode.ai/v2/docs/tools § Subagent; observed on 1.18.29 and 2.0.27 | "the default nesting depth is one" — a parent dispatches children; a child cannot dispatch further. |
+| dispatch.background | false | https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/effect/runtime-flags.ts ; https://github.com/anomalyco/opencode/issues/29638 | "`experimentalBackgroundSubagents: enabledByExperimental(\"OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS\")` — `enabledByExperimental` falls back to the `experimental` flag, and `bool()` defaults to `false`, so the Task tool's `background` parameter is hidden from the model unless the operator opts in by env var. #29638 (OPEN) confirms the session loop still `tasks.pop()`s one subtask at a time. (#2598 — corrects #2087, whose \"v1.17 default-on in all modes\" reading does not hold against current `dev`)" |
+| dispatch.subagentToolkit | full | https://opencode.ai/docs/agents | "The 'general' subagent \"Has full tool access (except todo), so it can make file changes when needed.\"" |
+| dispatch.backgroundDispatch | false | https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/effect/runtime-flags.ts ; https://github.com/anomalyco/opencode/issues/29638 ; https://github.com/anomalyco/opencode/issues/14195 | "Concurrent dispatch requires the opt-in `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` flag (default `false`), so it cannot be relied on. #14195: \"the session loop does `tasks.pop()` to grab a single subtask, `await`s it, then `continue`s the loop — so even 3 simultaneous Task calls run sequentially.\" Declaring `true` would overstate the capability, against the fail-closed posture negotiation is built for. (#2598 — corrects #2087)" |
+| dispatch.isolation | orchestrator-worktree | https://opencode.ai/docs/cli ; opencode.ai/docs/plugins ; opencode issues #14195/#29638/#5887 | "`opencode run --dir <path>` sets an explicit working root at the process level" — native subagent dispatch is synchronous-only, so GSD creates + manages the worktree and process-spawns the executor into it via `--dir` (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+### OpenCode 2.x notes (ADR-5331, #5337)
+
+**Phase 3 (#5339) descriptor reconciliation.** `dispatch.nested: false` and `dispatch.maxDepth: 1` replace `undocumented`: the 2.x Tools page documents a default nesting depth of one, and the real-binary matrix (rows A4/A5) observed the same on 1.18.29 and 2.0.27 — a child session is offered no dispatch tool. `dispatch.background` stays `false` and is **handed to Phase 4 (#5340)** with this reason: 2.x documents `subagent` with `background: true` (matrix row A5 passes on 2.0.27), but 1.x `task` has no background mode (`experimentalBackgroundSubagents` is behind an experimental flag), and the descriptor is one value for the `opencode` runtime until Phase 4 removes the 1.x paths. `dispatch.backgroundDispatch` stays `false` for the same nesting reason.
+
+The descriptor above is the OpenCode 1.x row; the same descriptor serves 2.x with these generation differences, each reproduced against `opencode` 1.19.0 and 2.0.27 (ADR-5331 evidence register) and applied at spawn time by `src/opencode-version.cts`:
+
+| Axis | 1.x | 2.x | Reconciliation |
+|---|---|---|---|
+| `runtime` | `bun` — plugin context offers Bun's `$` | `bun` — the 2.x CLI is a Bun single-file binary (`$bunfs` in its stack traces), but the 2.x plugin context has **no** `$` helper ([Migrate plugins from V1](https://opencode.ai/v2/docs/build/plugins/migrate-v1) § Migrate the context) | The axis names the host's plugin runtime, not the runtime of GSD's hooks. GSD hook scripts are separate Node child processes on both generations; the plugin spawns `node` (or `GSD_HOOK_RUNTIME`), never `process.execPath`, because that is the OpenCode binary (#4849). |
+| `modelMode` | `active` | `active` | ADR-1239's prose table lists OpenCode as `passive`; that is the pre-research appendix the ADR itself corrects ("Two findings corrected this ADR's original appendix matrix"). The documented plugin model API (`ctx.aisdk.sdk` / `ctx.aisdk.language`, Context7 `/anomalyco/opencode`, `packages/plugin/src/v2/promise/README.md`) is what the `active` row cites and is unchanged by 2.x. This matrix is the source of truth. |
+| `effortSurface` | `argv` — `--variant <level>` | `argv` — `--model provider/model#variant`; `--variant` exits 1 with usage | `adaptLaneInputForGeneration` moves the level onto the model on 2.x. |
+| `dispatch.isolation` | `orchestrator-worktree` via `--dir <path>` | `orchestrator-worktree` via the spawned process's working directory; `--dir` exits 1 with usage | `adaptOrchestratorExecForGeneration` selects the descriptor's `cwdFlag: null` shape on 2.x. 2.x resolves its directory from `$PWD`, so the worker must be launched from a shell that has `cd`'d into the worktree. |
+| reviewer `invoke.args` | trailing `-` | `-` is sent to the model as message text; piped stdin is read without it. `run` otherwise attaches to a long-lived background service | `adaptLanePlanForGeneration` drops the `-` and adds `--standalone`. |
+
+Sources consulted:
+- https://opencode.ai/docs/plugins
+- https://opencode.ai/docs/agents
+- https://opencode.ai/docs/commands
+- https://opencode.ai/docs/mcp-servers
+- /websites/opencode_ai_plugins (Context7)
+- /anomalyco/opencode (Context7)
+- https://github.com/sst/opencode/issues/5887
+
+Documentation gaps:
+- dispatch.nested
+- dispatch.maxDepth
+
+---
+
+## cursor
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://cursor.com/docs/sdk/typescript | "local.customTools where you define tool functions that execute 'in your process, so it can reach anything your code can'; Agent.create()" |
+| commandSurface | slash-file | https://cursor.com/docs/enterprise/llm-safety-and-controls | "Commands are reusable prompts invoked via slash commands (e.g., /test), while workflows enable multi-step processes" |
+| modelMode | passive | https://cursor.com/docs/sdk/python | "The model used for a run can be overridden by passing a ModelSelection object in SendOptions to agent.send()." |
+| hookBus | host | https://cursor.com/docs/hooks | "Agent hooks: sessionStart, sessionEnd, preToolUse, postToolUse, subagentStart, subagentStop, beforeShellExecution, afterShellExecution" |
+| stateIO | filesystem | https://cursor.com/docs/reference/sandbox | "Local agents run with sandbox options disabled by default." |
+| transport | mcp | https://cursor.com/docs/mcp | "The Model Context Protocol (MCP) allows Cursor to connect to external tools and data sources." |
+| runtime | node | https://cursor.com/docs/sdk/typescript | "The SDK runs on Node.js. It requires Node.js 22.13 or later and is described as a Node-first package." |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://cursor.com/docs/subagents | "Invoke specific subagents using slash commands in your prompt. This allows for direct control over which agent performs" |
+| dispatch.nested | true | https://cursor.com/docs/sdk/typescript | "The top-level agent and its direct subagents can launch subagents, but a subagent launched by another subagent can't lau" |
+| dispatch.maxDepth | 2 | https://cursor.com/docs/sdk/typescript | "The top-level agent and its direct subagents can launch subagents, but a subagent launched by another subagent can't lau" |
+| dispatch.background | true | https://cursor.com/docs/subagents | "Background, which returns immediately while the subagent works independently, best for long-running tasks or parallel wo" |
+| dispatch.subagentToolkit | full | https://cursor.com/docs/subagents | "Subagents can utilize MCP tools, inheriting all tools available to their parent agent, including those from configured s" |
+| dispatch.backgroundDispatch | true | https://cursor.com/docs/subagents (FAQ: Can subagents launch other subagents?) and https://cursor.com/docs/sdk/typescript (Subagents > Nested subagents) | FAQ: "As of Cursor 2.5, subagents have the capability to launch child subagents, enabling the creation of a hierarchical structure for coordinated tasks. This nested launching functionality requires T |
+| dispatch.isolation | harness-worktree | https://cursor.com/docs/cli/reference/parameters ; cursor.com/docs/cli/using ; cursor.com/docs/cli/changelog | "`-w, --worktree [name]` — cursor-agent creates/binds a git worktree per agent (`~/.cursor/worktrees/…`); native parallel-agent dispatch" (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://cursor.com/docs/subagents
+- https://cursor.com/docs/hooks
+- https://cursor.com/docs/sdk/typescript
+- https://cursor.com/docs/sdk/python
+- https://cursor.com/docs/mcp
+- https://cursor.com/docs/reference/sandbox
+- https://cursor.com/docs/enterprise/llm-safety-and-controls
+- /websites/cursor (Context7)
+
+**GSD integration status — Phase D dogfood complete (#2089, ADR-1239).** Cursor installs through the `imperative` embedding adapter (`createImperativeAdapter` → `installRuntimeArtifacts`); the hardcoded `runtime === 'cursor'` / `isCursor` projection is folded into descriptor-driven `runtime.hostBehaviors`, and install/uninstall output is byte-parity-gated at the time (`tests/fixtures/golden-install-parity/cursor.json`; superseded by the differential attribution check, #2724). Two capability upgrades land, each with a test driving the user-reachable surface:
+
+- **Expanded hook-bus coverage** — GSD registers all 6 managed lifecycle events in `hooks.json` beyond the original `sessionStart`/`postToolUse`: `preToolUse`, `stop`, `subagentStart`, `subagentStop` (AC4a, cite https://cursor.com/docs/hooks). The hook-bus binding is descriptor-driven via `src/host-integration-adapters/imperative-hook-bus.cts` (reads `hostBehaviors.managedHookEvents`), not a hardcoded event pair.
+- **Named/background nested subagent dispatch** — `dispatch.background`/`backgroundDispatch`/`nested` are all `true` with `maxDepth: 2`; `shouldFlattenDispatch(cursor)` returns `false` so GSD's wave-based execution drives Cursor's native background + depth-2 nested subagent dispatch instead of flattening to inline sequential calls (AC4b, cite https://cursor.com/docs/subagents + https://cursor.com/docs/sdk/typescript).
+
+---
+
+## cline
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/sdk/plugins.mdx | "Implement the AgentPlugin interface to register tools, hooks, and configuration. The setup function is used for registering capabilities." |
+| commandSurface | slash-file | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/cline/apps/vscode/src/test/slash-commands.test.ts | "workflow markdown files (with .md, .markdown, or .txt extensions) are invoked as slash commands using their filename." |
+| modelMode | active | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/sdk/packages/llms/README.md | "The Runtime API, accessible via createLlmsRuntime(...), allows for the creation of a registry that manages configured providers and their de" |
+| hookBus | host | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/sdk/README.md | "Package agent capabilities as extensions (plugins) that can register tools, observe lifecycle events, and modify agent behavior." |
+| stateIO | filesystem | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/cline/sdk/packages/shared/src/storage/paths.ts | "resolveClineDir() returns ~/.cline; resolveDocumentsExtensionPath('Workflows') returns ~/Documents/Cline/Workflows." |
+| transport | mcp | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/mcp/mcp-overview.mdx | "MCP (Model Context Protocol) enables Cline to interact with external tools and data sources" |
+| runtime | node | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/sdk/examples/plugins/typescript-lsp/README.md | "Installs a portable subagent plugin ... cp examples/plugins/agents-squad/index.ts ~/.cline/plugins/portable-subagents.ts." |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/sdk/examples/plugins/agents-squad/README.md | "parent → start_subagent(preset: \"phantom\", task: \"Map the auth module\") → phantom: save_handoff(...)" |
+| dispatch.nested | false | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/features/subagents.mdx | "subagents are restricted from editing files, using the browser, accessing MCP servers, or creating nested subagents." |
+| dispatch.maxDepth | 1 | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/features/subagents.mdx | "They are explicitly prohibited from ... spawning other subagents." |
+| dispatch.background | true | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/features/subagents.mdx | "Commands executed by subagents run in the background and are strictly limited to read-only operations" |
+| dispatch.subagentToolkit | read-only | /cline/cline (Context7) — https://github.com/cline/cline/blob/main/docs/features/subagents.mdx | "Subagents are equipped with tools for read-only operations, including reading file contents (read_file), listing directo" |
+| dispatch.backgroundDispatch | false | https://docs.cline.bot/features/subagents (mirrored at https://github.com/cline/cline/blob/main/docs/features/subagents.mdx) | "They cannot edit files, use the browser, or spawn nested subagents" — and from the GitHub source: "subagents are restricted from editing files, using the browser, accessing MCP servers, or creating n |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://github.com/cline/cline/blob/main/docs/sdk/plugins.mdx
+- https://github.com/cline/cline/blob/main/sdk/README.md
+- https://github.com/cline/cline/blob/main/sdk/packages/agents/README.md
+- https://github.com/cline/cline/blob/main/sdk/examples/plugins/agents-squad/README.md
+- https://github.com/cline/cline/blob/main/docs/features/subagents.mdx
+- https://github.com/cline/cline/blob/main/docs/mcp/mcp-overview.mdx
+- https://github.com/cline/cline/blob/main/sdk/packages/llms/README.md
+- /cline/cline (Context7)
+
+**GSD integration status — Phase D dogfood complete (#2090, ADR-1239).** Cline installs through the `imperative` embedding adapter (`createImperativeAdapter` → `installRuntimeArtifacts`); the hardcoded `runtime === 'cline'` / `isCline` projection is folded into descriptor-driven `runtime.hostBehaviors`, and install/uninstall output is byte-parity-gated at the time (`tests/fixtures/golden-install-parity/cline.json`; superseded by the differential attribution check, #2724). Two capability upgrades land, each with a test driving the user-reachable surface:
+
+- **`AgentPlugin.hooks.beforeTool` planning guard** — the `.clinerules/hooks/PreToolUse` file-convention hook (#787) is re-implemented as a real Cline SDK `AgentPlugin` registered through the negotiated `hookBus: host` interface point. Guard semantics are preserved exactly (fail-open, cancels write-class calls targeting `.planning/`); the SDK maps the file hook's `{cancel, errorMessage}` to `{skip, reason}`. The binding lives in `src/host-integration-adapters/cline-sdk-binding.cts` (cite https://github.com/cline/cline/blob/main/docs/sdk/plugins.mdx).
+- **`createAgentModel` per-subagent model overrides** — `DefaultGateway.createAgentModel({providerId, modelId})` is wired so GSD's `model_overrides` / `model_profile_overrides` resolution (already used for OpenCode/Codex passive hosts) applies to cline subagents (`modelMode: active`), instead of leaving model selection untouched (cite https://github.com/cline/cline/blob/main/docs/sdk/reference/gateway.mdx).
+- **Dispatch stays degraded/flat (deliberate)** — unlike cursor's dispatch upgrade, cline's `dispatch` is `maxDepth: 1`, `nested: false`, `subagentToolkit: 'read-only'`, `backgroundDispatch: false`. `shouldFlattenDispatch(cline)` returns `true` and `degradationFor('dispatch', cline)` returns `{level:'degraded', fallback:'flat dispatch — waves run inline'}`. This is NOT upgraded: cline's own docs restrict subagents to a single level with a read-only toolkit and no nested spawning, so claiming full dispatch would misrepresent the host and violate the fail-closed negotiation contract (cite https://github.com/cline/cline/blob/main/docs/features/subagents.mdx).
+
+---
+
+## hermes
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin | "ctx.register_tool() puts your tool in the registry — the model sees it immediately" |
+| commandSurface | slash-programmatic | https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin | "ctx.register_command('mystatus', handler=_handle_status, description='Show plugin status') — The command appears in autocomplete, /help output" |
+| modelMode | active | https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin | "register_provider(ProviderProfile(name=..., aliases=(...), display_name=..., env_vars=(...), base_url=..., auth_type=..., default_aux_model=" |
+| hookBus | host | https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks | "Hermes owns and manages the entire hook infrastructure. At runtime, HookRegistry.discover_and_load() scans ~/.hermes/hooks/" |
+| stateIO | filesystem | https://hermes-agent.nousresearch.com/docs/user-guide/configuration | "The agent has the same filesystem access as your user account." |
+| transport | mcp | https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp | "MCP support ships with the standard install — no extra step needed." |
+| runtime | python | Context7 /nousresearch/hermes-agent | "The plugin and agent runtime is Python (confirmed by register(ctx) in __init__.py, importlib.import_module, run_agent.py, tools/registry.py)" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | false | https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation | "The documentation contains no mention of named agents. Subagents are identified only by role ('leaf' or 'orchestrator')" |
+| dispatch.nested | true | /nousresearch/hermes-agent (Context7) — configuration.md | "max_spawn_depth: 1 — Delegation tree depth cap (1-3, clamped). 1 = flat (default): parent spawns leaves that cannot dele" |
+| dispatch.maxDepth | 1 | /nousresearch/hermes-agent (Context7) — configuration.md | "max_spawn_depth: 1 # Delegation tree depth cap (1-3, clamped). 1 = flat (default): parent spawns leaves that cannot dele" |
+| dispatch.background | true | https://github.com/NousResearch/hermes-agent/releases/tag/v2026.6.19 | "delegate_task(background=true) dispatches a subagent that runs in the background and returns a handle immediately" |
+| dispatch.subagentToolkit | read-only | https://hermes-agent.nousresearch.com/docs/guides/delegation-patterns | "Nested delegation is opt-in; by default, leaf subagents cannot call delegate_task, clarify, memory, send_message, or exe" |
+| dispatch.backgroundDispatch | false | https://github.com/nousresearch/hermes-agent/blob/main/website/docs/user-guide/features/delegation.md (via Context7 query of /nousresearch/hermes-agent) | "Nested delegation is an opt-in feature, requiring role=\"orchestrator\" for children and an increased max_spawn_depth from its default of 1. It can also be globally disabled with orchestrator_enabled |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/hooks
+- https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp
+- https://hermes-agent.nousresearch.com/docs/user-guide/configuration
+- https://hermes-agent.nousresearch.com/docs/guides/build-a-hermes-plugin
+- https://hermes-agent.nousresearch.com/docs/guides/delegation-patterns
+- https://github.com/NousResearch/hermes-agent/releases/tag/v2026.6.19
+- /nousresearch/hermes-agent (Context7)
+
+**EoS migration status (#2091):** Migrated onto the imperative adapter. All `runtime === 'hermes'` branches in `bin/install.js` folded into descriptor-driven `runtime.hostBehaviors`. New `extensionEvents: "hermes"` dialect registered (13 real plugin hook events, replacing the borrowed `hookEvents: "claude"` 6-event surface). Cite: https://github.com/nousresearch/hermes-agent/blob/main/website/docs/user-guide/features/hooks.md
+
+Documentation gaps:
+- runtime — Hermes plugins and agent core run in Python, but this was confirmed by code inspection rather than explicit docs statement.
+- dispatch.namedDispatch — docs explicitly confirm no named-agent dispatch in delegate_task; Kanban has named profiles but that is a separate board system not a dispatch mechanism.
+
+---
+
+## antigravity
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://github.com/alphaperseii3000/google-antigravity-docs/blob/master/google-antigravity-docs.md | "Skills require a SKILL.md file; Workflows are saved as markdown files; Rules are manually defined constraints — all configuration-file-based" |
+| commandSurface | slash-file | https://github.com/alphaperseii3000/google-antigravity-docs/blob/master/google-antigravity-docs.md | "Workflows are saved as markdown files, providing a repeatable method for executing key processes. They can be invoked in the Agent using a s" |
+| modelMode | passive | https://dev.to/arindam_1729/antigravity-cli-a-hands-on-guide-to-googles-terminal-coding-agent-5bc7 | "Selection occurs via `-m` flag or `/model` command inside the TUI. No programmatic model request API is documented for extensions/skills" |
+| hookBus | host | https://www.aibuilderclub.com/blog/antigravity-cli-guide | "The CLI fires hooks, not the engine. These are JSON lifecycle interceptors (before tool call, after file edit, on session start)." |
+| stateIO | filesystem | live `agy` 1.1.17 install probe — https://github.com/open-gsd/gsd-core/issues/3747 | "Global skills discovery scans ~/.gemini/config/skills/: a probe skill placed there is visible to `agy`, while an identical probe skill under the configHome is not. An earlier third-party blog claim about configHome skills placement was disproved by that probe; GSD installs global skills/agents under ~/.gemini/config (#3738)" |
+| transport | mcp | https://dev.to/arindam_1729/antigravity-cli-a-hands-on-guide-to-googles-terminal-coding-agent-5bc7 | "Both local (stdio) and remote (HTTP) Model Context Protocol servers are supported" |
+| runtime | go | https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/ | "Built in Go, Antigravity CLI is snappier and more responsive." |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | undocumented | no authoritative doc — searched: https://www.aibuilderclub.com/blog/antigravity-cli-guide, https://antigravity.google/docs/agents | — |
+| dispatch.nested | undocumented | no authoritative doc — searched: https://antigravity.google/docs/agents | — |
+| dispatch.maxDepth | undocumented | no authoritative doc — searched: https://antigravity.google/docs/agents | — |
+| dispatch.background | true | https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/ | "Antigravity CLI orchestrates multiple agents for complex tasks in the background" |
+| dispatch.subagentToolkit | full | https://antigravity.google/docs/cli/features | "Capabilities: Subagents have full access to tools such as code search, file editing, terminal commands, and web searches to complete their assigned tasks." (#2096 EoS migration — the page is JS-rendered/blank on a static fetch; confirmed via headless-browser render) |
+| dispatch.backgroundDispatch | undocumented | no authoritative doc — Multiple sources consulted: antigravity.google/docs/cli-subagents (returned blank/JS-rendered), antigravity.google/docs/agent (blank), github.com/google-antigravity/antigravity-cli README, Context7 /google-antigravity/antigravity-cli | All documentation consulted describes a two-level orchestrator→subagent architecture. Background subagents run asynchronously while the main agent continues accepting prompts. The DataCamp tutorial st |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://github.com/alphaperseii3000/google-antigravity-docs/blob/master/google-antigravity-docs.md
+- https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
+- https://dev.to/arindam_1729/antigravity-cli-a-hands-on-guide-to-googles-terminal-coding-agent-5bc7
+- https://www.aibuilderclub.com/blog/antigravity-cli-guide
+- https://antigravity.google/docs/agents
+- https://antigravity.google/docs/hooks
+- https://antigravity.google/docs/cli/features (#2096 — subagentToolkit)
+
+Documentation gaps:
+- dispatch.namedDispatch — docs describe dynamic plain-English goal dispatch where agent names subagents at runtime; no pre-registered named sub-agent API documented.
+- dispatch.nested — no documentation found on whether subagents can themselves spawn further subagents.
+- dispatch.maxDepth — no documented depth limit or explicit unbounded statement found.
+
+**EoS migration status (#2096):** Migrated onto the declarative adapter. All `runtime === 'antigravity'` / `isAntigravity` / `canonical === 'antigravity'` branches folded into descriptor-driven `runtime.hostBehaviors` + `runtime.hostIntegration`: `getConfigDirFromHome` (`bin/install.js`) now branches on `configHome.kind === 'dot-home-nested'` instead of a hardcoded runtime literal; `projectLocalHookPrefix` (`src/shell-command-projection.cts`) reads `hostBehaviors.hookPathStyle` (`'raw'` → bare `dirName`, no `$CLAUDE_PROJECT_DIR` anchor); `applyAgentPathRewrites` (`src/runtime-artifact-conversion.cts`) reads `hostBehaviors.noPathRewrite` to skip the `~/.claude/` → pathPrefix rewrites; and `getProjectInstructionFile` (`src/runtime-name-policy.cts`) reads `hostBehaviors.projectInstructionFile` (`"GEMINI.md"` — Antigravity CLI's `contextFileName`, successor to the sunset Gemini CLI per #1928) instead of a hardcoded `canonical === 'antigravity'` check. The dead `isAntigravity` branches these functions previously carried are removed. `dispatch.subagentToolkit` flipped `undocumented` → `full` per the citation above (antigravity.google/docs/cli/features); `dispatch.namedDispatch`/`nested`/`maxDepth`/`backgroundDispatch` stay `undocumented` — no authoritative source states named/nested/depth-bounded dispatch or a `run_in_background`-style call-time param, so `negotiateHostCapabilities` degrades all four closed to their most-restrictive value (false/0), and `shouldFlattenDispatch` still forces antigravity's dispatch to flatten (inline) despite `dispatch.background: true`, because `backgroundDispatch` itself never reaches `true`. Two upgrades land: **UPGRADE 1 — permission-writer** (`configureAntigravityPermissions`, `runtime.permissionWriter: "antigravity"`) writes Antigravity's native `{"permissions":{"allow":[...]}}` schema (antigravity.google/docs/cli/permissions) into the same `settings.json` GSD's own hook registration writes, granting GSD's own `read_file`/`command` rules non-destructively. **UPGRADE 2 — MCP companion config** (`configureAntigravityMcpConfig`) writes a standalone `mcp_config.json` (antigravity.google/docs/cli/gcli-migration) registering the `gsd` MCP server, non-destructively preserving any other `mcpServers` entries. Both upgrades are covered by `tests/antigravity-upgrades.test.cjs`; the axis/negotiation/source-grep coverage above is in `tests/declarative-reference-antigravity.test.cjs`.
+
+---
+
+## augment
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://docs.augmentcode.com/cli/plugins | "Plugins can provide several types of components, including Custom Commands defined in Markdown files within the `commands/` directory... Hoo" |
+| commandSurface | slash-file | https://docs.augmentcode.com/cli/plugins | "Slash commands are Markdown files in the `commands/` directory. The filename becomes the command name" |
+| modelMode | passive | https://docs.augmentcode.com/cli/subagents | "| model | No | Model to use for the agent. If not specified, the CLI default model is used." |
+| hookBus | host | https://docs.augmentcode.com/cli/hooks | "Hook event types: PreToolUse (before a tool executes), PostToolUse (immediately after a tool completes), Stop (when the agent stops respondi" |
+| stateIO | filesystem | https://github.com/augmentcode/auggie | "Node.js 22+ required. Hook configurations use `${AUGMENT_PLUGIN_ROOT}`" |
+| transport | mcp | https://docs.augmentcode.com/cli/plugins | "Auggie supports a plugin system that allows you to extend its functionality with... MCP server integrations." |
+| runtime | node | https://github.com/augmentcode/auggie | "Node.js 22+ required" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://docs.augmentcode.com/cli/subagents | "| **name** | Yes | Name of the agent | ... you can trigger it by sending a message that references the agent name." |
+| dispatch.nested | undocumented | no authoritative doc — searched: https://docs.augmentcode.com/cli/subagents | — |
+| dispatch.maxDepth | undocumented | no authoritative doc — searched: https://docs.augmentcode.com/cli/subagents | — |
+| dispatch.background | true | https://docs.augmentcode.com/cli/subagents | "Subagents run in parallel with other subagents... will show a summary of their current progress in the main thread." |
+| dispatch.subagentToolkit | full | https://docs.augmentcode.com/cli/subagents | "If neither [tools nor disabled_tools] is specified, the subagent has access to all tools (default behavior)." |
+| dispatch.backgroundDispatch | undocumented | no authoritative doc — https://docs.augmentcode.com/cosmos/automations | The Augment Code (Cosmos) docs describe workers as 'sub-agents launched mid-session by a manager Expert using the worker-launch command. Each worker is its own session with its own messages and permis |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://docs.augmentcode.com/cli/plugins
+- https://docs.augmentcode.com/cli/hooks
+- https://docs.augmentcode.com/cli/subagents
+- https://docs.augmentcode.com/cli/sdk-typescript
+- https://docs.augmentcode.com/setup-augment/mcp
+- https://github.com/augmentcode/auggie
+- /llmstxt/augmentcode_llms-full_txt (Context7)
+
+Documentation gaps:
+- dispatch.nested
+- dispatch.maxDepth
+
+**EoS migration status (#2097):** Folded onto descriptor-driven dispatch.
+Augment already installed through the declarative adapter (nested-skill
+artifact layout, `settings-json` hook surface, Claude hook event dialect), but
+carried two remaining runtime-literal branches in
+`src/runtime-artifact-conversion.cts`: the 4 `~/.augment`/`$HOME/.augment`
+dot-dir rewrites in `_applyRuntimeRewrites`'s `case 'augment':` block are now
+built from `getDirName('augment')` (dirName-derived, byte-identical) instead
+of a hardcoded `.augment` literal, and the
+`applyRuntimeContentRewritesForCommandsInPlace` command-body conversion
+dispatch now reads `runtime.hostBehaviors.commandBodyConverter`
+(`"convertClaudeToAugmentMarkdown"`) instead of a hardcoded
+`runtime === 'augment'` branch. Two dead-code sites were also removed from
+`bin/install.js`: the orphaned `claudeToAugmentTools` map (superseded by the
+single-sourced converters per ADR-1508 / #1675) and the unreachable
+`else if (isAugment) { content = convertClaudeAgentToAugmentAgent(content); }`
+inline agent-conversion branch (augment has been on the descriptor-agents path
+since `_DESCRIPTOR_AGENTS_RUNTIMES` was introduced, making that `if`/`else if`
+arm dead). **UPGRADE 3 — MCP companion config**
+(`mergeGsdMcpServerIntoSettings`) registers the `gsd` MCP server directly
+inside the same `settings.json` `mcpServers` block GSD's own hook
+registration already writes (Augment hosts MCP in `settings.json`, unlike
+Antigravity's standalone `mcp_config.json`) — non-destructively preserving
+any other user-configured `mcpServers` entries; uninstall removes only the
+GSD-owned `gsd` entry. `settings.json` is golden-excluded
+(`HOOK_CONFIG_FILES`), so this upgrade produces no golden fixture change.
+Source-grep guard + fail-closed negotiation coverage is in
+`tests/declarative-reference-augment.test.cjs`; the dispatch/hook-bus/MCP
+upgrade coverage is in `tests/augment-upgrades.test.cjs`.
+
+---
+
+## qwen
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://qwenlm.github.io/qwen-code-docs/en/developers/channel-plugins | "Your entry point exports a ChannelPlugin object... this.registerCommand('mycommand', async (envelope, args) => { ... }); ... plugins load at startup as extensions." |
+| commandSurface | slash-file | https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction | "Extensions can provide custom commands by placing Markdown files in a commands/ subdirectory" |
+| modelMode | passive | https://qwenlm.github.io/qwen-code-docs/en/developers/channel-plugins | "The documentation does not expose a direct API for plugins to invoke the LLM or model directly." |
+| hookBus | host | https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks | "Qwen Code provides 14 distinct hook events: PreToolUse, PostToolUse, PostToolUseFailure, UserPromptSubmit, SessionStart, SessionEnd, Stop" |
+| stateIO | filesystem | https://qwenlm.github.io/qwen-code-docs/en/developers/channel-plugins | "Runtime Environment: Node.js only. The architecture uses standard Node.js APIs: import, async/await, file I/O (writeFileSync), OS utilities" |
+| transport | mcp | https://qwenlm.github.io/qwen-code-docs/en/developers/tools/mcp-server | "Qwen Code integrates with MCP servers through a sophisticated discovery and execution system" |
+| runtime | node | https://qwenlm.github.io/qwen-code-docs/en/developers/channel-plugins | "Language: Node.js (TypeScript/JavaScript). Execution model: In-process — plugins load at startup as extensions." |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ | "Named subagents are invoked when the AI identifies tasks matching their specialization... Users can also explicitly requ" |
+| dispatch.nested | false | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ | "Fork children cannot create further forks. This is enforced at runtime — if a fork attempts to spawn another fork, it re" |
+| dispatch.maxDepth | 1 | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ | "Fork children cannot create further forks. This is enforced at runtime" |
+| dispatch.background | true | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ | "Runs in background, parent continues immediately... Forks run parallel to the parent; the main conversation continues im" |
+| dispatch.subagentToolkit | full | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ | "When omitted, the subagent inherits all available tools from the parent session." |
+| dispatch.backgroundDispatch | false | https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/ (official Qwen Code documentation, 'Subagents' user guide page) and https://qwenlm.github.io/qwen-code-docs/en/design/fork-subagent/fork-subagent-design (Qwen Code fork-subagent design document, section '4. Recursive Fork Prevention') | The official user-facing Qwen Code docs state verbatim: "Fork children cannot create further forks. If a fork attempts spawning another fork, it receives an error instructing direct task execution ins |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://qwenlm.github.io/qwen-code-docs/en/developers/channel-plugins
+- https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/
+- https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks
+- https://qwenlm.github.io/qwen-code-docs/en/users/extension/introduction
+- https://qwenlm.github.io/qwen-code-docs/en/developers/tools/mcp-server
+- /websites/qwenlm_github_io_qwen-code-docs_en (Context7)
+- /qwenlm/qwen-code (Context7)
+
+Documentation gaps:
+- dispatch.nested — docs only restrict fork-type sub-agents from nesting; whether named sub-agents can themselves spawn named sub-agents is not stated.
+- dispatch.maxDepth — depth=1 is documented only for fork sub-agents; depth for named sub-agent chains is undocumented.
+
+**EoS migration status (#2092):** Migrated onto the imperative adapter. All `runtime === 'qwen'` branches in `bin/install.js`, `src/install-engine.cts`, `src/runtime-artifact-conversion.cts`, and `src/runtime-hooks-surface.cts` folded into descriptor-driven `runtime.hostBehaviors`. Two upgrades land: (1) **native subagent projection** — a new `agents` artifact-layout kind projects GSD's specialist agents into `~/.qwen/agents/gsd-*.md` as native Qwen subagents via `convertClaudeAgentToQwenAgent`, emitting Qwen's own `name:`/`description:`/`tools:` (YAML block list) frontmatter schema instead of Claude Code's; cite https://qwenlm.github.io/qwen-code-docs/en/users/features/sub-agents/. (2) **`SubagentStart` hook** — wired into `extendedHookEvents` alongside the existing `SubagentStop`/`Stop`/`PreCompact` events, firing the context-monitor hook symmetrically at subagent start and completion; cite https://qwenlm.github.io/qwen-code-docs/en/users/features/hooks.
+
+---
+
+## codebuddy
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://www.codebuddy.ai/docs/cli/plugins-reference | "Commands are 'plain Markdown file[s]' located in commands/ by default ... a skill is a directory containing a SKILL.md ... The documentation" |
+| commandSurface | slash-file | https://www.codebuddy.ai/docs/cli/plugins-reference | "Commands are 'plain Markdown file[s]' located in commands/ by default ... Skills are prefixed with this (e.g., /my-first-plugin:hello)" |
+| modelMode | passive | https://www.codebuddy.ai/docs/cli/sdk | "The SDK is not for building plugins that run inside CodeBuddy. It's an external SDK for standalone applications" |
+| hookBus | host | https://www.codebuddy.ai/docs/cli/hooks | "Full support for the hook event family (27+ events), covering tool lifecycle (PreToolUse / PostToolUse / PostToolUseFailure)" |
+| stateIO | filesystem | https://www.codebuddy.ai/docs/cli/settings | "Storage operates in non-sandboxed mode by default ... Default: Full filesystem access governed by permission rules" |
+| transport | mcp | https://www.codebuddy.ai/docs/cli/cli-reference | "MCP (Model Context Protocol) is built-in as a core feature ... codebuddy mcp command to 'Configure Model Context Protocol (MCP) servers'" |
+| runtime | node | https://www.codebuddy.ai/docs/cli/sdk | "TypeScript/JavaScript: Node.js >= 18.20 ... npm install @tencent-ai/agent-sdk" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://www.codebuddy.ai/docs/cli/sub-agents | "Sub-agents can be invoked explicitly by name: 'Request a specific sub-agent by mentioning it in your command'" |
+| dispatch.nested | false | https://www.codebuddy.ai/docs/cli/sub-agents | "This prevents infinite nesting of agents (sub-agents cannot spawn other sub-agents)" |
+| dispatch.maxDepth | 1 | https://www.codebuddy.ai/docs/cli/sub-agents | "The architecture enforces exactly one level of nesting — only the main CodeBuddy Code instance can invoke sub-agents." |
+| dispatch.background | true | https://www.codebuddy.ai/docs/cli/sub-agents | "Launch a background agent using the run_in_background: true parameter ... Tasks return immediately with an ID" |
+| dispatch.subagentToolkit | full | https://www.codebuddy.ai/docs/cli/sub-agents | "By default, sub-agents inherit all tools when the tools field is omitted ... Sub-agents can access MCP tools from config" |
+| dispatch.backgroundDispatch | false | https://www.codebuddy.ai/docs/cli/sub-agents | "This prevents infinite nesting of agents (sub-agents cannot spawn other sub-agents)" — the restriction is stated as universal in the Sub-Agents documentation page. The daemon/background docs (https:/ |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://www.codebuddy.ai/docs/cli/plugins
+- https://www.codebuddy.ai/docs/cli/plugins-reference
+- https://www.codebuddy.ai/docs/cli/sub-agents
+- https://www.codebuddy.ai/docs/cli/hooks
+- https://www.codebuddy.ai/docs/cli/sdk
+- https://www.codebuddy.ai/docs/cli/settings
+- /websites/codebuddy_cn (Context7)
+
+**EoS migration status (#2098):** Migrated onto the declarative adapter (dogfooded in `tests/declarative-reference-codebuddy.test.cjs`). The two remaining `isCodebuddy` branches in `bin/install.js` — a duplicate `commands/` slash-command output report, and a dead legacy agent-converter dispatch arm (unreachable since codebuddy is in `_DESCRIPTOR_AGENTS_RUNTIMES`) — were folded onto the generic `runtime.hostBehaviors.reportCommandsDir` and removed outright; `isCodebuddy` no longer appears as a live read anywhere in `bin/install.js`, `src/runtime-artifact-conversion.cts`, `src/shell-command-projection.cts`, or `src/runtime-name-policy.cts`. Cursor also used that report flag historically, but retired its parallel command surface in #2644 because Cursor skills already appear in the slash menu. Two upgrades land: (1) **extended hook events** — codebuddy's `extendedHookEvents` was previously `[]` (none wired); this PR wires all four — `SubagentStop`/`Stop`/`PreCompact`/`SubagentStart` — into `extendedHookEvents` (mirrors qwen/kimi), so an install now registers all four as hooks in `settings.json` alongside the pre-existing base session/tool events (`SessionStart`/`PreToolUse`/`PostToolUse`); cite https://www.codebuddy.ai/docs/cli/hooks. (2) **`dispatch.background`** — the descriptor already declared `true`, exceeding the `declarative-cli` profile baseline of `false`; the negotiation contract (`negotiateHostCapabilities`) now surfaces that value with no downgrade warning, documenting the legitimate deviation. Note: the CodeBuddy CLI has no background-dispatch frontmatter field on sub-agents (`agentMode`/`enabledAutoRun` are IDE-only per https://www.codebuddy.ai/docs/cli/sub-agents) — background dispatch remains a caller-side invocation parameter (`run_in_background: true`), not a field GSD's agent artifacts emit.
+
+---
+
+## copilot
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://docs.github.com/en/copilot/concepts/agents/copilot-cli/comparing-cli-features | "Declarative elements include custom instructions, skills, custom agents, and plugin configurations—all defined through configuration files" |
+| commandSurface | slash-file | https://docs.github.com/en/copilot/concepts/agents/copilot-cli/comparing-cli-features | "Skills: Markdown files with instructions for specific contexts. Users can invoke via slash commands (e.g., /Markdown-Checker check README.md)" |
+| modelMode | passive | https://github.com/github/copilot-sdk/blob/main/docs/auth/byok.md | "Model selection via config: model: 'gpt-4.1', provider: { type: 'openai', ... }." |
+| hookBus | host | https://docs.github.com/en/copilot/reference/hooks-reference | "Hooks allow you to extend and customize the behavior of GitHub Copilot agents by executing custom shell commands at key points during agent" |
+| stateIO | filesystem | https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers | "Configuration file Location: ~/.copilot/mcp-config.json. Hook config files stored in .github/hooks/*.json" |
+| transport | mcp | https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers | "Copilot CLI comes with the GitHub MCP server already configured. STDIO is the standard transport." |
+| runtime | undocumented | no authoritative doc — searched: https://github.com/github/copilot-cli/blob/main/README.md, https://github.com/github/copilot-sdk/blob/main/nodejs/README.md | — |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://github.com/github/copilot-sdk/blob/main/docs/features/custom-agents.md | "A custom agent is a named agent configuration that includes its own prompt and tool set. A sub-agent is a custom agent i" |
+| dispatch.nested | false | https://awesome-copilot.github.com/learning-hub/agents-and-subagents/ | "By default, subagents do not keep spawning additional subagents." |
+| dispatch.maxDepth | 1 | https://awesome-copilot.github.com/learning-hub/agents-and-subagents/ | "Depth counts how many agents are nested within one another. When the depth limit is reached, the innermost agent cannot" |
+| dispatch.background | true | https://docs.github.com/en/copilot/how-tos/copilot-cli/speed-up-task-completion | "Allow Copilot to use subagents and work autonomously to implement the plan without any further input." |
+| dispatch.subagentToolkit | full | https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli | "By default, custom agents have access to all tools. If you restrict an agent's access, a tools specification is added" |
+| dispatch.backgroundDispatch | false | https://code.visualstudio.com/docs/copilot/agents/subagents | "By default, subagents cannot spawn further subagents. This prevents infinite recursion when agents accidentally call themselves in a loop." The setting `chat.subagents.allowInvocationsFromSubagents` |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://github.com/github/copilot-cli/blob/main/README.md (via Context7 /github/copilot-cli)
+- https://github.com/github/copilot-sdk/blob/main/docs/features/custom-agents.md (via Context7 /github/copilot-sdk)
+- https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-mcp-servers
+- https://docs.github.com/en/copilot/reference/hooks-reference
+- https://docs.github.com/en/copilot/concepts/agents/copilot-cli/comparing-cli-features
+- https://awesome-copilot.github.com/learning-hub/agents-and-subagents/
+
+Documentation gaps:
+- runtime — docs describe the CLI binary and the SDK (Node.js/Go/Python/Rust) but do not state what runtime the CLI host itself or its plugin/extension loader executes in.
+- dispatch.nested exact authoritative source is awesome-copilot.github.com (community docs) not docs.github.com.
+
+**EoS migration status (#2099):** Migrated onto the declarative adapter (dogfooded in `tests/declarative-reference-copilot.test.cjs`). The residual `isCopilot` branches were folded onto descriptor-driven `runtime.hostBehaviors`: the `.agent.md` destination-suffix rename in `src/install-engine.cts` now reads `hostBehaviors.agentFileExtension`; `bin/install.js`'s two uninstall side-effect branches (repo-root `AGENTS.md` cleanup, `copilot-instructions.md`/hook cleanup) now gate on `resolveInstallPlan(runtime).installSurface === 'copilot-instructions'` (unique to copilot, so byte-identical); and the two `skipSharedHooksInstall` checks now read `hostBehaviors.skipSharedHooksInstall:true` (copilot's golden has only `hooks/gsd-session.json`, no shared `gsd-*.js` scripts). A dead legacy agent-converter dispatch arm in the inline agent-copy loop — unreachable since copilot is a member of `_DESCRIPTOR_AGENTS_RUNTIMES` — was removed outright; `isCopilot` no longer appears as a live read anywhere in `bin/install.js` or `src/install-engine.cts`. Two upgrades land: (1) **multi-event hook bus** — `buildCopilotHookConfig()` previously emitted only `sessionStart`; this PR wires four additional events — `preToolUse`/`postToolUse`/`userPromptSubmitted`/`sessionEnd` — each a static, deterministic advisory command (no node-runner invocation), so an install's `hooks/gsd-session.json` now registers all five events. (2) **`dispatch.background`** — the descriptor already declared `true`, exceeding the `declarative-cli` profile baseline of `false`; the negotiation contract (`negotiateHostCapabilities`) surfaces that value with no downgrade warning, documenting the legitimate deviation. Note: Copilot's `.agent.md` frontmatter has no background-dispatch field (fields are `description`/`infer`/`mcp-servers`/`model`/`name`/`tools`) — background dispatch remains a negotiated-contract-only axis, not a field GSD's agent artifacts emit. MCP companion tooling is out of scope for this migration (AC4 names only the two upgrades above).
+
+---
+
+## kilo
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://kilo.ai/docs/automate/extending/plugins | "Plugins extend Kilo by hooking into events and adding functionality. They can: add custom tools the model can call (like read, write, bash)" |
+| commandSurface | slash-file | https://kilo.ai/docs/customize/workflows | "Workflows, also known as slash commands, allow users to automate repetitive tasks by defining step-by-step instructions" |
+| modelMode | active | https://kilo.ai/docs/automate/extending/plugins | "provider — dynamically supply model catalogs. auth — register OAuth or API-key flows for model providers. chat.params — Mutate temperature" |
+| hookBus | host | https://kilo.ai/docs/automate/extending/plugins | "event — fires for every internal bus event. Session: session.created, session.updated, session.idle, session.error, session.deleted" |
+| stateIO | filesystem | https://kilo.ai/docs/contributing/architecture | "Local execution and hosted execution are separate boundaries. Local runtime instances are Directory-keyed runtime context" |
+| transport | mcp | https://kilo.ai/docs/automate/mcp/what-is-mcp | "Kilo Code implements the Model Context Protocol to connect to both local and remote MCP servers" |
+| runtime | bun | https://kilo.ai/docs/automate/extending/plugins | "npm plugins are installed automatically at startup using Bun. Plugin context includes $ (Bun shell). Plugins are TypeScript or JavaScript mo" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://kilo.ai/docs/customize/custom-subagents | "Configured subagents can be invoked automatically by primary agents (like the Orchestrator) using the Task tool" |
+| dispatch.nested | true | https://github.com/Kilo-Org/kilocode/issues/7055 | "A subagent can still call the task tool if its merged permissions contain an explicit task rule, which enables nested su" |
+| dispatch.maxDepth | -1 | https://github.com/Kilo-Org/kilocode/issues/8637 | "there is no maximum nesting depth and the system relies entirely on permission gating" |
+| dispatch.background | true | https://kilo.ai/docs/code-with-ai/agents/orchestrator-mode | "Agents are also capable of launching multiple subagent sessions concurrently to facilitate parallel processing." |
+| dispatch.subagentToolkit | undocumented | no authoritative doc — searched: https://kilo.ai/docs/customize/custom-subagents | — |
+| dispatch.backgroundDispatch | false | https://kilo.ai/docs/automate/tools/new-task | "Importantly, subagents cannot spawn further subagents; only primary agents can use the `new_task` tool." |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://kilo.ai/docs/automate/extending/plugins
+- https://kilo.ai/docs/customize/custom-subagents
+- https://kilo.ai/docs/customize/workflows
+- https://kilo.ai/docs/automate/mcp/what-is-mcp
+- https://kilo.ai/docs/code-with-ai/agents/orchestrator-mode
+- https://kilo.ai/docs/contributing/architecture
+- https://github.com/Kilo-Org/kilocode/issues/7055
+- https://github.com/Kilo-Org/kilocode/issues/8637
+- /websites/kilo_ai (Context7)
+
+Documentation gaps:
+- dispatch.subagentToolkit — docs describe per-subagent configurable permissions (allow/ask/deny) but do not document a single default toolkit level (full vs read-only) for subagents that lack explicit permission overrides.
+
+**EoS migration status (#2093):** Migrated onto the imperative adapter. All `runtime === 'kilo'` / `isKilo` logic branches in `bin/install.js`, `src/install-engine.cts`, `src/runtime-artifact-conversion.cts`, and `src/runtime-artifact-layout.cts` folded into descriptor-driven `runtime.hostBehaviors` (`finishPermissionWriter`, `skipSharedHooksInstall`, and the skills converter registry are now resolved off the descriptor, not a hardcoded Kilo check). Four upgrades land: (1) **native hook-bus plugin** — `.kilo/plugins/gsd-core.js` (byte-identical to `.opencode/plugins/gsd-core.js`, cite: Kilo is an OpenCode fork sharing the same plugin/extension event bus) bridges GSD's hook scripts onto Kilo's plugin event bus; `extensionEvents: "kilo"` reuses `OPENCODE_EXTENSION_EVENTS` verbatim. (2) **active-model routing** — `convertClaudeToKiloFrontmatter` now emits a `model:` field from the resolved `model_overrides`/`model_profile_overrides.kilo.<tier>` value instead of always stripping it (mirrors the OpenCode upgrade; #2256). (3) **MCP companion documented** — `docs/how-to/connect-gsd-mcp-server.md` covers Kilo's `mcp`-keyed config (not `mcpServers`) and its `{type:"local", command, timeout}` entry shape. (4) **named subagent dispatch** — GSD's specialist agents install as `<configDir>/agents/gsd-*.md` with `mode: subagent` frontmatter (the slug Kilo's Task tool dispatches by) and a `permission:` block. `dispatch.subagentToolkit` stays `undocumented` — no authoritative Kilo doc states a default subagent toolkit level — so `degradationFor('dispatch', …)` returns `'degraded'`, not `'full'`, by design (fail-closed negotiation, not a regression).
+
+---
+
+## windsurf
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://docs.devin.ai/desktop/cascade/cascade | "Cascade operates through configuration files rather than code plugins: .codeiumignore for file filtering, Memories and Rules for customizing" |
+| commandSurface | slash-file | https://docs.devin.ai/desktop/cascade/workflows | "Workflows are authored as markdown files (.md extension) … triggered through slash commands using the format /[workflow-name]." |
+| modelMode | passive | https://docs.devin.ai/desktop/models.md | "Models are selectable via configuration/UI only (SWE-1.5, SWE-1.6, Adaptive, Arena tiers, Claude, GPT)." |
+| hookBus | host | https://docs.devin.ai/desktop/cascade/hooks.md | "Cascade supports twelve hook events covering critical workflow points … Pre-hooks (can block actions): pre_read_code, pre_write_code, pre_run_command, …" (quote elided beyond the pre-hook enumeration — see #2100 CASCADE FACTS reference) |
+| stateIO | filesystem | https://docs.devin.ai/desktop/cascade/cascade | "Cascade can create and modify codebases directly … File access can be restricted through .codeiumignore files" |
+| transport | mcp | https://docs.devin.ai/desktop/cascade/mcp | "Cascade now natively integrates with MCP, allowing you to bring your own selection of MCP servers for Cascade to use." |
+| runtime | undocumented | no authoritative doc — searched: https://docs.devin.ai/windsurf/plugins/getting-started.md, /llmstxt/windsurf_llms-full_txt (Context7) | — |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | undocumented | no authoritative doc — searched: https://docs.devin.ai/cli/subagents.md, https://docs.devin.ai/desktop/agent-command-center.md | — |
+| dispatch.nested | undocumented | no authoritative doc — searched: https://docs.devin.ai/cli/subagents.md | — |
+| dispatch.maxDepth | undocumented | no authoritative doc — searched: https://docs.devin.ai/cli/subagents.md | — |
+| dispatch.background | undocumented | no authoritative doc — searched: https://docs.devin.ai/desktop/acp.md, https://docs.devin.ai/cli/subagents.md | — |
+| dispatch.subagentToolkit | undocumented | no authoritative doc — searched: https://docs.devin.ai/cli/subagents.md | — |
+| dispatch.backgroundDispatch | undocumented | no authoritative doc — https://docs.devin.ai/desktop/cascade/cascade and https://docs.devin.ai/desktop/devin-local (official Windsurf/Devin docs, via docs.windsurf.com redirects) | The Windsurf/Cascade docs describe a background planning agent only in these terms: "In the background, a specialized planning agent continuously refines the long-term plan while your selected model f |
+| dispatch.isolation | none | shipped descriptor (`dispatch.backgroundDispatch: undocumented`) | no documented background/concurrent-dispatch primitive — isolation is moot; same-wave plans run inline (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://docs.devin.ai/desktop/cascade/workflows
+- https://docs.devin.ai/desktop/cascade/mcp
+- https://docs.devin.ai/desktop/cascade/hooks.md
+- https://docs.devin.ai/desktop/cascade/cascade
+- https://docs.devin.ai/desktop/models.md
+- https://docs.devin.ai/windsurf/plugins/getting-started.md
+- https://docs.devin.ai/cli/subagents.md
+- /llmstxt/windsurf_llms-full_txt (Context7)
+
+Documentation gaps:
+- dispatch.namedDispatch — Cascade docs do not document a user-facing named sub-agent dispatch system.
+- dispatch.nested — no documentation for nested sub-agent support in Windsurf Cascade.
+- dispatch.maxDepth — no documented depth limit for Cascade sub-agents.
+- dispatch.background — Cascade has an internal background planning agent but no documented user-facing background sub-agent dispatch.
+- dispatch.subagentToolkit — no documentation for toolkit restrictions on Cascade sub-agents.
+- runtime — Windsurf IDE is Electron-based but no programmatic plugin runtime is documented to developers.
+
+**EoS migration status (#2100 Stage 2 — HOOK-BRIDGE):** `hooksSurface` moved from `"none"` to `"windsurf-hooks-json"`. GSD now wires two of Cascade's documented pre-hooks with BLOCKING semantics via `.windsurf/hooks.json` (local) / `~/.codeium/windsurf/hooks.json` (global): `pre_write_code` (write-path guard — blocks a write resolving to a different git root than cwd, or into a `.git/` internals directory) and `pre_run_command` (a conservative destructive-command deny-list — whole-disk/home `rm -rf`, force-push to a protected branch). Cascade blocks via **exit code 2** (+ a stderr reason string) — a materially different protocol from Cursor's stdout-JSON `{block, reason}` hooks.json form, even though the surrounding install/reconcile infra (`writeWindsurfHooksJson`/`removeWindsurfHooksJson` in `src/runtime-hooks-surface.cts`) mirrors `writeCursorHooksJson`/`removeCursorHooksJson`'s shape. Cascade has **no context-injection channel** (no `additional_context`-style advisory response channel), so the 4 advisory hook events GSD registers on Cursor (`sessionStart`, `postToolUse`, `stop`, `subagentStart`/`subagentStop`) have no Windsurf/Cascade counterpart and are deliberately **not ported** — only the 2 events with a genuine blocking analog are wired. `installSurface` stays `profile-marker-only` (unchanged); the hook bus is wired from inside that branch, gated on `hooksSurface === 'windsurf-hooks-json'` rather than a hardcoded runtime check.
+
+---
+
+## trae
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://traeide.com/docs/how-to-manage-extensions-in-trae-ide | "Trae IDE is a VSCode fork; 'If an extension isn't available in Trae's store, you can install it from VS Code's marketplace' — inherits VSCode in-process extension model" |
+| commandSurface | slash-file | https://docs.trae.ai/ide/skills | "Skills stored as SKILL.md files in '.trae/skills/{skill_name}/' directory; 'Trae allows you to manually trigger skills if needed'" |
+| modelMode | passive | https://docs.trae.ai/ide/models | "Model selection via UI: 'click on the current model name to open the model list'; no programmatic model/LLM request API documented for plugins" |
+| hookBus | engine | https://news.ycombinator.com/item?id=44703164 | "Trae is 'ByteDance's VSCode fork' built on Electron/Monaco; inherits VSCode extension host lifecycle (activate/deactivate hooks, event subsc" |
+| stateIO | filesystem | https://traeide.com/news/6 | "Rules at '.trae/project_rules.md', skills at '.trae/skills/', MCP config at '.trae/mcp.json'; 'codebase files always remain on your local de" |
+| transport | mcp | https://docs.trae.ai/ide/model-context-protocol | "Page title from official docs: 'In TRAE IDE, MCP servers support three transport types' — MCP is built-in" |
+| runtime | node | https://news.ycombinator.com/item?id=44703164 | "Trae is a VSCode fork built on Electron; 'Electron is designed to create desktop applications… a backend using the Node.js runtime'" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://docs.trae.ai/ide/agent | "Agents in Trae 'can be called individually, or automatically called by SOLO Agent at the corresponding stage'" |
+| dispatch.nested | undocumented | no authoritative doc — searched: https://docs.trae.ai/ide/solo-mode, https://docs.trae.ai/ide/agent | — |
+| dispatch.maxDepth | undocumented | no authoritative doc — searched: https://docs.trae.ai/ide/solo-mode | — |
+| dispatch.background | true | https://news.aibase.com/news/22829 | "SOLO 'supports multi-tasking, allowing you to work on multiple development tasks simultaneously'; 'run multiple agents i" |
+| dispatch.subagentToolkit | undocumented | no authoritative doc — searched: https://docs.trae.ai/ide/agent | — |
+| dispatch.backgroundDispatch | undocumented | no authoritative doc — https://docs.trae.ai/ide/agent; https://github.com/bytedance/trae-agent/blob/main/docs/roadmap.md | Trae's official documentation (docs.trae.ai) and the trae-agent GitHub roadmap do not document background/async agent dispatch or whether a background-spawned agent can itself spawn further sub-agents |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://docs.trae.ai/ide/model-context-protocol
+- https://docs.trae.ai/ide/agent
+- https://docs.trae.ai/ide/skills
+- https://docs.trae.ai/ide/solo-mode
+- https://docs.trae.ai/ide/solo-coder
+- https://traeide.com/news/6
+- https://traeide.com/docs/how-to-manage-extensions-in-trae-ide
+- https://news.ycombinator.com/item?id=44703164
+- https://news.aibase.com/news/22829
+
+Documentation gaps:
+- dispatch.nested — docs describe two-tier orchestration (SOLO → named agents) but do not state whether a spawned sub-agent can itself spawn further sub-agents.
+- dispatch.maxDepth — no integer depth limit documented beyond one orchestrator level.
+- dispatch.subagentToolkit — docs say agents can be configured with 'callable MCP services and other capabilities' but do not state whether sub-agents receive a full vs. restricted tool set.
+
+**EoS migration status (#2094):** Migrated onto the imperative adapter — partially. Two `runtime === 'trae'` string-equality branches folded into descriptor-driven `runtime.hostBehaviors`: `skipSharedHooksInstall:true` gates the shared-hooks install (Trae has no hook surface: `hooksSurface: "none"`), and the `case 'trae'` global-config-dir path-rewrite's self-alias regex is now built off the descriptor's `dirName` rather than a hardcoded `~/.trae/` literal (byte-identical output). Skills dispatch was already descriptor-driven before this migration (`artifactLayout.skills.converter: "convertClaudeCommandToTraeSkill"`, resolved by converter name, not a runtime check). **Still runtime-keyed** (not folded by #2094, matching the same posture as cursor/windsurf/cline, pending a future cross-runtime content-dispatch consolidation): `RUNTIME_CONTENT_DISPATCH.trae` in `bin/install.js` — its `md`/`js` bodies are regex-callback rewrites that cannot be reduced to a byte-identical descriptor map; and the `case 'trae':` switch arm itself in `src/runtime-artifact-conversion.cts` — the arm's *structure* (not just its self-alias regex) is boilerplate shared verbatim across 7 runtimes (`codex`, `cline`, `cursor`, `windsurf`, `augment`, `trae`, `codebuddy`) and remains a runtime-keyed `switch`. `trae` also remains in `RUNTIME_FLAG_IDS` (and `isTrae` remains in `bin/install.js`, gating only the agents-converter dispatch) pending the cross-runtime agents-converter dispatch migration — agents conversion is out of scope for #2094. One upgrade lands: **SOLO stage/trigger metadata** — every emitted `SKILL.md` now carries a `stage: workflow` frontmatter line (`runtime.hostBehaviors.soloStageMetadata`), so Trae's SOLO Agent can recognize GSD skills as workflow-stage skills for auto-invocation instead of requiring manual triggering; cite https://docs.trae.ai/ide/agent ("Agents in Trae can be called individually, or automatically called by SOLO Agent at the corresponding stage"). The field is a single fixed, best-effort/inferred GSD-side value — Trae's thin SPA docs don't publish a formal stage-metadata schema. The four `undocumented` dispatch sub-axes (`nested`, `maxDepth`, `subagentToolkit`, `backgroundDispatch`) keep dispatch flattened (`shouldFlattenDispatch` fails closed to inline) — fail-closed negotiation, not a regression.
+
+---
+
+## kimi
+
+**EoS migration status (#2095):** Two upgrades landed. **Upgrade 1 — native hook bus:** `hooksSurface` moved from `"none"` to `"kimi-hooks-toml"` (`extendedHookEvents: ["SubagentStop", "Stop", "PreCompact", "SubagentStart"]`, `hookEvents: "claude"` — Kimi's 13 lifecycle events include exact-name equivalents for every Claude-dialect event GSD wires). GSD's hook scripts (session-state, phase-boundary, graphify, context monitor, the prompt/read/workflow/worktree guards, commit validation) are now registered as `[[hooks]]` entries in Kimi's own `config.toml` (default `~/.kimi/config.toml`, overridable via Kimi's own `KIMI_SHARE_DIR` env var — a directory deliberately separate from the `~/.config/agents` Agent-Skills root GSD installs into, since Kimi's docs confirm the skills search path is independent of `KIMI_SHARE_DIR`). GSD-owned entries are wrapped in `# GSD Hooks BEGIN`/`END` marker comments (`writeKimiHooksToml` / `stripKimiHooksTomlBlock` in `src/runtime-hooks-surface.cts`) so a reinstall replaces only GSD's own block, and `installSurface` deliberately stays `"profile-marker-only"` — the config.toml write is independent of the artifact-install surface. `hooks/` and `hooks/lib/` now install for kimi (the three `&& !isKimi` install-guard exclusions were removed) — but SELF-CONTAINED under kimi's own native hook root (`~/.kimi/`, alongside `config.toml`), never under the `~/.config/agents` Agent-Skills root: kimi declares `hostBehaviors.skipSharedHooksInstall:true` like Cline/Kilo/Cursor/Trae, so the shared install path never writes hooks/package.json there, and a dedicated call installs the same bundle into `resolveKimiHooksTomlDir()` instead, with `buildHookCommand` pointed at that root so the generated `[[hooks]]` command paths resolve. **Upgrade 2 — background dispatch:** `hostIntegration.dispatch.backgroundDispatch` flipped `false` → `true` (Kimi's `Agent` tool takes a call-time `run_in_background` param — same evidence as `dispatch.background` below), which flips `shouldFlattenDispatch` to `false` for kimi (may background, joining codex/cursor/opencode) — a negotiation-only axis with no install-output effect, confirmed via golden parity. Exercising the actual `run_in_background` call end-to-end is Kimi's own runtime behavior and is out of the installer's test scope; the installer's deliverable stops at the `kimi_cli.tools.agent:Agent` tool grant on the root agent YAML (`buildKimiAgentArtifacts`, only emitted when a subagent is present) plus the negotiated `backgroundDispatch` axis above — both covered by `tests/kimi-upgrades.test.cjs`. **MCP transport deferred:** kimi's `transport: mcp` axis (declared below) is descriptor-only, like every other runtime's — no runtime has installer-driven MCP registration (GSD's installer never invokes `kimi mcp add`); users register the GSD MCP companion server with Kimi CLI manually.
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://context7.com/moonshotai/kimi-cli/llms.txt | "from kimi_cli.app import KimiCLI, enable_logging ... instance = await KimiCLI.create(session, agent_file=myagent) ... class Ls(CallableTool2)" |
+| commandSurface | slash-file | https://github.com/moonshotai/kimi-cli/blob/main/docs/en/customization/skills.md | "/skill:code-style ... /flow:code-review — Skills are SKILL.md markdown files with YAML frontmatter that become /skill:<name> and /flow:<name>" |
+| modelMode | passive | https://github.com/moonshotai/kimi-cli/blob/main/docs/en/configuration/providers.md | "Use the `/model` command to switch between available models and thinking modes ... `--model` option overrides the default model" |
+| hookBus | host | https://moonshotai.github.io/kimi-cli/en/customization/hooks.html | "Core: Add hooks system (Beta) — configure `[[hooks]]` in `config.toml` to run custom shell commands at 13 lifecycle events including `PreToo" |
+| stateIO | filesystem | https://github.com/MoonshotAI/kimi-cli | "Kimi Code CLI is an AI agent that runs in the terminal ... capable of reading and editing code, executing shell commands, searching files" |
+| transport | mcp | https://github.com/moonshotai/kimi-cli/blob/main/docs/en/reference/kimi-mcp.md | "kimi mcp add ... --transport stdio|http ... Manage MCP Servers: Use the kimi mcp sub-command group to add, list, remove, or authorize MCP se" |
+| runtime | python | https://context7.com/moonshotai/kimi-cli/llms.txt | "from kimi_cli.app import KimiCLI ... from kosong.tooling import CallableTool2 — CLI core is Python" |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://moonshotai.github.io/kimi-cli/en/customization/agents.html | "subagents:\n  coder:\n    path: ./coder-sub.yaml\n    description: \"Handle coding tasks\"\n  reviewer:\n    path: ./reviewer-sub.yaml" |
+| dispatch.nested | false | https://moonshotai.github.io/kimi-cli/en/customization/agents.html | "All subagent types are prohibited from nesting the `Agent` tool (subagents cannot create their own subagents). Only root" |
+| dispatch.maxDepth | 1 | https://moonshotai.github.io/kimi-cli/en/customization/agents.html | "All subagent types are prohibited from nesting the `Agent` tool (subagents cannot create their own subagents). Only root" |
+| dispatch.background | true | https://moonshotai.github.io/kimi-cli/en/customization/agents.html | "Subagents support foreground and background modes. The `run_in_background` parameter allows tasks to execute asynchronou" |
+| dispatch.subagentToolkit | undocumented | no authoritative doc — searched: https://moonshotai.github.io/kimi-cli/en/customization/agents.html | — |
+| dispatch.backgroundDispatch | true (#2095 Upgrade 2; was `false`) | https://moonshotai.github.io/kimi-cli/en/customization/agents.html | "Subagents support foreground and background modes. The `run_in_background` parameter allows tasks to execute asynchronously" (same evidence as dispatch.background above — the root agent's `Agent` tool call itself takes the `run_in_background` param) |
+| dispatch.isolation | orchestrator-worktree | https://github.com/moonshotai/kimi-cli/blob/main/docs/en/faq.md ; /docs/en/customization/agents.md | "`--work-dir` flag sets an explicit working directory"; concurrent "explore" subagents documented — GSD creates + manages the worktree and points the executor at it via `--work-dir` (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://moonshotai.github.io/kimi-cli/en/customization/hooks.html
+- https://moonshotai.github.io/kimi-cli/en/customization/agents.html
+- https://github.com/MoonshotAI/kimi-cli
+- https://github.com/moonshotai/kimi-cli/blob/main/docs/en/customization/skills.md
+- https://github.com/moonshotai/kimi-cli/blob/main/docs/en/customization/agents.md
+- https://github.com/moonshotai/kimi-cli/blob/main/docs/en/reference/kimi-mcp.md
+- https://context7.com/moonshotai/kimi-cli/llms.txt
+- /moonshotai/kimi-cli (Context7)
+
+Documentation gaps:
+- dispatch.subagentToolkit — docs show three built-in subagent types each with different tool subsets (coder=full, explore=read-only, plan=no shell/write); no single 'full' or 'read-only' value covers all types; maintainer should clarify the intended classification.
+- runtime — CLI core is Python; a Rust Wire implementation also exists; docs do not state a canonical plugin extension runtime.
+
+---
+
+## kimi-code
+
+> **`kimi-code` is a different product from `kimi` above — every axis below is sourced independently.** `kimi` is Moonshot's Python `kimi-cli` (`from kimi_cli.app import KimiCLI`, `~/.kimi/config.toml`, `--work-dir`); `kimi-code` is the TypeScript/Node **Kimi Code CLI** (`~/.kimi-code/config.toml`, `$KIMI_CODE_HOME`, process-cwd, `AgentSwarm`). None of the values here are inherited from the `kimi` section. See `docs/migration/kimi-to-kimi-code.md` for the user-facing split.
+
+**GSD hook destination (#2755):** although `kimi` and `kimi-code` share `hooksSurface: "kimi-hooks-toml"`, they do **not** share a hooks root. GSD writes its `[[hooks]]` block, hook bundle and CommonJS marker into `~/.kimi-code/config.toml` for `kimi-code` (overridable via `KIMI_CODE_HOME`) and into `~/.kimi/config.toml` for `kimi` (overridable via `KIMI_SHARE_DIR`); each product's env var is scoped to that product and does not redirect the other. `resolveKimiHooksTomlDir({ runtime })` in `src/runtime-homes.cts` is the single seam that makes this choice, for both the install and uninstall paths. Until #2755 that function was unparameterized and every `kimi-code` install wrote into Kimi CLI's root, leaving Kimi Code with no hooks — this row is documented explicitly because its absence is what let that go unnoticed.
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/plugins.md | "Plugins package reusable Kimi Code CLI capabilities into installable units — they can add Agent Skills, automatically load a specified Skill at session start, and declare MCP servers to provide real tool capabilities." A plugin is a `kimi.plugin.json` manifest plus markdown Skills; real tool capability arrives via external MCP processes. No in-process programmatic extension API is documented — the same shape as `codex` above. |
+| commandSurface | slash-file | https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/slash-commands.md | "External skills are automatically registered as slash commands using the skill: namespace prefix. Users can invoke these by typing /skill:\<name\> followed by optional text, which is then appended to the skill prompt." Skills are `SKILL.md` markdown files with YAML frontmatter (`name`, `description`, `type`, `whenToUse`, `arguments`). |
+| modelMode | passive | https://github.com/moonshotai/kimi-code/blob/main/apps/kimi-code/src/cli/commands.ts ; /docs/en/guides/getting-started.md | "`-m, --model <model>` — LLM model alias to use for this invocation. Defaults to `default_model` in config.toml." Model selection is config alias + `--model` flag + the interactive `/model` command; no API lets an extension programmatically supply a model. |
+| hookBus | host | https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/hooks.md | "All hook rules are written in the `[[hooks]]` array in `~/.kimi-code/config.toml`, where each entry is one rule." The CLI fires the lifecycle events (`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`, `PermissionResult`, `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`, `Stop`, `Notification`, `Interrupt`); each rule is `event` + optional `matcher` + `command` + optional `timeout` (1–600s, default 30). |
+| stateIO | filesystem | https://github.com/MoonshotAI/kimi-code | "Kimi Code CLI is an AI coding agent that runs in your terminal — it can read and edit code, run shell commands, search files, fetch web pages, and choose the next step based on the feedback it receives." Full local filesystem; no sandboxed-storage tier is documented. |
+| transport | mcp | https://github.com/MoonshotAI/kimi-code ; /docs/en/customization/plugins.md | "AI-native MCP configuration. Add, edit, and authenticate Model Context Protocol servers conversationally with `/mcp-config`, without hand-editing JSON." Plugin manifests additionally carry an `mcpServers` field. |
+| runtime | node | https://github.com/MoonshotAI/kimi-code | "Requirements: Node.js ≥ 24.15.0, pnpm 10.33.0." The CLI is a TypeScript pnpm monorepo (`apps/kimi-code`, `packages/agent-core-v2`); hook commands are shell, and MCP servers are external processes. |
+| effortSurface | *(not declared)* | https://github.com/moonshotai/kimi-code/blob/main/apps/kimi-code/src/tui/commands/registry.ts | Kimi Code documents `/effort` (alias `/thinking`) to change reasoning effort, but only as an **interactive slash command** — there is no `--effort`-style flag on its invocation, and `-m, --model` is the only model/effort-adjacent argv. The axis vocabulary is `argv` | `none`, and neither is accurate: `none` would deny a mechanism the host does have, and `argv` would claim one it does not expose. The descriptor therefore declares no value, which negotiation degrades closed identically to the sentinel. See Documentation gaps. |
+| dispatch.namedDispatch | false | https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/agents.md ; `capabilities/kimi-code/capability.json` (`artifactLayout` — skills only) | "The system includes three built-in sub-agents: 'coder' for general software engineering tasks like file modification, 'explore' for read-only codebase navigation and summarization, and 'plan' for architecture design without file or shell access." GSD's kimi-code artifact layout installs Agent **Skills** only (no `agents` kind), so no named GSD subagent is ever registered with the host and every GSD role resolves to one of the three built-ins (`resolveDispatchType`, `src/host-integration.cts`). **This is a GSD-integration-scoped `false`, not a claim that the host lacks named agents — see Documentation gaps.** |
+| dispatch.nested | true | https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/agents.md | The `coder` sub-agent "can dispatch its own nested sub-agents when a task decomposes naturally." (Agent files also expose a `subagents` delegation allowlist, where `subagents: []` is what *prevents* further delegation — nesting is the default.) |
+| dispatch.maxDepth | undocumented | searched: https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/agents.md | Nesting is documented, but no maximum nesting depth is stated anywhere in the agents or tools reference. |
+| dispatch.background | true | https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/tools.md | "**`Agent`** delegates a subtask to a sub-Agent. Supports foreground execution (waiting for completion) or background execution (returning a task ID). … `run_in_background` (boolean) - Optional - Defaults to false." |
+| dispatch.subagentToolkit | built-in-only | https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/agents.md | The three built-ins carry deliberately different tool surfaces — coder "Shares most of the main Agent's toolset; can run shell commands, maintain todo lists, enter Plan mode, and invoke Agent Skills"; explore "Performs read-only operations only and does not modify any files"; plan "Even shell commands are not available". No single `full`/`read-only` value covers the set, so the `built-in-only` member applies (degrades closed to `read-only` when negotiated). |
+| dispatch.backgroundDispatch | true | https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/tools.md ; /docs/en/customization/agents.md | The `coder` built-in "can dispatch its own nested sub-agents" and the `Agent` tool's `run_in_background` is a call-time parameter available to it, so a background-dispatched sub-agent may itself dispatch further. `AgentSwarm` additionally fans out concurrently: "By default the tool ramps up concurrency without an upper limit (5 subagents start immediately, then 1 more every 700 ms); set `KIMI_CODE_AGENT_SWARM_MAX_CONCURRENCY` to a positive integer to cap how many subagents run at the same time during that ramp, or leave it unset for no cap." |
+| dispatch.isolation | orchestrator-worktree | https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/tools.md ; ADR-1239 §Codex-binding amendment | Neither `Agent` nor `AgentSwarm` exposes a working-directory/cwd parameter — sub-agents inherit the CLI's process cwd — and the CLI has no `--work-dir`-style flag (unlike `kimi`). GSD therefore creates, validates and merges the worktree itself and spawns the executor with that cwd (#2584). |
+| dispatch.maxConcurrency | undocumented | https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/tools.md | `AgentSwarm` concurrency is configurable ("set `KIMI_CODE_AGENT_SWARM_MAX_CONCURRENCY` to a positive integer to cap how many subagents run at the same time … or leave it unset for no cap") but the CLI states no bound as its OWN default — "By default the tool ramps up concurrency without an upper limit" — so there is no single default integer to cite, only a user-configurable env var (#3673). |
+
+**Negotiation note.** Because `dispatch.namedDispatch` is `false`, `negotiateHostCapabilities` caps `nested`, `maxDepth`, `background` and `backgroundDispatch` to `false`/`0` in the **effective** axes for structural consistency (`src/host-integration.cts`). The declared values above are still the host-capability record the matrix exists to hold; they are what a future named-dispatch upgrade would negotiate against.
+
+Sources consulted:
+- https://github.com/MoonshotAI/kimi-code
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/agents.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/hooks.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/plugins.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/customization/skills.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/tools.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/reference/slash-commands.md
+- https://github.com/moonshotai/kimi-code/blob/main/docs/en/guides/getting-started.md
+- https://github.com/moonshotai/kimi-code/blob/main/apps/kimi-code/src/cli/commands.ts
+- /moonshotai/kimi-code (Context7)
+
+Documentation gaps:
+- **dispatch.namedDispatch — host capability vs. GSD surface.** Kimi Code *does* support user-authored named agents: "Beyond the three built-in sub-agents, you can define your own agents as Markdown files", discovered across five scopes (`--agent-file` > `.kimi-code/agents/`, `.agents/agents/` > extra dirs > `$KIMI_CODE_HOME/agents/` > built-in). The axis is `false` because GSD installs **no** agent files for this host, so its reachable dispatch surface is the three built-ins — flipping the axis without also shipping agent artifacts would reintroduce the dispatch failure recorded in `docs/migration/kimi-to-kimi-code.md` ("Every workflow that called a named GSD subagent … **failed at dispatch**"). Shipping GSD agent files to kimi-code is an unbuilt capability upgrade, not a gap in the host's documentation.
+- **effortSurface — a real mechanism the vocabulary cannot name.** Kimi Code documents `/effort` (alias `/thinking`) for changing reasoning effort, but only as an interactive slash command; `-m, --model` is the only model-adjacent argv on its invocation. The axis vocabulary is `argv` | `none`, and neither is accurate here — `none` denies a mechanism the host has, `argv` claims one it does not expose. Kimi Code's descriptor was created a day after #2481 added the axis and has carried no value since. Resolving this needs a vocabulary decision (an interactive-only member, mirroring the deliberate absence of a config-file member), which is a negotiation change rather than a documentation one; until then the absent value degrades closed exactly as the sentinel does.
+- **dispatch.maxDepth** — nesting is documented but no depth bound is published, so the axis carries the `undocumented` sentinel rather than a guessed integer.
+- **runtime** — the published artifact is a single bundled binary; `Node.js ≥ 24.15.0` is stated as a *development* requirement. The sources are a TypeScript/Node monorepo, so `node` is the best-supported classification, but the docs do not name a canonical plugin-execution runtime (the same ambiguity noted for `codex` above).
+
+---
+
+## zcode
+
+> ZCode (Z.ai) is a desktop Agentic Development Environment for the GLM-5.2 model, distributed as an Electron app. It exposes a Claude-Code-shaped extensibility surface (per-user `~/.zcode/skills/<name>/SKILL.md`, slash commands, named subagents, native MCP, and a plugin system). All values below are sourced verbatim from the official ZCode docs.
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | declarative | https://zcode.z.ai/en/docs/plugin | "A single plugin can bundle several capabilities. ZCode detects which components a plugin includes from its directory layout" — plugins/skills/commands/agents are config/markdown files; no in-process programmatic extension API is documented. |
+| commandSurface | slash-file | https://zcode.z.ai/en/docs/commands | "Custom commands are stored as `.md` files under `~/.zcode/commands` ... invoke the command with `/command-name`" |
+| modelMode | passive | https://zcode.z.ai/en/docs/configuration | Models are connected by provider config (Z.ai/BigModel/OpenAI-compat/Anthropic-compat base URLs + API keys in Model Settings); no programmatic model request API is documented. |
+| hookBus | host | https://zcode.z.ai/en/docs/plugin | A plugin's bundled components include a "**Hook** — Automation hooks triggered on specific events" — the host fires the events a plugin subscribes to. |
+| stateIO | filesystem | https://zcode.z.ai/en/docs/skill | "User-level skills for ZCode Agent: `~/.zcode/skills/<skill-name>/SKILL.md`" — full local filesystem (desktop app). |
+| transport | mcp | https://zcode.z.ai/en/docs/mcp-services | "MCP (Model Context Protocol) connects external capabilities ... type as `stdio` (SSE and HTTP remote servers are also supported)" — native MCP. |
+| runtime | electron | https://zcode.z.ai/en/docs/install (download path `cdn-zcode.z.ai/zcode/electron/releases/3.2.5/ZCode-3.2.5-mac-arm64.dmg`) | ZCode is shipped as an Electron desktop application; the release artifact lives under the `electron/releases` path. |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://zcode.z.ai/en/docs/subagents | "you can let the Agent pick the subagent automatically, or reference it with `@` in the chat box" — subagents are invoked by name via the Agent tool. |
+| dispatch.nested | undocumented | searched: https://zcode.z.ai/en/docs/subagents | The docs do not state whether a subagent can itself spawn further subagents. |
+| dispatch.maxDepth | undocumented | searched: https://zcode.z.ai/en/docs/subagents | No maximum nesting depth is documented. |
+| dispatch.background | false | https://zcode.z.ai/en/docs/subagents | "**Foreground execution.** Subagents run in the foreground ... Background execution is not enabled yet." |
+| dispatch.subagentToolkit | full | https://zcode.z.ai/en/docs/subagents | "**general-purpose** is the default built-in subagent ... It has access to all tools"; custom subagents default to "All permissions by default" (inherits every tool). |
+| dispatch.backgroundDispatch | false | https://zcode.z.ai/en/docs/subagents | "Background execution is not enabled yet" — background dispatch is therefore impossible. |
+| dispatch.isolation | none | https://zcode.z.ai/en/docs/subagents (shipped descriptor: `dispatch.backgroundDispatch: false`) | "Background execution is not enabled yet" — no concurrent fan-out primitive, so same-wave plans run inline/sequentially (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://zcode.z.ai/en/docs/skill
+- https://zcode.z.ai/en/docs/commands
+- https://zcode.z.ai/en/docs/subagents
+- https://zcode.z.ai/en/docs/mcp-services
+- https://zcode.z.ai/en/docs/plugin
+- https://zcode.z.ai/en/docs/configuration
+- https://zcode.z.ai/en/docs/install
+
+Documentation gaps:
+- dispatch.nested / dispatch.maxDepth — ZCode's subagent docs do not state whether subagents can spawn further subagents or any depth bound.
+- configHome — skills/commands/agents homes are documented (`~/.zcode/skills`, `~/.zcode/commands`, `~/.zcode/agents`); the exact settings filename under `~/.zcode` (where MCP server config is stored) is not fully documented at time of writing.
+- Maintenance note — ZCode is a young, fast-moving app (observed at v3.2.x); these axes may need revision as its on-disk config layout stabilizes. Because ZCode also natively imports skills/MCP from `~/.claude`, installing GSD to BOTH `claude` and `zcode` can surface duplicated skills inside ZCode; this overlap is expected and documented.
+
+EoS migration status (#2101, ADR-1239): ZCode's install is fully dogfooded through the declarative adapter — its shared-hooks exclusion (previously a hardcoded `!isZcode` branch in `bin/install.js`) is now folded onto `hostBehaviors.skipSharedHooksInstall`, byte-parity with the prior install (ZCode's golden install tree has zero hook files). The two capability upgrades anticipated for ZCode both remain **blocked** on undocumented on-disk formats — `hookBus` and `transport` above stay documented-but-unimplemented pending ZCode publishing those formats, and implementing a guessed format risks a false-green descriptor, so neither upgrade is wired:
+- **Hook automation** (the plugin `Hook` component, `hookBus: host` above) — https://zcode.z.ai/en/docs/plugin documents the capability only at a high level ("Automation hooks triggered on specific events"; components are "detected from directory layout, shown as badges"). No config file format, on-disk location, event-name vocabulary, or payload schema is published, so GSD cannot faithfully wire hook events into a plugin bundle. BLOCKED (undocumented on-disk hook-config format).
+- **MCP registration** (`transport: mcp` above) — https://zcode.z.ai/en/docs/mcp-services confirms servers are "stored in the .zcode configuration file of the chosen scope" and accepts both a bare `{"server-name":{...}}` map and an `{"mcpServers":{...}}` wrapper shape, but does not document the exact settings filename/path or full schema (the docs describe the UI flow, not the on-disk contract) — this is the same gap already noted under `configHome` above. BLOCKED (undocumented settings-filename/schema gap).
+
+---
+
+## pi
+
+> pi (pi.dev) is a node-runtime Programmatic-CLI (re-verified against pi 1.3.0, #5557): it exposes an in-process TypeScript `ExtensionAPI` (`registerCommand`/`registerTool`/`registerProvider`/`pi.on`) rather than a settings-file or slash-markdown surface. GSD ships a single native-extension file (`pi/gsd.cjs`) installed to `~/.pi/agent/extensions/gsd.js` (global) or `.pi/extensions/gsd.js` (local) — the programmatic-CLI peer of the OpenCode/Kilo native-plugin binding. **Sourcing note:** the #2102 Stage 1 Evidence column was a paraphrase written without live doc access. #5557 re-verified every row on 2026-10-19 against pi 1.3.0 itself: the host's own declarations (`@earendil-works/pi-coding-agent` `dist/core/extensions/types.d.ts`, `package.json`, `pi --help`, `pi mcp --help`) and the pi.dev pages fetched that day (extensions, prompt-templates, skills, configuration, packages, sdk). Each row below cites what it was checked against. **Partially discharged (#2470, 2026-07-20):** pi's extension-loader contract specifically has now been read at source — `packages/coding-agent/src/core/extensions/loader.ts` in `earendil-works/pi` — confirming `discoverExtensionsInDir()` keeps only names passing `isExtensionFile()` (`.ts`/`.js`, everything else skipped silently), that accepted files load via `jiti` (CommonJS and ESM alike), and that explicit `settings.json` paths bypass the filter. 
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://pi.dev/docs/latest/extensions ; pi 1.3.0 `types.d.ts` (`ExtensionAPI`) | pi extensions are loaded in-process and call an `ExtensionAPI` object directly. Re-verified #5557: `registerCommand` (`types.d.ts:1231`), `registerProvider` (`:1358`), `registerVirtualModel` (`:1402`), `registerMcpServer` (`:1388`) and 41 `on(event)` overloads are declared there — an in-process programmatic API, not a config-file-only integration. |
+| commandSurface | slash-programmatic | https://pi.dev/docs/latest/extensions ; https://pi.dev/docs/latest/prompt-templates | The command GSD ships is registered by calling `registerCommand(name, options)` from extension code (`types.d.ts:1231`). Re-verified #5557: pi 1.3.0 additionally loads file-based prompt templates (`~/.pi/agent/prompts/*.md`, filename = `/command`) and skills (`/skill:name`); those are a second, file-shaped command surface that GSD does not use today. The axis is single-valued and describes the surface the shipped integration binds; whether to add the file surface is Phase 1 of epic #5556. |
+| modelMode | active | https://pi.dev/docs/latest/extensions ; pi 1.3.0 `types.d.ts` | The `ExtensionAPI` exposes `registerProvider` (`:1358`) and `registerVirtualModel` (`:1402`), and the `before_provider_request` event lets an extension rewrite the outgoing payload — GSD uses the event, not `registerProvider` (see Stage 2 below). Re-verified #5557. |
+| hookBus | host | https://pi.dev/docs/latest/extensions ; pi 1.3.0 `types.d.ts` | `pi.on(event, handler)` subscribes an extension to host-fired lifecycle events — the pi host owns and fires the event bus; extensions only subscribe. Re-verified #5557: `types.d.ts` declares 41 `on(event: "...")` overloads (e.g. `tool_call`, `session_before_compact`), all listed in `EXTENSION_EVENT_SURFACES.pi`. |
+| stateIO | session-log-append | https://pi.dev/docs/latest/session-format ; `~/.pi/agent/sessions/` | pi persists conversation/tool-call state in per-project session logs under `~/.pi/agent/sessions/` (one directory per working directory on the verifying machine) and exposes session control through `ExtensionCommandContext` (`newSession`, `fork`, `switchSession`). Re-verified #5557 for the on-disk location; the append-only record format was not re-read (see Documentation gaps). |
+| transport | native-extension | https://pi.dev/docs/latest/extensions ; pi 1.3.0 `dist/core/extensions/types.d.ts` | Integration is a single loaded extension file (`~/.pi/agent/extensions/gsd.js`), which GSD ships as the peer of OpenCode's native `plugins/*.js` adapter. Re-verified against pi 1.3.0 (#5557): pi now also has first-class MCP (`ExtensionAPI.registerMcpServer`, `types.d.ts:1388`, and the `pi mcp add|remove|list|login` CLI commands, run as `pi mcp --help` on pi 1.3.0), so "MCP needs a community extension" no longer holds; `native-extension` stays because the GSD extension, not an MCP server, is what the installer ships. |
+| runtime | node | https://pi.dev ; `@earendil-works/pi-coding-agent@1.3.0` `package.json` (`engines.node >=22.19.0`, `bin` → `dist/bundle/cli.js`, shebang `#!/usr/bin/env node`) | The managed pi 1.3.0 install runs on Node (the `~/.pi/agent/bin/pi` launcher, lines 35-37, prepends its own `pi-node` bin dir to `PATH` before exec), and extensions load in that process. Corrected from `bun` (#5557). pi also has a `build:binary` script that compiles a bun binary; that second distribution channel is not described by this single-valued axis. |
+| effortSurface | argv | `pi --help` (pi 1.3.0) | `--thinking <level>` is a documented flag on the host's own invocation ("off, minimal, low, medium, high, xhigh, max"), so GSD can render the resolved universal effort onto the argv it spawns (#2481, corrected from `undocumented` in #5557). `off` has no universal counterpart and is never rendered. |
+| dispatch.namedDispatch | undocumented | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | The `ExtensionAPI` documents `registerCommand`/`registerTool`/`registerProvider`/`pi.on`; it does not document a named-subagent-invocation primitive. |
+| dispatch.nested | undocumented | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | No documented subagent-of-subagent nesting capability. |
+| dispatch.maxDepth | 0 | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | No named-dispatch primitive is documented at all (see `dispatch.namedDispatch`), so there is no nesting depth to bound; `0` records "no dispatch levels beyond the root extension," not a measured limit. |
+| dispatch.background | false | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | No documented background/async subagent-execution primitive. |
+| dispatch.subagentToolkit | undocumented | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | pi has no named-dispatch primitive (see `dispatch.namedDispatch`), so there is no subagent tool-surface to classify as `full`/`read-only`. |
+| dispatch.backgroundDispatch | false | no authoritative doc — searched: https://pi.dev/docs/latest/extensions, /sdk; pi 1.3.0 `types.d.ts` (#5557) | Same gap as `dispatch.background` — no background-dispatch primitive is documented, so a background-dispatched agent spawning further named sub-agents is not possible. |
+| dispatch.isolation | none | shipped descriptor (`dispatch.background: false`, `dispatch.backgroundDispatch: false`) | pi has no named-dispatch/background-dispatch primitive documented — cannot fan out concurrently, so isolation is moot (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://pi.dev
+- https://pi.dev/docs/latest/extensions
+- https://pi.dev/docs/latest/session-format
+- https://pi.dev/docs/latest/prompt-templates, /skills, /configuration, /packages, /sdk (pi 1.3.0 re-verification, #5557)
+- pi 1.3.0 host declarations: `@earendil-works/pi-coding-agent/dist/core/extensions/types.d.ts` (41 `on(event)` overloads), `package.json`, and `pi --help`
+
+Documentation gaps:
+- stateIO — the session-log record format (append-only JSONL) was not re-read against pi 1.3.0 in #5557; only the on-disk location and the `ExtensionCommandContext` session methods were checked.
+- dispatch.* (#5557 re-search) — searched pi 1.3.0 `types.d.ts` (zero matches for `subagent`; `ExtensionCommandContext.newSession/fork/switchSession` each replace the active session, they do not create a child), https://pi.dev/docs/latest/sdk (`createAgentSession()` and `AgentSessionRuntime` document no extension-created child session and no concurrency or nesting limits), and `pi --help` (`--mode rpc` is an output/embedding mode, not a dispatch primitive). The `undocumented` markers therefore stand with a current search trail.
+- dispatch.namedDispatch / dispatch.nested / dispatch.subagentToolkit — pi's `ExtensionAPI` (`registerCommand`/`registerTool`/`registerProvider`/`pi.on`) does not document a named-subagent-dispatch primitive at all, unlike Claude Code/Codex/OpenCode-style "Agent tool" surfaces; all three axes stay `undocumented` and negotiation fails closed (no named dispatch, dispatch flattened).
+- dispatch.maxDepth / dispatch.background / dispatch.backgroundDispatch — recorded as `0`/`false`/`false` (not `undocumented`) because the absence of any dispatch primitive is itself the documented ceiling, matching `shouldFlattenDispatch`'s fail-closed default.
+
+EoS migration status (#2102 Stage 1, ADR-1239): pi lands as a NET-NEW installable runtime — pure additive descriptor + installer wiring, no prior `runtime === 'pi'` branches existed to fold. `artifactLayout` is declared empty (`global: []`, `local: []`) — pi has no skills/commands/agents layout, and installs as **PLUGIN-ONLY**: `hostBehaviors.pluginOnlyInstall: true` explicitly skips `bin/install.js`'s generic flat-commands-and-agents fallback (the legacy path Claude Code's LOCAL layout also uses), which would otherwise write inert `commands/gsd-<cmd>.md` + `agents/gsd-<name>.md` reference files no part of pi ever reads. pi's `/gsd` command and `gsd_invoke` tool are registered **programmatically** by the native extension (`pi/gsd.cjs` → `extensions/gsd.js`, mirroring OpenCode/Kilo's `nativePlugin` shape) — pi has no host-read markdown surface at all (unlike Claude/OpenCode/Kilo, which scan a `commands/`/`command/` directory), so a declarative artifact surface would be dead weight, not merely unused. **Superseded (#5557, 2026-10-19):** that premise does not hold for pi 1.3.0. pi.dev documents prompt templates (`~/.pi/agent/prompts/*.md`, `.pi/prompts/`; the filename is the `/command`, with `argument-hint` frontmatter and `$1`/`$ARGUMENTS` substitution), skills (`~/.pi/agent/skills/`, `.pi/skills/`; a `SKILL.md` per directory, forced with `/skill:name`), and packages (`pi install npm:<pkg>` or `git:<repo>`, bundling extensions, skills and prompts through a `pi` key in `package.json`). Sources: https://pi.dev/docs/latest/prompt-templates, /skills, /configuration, /packages; global paths are relative to `PI_CODING_AGENT_DIR`. `artifactLayout`, `installSurface` and `hostBehaviors.pluginOnlyInstall` are deliberately unchanged by #5557, which only corrects facts; whether and how pi gets command and skill artifacts is decided by Phase 1 (#5547) and Phase 1b (#5558) of epic #5556, and discovery must be verified against a live pi first. `dispatch.subagentToolkit: "undocumented"` and `dispatch.backgroundDispatch: false` are both required by the capability validator's dispatch schema and reflect that pi has no documented named-dispatch primitive at all. (Stage 1 originally also set `hostBehaviors.skipSharedHooksInstall:true`, reasoning the staged `hooks/*.js` bundle would be dead weight for pi the way it genuinely is for Kilo/ZCode — **corrected in Stage 2 below**: pi's native extension DOES spawn them, so they are live, not dead, and the flag was removed.) **Superseded in part (#5547, 2026-10-20):** pi now declares a skills-only `artifactLayout` (global `skills/`, local `.pi/skills/`, prefix `gsd-`, flat, converter `convertClaudeCommandToPiSkill`, rewrite profile `slash-tilde-restore`), so every GSD command installs as `skills/gsd-<cmd>/SKILL.md` and is invoked `/skill:gsd-<cmd>`. A non-empty layout moves pi onto the layout-driven installer path, which also stages the native extension as its post-step; there is still no `commands/` or `agents/` kind (no named-dispatch toolkit, `namedDispatch: false`). `/gsd <command>` hands off to the installed skill through `pi.sendUserMessage(..., { expandPromptTemplates: true })` (pi 1.3.0 `types.d.ts:1267`); the data families and `gsd_invoke` keep their data semantics. Every pi skill opens with a fail-closed dispatch contract: a workflow step that needs a named agent role stops and names the role, and never runs it inline (dispatch is tracked in #5559). The `pluginOnlyInstall` flag is unchanged.
+
+EoS migration status (#2102 Stage 2, ADR-1239): Stage 1's "in-process `gsd-core` command-routing hub" framing was aspirational and is corrected here — no fully-populated hub factory exists anywhere in gsd-core (every `createHub()` caller in the tree builds a single-family hub for its own narrow purpose), so `/gsd` and `gsd_invoke` instead dispatch via **SUBPROCESS REUSE**: `dispatchGsdCommand` (`src/shell-command-projection.cts`) spawns `gsd-core/bin/gsd-tools.cjs <family> [subcommand] ... --cwd <dir> --raw --json-errors` bounded and non-throwing, mirroring the precedent already established for the OpenCode/Kilo hook bridge (`.opencode/plugins/gsd-core.js`'s "Architecture: SUBPROCESS REUSE" header). The companion MCP server's `gsd_invoke_command` tool dispatches through the SAME shared helper (it had the identical `createHub()`-with-no-args bug). `/gsd`'s command handler is `handler(args, ctx)` (pi's real ExtensionAPI shape — a raw args string, not `execute(ctx)`); `gsd_invoke`'s tool handler is the real 5-arg `execute(toolCallId, params, signal, onUpdate, ctx)`. The event surface (`EXTENSION_EVENT_SURFACES.pi`, `src/host-integration.cts`) declared the full ~30-event pi ExtensionAPI vocabulary (superseded by the 41-event pi 1.3.0 list, #5557) (was a placeholder `['tool_call']`), and `pi/gsd.cjs` binds `session_start` (→ `gsd-ensure-canonical-path.js`), `before_agent_start` (→ `gsd-workflow-guard.js`, a forward-compatible no-op today since that hook's triggers are tool-scoped), `session_before_compact` (→ `gsd-context-monitor.js`), and `tool_call`, each as a bounded fail-open `spawnSync` subprocess (mirroring `.opencode/plugins/gsd-core.js`'s `runHook`). `modelMode: active` is realized via `pi.on('before_provider_request', ...)`, which resolves a tier through the model-catalog's now-populated `runtimeTierDefaults.pi` entries (bare anthropic ids — `claude-opus-4-8`/`claude-sonnet-5`/`claude-haiku-4-5`, matching the `claude` runtime's own ids since pi talks the anthropic API) and returns a modified payload, or `undefined` (fail-open, pi's model left untouched) when resolution comes back null — **not** `registerProvider`, which would register a new model provider rather than steering pi's existing built-in anthropic models.
+
+**Adversarial-review correction (#2102 Stage 2, post-review):** the event bridges above and the `/gsd` tokenizer's `hooks/lib/git-cmd.js` require were DEAD in a real install — Stage 1's `hostBehaviors.skipSharedHooksInstall:true` meant pi shipped NO `hooks/` directory at all, so `runHook('gsd-ensure-canonical-path.js', ...)` etc. always hit the "hook file absent → silent no-op" branch, and the tokenizer always fell back to plain whitespace-splitting. The tests masked this because they run against the dev tree, where `hooks/` genuinely exists. **Fix:** `capabilities/pi/capability.json` no longer sets `skipSharedHooksInstall` — pi is architecturally identical to OpenCode here (`hooksSurface: "none"` + a native extension that spawns the staged hooks), not to Kilo/ZCode (`hooksSurface: "none"` with NO plugin surface, where the same hooks genuinely are dead weight). pi now installs `hooks/` + `hooks/lib/` (27 entries: the same `INSTALLED_HOOK_FILES` set OpenCode gets) alongside `extensions/gsd.js`, verified end-to-end via a real `node bin/install.js --pi --global`/`--local` — `resolveEngineRoot`'s walk-up from the installed extension's own directory finds `ENGINE_ROOT/hooks/{gsd-ensure-canonical-path.js,gsd-workflow-guard.js,gsd-context-monitor.js,lib/git-cmd.js}`, and each bridge/`runHook` call exits 0 against the real installed files. `hooksSurface: "none"` + `configFormat: "none"` + `writesSharedSettings: false` are unaffected — no settings/hooks.json/config.toml is written for pi; the extension spawns hooks by absolute path, not via a config-file hook bus. `tests/fixtures/golden-install-parity/pi.json` grew from 292 → 320 entries (the 28 new `hooks/`/`hooks/lib/` files); `commands/`, `agents/`, `skills/` remain absent (`pluginOnlyInstall` is untouched — it only gates the declarative-markdown surfaces, not hooks). `tests/install-minimal-hooks.test.cjs`'s #1821 suite moved pi from the Kilo/ZCode (no-hooks) group into the OpenCode (ships-hooks) group accordingly.
+
+**Superseded in part (#3023, 2026-08-07):** the bundle's directory NAME became runtime-descriptor-driven (`hostBehaviors.sharedHooksDirName`, default `hooks`); pi sets it to `gsd-hooks` because pi reserves `hooks/` as its deprecated extension directory and `checkDeprecatedExtensionDirs()` in `packages/coding-agent/src/migrations.ts` warns on bare directory existence (no emptiness check, unlike its `tools/` sibling — source read 2026-08-07); the set of staged files and every other negotiated axis is UNCHANGED (`hooksSurface: "none"`, `configFormat: "none"`, `writesSharedSettings: false`, `pluginOnlyInstall` all untouched — only the directory name moved); `pi/gsd.cjs` now resolves the bundle by probing `gsd-hooks` then `hooks` so dev checkouts and half-upgraded trees still work.
+
+## vscode
+
+> VS Code is the IDE-profile reference host: a Marketplace/VSIX-distributed extension, NOT
+> file-projected onto a config directory — it has no `runtime.localConfigDir` in the usual sense
+> (`configHome.kind: "none"`, `localConfigDir: null`) and no CLI install surface at all
+> (`installSurface: "none"`; it is never installed by `bin/install.js` — no `--vscode` flag, no
+> `allRuntimes` membership; see `capabilities/vscode/capability.json`). The extension IS the host.
+> **Sourcing note:** the citations below are the VS Code extension API documentation pages named
+> in ADR-1239 (#2103) as the source for each axis; this environment did not have live Context7/
+> web-fetch access at authoring time, so the Evidence column is a paraphrase of VS Code's
+> documented extension model rather than a verbatim excerpt — a maintainer with Context7/web
+> access should verify the exact wording before treating this section as fully cited (same caveat
+> already flagged for the pi section above).
+
+| Axis | Value | Source | Evidence |
+|---|---|---|---|
+| embeddingMode | imperative | https://code.visualstudio.com/api/references/vscode-api | The extension is loaded in-process by the extension host and calls the `vscode` namespace API directly (`vscode.commands.registerCommand`, `vscode.chat.createChatParticipant`, `vscode.lm.registerTool`) — an in-process programmatic API, not a config-file-only integration. |
+| commandSurface | palette | https://code.visualstudio.com/api/extension-guides/command | Commands are contributed via `contributes.commands` in package.json and registered with `vscode.commands.registerCommand`, surfaced through the Command Palette (and the Chat view via the chat participant) — not a markdown/TOML slash-command file format. |
+| modelMode | active | https://code.visualstudio.com/api/extension-guides/ai/language-model | The `vscode.lm` namespace lets an extension actively select a model (`vscode.lm.selectChatModels`) and send requests to it programmatically, rather than only reading a static config value. |
+| hookBus | engine | https://code.visualstudio.com/api/references/activation-events | VS Code has no cross-extension lifecycle-hook bus that GSD subscribes to; the extension host (the "engine" here, per this axis's own `host`/`engine`/`none` vocabulary) owns activation events, and GSD's own hook lifecycle runs fully in-process/engine-owned inside the extension. |
+| stateIO | sandboxed-storage | https://code.visualstudio.com/api/references/vscode-api#Memento | `context.globalState`/`context.workspaceState` (both `Memento`) are the extension's persistent storage surface — sandboxed key/value storage scoped to the extension, not unrestricted local filesystem access. |
+| transport | mcp | https://code.visualstudio.com/api/extension-guides/ai/mcp | VS Code 1.99 added native MCP client support; on the Web (webworker) entry, full GSD command dispatch is available through VS Code's native MCP client connecting to the GSD companion MCP server (`gsd-mcp-server`), not an in-process Node dispatch (which the web entry cannot run at all). |
+| runtime | sandboxed-web | https://code.visualstudio.com/api/extension-guides/web-extensions | The `browser` entry point (`vscode/browser.js`) runs in a webworker context with no Node core modules — the Web Extension execution model VS Code documents for extensions that must run in vscode.dev/github.dev. |
+| effortSurface | undocumented | no authoritative doc — per-host reasoning-effort survey, #2481 (`09b535ac0`) | This host's documentation states no reasoning-effort setting, so the axis carries the fail-closed sentinel rather than inheriting a profile baseline. No host-specific URL is cited because the finding is an ABSENCE: #2481 surveyed all hosts for a reasoning-effort mechanism and found one only for claude/opencode/codex. |
+| dispatch.namedDispatch | true | https://code.visualstudio.com/docs/copilot/chat/chat-agent-mode#_agent-mode-tools | Registered `languageModelTools` (and the chat participant) are addressable by name — the primary agent references a tool/participant by its declared name/`toolReferenceName`, not only positionally. |
+| dispatch.nested | true | https://code.visualstudio.com/docs/copilot/copilot-chat-agents (subagents) | VS Code's chat subagent model (`#runSubagent`) explicitly supports a subagent invoking further subagents, gated by `chat.subagents.allowInvocationsFromSubagents`. |
+| dispatch.maxDepth | 5 | https://code.visualstudio.com/docs/copilot/copilot-chat-agents (subagents) | Documented as VS Code's maximum nesting depth for `#runSubagent` chains — also matches this repo's existing `PROFILE_BASELINES.ide.dispatch.maxDepth` baseline. |
+| dispatch.background | true | https://code.visualstudio.com/api/extension-guides/ai/tools | Language Model Tools can be invoked as part of an asynchronous agent turn (the primary agent does not block synchronously on a single extension call). |
+| dispatch.subagentToolkit | undocumented | no authoritative doc found at authoring time | VS Code's subagent documentation does not state whether a subagent's tool surface is restricted to read-only tools or the full set an extension registers; recorded `undocumented` (fails closed to `read-only` in negotiation) rather than guessed. |
+| dispatch.backgroundDispatch | undocumented | no authoritative doc found at authoring time | Whether a background-dispatched subagent can itself spawn further NAMED subagents (the #853 discriminator) is not stated in the sources reviewed; recorded `undocumented` (fails closed to `false`) rather than guessed. |
+| dispatch.isolation | undocumented | not researched / no concurrent fan-out documented for this axis | no authoritative source consulted for concurrent-executor isolation on this host — fails closed to `none` (sequential) in negotiation (#2584) |
+| dispatch.maxConcurrency | undocumented | not researched / no documented concurrent-subagent capacity for this axis | no authoritative source consulted for concurrent-executor capacity on this host — fails closed to `1` in negotiation (#3673) |
+
+Sources consulted:
+- https://code.visualstudio.com/api/references/vscode-api
+- https://code.visualstudio.com/api/extension-guides/command
+- https://code.visualstudio.com/api/extension-guides/ai/language-model
+- https://code.visualstudio.com/api/extension-guides/ai/tools
+- https://code.visualstudio.com/api/extension-guides/ai/mcp
+- https://code.visualstudio.com/api/extension-guides/web-extensions
+- https://code.visualstudio.com/api/references/activation-events
+- https://code.visualstudio.com/docs/copilot/copilot-chat-agents
+
+Documentation gaps:
+- dispatch.subagentToolkit / dispatch.backgroundDispatch — the reviewed sources document that
+  `#runSubagent` exists (v1.105+, `chat.subagents.allowInvocationsFromSubagents`, max nesting
+  depth 5) but do not state the subagent tool-restriction model or whether a background-dispatched
+  subagent can itself spawn further named subagents; both stay `undocumented` and negotiation
+  fails closed.
+- This section's Evidence-column wording was authored without live Context7/web-fetch access (see
+  the sourcing note above the table) — verify against the cited pages before relying on it for a
+  future capability upgrade, same caveat as the pi section above.
+
+EoS migration status (#2103): vscode lands as a registry runtime (role:runtime) for
+validator/host-integration coverage ONLY — it is deliberately NOT a CLI-installable runtime
+(`installSurface: "none"`, never in `bin/install.js`'s `allRuntimes`; see the
+`NON_INSTALLABLE_RUNTIMES` carve-out in `tests/runtime-flags.test.cjs`). The extension surface
+(`vscode/extension.js`, `vscode/browser.js`, `vscode/host-binding.js`, `vscode/package.json`) is
+distributed via the Marketplace/VSIX, not `npx --vscode` — there is no `docs/how-to/install-on-
+your-runtime.md` entry for it. Dispatch is SUBPROCESS REUSE on desktop (the same shared
+`dispatchGsdCommand` in `gsd-core/bin/lib/shell-command-projection.cjs` the pi extension and the
+companion MCP server use) via `vscode/extension.js`'s `main` entry (Node). The `browser` entry
+(`vscode/browser.js`) is a SEPARATE, independently zero-Node-API file: it does NOT require
+`host-binding.js` because that module's engine-lib dependencies (`state-io.cjs`,
+`adapter-imperative.cjs` → `install-engine.cjs`/`capability-loader.cjs`,
+`model-adapter.cjs` → `model-resolver.cjs` → `config-loader.cjs`/`configuration.cjs`) all pull in
+Node's `fs`/`os`/`path` at module-load time — requiring any of them from a webworker context would
+throw immediately. `browser.js` instead composes its own minimal surface directly against
+`vscode.lm`, and its command/tool/chat handlers surface an honest "full dispatch is unavailable on
+web; configure the GSD MCP server" message rather than a silent failure. The chat participant
+(`@gsd`) and Language Model Tools (a representative 3-tool set — `gsd_progress`, `gsd_workstreams`,
+`gsd_plan_phase` — matching real shipped skills that map onto a single, safe, read-only
+`gsd-tools.cjs` command) are registered on BOTH entries identically; only the dispatch behavior
+differs. `#runSubagent` wiring (`registerSubagentDispatch`/`dispatchAsSubagent`, gated on
+`chat.subagents.allowInvocationsFromSubagents` availability, fail-soft on older/Insiders-gated
+hosts) adds a belt-and-suspenders `maxDepth: 5` ceiling independent of whatever VS Code's own chat
+engine enforces natively — there is no separate extension-side "subagent contribution"
+registration API beyond the chat participant + Language Model Tools already registered; VS Code's
+chat engine surfaces them to `#runSubagent` on its own.

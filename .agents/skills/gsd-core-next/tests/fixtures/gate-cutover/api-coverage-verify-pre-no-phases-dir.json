@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    "01-any"
+  ],
+  "fixture": "api-no-phases",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"coverage_present\": false,\n  \"detected\": false,\n  \"message\": \"api-coverage: no .planning/phases directory; gate skipped (not a GSD project layout)\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

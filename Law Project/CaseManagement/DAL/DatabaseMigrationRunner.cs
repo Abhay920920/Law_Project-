@@ -1761,6 +1761,231 @@ namespace MVCCaseManagement.DAL
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_5_ActiveHearingsIndexesMigrationId, migTimer17.ElapsedMilliseconds);
                     }
 
+                    // 18. Deduplicate LABOUR_CASES, repoint child tables, and add unique filtered index (V1_2_6)
+                    const string v1_2_6_DeduplicateLabourCasesMigrationId = "20261107_v1_2_6_Deduplicate_Labour_Cases_And_Add_Unique_Index";
+                    bool applyMig18 = false;
+                    using (var checkCmd18 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd18.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_6_DeduplicateLabourCasesMigrationId });
+                        applyMig18 = ((int?)checkCmd18.ExecuteScalar() ?? 0) == 0;
+                    }
+
+                    if (applyMig18)
+                    {
+                        var migTimer18 = Stopwatch.StartNew();
+                        logger.LogInformation("Applying migration {MigrationId}...", v1_2_6_DeduplicateLabourCasesMigrationId);
+
+                        string mig18Sql = @"
+                            -- Step 1: Create a staging table for duplicate mapping (DupCaseID -> MasterCaseID)
+                            IF OBJECT_ID('tempdb..#LabourDups') IS NOT NULL DROP TABLE #LabourDups;
+
+                            CREATE TABLE #LabourDups (
+                                DupCaseID INT NOT NULL PRIMARY KEY,
+                                MasterCaseID INT NOT NULL,
+                                DivisionID INT,
+                                CaseNumber NVARCHAR(100),
+                                CaseYear INT
+                            );
+
+                            -- Identify duplicate records partitioned by DivisionID, CourtID, CaseYear, and normalized CaseNumber
+                            ;WITH CleanCases AS (
+                                SELECT 
+                                    CaseID,
+                                    DivisionID,
+                                    CourtID,
+                                    CaseYear,
+                                    CaseNumber,
+                                    CNRNumber,
+                                    CreatedDate,
+                                    ROW_NUMBER() OVER (
+                                        PARTITION BY DivisionID, CourtID, CaseYear, REPLACE(LTRIM(RTRIM(CaseNumber)), ' ', '')
+                                        ORDER BY 
+                                            CASE WHEN CNRNumber IS NOT NULL AND LTRIM(RTRIM(CNRNumber)) <> '' THEN 0 ELSE 1 END,
+                                            CreatedDate DESC, 
+                                            CaseID DESC
+                                    ) AS RowNum,
+                                    FIRST_VALUE(CaseID) OVER (
+                                        PARTITION BY DivisionID, CourtID, CaseYear, REPLACE(LTRIM(RTRIM(CaseNumber)), ' ', '')
+                                        ORDER BY 
+                                            CASE WHEN CNRNumber IS NOT NULL AND LTRIM(RTRIM(CNRNumber)) <> '' THEN 0 ELSE 1 END,
+                                            CreatedDate DESC, 
+                                            CaseID DESC
+                                    ) AS MasterID
+                                FROM LABOUR_CASES
+                                WHERE CaseNumber IS NOT NULL 
+                                  AND LTRIM(RTRIM(CaseNumber)) <> ''
+                                  AND CourtID IS NOT NULL
+                                  AND CaseYear IS NOT NULL
+                            )
+                            INSERT INTO #LabourDups (DupCaseID, MasterCaseID, DivisionID, CaseNumber, CaseYear)
+                            SELECT CaseID, MasterID, DivisionID, CaseNumber, CaseYear
+                            FROM CleanCases
+                            WHERE RowNum > 1;
+
+                            -- Also detect duplicates with identical CNRNumber within the same Division
+                            ;WITH CnrCases AS (
+                                SELECT 
+                                    CaseID,
+                                    DivisionID,
+                                    CaseNumber,
+                                    CaseYear,
+                                    CNRNumber,
+                                    ROW_NUMBER() OVER (
+                                        PARTITION BY DivisionID, UPPER(LTRIM(RTRIM(CNRNumber)))
+                                        ORDER BY CreatedDate DESC, CaseID DESC
+                                    ) AS RowNum,
+                                    FIRST_VALUE(CaseID) OVER (
+                                        PARTITION BY DivisionID, UPPER(LTRIM(RTRIM(CNRNumber)))
+                                        ORDER BY CreatedDate DESC, CaseID DESC
+                                    ) AS MasterID
+                                FROM LABOUR_CASES
+                                WHERE CNRNumber IS NOT NULL 
+                                  AND LEN(LTRIM(RTRIM(CNRNumber))) = 16
+                                  AND CaseID NOT IN (SELECT DupCaseID FROM #LabourDups)
+                            )
+                            INSERT INTO #LabourDups (DupCaseID, MasterCaseID, DivisionID, CaseNumber, CaseYear)
+                            SELECT c.CaseID, c.MasterID, c.DivisionID, c.CaseNumber, c.CaseYear
+                            FROM CnrCases c
+                            WHERE c.RowNum > 1
+                              AND c.CaseID NOT IN (SELECT DupCaseID FROM #LabourDups);
+
+                            -- Step 2: Repoint all dependent child tables from duplicate CaseIDs to MasterCaseIDs
+                            IF EXISTS (SELECT 1 FROM #LabourDups)
+                            BEGIN
+                                -- 2.1 Clean/repoint LABOUR_CASE_VIEW_TRACKING
+                                IF OBJECT_ID('LABOUR_CASE_VIEW_TRACKING', 'U') IS NOT NULL
+                                BEGIN
+                                    DELETE vt
+                                    FROM LABOUR_CASE_VIEW_TRACKING vt
+                                    INNER JOIN #LabourDups d ON vt.CaseID = d.DupCaseID
+                                    WHERE EXISTS (
+                                        SELECT 1 FROM LABOUR_CASE_VIEW_TRACKING m 
+                                        WHERE m.CaseID = d.MasterCaseID
+                                    );
+
+                                    UPDATE vt
+                                    SET vt.CaseID = d.MasterCaseID
+                                    FROM LABOUR_CASE_VIEW_TRACKING vt
+                                    INNER JOIN #LabourDups d ON vt.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.2 Repoint LABOUR_SERVICE_MATTERS
+                                IF OBJECT_ID('LABOUR_SERVICE_MATTERS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE s
+                                    SET s.CaseID = d.MasterCaseID
+                                    FROM LABOUR_SERVICE_MATTERS s
+                                    INNER JOIN #LabourDups d ON s.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.3 Repoint LABOUR_EP_DETAILS
+                                IF OBJECT_ID('LABOUR_EP_DETAILS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE ep
+                                    SET ep.CaseID = d.MasterCaseID
+                                    FROM LABOUR_EP_DETAILS ep
+                                    INNER JOIN #LabourDups d ON ep.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.4 Repoint LABOUR_ARISING_APPLICATIONS
+                                IF OBJECT_ID('LABOUR_ARISING_APPLICATIONS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE a
+                                    SET a.ParentCaseID = d.MasterCaseID
+                                    FROM LABOUR_ARISING_APPLICATIONS a
+                                    INNER JOIN #LabourDups d ON a.ParentCaseID = d.DupCaseID;
+                                END
+
+                                -- 2.5 Repoint LABOUR_CASE_HISTORY
+                                IF OBJECT_ID('LABOUR_CASE_HISTORY', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE h
+                                    SET h.CaseID = d.MasterCaseID
+                                    FROM LABOUR_CASE_HISTORY h
+                                    INNER JOIN #LabourDups d ON h.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.6 Repoint LABOUR_CASE_EVIDENCE
+                                IF OBJECT_ID('LABOUR_CASE_EVIDENCE', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE e
+                                    SET e.CaseID = d.MasterCaseID
+                                    FROM LABOUR_CASE_EVIDENCE e
+                                    INNER JOIN #LabourDups d ON e.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.7 Repoint LABOUR_CONNECTED_CASES
+                                IF OBJECT_ID('LABOUR_CONNECTED_CASES', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE cc
+                                    SET cc.CaseID = d.MasterCaseID
+                                    FROM LABOUR_CONNECTED_CASES cc
+                                    INNER JOIN #LabourDups d ON cc.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.8 Repoint LABOUR_REINSTATED_DOCUMENTS
+                                IF OBJECT_ID('LABOUR_REINSTATED_DOCUMENTS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE rd
+                                    SET rd.CaseID = d.MasterCaseID
+                                    FROM LABOUR_REINSTATED_DOCUMENTS rd
+                                    INNER JOIN #LabourDups d ON rd.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.9 Repoint LABOUR_ENCLOSED_DOCS
+                                IF OBJECT_ID('LABOUR_ENCLOSED_DOCS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE ed
+                                    SET ed.CaseID = d.MasterCaseID
+                                    FROM LABOUR_ENCLOSED_DOCS ed
+                                    INNER JOIN #LabourDups d ON ed.CaseID = d.DupCaseID;
+                                END
+
+                                -- 2.10 Repoint CASE_NOTINGS
+                                IF OBJECT_ID('CASE_NOTINGS', 'U') IS NOT NULL
+                                BEGIN
+                                    UPDATE cn
+                                    SET cn.CaseID = d.MasterCaseID
+                                    FROM CASE_NOTINGS cn
+                                    INNER JOIN #LabourDups d ON cn.CaseType = 'LABOUR' AND cn.CaseID = d.DupCaseID;
+                                END
+
+                                -- Step 3: Delete the redundant duplicate cases from LABOUR_CASES
+                                DELETE c
+                                FROM LABOUR_CASES c
+                                INNER JOIN #LabourDups d ON c.CaseID = d.DupCaseID;
+                            END
+
+                            IF OBJECT_ID('tempdb..#LabourDups') IS NOT NULL DROP TABLE #LabourDups;
+
+                            -- Step 4: Add Unique Filtered Index on (DivisionID, CourtID, CaseYear, CaseNumber)
+                            IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_LABOUR_CASES_Div_Court_Year_Num' AND object_id = OBJECT_ID('LABOUR_CASES'))
+                            BEGIN
+                                CREATE UNIQUE NONCLUSTERED INDEX UX_LABOUR_CASES_Div_Court_Year_Num
+                                ON LABOUR_CASES (DivisionID, CourtID, CaseYear, CaseNumber)
+                                WHERE CaseNumber IS NOT NULL AND CourtID IS NOT NULL AND CaseYear IS NOT NULL;
+                            END
+                        ";
+
+                        using (var migCmd18 = new SqlCommand(mig18Sql, conn))
+                        {
+                            migCmd18.CommandTimeout = 180;
+                            migCmd18.ExecuteNonQuery();
+                        }
+
+                        string recordSql18 = @"
+                            INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                            VALUES (@id, @desc, @time)";
+                        using (var recordCmd18 = new SqlCommand(recordSql18, conn))
+                        {
+                            recordCmd18.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_6_DeduplicateLabourCasesMigrationId });
+                            recordCmd18.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Deduplicate existing LABOUR_CASES, repoint child tables, and create unique filtered index on (DivisionID, CourtID, CaseYear, CaseNumber)" });
+                            recordCmd18.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer18.ElapsedMilliseconds });
+                            recordCmd18.ExecuteNonQuery();
+                        }
+                        logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_6_DeduplicateLabourCasesMigrationId, migTimer18.ElapsedMilliseconds);
+                    }
+
                     }
                 }
                 finally

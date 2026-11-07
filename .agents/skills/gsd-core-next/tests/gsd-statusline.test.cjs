@@ -1,0 +1,4005 @@
+/**
+ * Tests for gsd-statusline.js GSD state display helpers.
+ *
+ * Covers:
+ * - parseStateMd across YAML-frontmatter, body-fallback, and partial formats
+ * - formatGsdState graceful degradation when fields are missing
+ * - readGsdState walk-up search with proper bounds
+ */
+
+'use strict';
+
+const { test, describe } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const {
+  parseStateMd,
+  formatGsdState,
+  formatGsdStateCompact,
+  readGsdState,
+  isInstalledAheadOfLatest,
+  GIT_STATUS_TIMEOUT_MS,
+} = require('../hooks/gsd-statusline.js');
+const { cleanup, saveSessionEnv, restoreSessionEnv, clearSessionEnv } = require('./helpers.cjs');
+
+// Found while implementing #5105: the statusline reads STATE.md's frontmatter from the block the
+// one fence owner finds. Its old regex missed a BOM block and closed on a `--- x` line, dropping
+// every key after it.
+describe('parseStateMd reads the frontmatter block the one fence owner finds', () => {
+  for (const [label, content] of [
+    ['a BOM before the block', '\uFEFF---\nstatus: executing\nmilestone: v1.2\n---\n\n# State\n'],
+    ['a `--- x` line before the keys', '---\nnote: x\n--- x\nstatus: executing\nmilestone: v1.2\n---\n\n# State\n'],
+    ['a block closed by the lenient `----`', '---\nstatus: executing\nmilestone: v1.2\n----\n\n# State\n'],
+  ]) {
+    test(`${label}`, () => {
+      const state = parseStateMd(content);
+      assert.strictEqual(state.status, 'executing');
+      assert.strictEqual(state.milestone, 'v1.2');
+    });
+  }
+});
+
+/**
+ * The documented fields of the statusline payload's context_window object
+ * (Claude Code's "Customize your status line" reference). Every fixture below
+ * builds its context_window through contextWindow(), which rejects anything
+ * else. The URL is spelled without its path segment on purpose:
+ * lint-docs-guard-registration.cjs reads a docs-directory path between two backticks
+ * anywhere in a test file as a template literal, and a comment is enough to
+ * trip it.
+ *
+ * That guard exists because these fixtures carried `total_tokens`, which the
+ * host does not send: `totalCtx` therefore always took its 1M fallback in a
+ * real session while the tests exercised a code path that could never run
+ * (PR #4959 review). A fixture that invents a field now fails loudly here
+ * instead of quietly asserting fiction.
+ */
+const CONTEXT_WINDOW_FIELDS = Object.freeze([
+  'total_input_tokens', 'total_output_tokens', 'context_window_size',
+  'used_percentage', 'remaining_percentage', 'current_usage',
+]);
+function contextWindow(fields) {
+  for (const key of Object.keys(fields)) {
+    if (!CONTEXT_WINDOW_FIELDS.includes(key)) {
+      throw new Error(
+        'context_window.' + key + ' is not a documented statusline field (' + CONTEXT_WINDOW_FIELDS.join(', ') + ')',
+      );
+    }
+  }
+  return fields;
+}
+
+/**
+ * A single hooks/gsd-statusline.js spawn, no fan-out -- the "long-lived
+ * status renderer" class (renders context-window percentage, git
+ * branch/status, active-teams state), a distinct and heavier operation
+ * than a trivial CLI query despite this file's own PROBE_TIMEOUT_MS-sized
+ * sibling class norm elsewhere in the suite.
+ */
+const STATUSLINE_HOOK_TIMEOUT_MS = 4000;
+
+/**
+ * The same hooks/gsd-statusline.js hook as STATUSLINE_HOOK_TIMEOUT_MS, but
+ * this one test rigs a custom PATH (a git shim directory) and
+ * CLAUDE_CONFIG_DIR override -- a heavier setup than the plain invocation,
+ * hence the larger pre-existing bound. Coincides numerically with
+ * tests/helpers/timeouts.cjs's SCAN_USAGE_ERROR_TIMEOUT_MS and
+ * MALFORMED_INPUT_HOOK_TIMEOUT_MS (both 5000ms) but describes neither of
+ * those operations -- kept local.
+ */
+const STATUSLINE_HOOK_GIT_SHIM_TIMEOUT_MS = 5000;
+
+// ─── parseStateMd ───────────────────────────────────────────────────────────
+
+describe('parseStateMd', () => {
+  test('parses full YAML frontmatter', () => {
+    const content = [
+      '---',
+      'status: executing',
+      'milestone: v1.9',
+      'milestone_name: Code Quality',
+      '---',
+      '',
+      '# State',
+      'Phase: 1 of 5 (fix-graphiti-deployment)',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.status, 'executing');
+    assert.equal(s.milestone, 'v1.9');
+    assert.equal(s.milestoneName, 'Code Quality');
+    assert.equal(s.phaseNum, '1');
+    assert.equal(s.phaseTotal, '5');
+    assert.equal(s.phaseName, 'fix-graphiti-deployment');
+  });
+
+  test('treats literal "null" values as null', () => {
+    const content = [
+      '---',
+      'status: null',
+      'milestone: null',
+      'milestone_name: null',
+      '---',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.status, null);
+    assert.equal(s.milestone, null);
+    assert.equal(s.milestoneName, null);
+  });
+
+  test('strips surrounding quotes from frontmatter values', () => {
+    const content = [
+      '---',
+      'milestone_name: "Code Quality"',
+      "milestone: 'v1.9'",
+      '---',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.milestone, 'v1.9');
+    assert.equal(s.milestoneName, 'Code Quality');
+  });
+
+  test('parses phase without name', () => {
+    const content = [
+      '---',
+      'status: planning',
+      '---',
+      'Phase: 3 of 10',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.phaseNum, '3');
+    assert.equal(s.phaseTotal, '10');
+    assert.equal(s.phaseName, null);
+  });
+
+  test('falls back to body Status when frontmatter is missing', () => {
+    const content = [
+      '# State',
+      'Status: Ready to plan',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.status, 'planning');
+  });
+
+  test('body fallback recognizes executing state', () => {
+    const content = 'Status: Executing phase 2';
+    assert.equal(parseStateMd(content).status, 'executing');
+  });
+
+  test('body fallback recognizes complete state', () => {
+    const content = 'Status: Complete';
+    assert.equal(parseStateMd(content).status, 'complete');
+  });
+
+  test('body fallback recognizes archived as complete', () => {
+    const content = 'Status: Archived';
+    assert.equal(parseStateMd(content).status, 'complete');
+  });
+
+  test('returns empty object for empty content', () => {
+    const s = parseStateMd('');
+    assert.deepEqual(s, {});
+  });
+
+  test('returns partial state when only some fields present', () => {
+    const content = [
+      '---',
+      'milestone: v2.0',
+      '---',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.milestone, 'v2.0');
+    assert.equal(s.status, undefined);
+    assert.equal(s.phaseNum, undefined);
+  });
+
+  test('parses next_phases from YAML block-list form (#3153)', () => {
+    const content = [
+      '---',
+      'next_action: execute',
+      'next_phases:',
+      '  - 4.5',
+      '  - 4.6',
+      '---',
+    ].join('\n');
+
+    const s = parseStateMd(content);
+    assert.equal(s.nextAction, 'execute');
+    assert.deepEqual(s.nextPhases, ['4.5', '4.6']);
+  });
+
+  // #2754 — the frontmatter fence regex and downstream splits used literal \n,
+  // so a CRLF STATE.md dropped the ENTIRE frontmatter block (every field absent).
+  // The invariant is CRLF/LF parity — parseStateMd must yield the same state for
+  // the same content regardless of line endings, matching the canonical
+  // extractFrontmatter parser (src/frontmatter.cts), which is CRLF-safe.
+  const crlf = (lfContent) => lfContent.replace(/\n/g, '\r\n');
+
+  test('parses full YAML frontmatter identically under CRLF (#2754)', () => {
+    const lf = [
+      '---',
+      'status: executing',
+      'milestone: v1.9',
+      'milestone_name: Code Quality',
+      'active_phase: 4',
+      'next_action: execute',
+      '---',
+      '',
+      '# State',
+      'Phase: 1 of 5 (fix-graphiti-deployment)',
+    ].join('\n');
+
+    const lfState = parseStateMd(lf);
+    const crlfState = parseStateMd(crlf(lf));
+    assert.deepStrictEqual(crlfState, lfState,
+      'CRLF STATE.md must parse identically to LF — pre-fix the entire frontmatter block was dropped (#2754)');
+    // pin the specific fields the issue names so a vacuous deepEqual({},{}) can't pass:
+    assert.equal(crlfState.status, 'executing');
+    assert.equal(crlfState.milestone, 'v1.9');
+    assert.equal(crlfState.milestoneName, 'Code Quality');
+    assert.equal(crlfState.activePhase, '4');
+    assert.equal(crlfState.nextAction, 'execute');
+    assert.equal(crlfState.phaseNum, '1');
+    assert.equal(crlfState.phaseTotal, '5');
+  });
+
+  test('parses next_phases flow-array form identically under CRLF (#2754)', () => {
+    const lf = [
+      '---',
+      'next_phases: [4.5, 4.6]',
+      '---',
+    ].join('\n');
+
+    assert.deepStrictEqual(parseStateMd(crlf(lf)), parseStateMd(lf));
+    assert.deepEqual(parseStateMd(crlf(lf)).nextPhases, ['4.5', '4.6']);
+  });
+
+  test('parses next_phases block-list form identically under CRLF (#2754)', () => {
+    const lf = [
+      '---',
+      'next_phases:',
+      '  - 4.5',
+      '  - 4.6',
+      '---',
+    ].join('\n');
+
+    assert.deepStrictEqual(parseStateMd(crlf(lf)).nextPhases, parseStateMd(lf).nextPhases,
+      'block-list regex used a literal \\n — CRLF must still parse the list');
+    assert.deepEqual(parseStateMd(crlf(lf)).nextPhases, ['4.5', '4.6']);
+  });
+
+  test('parses the progress nested block identically under CRLF (#2754)', () => {
+    const lf = [
+      '---',
+      'progress:',
+      '  completed_phases: 3',
+      '  total_phases: 5',
+      '  percent: 60',
+      '---',
+    ].join('\n');
+
+    assert.deepStrictEqual(parseStateMd(crlf(lf)), parseStateMd(lf),
+      'progress block regex used a literal \\n — CRLF must still parse completed/total/percent');
+    assert.equal(parseStateMd(crlf(lf)).completedPhases, '3');
+    assert.equal(parseStateMd(crlf(lf)).totalPhases, '5');
+    assert.equal(parseStateMd(crlf(lf)).percent, '60');
+  });
+
+  test('treats literal "null" values as null identically under CRLF (#2754)', () => {
+    const lf = [
+      '---',
+      'status: null',
+      'milestone: null',
+      'milestone_name: null',
+      '---',
+    ].join('\n');
+
+    assert.deepStrictEqual(parseStateMd(crlf(lf)), parseStateMd(lf));
+    assert.equal(parseStateMd(crlf(lf)).status, null);
+    assert.equal(parseStateMd(crlf(lf)).milestone, null);
+  });
+
+  // #2754 (Generative-Fix Divergence guard, CLAUDE.md "parallel surfaces sharing a
+  // parser"): parseStateMd and the canonical extractFrontmatter both derive GSD
+  // state from the same STATE.md frontmatter, and they diverged once already (this
+  // very CRLF bug). Pin the overlap so a future divergence on a scalar shape or
+  // line ending is caught here, not in a live Windows report.
+  const { extractFrontmatter } = require('../gsd-core/bin/lib/frontmatter.cjs');
+
+  test('parseStateMd frontmatter-derived fields agree with extractFrontmatter (LF + CRLF, #2754)', () => {
+    const lf = [
+      '---',
+      'status: executing',
+      'milestone: v1.9',
+      'milestone_name: Code Quality',
+      'active_phase: 4',
+      'next_action: execute',
+      '---',
+      '',
+      '# State',
+      'Phase: 1 of 5 (fix-graphiti-deployment)',
+    ].join('\n');
+
+    for (const [label, content] of [['LF', lf], ['CRLF', crlf(lf)]]) {
+      const fm = extractFrontmatter(content);
+      const st = parseStateMd(content);
+      // extractFrontmatter yields the raw frontmatter object; parseStateMd projects
+      // a subset onto its own keys. Assert the projection matches the raw values.
+      assert.equal(st.status, fm.status, `status mismatch (${label})`);
+      assert.equal(st.milestone, fm.milestone, `milestone mismatch (${label})`);
+      assert.equal(st.milestoneName, fm.milestone_name, `milestone_name mismatch (${label})`);
+      assert.equal(st.activePhase, String(fm.active_phase), `active_phase mismatch (${label})`);
+      assert.equal(st.nextAction, fm.next_action, `next_action mismatch (${label})`);
+    }
+  });
+});
+
+// ─── formatGsdState ─────────────────────────────────────────────────────────
+
+describe('formatGsdState', () => {
+  test('formats full state with milestone name, status, and phase name', () => {
+    const out = formatGsdState({
+      milestone: 'v1.9',
+      milestoneName: 'Code Quality',
+      status: 'executing',
+      phaseNum: '1',
+      phaseTotal: '5',
+      phaseName: 'fix-graphiti-deployment',
+    });
+    assert.equal(out, 'v1.9 Code Quality · executing · fix-graphiti-deployment (1/5)');
+  });
+
+  test('skips placeholder "milestone" value in milestoneName', () => {
+    const out = formatGsdState({
+      milestone: 'v1.0',
+      milestoneName: 'milestone',
+      status: 'planning',
+    });
+    assert.equal(out, 'v1.0 · planning');
+  });
+
+  test('uses short phase form when phase name is missing', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      status: 'executing',
+      phaseNum: '3',
+      phaseTotal: '7',
+    });
+    assert.equal(out, 'v2.0 · executing · ph 3/7');
+  });
+
+  test('omits phase entirely when phaseNum/phaseTotal missing', () => {
+    const out = formatGsdState({
+      milestone: 'v1.0',
+      status: 'planning',
+    });
+    assert.equal(out, 'v1.0 · planning');
+  });
+
+  test('handles milestone version only (no name)', () => {
+    const out = formatGsdState({
+      milestone: 'v1.9',
+      status: 'executing',
+    });
+    assert.equal(out, 'v1.9 · executing');
+  });
+
+  test('handles milestone name only (no version)', () => {
+    const out = formatGsdState({
+      milestoneName: 'Foundations',
+      status: 'planning',
+    });
+    assert.equal(out, 'Foundations · planning');
+  });
+
+  test('treats numeric 100 percent as milestone complete (#3153)', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      percent: 100,
+    });
+    assert.equal(out, 'v2.0 [██████████] 100% · milestone complete');
+  });
+
+  test('returns empty string for empty state', () => {
+    assert.equal(formatGsdState({}), '');
+  });
+
+  test('returns only available parts when everything else is missing', () => {
+    assert.equal(formatGsdState({ status: 'planning' }), 'planning');
+  });
+
+  test('renders observable "no active workstream" signal for the #2850 sentinel', () => {
+    assert.equal(formatGsdState({ noActiveWorkstream: true }), 'no active workstream');
+  });
+});
+
+describe('formatGsdStateCompact — #2850 sentinel', () => {
+  test('renders observable "no active workstream" signal', () => {
+    assert.equal(formatGsdStateCompact({ noActiveWorkstream: true }), 'no active workstream');
+  });
+});
+
+describe('isInstalledAheadOfLatest', () => {
+  test('treats prerelease patch increment as ahead of prior stable', () => {
+    assert.equal(isInstalledAheadOfLatest('1.2.1-beta.1', '1.2.0'), true);
+  });
+
+  test('treats equal base version prerelease as not ahead', () => {
+    assert.equal(isInstalledAheadOfLatest('1.2.0-rc.1', '1.2.0'), false);
+  });
+});
+
+// ─── readGsdState ───────────────────────────────────────────────────────────
+
+describe('readGsdState', () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-statusline-test-'));
+
+  test('finds STATE.md in the starting directory', () => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'STATE.md'),
+      '---\nstatus: executing\nmilestone: v1.0\n---\n'
+    );
+
+    const s = readGsdState(proj);
+    assert.equal(s.status, 'executing');
+    assert.equal(s.milestone, 'v1.0');
+  });
+
+  test('walks up to find STATE.md in a parent directory', () => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'STATE.md'),
+      '---\nstatus: planning\n---\n'
+    );
+
+    const nested = path.join(proj, 'src', 'components', 'deep');
+    fs.mkdirSync(nested, { recursive: true });
+
+    const s = readGsdState(nested);
+    assert.equal(s.status, 'planning');
+  });
+
+  test('returns null when no STATE.md exists in the walk-up chain', () => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    const nested = path.join(proj, 'src');
+    fs.mkdirSync(nested, { recursive: true });
+
+    assert.equal(readGsdState(nested), null);
+  });
+
+  test('returns null on malformed STATE.md without crashing', () => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning'), { recursive: true });
+    // Valid file (no content to crash on) — parseStateMd returns {}
+    fs.writeFileSync(path.join(proj, '.planning', 'STATE.md'), '');
+
+    const s = readGsdState(proj);
+    // Empty file yields an empty state object, not null — the function
+    // only returns null when no file is found.
+    assert.deepEqual(s, {});
+  });
+
+  // ─── Workstream mode (#2850) ──────────────────────────────────────────────
+  //
+  // readGsdState previously only ever walked up looking for a flat
+  // .planning/STATE.md — it never resolved an active workstream, so the
+  // GSD-state segment silently disappeared for any workstream-mode project
+  // without a root STATE.md (issue #2850). These cases exercise the fix,
+  // which reuses resolveActiveWorkstream (CLI>env>store precedence,
+  // active-workstream-store.cjs) and listAvailableWorkstreams/planningPaths
+  // (planning-workspace.cjs) rather than re-implementing that resolution.
+  //
+  // saveSessionEnv/restoreSessionEnv/clearSessionEnv come from tests/helpers.cjs
+  // (shared with tests/active-workstream-store.unit.test.cjs — see that file's
+  // comment; #2850 code review caught the two local copies had diverged).
+
+  test('resolves active workstream via GSD_WORKSTREAM env when no root STATE.md exists (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'workstreams', 'bot', 'STATE.md'),
+      '---\nstatus: executing\nmilestone: v1.0\n---\n'
+    );
+
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    t.after(() => restoreSessionEnv(saved));
+    process.env.GSD_WORKSTREAM = 'bot';
+
+    const s = readGsdState(proj);
+    assert.notEqual(s, null, 'must not silently return null when a workstream resolves');
+    assert.equal(s.status, 'executing');
+    assert.equal(s.milestone, 'v1.0');
+  });
+
+  test('resolves via GSD_WORKSTREAM env with CRLF frontmatter (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'workstreams', 'bot', 'STATE.md'),
+      '---\r\nstatus: planning\r\nmilestone: v2.0\r\n---\r\n'
+    );
+
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    t.after(() => restoreSessionEnv(saved));
+    process.env.GSD_WORKSTREAM = 'bot';
+
+    const s = readGsdState(proj);
+    assert.equal(s.status, 'planning');
+    assert.equal(s.milestone, 'v2.0');
+  });
+
+  test('flat root STATE.md takes precedence over workstream mode when both exist (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'STATE.md'),
+      '---\nstatus: executing\nmilestone: v-flat\n---\n'
+    );
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'workstreams', 'bot', 'STATE.md'),
+      '---\nstatus: planning\nmilestone: v-ws\n---\n'
+    );
+
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    t.after(() => restoreSessionEnv(saved));
+    process.env.GSD_WORKSTREAM = 'bot';
+
+    const s = readGsdState(proj);
+    assert.equal(s.milestone, 'v-flat', 'flat STATE.md must win — flat-mode behavior stays byte-for-byte unchanged');
+  });
+
+  test('returns an observable "no active workstream" signal when nothing resolves (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'other'), { recursive: true });
+
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    t.after(() => restoreSessionEnv(saved));
+
+    const s = readGsdState(proj);
+    assert.deepEqual(s, { noActiveWorkstream: true });
+  });
+
+  test('resolved workstream with no STATE.md yet degrades to null without crashing (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    // No STATE.md written under workstreams/bot/ — workstream exists, state doesn't yet.
+
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    t.after(() => restoreSessionEnv(saved));
+    process.env.GSD_WORKSTREAM = 'bot';
+
+    assert.equal(readGsdState(proj), null);
+  });
+
+  test('resolves active workstream via the stored shared pointer file (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, '.planning', 'workstreams', 'bot', 'STATE.md'),
+      '---\nstatus: verifying\nmilestone: v3.0\n---\n'
+    );
+    fs.writeFileSync(path.join(proj, '.planning', 'active-workstream'), 'bot\n');
+
+    const { _resetControllingTtyCacheForTests } = require('../gsd-core/bin/lib/active-workstream-store.cjs');
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    _resetControllingTtyCacheForTests();
+    t.after(() => {
+      restoreSessionEnv(saved);
+      _resetControllingTtyCacheForTests();
+    });
+
+    const s = readGsdState(proj);
+    assert.equal(s.status, 'verifying');
+    assert.equal(s.milestone, 'v3.0');
+  });
+
+  test('whitespace-only stored pointer file is treated as no active workstream (#2850)', (t) => {
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'bot'), { recursive: true });
+    fs.writeFileSync(path.join(proj, '.planning', 'active-workstream'), '   \n');
+
+    const { _resetControllingTtyCacheForTests } = require('../gsd-core/bin/lib/active-workstream-store.cjs');
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    _resetControllingTtyCacheForTests();
+    t.after(() => {
+      restoreSessionEnv(saved);
+      _resetControllingTtyCacheForTests();
+    });
+
+    assert.deepEqual(readGsdState(proj), { noActiveWorkstream: true });
+  });
+
+  test('stored pointer naming an absent workstream dir degrades to the sentinel WITHOUT deleting the pointer file (#2850)', (t) => {
+    // Regression for a review finding: readGsdState previously resolved via
+    // resolveActiveWorkstream's DEFAULT store lookup (getActiveWorkstream),
+    // which self-heals a stale pointer by deleting it (adapter.clear() in
+    // active-workstream-store.cts). The statusline renders once per prompt,
+    // so a merely-stale pointer (mid-rename, mid-cleanup, or any transient
+    // absence of the workstream dir) would be silently unlinked by a hook
+    // whose only job is to display text — violating issue #2850's AC4 ("the
+    // fix is purely additive to what's displayed"). The fix routes through
+    // peekActiveWorkstream, a read-only sibling that never calls clear().
+    // This test asserts BOTH halves: the render still degrades usefully,
+    // AND the pointer file survives the render untouched.
+    const proj = fs.mkdtempSync(path.join(tmpRoot, 'proj-'));
+    // workstream mode is detected via .planning/workstreams/ existing — but
+    // note it does NOT contain a 'ghost' directory, so the pointer below
+    // names a workstream that does not exist.
+    fs.mkdirSync(path.join(proj, '.planning', 'workstreams', 'other'), { recursive: true });
+    const pointerPath = path.join(proj, '.planning', 'active-workstream');
+    fs.writeFileSync(pointerPath, 'ghost\n');
+
+    const { _resetControllingTtyCacheForTests } = require('../gsd-core/bin/lib/active-workstream-store.cjs');
+    const saved = saveSessionEnv();
+    clearSessionEnv();
+    _resetControllingTtyCacheForTests();
+    t.after(() => {
+      restoreSessionEnv(saved);
+      _resetControllingTtyCacheForTests();
+    });
+
+    assert.equal(fs.existsSync(pointerPath), true, 'precondition: pointer file must exist before the render');
+
+    const s = readGsdState(proj);
+
+    assert.deepEqual(s, { noActiveWorkstream: true }, 'a stale pointer must still degrade to the observable sentinel');
+    assert.equal(
+      fs.existsSync(pointerPath),
+      true,
+      'a read-only render must never delete the pointer file — that is a write, and the statusline must be purely additive to what is displayed (#2850 AC4)'
+    );
+    assert.equal(
+      fs.readFileSync(pointerPath, 'utf8'),
+      'ghost\n',
+      'the pointer file content must be byte-for-byte unchanged by the render, not just present'
+    );
+  });
+});
+
+// ─── CLAUDE_CODE_AUTO_COMPACT_WINDOW context meter (#2219) ──────────────────
+
+describe('context meter: 100% is the auto-compact threshold (#2219, #4985)', () => {
+  const { runHook: runHookSeam } = require('./helpers/process-seam.cjs');
+  const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+
+  /**
+   * Run the statusline hook with a synthetic context_window payload.
+   * Returns { normalizedUsed, bridge } where:
+   *   - normalizedUsed: the % of the auto-compact threshold shown in the
+   *     statusline bar (parsed from the hook's stdout ANSI output, e.g. "52%")
+   *   - bridge: the JSON written to the bridge file for the context monitor
+   */
+  // The meter now consults settings.json for autoCompactEnabled, so pin
+  // CLAUDE_CONFIG_DIR to a scratch dir (optionally seeded with settings) —
+  // otherwise the developer's real ~/.claude/settings.json would steer the
+  // expected percentages below.
+  function runHook(remainingPct, contextWindowSize, acwEnv, settings) {
+    const sessionId = `test-2219-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-statusline-cfg-'));
+    if (settings) fs.writeFileSync(path.join(configDir, 'settings.json'), JSON.stringify(settings));
+    const payload = JSON.stringify({
+      model: { display_name: 'Claude' },
+      workspace: { current_dir: os.tmpdir() },
+      session_id: sessionId,
+      context_window: contextWindow({
+        remaining_percentage: remainingPct,
+        context_window_size: contextWindowSize,
+      }),
+    });
+
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: configDir };
+    delete env.DISABLE_AUTO_COMPACT;
+    delete env.DISABLE_COMPACT;
+    delete env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
+    if (acwEnv != null) {
+      env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(acwEnv);
+    } else {
+      delete env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+    }
+
+    const r = runHookSeam(hookPath, [], { input: payload, env, timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS });
+    cleanup(configDir);
+    const stdout = r.stdout;
+
+    // Parse normalized used% from the statusline bar output (e.g. "60%")
+    // Strip ANSI escape codes then extract the percentage digit(s) before "%"
+    // eslint-disable-next-line no-control-regex -- \x1b (ESC) is the required leading byte of ANSI SGR color sequences; matching it is the purpose of stripping ANSI codes from captured CLI/console output
+    const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    const match = clean.match(/(\d+)%/);
+    const normalizedUsed = match ? parseInt(match[1], 10) : null;
+
+    const bridgePath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+    let bridge = null;
+    try {
+      bridge = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+      fs.unlinkSync(bridgePath);
+    } catch { /* bridge may not exist if hook exited early */ }
+
+    return { normalizedUsed, bridge };
+  }
+
+  test('no window configured: 100% is the model window minus the 33k auto-compact buffer', () => {
+    // 50% of 1M = 500,000 tokens; threshold = 1,000,000 − 20,000 − 13,000 = 967,000
+    // → 500,000 / 967,000 = 51.7% → 52 (the retired 16.5% buffer gave 60).
+    const { normalizedUsed } = runHook(50, 1_000_000, null);
+    assert.strictEqual(normalizedUsed, 52);
+  });
+
+  test('CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000: 50% remaining → 100% (past the threshold)', () => {
+    // threshold = 400,000 − 33,000 = 367,000; 500,000 used is past it → clamped to 100.
+    const { normalizedUsed } = runHook(50, 1_000_000, 400_000);
+    assert.strictEqual(normalizedUsed, 100);
+  });
+
+  test('CLAUDE_CODE_AUTO_COMPACT_WINDOW=0 is ignored, as Claude Code ignores it', () => {
+    const { normalizedUsed } = runHook(50, 1_000_000, 0);
+    assert.strictEqual(normalizedUsed, 52);
+  });
+
+  test('ACW exceeds the model window: capped at the model window', () => {
+    // 2M → capped to 1M → the no-window-configured threshold, 967,000.
+    const { normalizedUsed } = runHook(50, 1_000_000, 2_000_000);
+    assert.strictEqual(normalizedUsed, 52);
+  });
+
+  test('autoCompactEnabled:false in settings.json → no buffer, bar shows raw used%', () => {
+    // 16.5% is ordinary usable context when auto-compact is off: raw 40% used
+    // must read 40 (was 48), and raw 83.5% used must not pin the bar at 100.
+    assert.strictEqual(runHook(60, 1_000_000, null, { autoCompactEnabled: false }).normalizedUsed, 40);
+    assert.strictEqual(runHook(16.5, 1_000_000, null, { autoCompactEnabled: false }).normalizedUsed, 84);
+    // …and it overrides CLAUDE_CODE_AUTO_COMPACT_WINDOW too (no compaction → no window).
+    assert.strictEqual(runHook(50, 1_000_000, 400_000, { autoCompactEnabled: false }).normalizedUsed, 50);
+    // autoCompactEnabled:true keeps the auto-compact threshold.
+    assert.strictEqual(runHook(50, 1_000_000, null, { autoCompactEnabled: true }).normalizedUsed, 52);
+  });
+
+  test('isAutoCompactDisabled: env switches and settings precedence, fail-soft', (t) => {
+    const { isAutoCompactDisabled, AUTO_COMPACT_DISABLE_ENV_KEYS, AUTO_COMPACT_ENV_TRUTHY } = require('../hooks/gsd-statusline.js');
+    const cfg = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-statusline-cfg-'));
+    const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-statusline-proj-'));
+    t.after(() => { cleanup(cfg); cleanup(proj); });
+    const env = { CLAUDE_CONFIG_DIR: cfg };
+    assert.equal(isAutoCompactDisabled(proj, env), false, 'nothing configured');
+    // The env names and accepted values are Claude Code's own, not invented:
+    // an invented name reads as 'not disabled' forever (PR #4959 review).
+    // Source: the shipped binary (claude 2.1.292). The resolution is
+    // `Boolean(Le(process.env.DISABLE_COMPACT) || a.DISABLE_AUTO_COMPACT)`; the
+    // second operand looks unwrapped but is the env registry's `D.bool()` field,
+    // i.e. `Le(value)` again, so both keys share one truthy set —
+    // `Le = e => ["1","true","yes","on"].includes(String(e).toLowerCase().trim())`
+    // (and 0/false/no/off/'' are therefore "not disabled" for both keys).
+    assert.deepEqual([...AUTO_COMPACT_DISABLE_ENV_KEYS], ['DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT']);
+    assert.deepEqual([...AUTO_COMPACT_ENV_TRUTHY], ['1', 'true', 'yes', 'on']);
+    for (const key of AUTO_COMPACT_DISABLE_ENV_KEYS) {
+      for (const value of ['1', 'true', 'yes', 'on', ' TRUE ', 'On']) {
+        assert.equal(isAutoCompactDisabled(proj, { ...env, [key]: value }), true, `${key}=${JSON.stringify(value)}`);
+      }
+      for (const value of ['0', 'false', '', 'no', 'off']) {
+        assert.equal(isAutoCompactDisabled(proj, { ...env, [key]: value }), false, `${key}=${JSON.stringify(value)}`);
+      }
+    }
+    assert.equal(isAutoCompactDisabled(proj, { ...env, DISABLE_AUTOCOMPACT: '1' }), false,
+      'DISABLE_AUTOCOMPACT is not a Claude Code variable and must not be honoured');
+    // Positive control for the fixture guard itself: without this, a future
+    // fixture could reintroduce an invented field and nothing would notice.
+    assert.throws(() => contextWindow({ total_tokens: 200000 }), /not a documented statusline field/);
+    assert.deepEqual(contextWindow({ context_window_size: 200000 }), { context_window_size: 200000 });
+    fs.writeFileSync(path.join(cfg, 'settings.json'), '{ not json');
+    assert.equal(isAutoCompactDisabled(proj, env), false, 'unparseable settings are ignored');
+    fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ autoCompactEnabled: false }));
+    assert.equal(isAutoCompactDisabled(proj, env), true, 'global settings');
+    fs.mkdirSync(path.join(proj, '.claude'));
+    fs.writeFileSync(path.join(proj, '.claude', 'settings.json'), JSON.stringify({ autoCompactEnabled: true }));
+    assert.equal(isAutoCompactDisabled(proj, env), false, 'project settings outrank global');
+    fs.writeFileSync(path.join(proj, '.claude', 'settings.local.json'), JSON.stringify({ autoCompactEnabled: false }));
+    assert.equal(isAutoCompactDisabled(proj, env), true, 'settings.local.json outranks settings.json');
+  });
+
+  test('bridge is on the bar\'s scale and carries the /context token counts (#2451, #4985)', () => {
+    // The monitor gates on remaining_percentage, so it has to count down to the
+    // threshold for WARNING/CRITICAL to fire before compaction. #2451 kept the
+    // bridge raw so the monitor's message matched /context; the token counts
+    // carry that agreement now.
+    const { normalizedUsed, bridge } = runHook(50, 1_000_000, 400_000);
+    assert.deepStrictEqual(
+      { used_pct: bridge.used_pct, remaining_percentage: bridge.remaining_percentage,
+        used_tokens: bridge.used_tokens, threshold_tokens: bridge.threshold_tokens },
+      { used_pct: normalizedUsed, remaining_percentage: 100 - normalizedUsed,
+        used_tokens: 500_000, threshold_tokens: 367_000 },
+    );
+  });
+});
+
+// ─── auto-compact threshold resolution (#4985) ──────────────────────────────
+
+describe('context meter resolves the auto-compact window the way Claude Code does (#4985)', () => {
+  const { runHook: runHookSeam } = require('./helpers/process-seam.cjs');
+  const { resolveAutoCompactThreshold, contextMeter, SETTINGS_FILE_MAX_BYTES } = require('../hooks/gsd-statusline.js');
+  const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+  const monitorPath = path.join(__dirname, '..', 'hooks', 'gsd-context-monitor.js');
+
+  // A context_window in the documented shape, with current_usage summing to
+  // `tokens` the way Claude Code's /context counts them.
+  function usageWindow(tokens, size) {
+    const pct = Math.round((tokens / size) * 100);
+    return contextWindow({
+      total_input_tokens: tokens,
+      total_output_tokens: 412,
+      context_window_size: size,
+      current_usage: {
+        input_tokens: 2,
+        cache_creation_input_tokens: 819,
+        cache_read_input_tokens: tokens - 821,
+        output_tokens: 412,
+      },
+      used_percentage: pct,
+      remaining_percentage: 100 - pct,
+    });
+  }
+
+  function scratch(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-4985-'));
+    t.after(() => cleanup(root));
+    const cfg = path.join(root, 'cfg');
+    const proj = path.join(root, 'proj');
+    fs.mkdirSync(cfg);
+    fs.mkdirSync(path.join(proj, '.claude'), { recursive: true });
+    return { cfg, proj, env: { CLAUDE_CONFIG_DIR: cfg } };
+  }
+
+  function render({ cfg, proj }, tokens, size, extraEnv = {}) {
+    const sessionId = `test-4985-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: cfg, ...extraEnv };
+    for (const key of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT']) {
+      if (!(key in extraEnv)) delete env[key];
+    }
+    const payload = JSON.stringify({
+      model: { display_name: 'Claude' },
+      workspace: { current_dir: proj, project_dir: proj },
+      session_id: sessionId,
+      context_window: usageWindow(tokens, size),
+    });
+    const r = runHookSeam(hookPath, [], { input: payload, env, timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS });
+    // eslint-disable-next-line no-control-regex -- \x1b is the required leading byte of ANSI SGR sequences
+    const match = r.stdout.replace(/\x1b\[[0-9;]*m/g, '').match(/(\d+)%/);
+    const bridgePath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+    const bridge = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+    return { used: match ? parseInt(match[1], 10) : null, bridge, bridgePath, sessionId, env };
+  }
+
+  test('settings autoCompactWindow (what /autocompact saves) sets 100%, and the monitor goes CRITICAL before compaction', (t) => {
+    // The reported case: /autocompact 650k on a 1M model, 383 tokens before
+    // Claude Code compacts at 650,000 − 33,000 = 617,000. It read 74% and the
+    // monitor stayed silent.
+    const dirs = scratch(t);
+    fs.writeFileSync(path.join(dirs.cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 650_000 }));
+    const { used, bridge, bridgePath, sessionId, env } = render(dirs, 616_927, 1_000_000);
+    t.after(() => {
+      for (const f of [bridgePath, path.join(os.tmpdir(), `claude-ctx-${sessionId}-warned.json`)]) {
+        try { fs.unlinkSync(f); } catch { /* noop */ }
+      }
+    });
+    assert.ok(used >= 99, `meter must read ≥99% at 616,927 of 617,000, got ${used}`);
+    assert.strictEqual(bridge.threshold_tokens, 617_000);
+    assert.strictEqual(bridge.used_tokens, 616_927);
+    assert.ok(bridge.remaining_percentage <= 1, `bridge remaining must count down to the threshold, got ${bridge.remaining_percentage}`);
+
+    const r = runHookSeam(monitorPath, [], {
+      input: JSON.stringify({ session_id: sessionId, cwd: dirs.proj, hook_event_name: 'PostToolUse', tool_name: 'Bash' }),
+      env,
+      timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS,
+    });
+    const message = JSON.parse(r.stdout).hookSpecificOutput.additionalContext;
+    assert.match(message, /^CONTEXT CRITICAL: Usage at 100% \(617k of 617k usable tokens\)/);
+  });
+
+  test('CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000 on a 200K model: 100,000 tokens is 85%', (t) => {
+    // threshold 150,000 − 33,000 = 117,000. With the old 1M fallback this read 100%.
+    const { used } = render(scratch(t), 100_000, 200_000, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '150000' });
+    assert.strictEqual(used, 85);
+  });
+
+  test('CLAUDE_CODE_AUTO_COMPACT_WINDOW=650000 on a 1M model: 100% lands at the threshold, not the window', (t) => {
+    // It read 95%: the old formula put 100% at 650,000, after compaction.
+    const { used } = render(scratch(t), 616_927, 1_000_000, { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '650000' });
+    assert.ok(used >= 99, `got ${used}`);
+  });
+
+  test('project settings are read from workspace.project_dir, not the current directory', (t) => {
+    const dirs = scratch(t);
+    fs.writeFileSync(path.join(dirs.proj, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 400_000 }));
+    const sub = path.join(dirs.proj, 'src');
+    fs.mkdirSync(sub);
+    const sessionId = `test-4985-pd-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: dirs.cfg };
+    for (const key of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT']) delete env[key];
+    runHookSeam(hookPath, [], {
+      input: JSON.stringify({
+        model: { display_name: 'Claude' },
+        workspace: { current_dir: sub, project_dir: dirs.proj },
+        session_id: sessionId,
+        context_window: usageWindow(100_000, 1_000_000),
+      }),
+      env,
+      timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS,
+    });
+    const bridgePath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+    const bridge = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+    fs.unlinkSync(bridgePath);
+    assert.strictEqual(bridge.threshold_tokens, 367_000);
+  });
+
+  test('a FIFO at the project\'s .claude/settings.local.json does not block the render', { skip: process.platform === 'win32' }, (t) => {
+    // The project's .claude/ is repository content. Read blocking, a FIFO there hung the hook
+    // until it was killed, and no bridge was written.
+    const dirs = scratch(t);
+    fs.writeFileSync(path.join(dirs.cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 650_000 }));
+    const fifo = path.join(dirs.proj, '.claude', 'settings.local.json');
+    const r = runHookSeam(fifo, [], { interpreter: 'mkfifo', timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS });
+    assert.strictEqual(r.exitCode, 0, `mkfifo ${fifo}: ${r.stderr}`);
+    const { bridge, bridgePath } = render(dirs, 100_000, 1_000_000);
+    fs.unlinkSync(bridgePath);
+    assert.strictEqual(bridge.threshold_tokens, 617_000, 'the FIFO is absent; the user setting decides');
+  });
+
+  test('a settings file that is not a regular file, or is over the size cap, is absent; a symlinked one is read', (t) => {
+    const { cfg, proj, env } = scratch(t);
+    const M = 1_000_000;
+    const project = path.join(proj, '.claude', 'settings.json');
+    fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 650_000 }));
+
+    fs.mkdirSync(project);
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 617_000, 'a directory is absent');
+    fs.rmdirSync(project);
+
+    // A JSON document of exactly `bytes` bytes setting a 500k window.
+    const sized = (bytes) => {
+      const head = '{"autoCompactWindow":500000,"pad":"';
+      return head + 'x'.repeat(bytes - head.length - 2) + '"}';
+    };
+    for (const [bytes, expected, label] of [
+      [SETTINGS_FILE_MAX_BYTES - 1, 467_000, 'one byte under the cap is read'],
+      [SETTINGS_FILE_MAX_BYTES, 467_000, 'exactly the cap is read'],
+      [SETTINGS_FILE_MAX_BYTES + 1, 617_000, 'one byte over the cap is absent'],
+    ]) {
+      const body = sized(bytes);
+      assert.strictEqual(Buffer.byteLength(body), bytes);
+      fs.writeFileSync(project, body);
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), expected, label);
+    }
+    fs.unlinkSync(project);
+
+    const target = path.join(cfg, 'linked-settings.json');
+    fs.writeFileSync(target, JSON.stringify({ autoCompactWindow: 500_000 }));
+    try {
+      fs.symlinkSync(target, project);
+    } catch (e) {
+      t.skip(`symlinks unavailable here: ${e.code}`);
+      return;
+    }
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 467_000, 'a symlinked settings file is followed');
+  });
+
+  test('a settings file that grows or shrinks between the size check and the read is absent', (t) => {
+    // Stands in for a writer racing the render: fstat reports one size, the file holds another.
+    // Read to EOF instead, a 2-byte file grown past the cap was parsed whole.
+    // The project file is the only settings file, so the mocked size is only ever its own.
+    const { proj, env } = scratch(t);
+    const M = 1_000_000;
+    const project = path.join(proj, '.claude', 'settings.json');
+    const head = '{"autoCompactWindow":500000,"pad":"';
+    fs.writeFileSync(project, head + 'x'.repeat(SETTINGS_FILE_MAX_BYTES - head.length) + '"}');
+    const realFstat = fs.fstatSync;
+    let reported;
+    t.mock.method(fs, 'fstatSync', (fd) => {
+      const st = realFstat(fd);
+      return { isFile: () => st.isFile(), size: reported(st.size) };
+    });
+    reported = () => 2;
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 967_000, 'grew past the cap after a 2-byte check');
+    fs.writeFileSync(project, JSON.stringify({ autoCompactWindow: 500_000 }));
+    reported = (size) => size + 10;
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 967_000, 'shrank after the check');
+    reported = (size) => size;
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 467_000, 'unchanged: read');
+  });
+
+  test('a hostile model key in project settings does not stall the render', (t) => {
+    // 131,072 repeated [1m] suffixes in a 524 KB file, under the size cap. Normalised to a fixpoint
+    // one suffix per pass, this key took 16.9 s and the hook was killed before writing its bridge.
+    const dirs = scratch(t);
+    fs.writeFileSync(path.join(dirs.cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 650_000 }));
+    const hostile = 'claude-opus-5-5' + '[1m]'.repeat(131_072);
+    fs.writeFileSync(path.join(dirs.proj, '.claude', 'settings.json'),
+      JSON.stringify({ modelSettings: { [hostile]: { autoCompactWindow: 400_000 } } }));
+    const { bridge, bridgePath } = render(dirs, 100_000, 1_000_000);
+    fs.unlinkSync(bridgePath);
+    assert.strictEqual(bridge.threshold_tokens, 617_000, 'the over-long key is no model\'s; the user setting decides');
+  });
+
+  test('resolveAutoCompactThreshold: precedence, validation, caps, and the pct override', (t) => {
+    const { cfg, proj, env } = scratch(t);
+    const M = 1_000_000;
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 967_000, 'model window');
+    assert.strictEqual(resolveAutoCompactThreshold(200_000, proj, env), 167_000, '200K model: the 16.5% the old code hardcoded');
+
+    fs.writeFileSync(path.join(cfg, 'settings.json'), JSON.stringify({ autoCompactWindow: 650_000 }));
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 617_000, 'user settings');
+    assert.strictEqual(resolveAutoCompactThreshold(200_000, proj, env), 167_000, 'capped at the model window');
+    fs.writeFileSync(path.join(proj, '.claude', 'settings.json'), JSON.stringify({ autoCompactWindow: 500_000 }));
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 467_000, 'project settings outrank user');
+    fs.writeFileSync(path.join(proj, '.claude', 'settings.local.json'), JSON.stringify({ autoCompactWindow: 300_000 }));
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 267_000, 'settings.local.json outranks settings.json');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800000' }), 767_000, 'env outranks settings');
+
+    for (const bad of [50_000, 1_500_000, '400000', 400_000.5, null]) {
+      fs.writeFileSync(path.join(proj, '.claude', 'settings.local.json'), JSON.stringify({ autoCompactWindow: bad }));
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 467_000, `setting ${JSON.stringify(bad)} is not a window`);
+    }
+    for (const bad of ['abc', '0', '-5', '']) {
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: bad }), 467_000, `env ${JSON.stringify(bad)} is ignored`);
+    }
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: '50000' }), 67_000, 'env raised to 100k');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: '5000000' }), 967_000, 'env capped at 1M');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: '650_000' }), 617_000, 'digit separators');
+
+    const noWindow = { CLAUDE_CONFIG_DIR: path.join(cfg, 'absent') };
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '50' }), 490_000, 'floor(980,000 × 50%)');
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '99' }), 967_000, 'only ever lowers the threshold');
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '150' }), 967_000, 'out-of-range pct ignored');
+
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, DISABLE_AUTO_COMPACT: '1' }), null, 'disabled: no threshold');
+  });
+
+  test('resolveAutoCompactThreshold: the 100k–1M window bounds, the pct override, and threshold > 0, each at limit−1 / limit / limit+1', (t) => {
+    const { cfg, proj, env } = scratch(t);
+    // A 2M model window, so a window the setting or env rejects (fallback 2,000,000 − 33,000)
+    // differs from one it accepts at 1M (967,000).
+    const M2 = 2_000_000;
+    const FALLBACK = M2 - 33_000;
+    const user = path.join(cfg, 'settings.json');
+    for (const [value, expected] of [
+      [99_999, FALLBACK], [100_000, 67_000], [100_001, 67_001],
+      [999_999, 966_999], [1_000_000, 967_000], [1_000_001, FALLBACK],
+    ]) {
+      fs.writeFileSync(user, JSON.stringify({ autoCompactWindow: value }));
+      assert.strictEqual(resolveAutoCompactThreshold(M2, proj, env), expected, `setting ${value}`);
+      fs.writeFileSync(user, JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: value } } }));
+      assert.strictEqual(resolveAutoCompactThreshold(M2, proj, env, 'claude-opus-5-5'), expected, `per-model setting ${value}`);
+    }
+    fs.unlinkSync(user);
+
+    // The env value is clamped into 100k–1M rather than rejected; only a non-positive one is ignored.
+    for (const [raw, expected] of [
+      ['0', FALLBACK], ['1', 67_000],
+      ['99999', 67_000], ['100000', 67_000], ['100001', 67_001],
+      ['999999', 966_999], ['1000000', 967_000], ['1000001', 967_000],
+    ]) {
+      assert.strictEqual(resolveAutoCompactThreshold(M2, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: raw }), expected, `env ${raw}`);
+    }
+
+    // pct: 0 < pct ≤ 100, on a 1M window (effective 980,000, threshold 967,000). At pct = 100 the
+    // override is floor(980,000) — always above the threshold it is min'd with — so 100 and 101 both
+    // read 967,000: the upper edge is not observable, and the lower one is.
+    const M = 1_000_000;
+    const noWindow = { CLAUDE_CONFIG_DIR: path.join(cfg, 'absent') };
+    for (const [pct, expected] of [
+      ['-1', 967_000], ['0', 967_000], ['1', 9_800], ['100', 967_000], ['101', 967_000],
+    ]) {
+      assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: pct }), expected, `pct ${pct}`);
+    }
+
+    // threshold > 0. A pct that floors the threshold to 0 is no threshold, and so is a model window
+    // no larger than the 33,000 Claude Code holds back.
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '0.0001' }), null, 'pct floors to 0');
+    assert.strictEqual(resolveAutoCompactThreshold(M, null, { ...noWindow, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '0.000103' }), 1, 'pct floors to 1');
+    for (const [modelWindow, expected] of [[32_999, null], [33_000, null], [33_001, 1]]) {
+      assert.strictEqual(resolveAutoCompactThreshold(modelWindow, null, noWindow), expected, `model window ${modelWindow}`);
+    }
+  });
+
+  test('resolveAutoCompactThreshold: the per-model window /autocompact saves in modelSettings (claude 2.1.292)', (t) => {
+    const { cfg, proj, env } = scratch(t);
+    const M = 1_000_000;
+    const write = (file, obj) => fs.writeFileSync(file, JSON.stringify(obj));
+    const user = path.join(cfg, 'settings.json');
+    const project = path.join(proj, '.claude', 'settings.json');
+
+    // What `/autocompact 650k` writes on a current Claude Code.
+    write(user, { modelSettings: { 'claude-opus-5-5': { effortLevel: 'high', autoCompactWindow: 650_000 } } });
+    for (const id of ['claude-opus-5-5', 'claude-opus-5-5[1m]', 'claude-opus-5-5-20260101',
+      'us.anthropic.claude-opus-5-5-v1:0', 'claude-opus-5-5@20260101']) {
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, id), 617_000, `${id} keys as claude-opus-5-5`);
+    }
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-sonnet-5'), 967_000, 'another model: no entry');
+    // A Bedrock revision suffix strips only after a version or date segment; a model whose
+    // own name ends in -v<n> keeps it, so two such models never share an entry.
+    write(user, { modelSettings: { 'claude-v1': { autoCompactWindow: 100_000 }, 'claude-v2': { autoCompactWindow: 200_000 },
+      'claude-sonnet-4-5': { autoCompactWindow: 300_000 } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'anthropic.claude-v1'), 67_000, 'claude-v1 keys as itself');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'anthropic.claude-v2'), 167_000, 'claude-v2 keys as itself, not claude');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'us.anthropic.claude-sonnet-4-5-20250929-v1:0'), 267_000, 'a dated Bedrock id keys as its canonical name');
+    write(user, { modelSettings: { 'claude-opus-5-5': { effortLevel: 'high', autoCompactWindow: 650_000 } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env), 967_000, 'no model id: no entry');
+
+    write(user, { autoCompactWindow: 400_000, modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 650_000 } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 617_000, 'the model entry wins over the default');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-sonnet-5'), 367_000, 'other models take the default');
+
+    write(project, { modelSettings: { 'claude-sonnet-5': { autoCompactWindow: 300_000 } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-sonnet-5'), 267_000, 'a higher file layers its model entries over the lower ones');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 617_000, '…and keeps the lower file\'s entries for other models');
+
+    write(project, { autoCompactWindow: 500_000 });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 467_000, 'a higher top-level window drops the lower files\' model entries');
+
+    write(project, { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 'auto' } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 967_000, '"auto" is Claude Code\'s tuned window: the model window here');
+
+    write(project, { modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 50_000 } } });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 617_000, 'an invalid model entry is absent');
+
+    // An INVALID top-level value is absent, so its file merges rather than resets: the lower
+    // file's per-model entry survives (a valid top-level value would have dropped it).
+    for (const bad of [50_000, '400000', null]) {
+      write(project, { autoCompactWindow: bad });
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 617_000, `top-level ${JSON.stringify(bad)} merges`);
+      assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-sonnet-5'), 367_000, `top-level ${JSON.stringify(bad)} keeps the lower default`);
+    }
+    // "auto" is a VALID top-level value: like any other it resets the default and drops the lower
+    // files' per-model entries, and the default it sets is Claude Code's own window.
+    write(project, { autoCompactWindow: 'auto' });
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-opus-5-5'), 967_000, 'top-level "auto" drops the lower model entry');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, env, 'claude-sonnet-5'), 967_000, 'top-level "auto" replaces the lower default');
+    assert.strictEqual(resolveAutoCompactThreshold(M, proj, { ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: '800000' }, 'claude-opus-5-5'), 767_000, 'env outranks the model entry');
+  });
+
+  test('the hook passes the payload\'s model.id through to the per-model window', (t) => {
+    const dirs = scratch(t);
+    fs.writeFileSync(path.join(dirs.cfg, 'settings.json'),
+      JSON.stringify({ modelSettings: { 'claude-opus-5-5': { autoCompactWindow: 650_000 } } }));
+    const sessionId = `test-4985-model-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: dirs.cfg };
+    for (const key of ['CLAUDE_CODE_AUTO_COMPACT_WINDOW', 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE', 'DISABLE_AUTO_COMPACT', 'DISABLE_COMPACT']) delete env[key];
+    runHookSeam(hookPath, [], {
+      input: JSON.stringify({
+        model: { id: 'claude-opus-5-5[1m]', display_name: 'Opus' },
+        workspace: { current_dir: dirs.proj, project_dir: dirs.proj },
+        session_id: sessionId,
+        context_window: usageWindow(616_927, 1_000_000),
+      }),
+      env,
+      timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS,
+    });
+    const bridgePath = path.join(os.tmpdir(), `claude-ctx-${sessionId}.json`);
+    const bridge = JSON.parse(fs.readFileSync(bridgePath, 'utf8'));
+    fs.unlinkSync(bridgePath);
+    assert.deepStrictEqual(
+      { used_pct: bridge.used_pct, threshold_tokens: bridge.threshold_tokens },
+      { used_pct: 100, threshold_tokens: 617_000 },
+    );
+  });
+
+  test('contextMeter: disabled compaction measures against the model window; no window size falls back unscaled', () => {
+    const env = { CLAUDE_CONFIG_DIR: path.join(os.tmpdir(), 'gsd-4985-absent-cfg') };
+    assert.deepStrictEqual(
+      contextMeter(usageWindow(500_000, 1_000_000), null, { ...env, DISABLE_AUTO_COMPACT: '1' }),
+      { used: 50, remaining: 50, usedTokens: 500_000, limitTokens: 1_000_000 },
+    );
+    assert.deepStrictEqual(
+      contextMeter(contextWindow({ remaining_percentage: 35 }), null, env),
+      { used: 65, remaining: 35, usedTokens: null, limitTokens: null },
+    );
+    assert.strictEqual(contextMeter(contextWindow({ context_window_size: 1_000_000, current_usage: null, remaining_percentage: null }), null, env), null);
+  });
+});
+
+describe('auto-compact window and context meter: properties (#4985)', () => {
+  const fc = require('./helpers/fast-check-setup.cjs');
+  const {
+    parseAutoCompactWindowEnv, canonicalModelKey, isAutoCompactWindowValue,
+    resolveAutoCompactThreshold, contextMeter,
+  } = require('../hooks/gsd-statusline.js');
+  const MIN = 100_000;
+  const MAX = 1_000_000;
+  const RESERVE = 33_000;
+
+  // A config dir that does not exist, so no settings file is read: the env is the only input.
+  function noFiles(t) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-4985-prop-'));
+    t.after(() => cleanup(root));
+    return { CLAUDE_CONFIG_DIR: path.join(root, 'absent') };
+  }
+  // null is "no threshold", which the meter treats as the model window; 0 orders it below any threshold.
+  const thr = (...args) => resolveAutoCompactThreshold(...args) ?? 0;
+
+  // Strings built from the pieces canonicalModelKey strips, so a run reaches its rules
+  // rather than only ever generating strings none of them match.
+  const keyPiece = fc.constantFrom('[1m]', '[1M]', 'anthropic.', 'us.', 'Anthropic.', '-v1', '-v2', ':0',
+    '@20250101', '-20250101', '-', '5', 'claude', 'opus', ' ', '\t', 'x');
+  const keyish = fc.oneof(fc.string(), fc.array(keyPiece, { maxLength: 12 }).map(a => a.join('')));
+
+  test('parseAutoCompactWindowEnv never throws, and returns null or an integer window in 100k–1M', () => {
+    fc.assert(fc.property(fc.oneof(fc.string(), fc.anything()), (raw) => {
+      const n = parseAutoCompactWindowEnv(raw);
+      return n === null || (Number.isInteger(n) && n >= MIN && n <= MAX && isAutoCompactWindowValue(n));
+    }));
+  });
+
+  test('parseAutoCompactWindowEnv reads back any 100k–1M integer, plain or digit-grouped', () => {
+    fc.assert(fc.property(fc.integer({ min: MIN, max: MAX }), fc.constantFrom('', ',', '_'), (n, sep) => {
+      const grouped = String(n).replace(/\B(?=(\d{3})+(?!\d))/g, sep);
+      return parseAutoCompactWindowEnv(grouped) === n && parseAutoCompactWindowEnv(` ${grouped} `) === n;
+    }));
+  });
+
+  test('parseAutoCompactWindowEnv is monotone in a positive value, clamping it into 100k–1M', () => {
+    fc.assert(fc.property(fc.integer({ min: 1, max: 10_000_000 }), fc.integer({ min: 1, max: 10_000_000 }), (a, b) => {
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      const pl = parseAutoCompactWindowEnv(String(lo));
+      return pl <= parseAutoCompactWindowEnv(String(hi)) && pl === Math.max(MIN, Math.min(MAX, lo));
+    }));
+  });
+
+  test('canonicalModelKey is idempotent: a key is its own key', () => {
+    fc.assert(fc.property(keyish, (s) => canonicalModelKey(canonicalModelKey(s)) === canonicalModelKey(s)));
+    fc.assert(fc.property(fc.anything().filter(v => typeof v !== 'string'), (v) => canonicalModelKey(v) === ''));
+  });
+
+  test('canonicalModelKey: a key of up to 256 characters is kept; a longer one is no model\'s', () => {
+    assert.strictEqual(canonicalModelKey('a'.repeat(255)), 'a'.repeat(255));
+    assert.strictEqual(canonicalModelKey('a'.repeat(256)), 'a'.repeat(256));
+    assert.strictEqual(canonicalModelKey('a'.repeat(257)), '');
+    assert.strictEqual(canonicalModelKey('claude-opus-5-5' + '[1m]'.repeat(60)), 'claude-opus-5-5', 'repeated suffixes, under the cap');
+  });
+
+  test('canonicalModelKey is spelling-invariant: dated, [1m], Bedrock and Vertex ids key as the model', () => {
+    const base = fc.tuple(
+      fc.constantFrom('opus', 'sonnet', 'haiku', 'fable'),
+      fc.array(fc.integer({ min: 0, max: 9 }), { minLength: 1, maxLength: 3 }),
+    ).map(([family, version]) => `claude-${family}-${version.join('-')}`);
+    const date = fc.integer({ min: 20240101, max: 20991231 }).map(String);
+    fc.assert(fc.property(base, date, fc.constantFrom('', 'us.', 'eu.', 'apac.'), fc.integer({ min: 1, max: 9 }), fc.boolean(),
+      (model, d, region, rev, upper) => {
+        const spell = (s) => (upper ? s.toUpperCase() : s);
+        return [
+          model, `${model}[1m]`, `${model}-${d}`, `${model}@${d}`,
+          `${region}anthropic.${model}-v${rev}:0`, `${region}anthropic.${model}-${d}-v${rev}:0`,
+        ].every(id => canonicalModelKey(spell(id)) === model);
+      }));
+  });
+
+  test('the threshold is a positive integer at most min(window, model window) − 33,000, or none', (t) => {
+    const env = noFiles(t);
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 3_000_000 }),
+      fc.option(fc.integer({ min: 1, max: 5_000_000 }), { nil: undefined }),
+      fc.option(fc.double({ min: 0, max: 150, noNaN: true }), { nil: undefined }),
+      (modelWindow, window, pct) => {
+        const e = { ...env };
+        if (window !== undefined) e.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(window);
+        if (pct !== undefined) e.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = String(pct);
+        const got = resolveAutoCompactThreshold(modelWindow, null, e);
+        const w = window === undefined ? modelWindow : Math.max(MIN, Math.min(MAX, window));
+        const ceiling = Math.min(w, modelWindow) - RESERVE;
+        return got === null ? ceiling <= 0 || pct !== undefined : Number.isInteger(got) && got >= 1 && got <= ceiling;
+      }));
+  });
+
+  test('the threshold never falls as the window or the model window grows, and the pct override only ever lowers it', (t) => {
+    const env = noFiles(t);
+    const pair = fc.tuple(fc.integer({ min: 1, max: 3_000_000 }), fc.integer({ min: 1, max: 3_000_000 }))
+      .map(([a, b]) => (a <= b ? [a, b] : [b, a]));
+    fc.assert(fc.property(pair, fc.integer({ min: 1, max: 3_000_000 }), ([lo, hi], other) => {
+      const withWindow = (w) => ({ ...env, CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(w) });
+      return thr(other, null, withWindow(lo)) <= thr(other, null, withWindow(hi)) &&
+        thr(lo, null, withWindow(other)) <= thr(hi, null, withWindow(other)) &&
+        thr(lo, null, env) <= thr(hi, null, env);
+    }));
+    // Weighted toward 95–100: only above ~98.7% does floor(effective × pct) pass the threshold it is
+    // min'd with, so that is the band where an override that raised the threshold would show.
+    const pctArb = fc.oneof(fc.double({ min: -10, max: 200, noNaN: true }), fc.double({ min: 95, max: 100, noNaN: true }));
+    fc.assert(fc.property(fc.integer({ min: 1, max: 3_000_000 }), pctArb, (modelWindow, pct) =>
+      thr(modelWindow, null, { ...env, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: String(pct) }) <= thr(modelWindow, null, env)));
+  });
+
+  test('contextMeter: used + remaining = 100, both integers in 0–100, against the threshold or the model window', (t) => {
+    const env = noFiles(t);
+    fc.assert(fc.property(
+      fc.integer({ min: 1, max: 3_000_000 }), fc.integer({ min: 0, max: 5_000_000 }), fc.integer({ min: 0, max: 5_000_000 }),
+      (size, tokens, more) => {
+        const meter = (n) => contextMeter(contextWindow({
+          context_window_size: size,
+          current_usage: { input_tokens: n, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        }), null, env);
+        const m = meter(tokens);
+        // The percentage itself: the rounded share of the limit, pinned at 100 past it.
+        const pct = (tokens / m.limitTokens) * 100;
+        return Number.isInteger(m.used) && m.used >= 0 && m.used <= 100 && m.used + m.remaining === 100 &&
+          (pct >= 100 ? m.used === 100 : Math.abs(m.used - pct) <= 0.5) &&
+          m.usedTokens === tokens && m.limitTokens === (resolveAutoCompactThreshold(size, null, env) ?? size) &&
+          meter(tokens + more).used >= m.used;
+      }));
+  });
+
+  test('the settings merge matches a reference model of Claude Code\'s merge, for every generated set of four files', (t) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-4985-prop-merge-'));
+    t.after(() => cleanup(root));
+    const cfg = path.join(root, 'cfg');
+    const proj = path.join(root, 'proj');
+    fs.mkdirSync(cfg);
+    fs.mkdirSync(path.join(proj, '.claude'), { recursive: true });
+    // Highest precedence first, as Claude Code reads them.
+    const files = [
+      path.join(proj, '.claude', 'settings.local.json'), path.join(proj, '.claude', 'settings.json'),
+      path.join(cfg, 'settings.local.json'), path.join(cfg, 'settings.json'),
+    ];
+    const M2 = 2_000_000; // above every valid window, so the threshold reads the window back exactly
+    // The model each generated spelling belongs to — stated here, not derived from canonicalModelKey,
+    // so a key bug cannot hide a merge bug.
+    const MODEL_OF = { 'claude-opus-5-5': 'claude-opus-5-5', 'CLAUDE-OPUS-5-5-20260101': 'claude-opus-5-5', 'claude-sonnet-5': 'claude-sonnet-5' };
+    const isWindow = (v) => v === 'auto' || (Number.isInteger(v) && v >= MIN && v <= MAX);
+    const value = fc.oneof(fc.integer({ min: MIN, max: MAX }), fc.constantFrom('auto', 50_000, 1_500_000, '400000', null));
+    const entry = fc.option(fc.record({ autoCompactWindow: value }), { nil: undefined });
+    const settings = fc.option(fc.record({
+      top: fc.option(value, { nil: undefined }),
+      models: fc.record({ 'claude-opus-5-5': entry, 'CLAUDE-OPUS-5-5-20260101': entry, 'claude-sonnet-5': entry }),
+    }), { nil: undefined });
+
+    // The documented merge (readAutoCompactWindowSetting): lowest precedence first; each file's
+    // valid model entries layer over the lower files', the canonical spelling winning within a
+    // file; a valid top-level value becomes the default and drops the lower files' model entries.
+    // The model's own entry wins over the default; "auto" or nothing is the model window.
+    function referenceWindow(four, model) {
+      let fallback;
+      let byModel = {};
+      for (const f of [...four].reverse()) {
+        if (f === undefined) continue;
+        const own = {};
+        for (const [name, e] of Object.entries(f.models)) {
+          if (e === undefined || !isWindow(e.autoCompactWindow)) continue;
+          if (name === MODEL_OF[name] || !(MODEL_OF[name] in own)) own[MODEL_OF[name]] = e.autoCompactWindow;
+        }
+        if (isWindow(f.top)) {
+          fallback = f.top;
+          byModel = own;
+        } else {
+          byModel = { ...byModel, ...own };
+        }
+      }
+      const v = model in byModel ? byModel[model] : fallback;
+      return Number.isInteger(v) ? v : M2;
+    }
+
+    fc.assert(fc.property(fc.tuple(settings, settings, settings, settings), fc.constantFrom('claude-opus-5-5', 'claude-sonnet-5'), (four, model) => {
+      four.forEach((f, i) => {
+        try { fs.unlinkSync(files[i]); } catch { /* absent */ }
+        if (f === undefined) return;
+        const doc = { modelSettings: {} };
+        if (f.top !== undefined) doc.autoCompactWindow = f.top;
+        for (const [name, e] of Object.entries(f.models)) if (e !== undefined) doc.modelSettings[name] = e;
+        fs.writeFileSync(files[i], JSON.stringify(doc));
+      });
+      const window = resolveAutoCompactThreshold(M2, proj, { CLAUDE_CONFIG_DIR: cfg }, model) + RESERVE;
+      return window === referenceWindow(four, model);
+    }));
+  });
+});
+
+// ─── auto-compact buffer boundary tests (#1194) ─────────────────────────────
+
+describe('context meter boundary: acw at/near totalCtx does not pin used at 100% (#1194)', () => {
+  const { execFileSync } = require('node:child_process');
+  const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+
+  /**
+   * Run the hook with a given acw and totalTokens; remaining fixed at 50%.
+   * Returns the normalizedUsed percentage shown in the statusline bar.
+   */
+  function runBoundaryHook(remainingPct, contextWindowSize, acwEnv) {
+    const sessionId = `test-1194-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const payload = JSON.stringify({
+      model: { display_name: 'Claude' },
+      workspace: { current_dir: os.tmpdir() },
+      session_id: sessionId,
+      context_window: contextWindow({
+        remaining_percentage: remainingPct,
+        context_window_size: contextWindowSize,
+      }),
+    });
+
+    // Pin CLAUDE_CONFIG_DIR to an empty scratch dir so the developer's real
+    // ~/.claude/settings.json (autoCompactEnabled) cannot steer the buffer.
+    const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-statusline-cfg-'));
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: configDir };
+    delete env.DISABLE_AUTO_COMPACT;
+    delete env.DISABLE_COMPACT;
+    delete env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
+    if (acwEnv != null) {
+      env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(acwEnv);
+    } else {
+      delete env.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+    }
+
+    let stdout = '';
+    try {
+      stdout = execFileSync(process.execPath, [hookPath], {
+        input: payload,
+        env,
+        encoding: 'utf8',
+        timeout: STATUSLINE_HOOK_TIMEOUT_MS,
+      });
+    } catch (e) {
+      stdout = e.stdout || '';
+    } finally {
+      cleanup(configDir);
+    }
+
+    // Strip ANSI escape codes then extract the percentage digit(s) before "%"
+    // eslint-disable-next-line no-control-regex -- \x1b is the required leading byte of ANSI SGR sequences
+    const clean = stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    const match = clean.match(/(\d+)%/);
+    return match ? parseInt(match[1], 10) : null;
+  }
+
+  // acw == totalCtx - 1 (one token below total): threshold 999,999 − 33,000,
+  // so 500,000 used is 500,000 / 966,999 ≈ 51.7% → 52.
+  test('acw = totalCtx - 1: used reflects actual remaining context (≈52%)', () => {
+    const totalCtx = 1_000_000;
+    const acw = totalCtx - 1; // 999999
+    const used = runBoundaryHook(50, totalCtx, acw);
+    assert.strictEqual(used, 52, `expected 52 when acw=totalCtx-1, got: ${used}`);
+  });
+
+  // acw == totalCtx (the triggering edge case of #1194): the threshold is the
+  // model window minus the 33k auto-compact buffer, so used must not stick at 100.
+  test('acw = totalCtx: used MUST NOT stick at 100 (division-by-zero boundary)', () => {
+    const totalCtx = 1_000_000;
+    const acw = totalCtx; // 1000000
+    const used = runBoundaryHook(50, totalCtx, acw);
+    // 500,000 / 967,000 → 52. Must not be 100.
+    assert.ok(
+      used !== null && used !== 100,
+      `expected used != 100 when acw==totalCtx (div-by-zero boundary), got: ${used}`
+    );
+    // Also assert the bar is in a sane range (should be around 52%)
+    assert.ok(
+      used >= 0 && used <= 99,
+      `expected used in 0-99 when acw==totalCtx, got: ${used}`
+    );
+  });
+
+  // acw == totalCtx + 1 (exceeds total): the window is capped at the model
+  // window, so this is the acw == totalCtx case again.
+  test('acw = totalCtx + 1: capped at the model window', () => {
+    const totalCtx = 1_000_000;
+    const acw = totalCtx + 1; // 1000001
+    const used = runBoundaryHook(50, totalCtx, acw);
+    // Capped to 1,000,000 → 500,000 / 967,000 → 52 (not 100)
+    assert.ok(
+      used !== null && used !== 100,
+      `expected used != 100 when acw=totalCtx+1, got: ${used}`
+    );
+    assert.ok(
+      used >= 0 && used <= 99,
+      `expected used in 0-99 when acw=totalCtx+1, got: ${used}`
+    );
+  });
+
+  // Default path (no env var / acw==0): 50% remaining → 500,000 / 967,000 → 52.
+  test('acw = 0 (default path): 52% for 50% remaining', () => {
+    const used = runBoundaryHook(50, 1_000_000, 0);
+    assert.strictEqual(used, 52, `default path must produce 52, got: ${used}`);
+  });
+
+  // Normal partial value: 93% remaining → 70,000 / 967,000 = 7.2% → 7.
+  test('normal partial value: 93% remaining → ~7% used', () => {
+    const used = runBoundaryHook(93, 1_000_000, null);
+    assert.ok(
+      used !== null && used >= 7 && used <= 10,
+      `expected used ≈ 7-10 for 93% remaining with default buffer, got: ${used}`
+    );
+  });
+});
+
+// ─── todo-resolution path (#305) ────────────────────────────────────────────
+
+describe('todo-resolution: resolves in_progress task from the newest matching todos file (#305)', () => {
+  const { execFileSync } = require('node:child_process');
+  const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+
+  test('resolves in_progress task from the newest matching todos file (#305)', (t) => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-305-'));
+    t.after(() => {
+      cleanup(tempDir);
+    });
+
+    const todosDir = path.join(tempDir, 'todos');
+    fs.mkdirSync(todosDir, { recursive: true });
+
+    const session = `sess-305-${Math.random().toString(36).slice(2)}`;
+    const now = Date.now() / 1000; // seconds for utimesSync
+
+    // Older matching file — should NOT be selected
+    const olderPath = path.join(todosDir, `${session}-agent-A.json`);
+    fs.writeFileSync(olderPath, JSON.stringify([
+      { content: 'old task', status: 'in_progress', activeForm: 'OLDER TASK 305' },
+    ]));
+    const olderTime = now - 10000;
+    fs.utimesSync(olderPath, olderTime, olderTime);
+
+    // Newer matching file — should be selected
+    const newerPath = path.join(todosDir, `${session}-agent-B.json`);
+    fs.writeFileSync(newerPath, JSON.stringify([
+      { content: 'new task', status: 'in_progress', activeForm: 'NEWER TASK 305' },
+    ]));
+    const newerTime = now - 1000;
+    fs.utimesSync(newerPath, newerTime, newerTime);
+
+    // Distractor: different session prefix — must be ignored even with very-new mtime
+    const wrongSessPath = path.join(todosDir, 'other-sess-agent-Z.json');
+    fs.writeFileSync(wrongSessPath, JSON.stringify([
+      { content: 'wrong session', status: 'in_progress', activeForm: 'WRONG SESSION 305' },
+    ]));
+    fs.utimesSync(wrongSessPath, now, now);
+
+    // Distractor: matches session + .json but lacks -agent- — must be ignored
+    const notAgentPath = path.join(todosDir, `${session}-notagent.json`);
+    fs.writeFileSync(notAgentPath, JSON.stringify([
+      { content: 'not agent', status: 'in_progress', activeForm: 'NOT AGENT 305' },
+    ]));
+    fs.utimesSync(notAgentPath, now, now);
+
+    const payload = JSON.stringify({
+      model: { display_name: 'Claude' },
+      workspace: { current_dir: os.tmpdir() },
+      session_id: session,
+      context_window: contextWindow({ remaining_percentage: 80, context_window_size: 1_000_000 }),
+    });
+
+    const env = { ...process.env, CLAUDE_CONFIG_DIR: tempDir };
+
+    let stdout = '';
+    try {
+      stdout = execFileSync(process.execPath, [hookPath], {
+        input: payload,
+        env,
+        encoding: 'utf8',
+        timeout: STATUSLINE_HOOK_TIMEOUT_MS,
+      });
+    } catch (e) {
+      stdout = e.stdout || '';
+    }
+
+    assert.ok(stdout.includes('NEWER TASK 305'),
+      `expected stdout to contain "NEWER TASK 305", got: ${stdout}`);
+    assert.ok(!stdout.includes('OLDER TASK 305'),
+      `stdout must NOT contain "OLDER TASK 305", got: ${stdout}`);
+    assert.ok(!stdout.includes('WRONG SESSION 305'),
+      `stdout must NOT contain "WRONG SESSION 305", got: ${stdout}`);
+    assert.ok(!stdout.includes('NOT AGENT 305'),
+      `stdout must NOT contain "NOT AGENT 305", got: ${stdout}`);
+  });
+});
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/enh-2538-statusline-last-command.test.cjs — consolidation epic #1969 (B5 #1974)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:enh-2538-statusline-last-command (consolidation epic #1969 B5 #1974)", () => {
+'use strict';
+
+/**
+ * Enhancement #2538 — statusline `last: /cmd` suffix.
+ *
+ * Asserts that:
+ *   - default (flag absent) output does NOT include "last:" text
+ *   - with statusline.show_last_command=true AND a transcript containing
+ *     <command-name>/gsd-plan-phase</command-name>, output includes "last: /gsd-plan-phase"
+ *   - a missing transcript_path does not throw and produces no "last:" suffix
+ *   - an existing transcript with no slash commands produces no "last:" suffix
+ *   - the config key is registered in the schema so /gsd-settings can surface it
+ */
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { cleanup } = require('./helpers.cjs');
+
+const statusline = require('../hooks/gsd-statusline.js');
+const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config-schema.cjs');
+
+function makeProject({ flag, transcript }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'enh-2538-'));
+  fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+  if (flag !== undefined) {
+    fs.writeFileSync(
+      path.join(dir, '.planning', 'config.json'),
+      JSON.stringify({ statusline: { show_last_command: flag } }),
+    );
+  }
+  let transcriptPath = null;
+  if (transcript !== undefined) {
+    transcriptPath = path.join(dir, 'transcript.jsonl');
+    fs.writeFileSync(transcriptPath, transcript);
+  }
+  return { dir, transcriptPath, cleanup: () => cleanup(dir) };
+}
+
+function buildInput(dir, transcriptPath) {
+  return {
+    model: { display_name: 'Claude' },
+    workspace: { current_dir: dir },
+    session_id: 'test-session',
+    transcript_path: transcriptPath,
+  };
+}
+
+test('config schema registers statusline.show_last_command', () => {
+  assert.ok(
+    VALID_CONFIG_KEYS.has('statusline.show_last_command'),
+    'statusline.show_last_command must be in VALID_CONFIG_KEYS',
+  );
+});
+
+test('default (flag absent) output has no "last:" suffix', () => {
+  const transcript =
+    JSON.stringify({ type: 'user', message: { content: '<command-name>/gsd-plan-phase</command-name>' } }) + '\n';
+  const { dir, transcriptPath, cleanup } = makeProject({ transcript });
+  try {
+    const out = statusline.renderStatusline(buildInput(dir, transcriptPath));
+    assert.ok(!out.includes('last:'), `expected no "last:" in output; got: ${out}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('flag=true with recorded command yields "last: /<cmd>"', () => {
+  const transcript =
+    JSON.stringify({ type: 'user', message: { content: '<command-name>/gsd-plan-phase</command-name>' } }) + '\n' +
+    JSON.stringify({ type: 'assistant', message: { content: 'ok' } }) + '\n';
+  const { dir, transcriptPath, cleanup } = makeProject({ flag: true, transcript });
+  try {
+    const out = statusline.renderStatusline(buildInput(dir, transcriptPath));
+    assert.ok(out.includes('last: /gsd-plan-phase'), `expected "last: /gsd-plan-phase" in output; got: ${out}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('flag=true picks the MOST RECENT command when multiple are present', () => {
+  const transcript =
+    JSON.stringify({ type: 'user', message: { content: '<command-name>/gsd-discuss-phase</command-name>' } }) + '\n' +
+    JSON.stringify({ type: 'user', message: { content: '<command-name>/gsd-plan-phase</command-name>' } }) + '\n' +
+    JSON.stringify({ type: 'user', message: { content: '<command-name>/gsd-execute-phase</command-name>' } }) + '\n';
+  const { dir, transcriptPath, cleanup } = makeProject({ flag: true, transcript });
+  try {
+    const out = statusline.renderStatusline(buildInput(dir, transcriptPath));
+    assert.ok(out.includes('last: /gsd-execute-phase'), `expected most-recent "gsd-execute-phase"; got: ${out}`);
+    assert.ok(!out.includes('last: /gsd-discuss-phase'), `should not show stale command; got: ${out}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('flag=true with missing transcript_path does not throw and omits suffix', () => {
+  const { dir, cleanup } = makeProject({ flag: true });
+  try {
+    let out;
+    assert.doesNotThrow(() => {
+      out = statusline.renderStatusline(buildInput(dir, undefined));
+    });
+    assert.ok(!out.includes('last:'), `expected no "last:" suffix when transcript missing; got: ${out}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('flag=true with transcript lacking command tags omits suffix', () => {
+  const transcript =
+    JSON.stringify({ type: 'user', message: { content: 'just a plain prompt' } }) + '\n';
+  const { dir, transcriptPath, cleanup } = makeProject({ flag: true, transcript });
+  try {
+    const out = statusline.renderStatusline(buildInput(dir, transcriptPath));
+    assert.ok(!out.includes('last:'), `expected no "last:" suffix with no commands; got: ${out}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('readLastSlashCommand returns null for nonexistent paths', () => {
+  assert.strictEqual(statusline.readLastSlashCommand('/nonexistent/path.jsonl'), null);
+  assert.strictEqual(statusline.readLastSlashCommand(null), null);
+  assert.strictEqual(statusline.readLastSlashCommand(undefined), null);
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/enh-2833-phase-lifecycle-statusline.test.cjs — consolidation epic #1969 (B5 #1974)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:enh-2833-phase-lifecycle-statusline (consolidation epic #1969 B5 #1974)", () => {
+/**
+ * Tests for issue #2833 — phase-lifecycle status-line.
+ *
+ * Covers the additions made by the two preceding feat commits:
+ *
+ *   1. parseStateMd reads four new STATE.md frontmatter fields
+ *      - active_phase
+ *      - next_action
+ *      - next_phases (YAML flow array)
+ *      - progress (nested block: completed_phases / total_phases / percent)
+ *
+ *   2. formatGsdState renders three new scenes when those fields are populated
+ *      - Scene 1: active_phase set         → "Phase X.Y <stage>"
+ *      - Scene 2: idle + next_action set   → "next <action> <phases>"
+ *      - Scene 3: percent 100 / all done   → "milestone complete"
+ *      - Scene 4: default fallback         → unchanged "<status> · <phase>"
+ *
+ *   3. renderProgressBar() helper for the opt-in milestone bar.
+ *
+ *   4. Backward compatibility — existing STATE.md files (without any of the
+ *      new fields) render byte-for-byte identically to v1.38.x.
+ */
+
+'use strict';
+
+const { test, describe } = require('node:test');
+const assert = require('node:assert/strict');
+
+const {
+  parseStateMd,
+  formatGsdState,
+} = require('../hooks/gsd-statusline.js');
+
+// ─── parseStateMd: new lifecycle fields ─────────────────────────────────────
+
+describe('parseStateMd #2833 lifecycle fields', () => {
+  test('reads active_phase from frontmatter', () => {
+    const content = [
+      '---',
+      'milestone: v2.0',
+      'status: executing',
+      'active_phase: "4.5"',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.equal(s.activePhase, '4.5');
+  });
+
+  test('reads next_action from frontmatter', () => {
+    const content = [
+      '---',
+      'milestone: v2.0',
+      'next_action: execute-phase',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.equal(s.nextAction, 'execute-phase');
+  });
+
+  test('treats "null" literal as null for active_phase and next_action', () => {
+    const content = [
+      '---',
+      'active_phase: null',
+      'next_action: null',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.equal(s.activePhase, null);
+    assert.equal(s.nextAction, null);
+  });
+
+  test('parses next_phases YAML flow array (single item)', () => {
+    const content = [
+      '---',
+      'next_phases: ["4.5"]',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.deepEqual(s.nextPhases, ['4.5']);
+  });
+
+  test('parses next_phases YAML flow array (multiple items)', () => {
+    const content = [
+      '---',
+      'next_phases: ["4.5", "4.6", "5"]',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.deepEqual(s.nextPhases, ['4.5', '4.6', '5']);
+  });
+
+  test('parses progress nested block — all three fields', () => {
+    const content = [
+      '---',
+      'progress:',
+      '  total_phases: 17',
+      '  completed_phases: 10',
+      '  percent: 59',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.equal(s.totalPhases, '17');
+    assert.equal(s.completedPhases, '10');
+    assert.equal(s.percent, '59');
+  });
+
+  test('returns undefined for absent lifecycle fields', () => {
+    const content = [
+      '---',
+      'milestone: v1.9',
+      'status: executing',
+      '---',
+    ].join('\n');
+    const s = parseStateMd(content);
+    assert.equal(s.activePhase, undefined);
+    assert.equal(s.nextAction, undefined);
+    assert.equal(s.nextPhases, undefined);
+    assert.equal(s.percent, undefined);
+  });
+});
+
+// ─── formatGsdState: new scenes ─────────────────────────────────────────────
+
+describe('formatGsdState #2833 lifecycle scenes', () => {
+  test('Scene 1 — active_phase set renders "Phase X.Y <stage>"', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      status: 'executing',
+      activePhase: '4.5',
+      percent: '59',
+    });
+    assert.equal(out, 'v2.0 [█████░░░░░] 59% · Phase 4.5 executing');
+  });
+
+  test('Scene 1 — active_phase without status renders "Phase X.Y"', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      activePhase: '4.5',
+    });
+    assert.equal(out, 'v2.0 · Phase 4.5');
+  });
+
+  test('Scene 2 — idle + next_action renders "next <action> <phases>"', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      activePhase: null,
+      nextAction: 'execute-phase',
+      nextPhases: ['4.5'],
+      percent: '59',
+    });
+    assert.equal(out, 'v2.0 [█████░░░░░] 59% · next execute-phase 4.5');
+  });
+
+  test('Scene 2 — multiple next_phases joined with /', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      nextAction: 'discuss-phase',
+      nextPhases: ['4.7', '6.5'],
+    });
+    assert.equal(out, 'v2.0 · next discuss-phase 4.7/6.5');
+  });
+
+  test('Scene 3 — percent=100 renders "milestone complete"', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      percent: '100',
+    });
+    assert.equal(out, 'v2.0 [██████████] 100% · milestone complete');
+  });
+
+  test('Scene 3 — completed_phases equals total_phases also triggers complete', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      completedPhases: '17',
+      totalPhases: '17',
+    });
+    assert.equal(out, 'v2.0 · milestone complete');
+  });
+
+  // #3945: the counters arrive as regex-captured STRINGS, so '0' is truthy and
+  // '0' === '0' made the "every phase done" guard fire on the empty set —
+  // rendering "0% · milestone complete" for a freshly-roadmapped milestone.
+  test('Scene 3 — 0 of 0 counters does not render milestone complete (#3945)', () => {
+    const out = formatGsdState({
+      milestone: 'v1.15',
+      milestoneName: 'Design Refresh',
+      status: 'planning',
+      completedPhases: '0',
+      totalPhases: '0',
+      percent: '0',
+    });
+    assert.ok(!out.includes('milestone complete'),
+      `0 of 0 phases must not read as complete; got: ${out}`);
+    assert.ok(out.includes('planning'), `default path should render the status; got: ${out}`);
+  });
+
+  test('Scene 3 — boundary denominators: 1/1 completes, 0/1 and 1/0 do not (#3945)', () => {
+    assert.ok(formatGsdState({ milestone: 'v2.0', completedPhases: '1', totalPhases: '1' })
+      .includes('milestone complete'), '1 of 1 done is complete');
+    assert.ok(!formatGsdState({ milestone: 'v2.0', completedPhases: '0', totalPhases: '1' })
+      .includes('milestone complete'), '0 of 1 is not complete');
+    assert.ok(!formatGsdState({ milestone: 'v2.0', completedPhases: '1', totalPhases: '0' })
+      .includes('milestone complete'), '1 of 0 is not a complete milestone');
+  });
+});
+
+// ─── Backward compatibility — CRITICAL: existing STATE.md unchanged ─────────
+
+describe('formatGsdState #2833 backward compatibility', () => {
+  test('legacy STATE.md (only status + milestone + phase) renders unchanged', () => {
+    // Identical to the format documented in #1989 (the foundation issue).
+    // No new lifecycle fields populated → must render exactly as v1.38.x did.
+    const out = formatGsdState({
+      status: 'executing',
+      milestone: 'v1.9',
+      milestoneName: 'Code Quality',
+      phaseNum: '1',
+      phaseTotal: '5',
+      phaseName: 'fix-graphiti-deployment',
+    });
+    assert.equal(out, 'v1.9 Code Quality · executing · fix-graphiti-deployment (1/5)');
+  });
+
+  test('only status set (no phase, no lifecycle fields) renders just "<milestone> · <status>"', () => {
+    const out = formatGsdState({
+      milestone: 'v1.9',
+      status: 'executing',
+    });
+    assert.equal(out, 'v1.9 · executing');
+  });
+
+  test('empty state renders empty string', () => {
+    const out = formatGsdState({});
+    assert.equal(out, '');
+  });
+
+  test('progress.percent is opt-in — absent percent leaves milestone segment unchanged', () => {
+    const out = formatGsdState({
+      milestone: 'v1.9',
+      milestoneName: 'Code Quality',
+      status: 'executing',
+    });
+    // No bar rendered when percent is absent.
+    assert.equal(out, 'v1.9 Code Quality · executing');
+  });
+});
+
+// ─── renderProgressBar (exported indirectly via formatGsdState behavior) ────
+
+describe('progress bar rendering', () => {
+  test('0% renders 10 empty segments', () => {
+    // percent=0 doesn't trigger Scene 3 (only percent='100' does), so
+    // Scene 4 fallback fires with no extra parts — just milestone + bar.
+    const out = formatGsdState({ milestone: 'v2.0', percent: '0' });
+    assert.ok(out.includes('[░░░░░░░░░░] 0%'));
+  });
+
+  test('50% renders 5 filled + 5 empty', () => {
+    const out = formatGsdState({ milestone: 'v2.0', percent: '50' });
+    assert.ok(out.includes('[█████░░░░░] 50%'));
+  });
+
+  test('100% renders 10 filled (and triggers Scene 3)', () => {
+    const out = formatGsdState({ milestone: 'v2.0', percent: '100' });
+    assert.equal(out, 'v2.0 [██████████] 100% · milestone complete');
+  });
+
+  test('percent absent → no bar rendered (opt-in)', () => {
+    const out = formatGsdState({ milestone: 'v2.0', status: 'executing' });
+    assert.ok(!out.includes('['));
+    assert.ok(!out.includes('░'));
+    assert.ok(!out.includes('█'));
+  });
+
+  test('percent over 100 clamps to 100', () => {
+    const out = formatGsdState({ milestone: 'v2.0', percent: '150' });
+    assert.ok(out.includes('[██████████] 100%'));
+  });
+
+  test('percent below 0 clamps to 0', () => {
+    const out = formatGsdState({ milestone: 'v2.0', percent: '-10' });
+    assert.ok(out.includes('[░░░░░░░░░░] 0%'));
+  });
+});
+
+// ─── Scene priority — first-match-wins guarantee ────────────────────────────
+
+describe('formatGsdState #2833 scene priority', () => {
+  test('active_phase wins over next_action when both populated', () => {
+    // active_phase populated should win — orchestrator is in flight,
+    // any "next" recommendation would be misleading.
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      status: 'executing',
+      activePhase: '4.5',
+      nextAction: 'execute-phase',
+      nextPhases: ['4.5'],
+    });
+    assert.ok(out.includes('Phase 4.5 executing'));
+    assert.ok(!out.includes('next execute-phase'));
+  });
+
+  test('next_action wins over Scene 4 fallback when active_phase null', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      status: 'in_progress',  // would be Scene 4 fallback alone
+      activePhase: null,
+      nextAction: 'execute-phase',
+      nextPhases: ['4.5'],
+      phaseNum: '1',
+      phaseTotal: '5',
+    });
+    assert.ok(out.includes('next execute-phase 4.5'));
+    assert.ok(!out.includes('in_progress'));
+    assert.ok(!out.includes('1/5'));
+  });
+
+  test('percent=100 wins over Scene 4 even with phase set', () => {
+    const out = formatGsdState({
+      milestone: 'v2.0',
+      percent: '100',
+      phaseNum: '1',
+      phaseTotal: '5',
+    });
+    assert.ok(out.includes('milestone complete'));
+    assert.ok(!out.includes('1/5'));
+  });
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/enh-2937-statusline-context-position.test.cjs — consolidation epic #1969 (B5 #1974)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:enh-2937-statusline-context-position (consolidation epic #1969 B5 #1974)", () => {
+'use strict';
+
+/**
+ * Enhancement #2937 — statusline opt-in `context_position` config.
+ *
+ * Asserts that:
+ *   - VALID_CONFIG_KEYS registers statusline.context_position (parity guard)
+ *   - Default (no config) renders ctx at tail — "end" layout
+ *   - Explicit "end" is byte-identical to default (regression guard)
+ *   - Explicit "front" puts ctx after model, before first " │ "
+ *   - Empty ctx with "front" leaves no stray separator
+ *   - Invalid value (e.g. "middle") silently falls back to "end" at runtime
+ *   - gsdUpdate warning stays leftmost in both "front" and "end" modes
+ */
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { composeStatusline } = require('../hooks/gsd-statusline.js');
+const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config-schema.cjs');
+const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+
+// ── Parity guard ─────────────────────────────────────────────────────────────
+
+test('config schema registers statusline.context_position', () => {
+  assert.ok(
+    VALID_CONFIG_KEYS.has('statusline.context_position'),
+    'statusline.context_position must be in VALID_CONFIG_KEYS',
+  );
+});
+
+// ── Default / "end" layout ───────────────────────────────────────────────────
+
+test('default (no position arg) renders ctx at tail — end layout', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const out = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx });
+  // ctx should appear after dirname, not before first │
+  const dirIdx = out.indexOf('myproject');
+  const ctxIdx = out.indexOf(ctx);
+  assert.ok(ctxIdx > dirIdx, `ctx should be after dirname; got: ${out}`);
+});
+
+test('explicit "end" is byte-identical to default', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const args = { model: 'Claude', dirname: 'myproject', ctx };
+  const defaultOut = composeStatusline(args);
+  const endOut = composeStatusline({ ...args, position: 'end' });
+  assert.strictEqual(endOut, defaultOut, 'explicit "end" must equal default output');
+});
+
+test('"end" with middle segment places ctx after dirname', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const out = composeStatusline({ model: 'Claude', ctx, middle: 'doing work', dirname: 'proj', position: 'end' });
+  const dirIdx = out.indexOf('proj');
+  const ctxIdx = out.indexOf(ctx);
+  assert.ok(ctxIdx > dirIdx, `ctx should be after dirname in end mode; got: ${out}`);
+});
+
+// ── "front" layout ───────────────────────────────────────────────────────────
+
+test('"front" puts ctx after model name, before first │', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const out = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx, position: 'front' });
+  const firstPipe = out.indexOf(' │ ');
+  const ctxIdx = out.indexOf(ctx);
+  assert.ok(ctxIdx !== -1, `ctx should appear in output; got: ${out}`);
+  assert.ok(ctxIdx < firstPipe, `ctx should come before first │ in front mode; got: ${out}`);
+});
+
+test('"front" with middle segment: ctx after model, before first │', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const out = composeStatusline({ model: 'Claude', ctx, middle: 'doing work', dirname: 'proj', position: 'front' });
+  const firstPipe = out.indexOf(' │ ');
+  const ctxIdx = out.indexOf(ctx);
+  assert.ok(ctxIdx < firstPipe, `ctx must precede first │; got: ${out}`);
+});
+
+// ── Empty ctx ────────────────────────────────────────────────────────────────
+
+test('empty ctx + "front" renders no stray separator', () => {
+  const out = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx: '', position: 'front' });
+  // Should not have double-separator or leading │
+  assert.ok(!out.includes(' │  │ '), `stray separator found; got: ${out}`);
+  // Should still contain the single separator between model area and dirname
+  assert.ok(out.includes(' │ '), `expected at least one separator; got: ${out}`);
+});
+
+test('empty ctx + "end" renders no stray separator', () => {
+  const out = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx: '', position: 'end' });
+  assert.ok(!out.includes(' │  │ '), `stray separator found; got: ${out}`);
+});
+
+// ── Invalid value fallback ───────────────────────────────────────────────────
+
+test('invalid position value silently falls back to "end" layout', () => {
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const invalid = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx, position: 'middle' });
+  const end = composeStatusline({ model: 'Claude', dirname: 'myproject', ctx, position: 'end' });
+  assert.strictEqual(invalid, end, `invalid position should produce same output as "end"; got: ${invalid}`);
+});
+
+test('invalid position "banana" silently falls back to "end"', () => {
+  const ctx = ' \x1b[33m██████░░░░ 60%\x1b[0m';
+  const invalid = composeStatusline({ model: 'Claude', dirname: 'proj', ctx, position: 'banana' });
+  const end = composeStatusline({ model: 'Claude', dirname: 'proj', ctx, position: 'end' });
+  assert.strictEqual(invalid, end, `invalid "banana" should fall back to "end"; got: ${invalid}`);
+});
+
+// ── gsdUpdate leftmost invariant ─────────────────────────────────────────────
+
+test('gsdUpdate warning is leftmost in "end" mode', () => {
+  const gsdUpdate = '\x1b[33m⬆ /gsd:update\x1b[0m │ ';
+  const out = composeStatusline({ gsdUpdate, model: 'Claude', dirname: 'proj', position: 'end' });
+  assert.ok(out.startsWith(gsdUpdate), `gsdUpdate should be leftmost in end mode; got: ${out}`);
+});
+
+test('gsdUpdate warning is leftmost in "front" mode', () => {
+  const gsdUpdate = '\x1b[33m⬆ /gsd:update\x1b[0m │ ';
+  const ctx = ' \x1b[32m████░░░░░░ 40%\x1b[0m';
+  const out = composeStatusline({ gsdUpdate, model: 'Claude', dirname: 'proj', ctx, position: 'front' });
+  assert.ok(out.startsWith(gsdUpdate), `gsdUpdate should be leftmost in front mode; got: ${out}`);
+});
+
+// ── CLI write-path enforcement (config-set rejects invalid enum) ─────────────
+// Locked design: hard reject at config-set time AND silent fallback at runtime.
+// The runtime fallback is covered by the "Invalid position value silently falls
+// back" tests above. This test covers the other half — that the CLI write path
+// actually refuses to persist an invalid value in the first place.
+
+test('config-set rejects invalid statusline.context_position', () => {
+  const tmpDir = createTempProject();
+  try {
+    const r = runGsdTools(
+      ['config-set', 'statusline.context_position', 'middle'],
+      tmpDir,
+    );
+    assert.equal(
+      r.success,
+      false,
+      `config-set should exit non-zero on invalid enum; got success=${r.success}, output=${r.output}`,
+    );
+    assert.ok(
+      /statusline\.context_position|Invalid/i.test(r.error),
+      `stderr must reference key or "Invalid"; got: ${r.error}`,
+    );
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+// Same write-path enforcement for the boolean statusline.show_context_tokens
+// key (#2161) — mirrors the workflow.post_planning_gaps precedent the issue's
+// scope names (tests/post-planning-gaps-2493.test.cjs).
+test('config-set statusline.show_context_tokens true → persisted as boolean', () => {
+  const tmpDir = createTempProject();
+  try {
+    const r = runGsdTools(['config-set', 'statusline.show_context_tokens', 'true'], tmpDir);
+    assert.ok(r.success, r.error);
+    const config = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, '.planning', 'config.json'), 'utf-8'));
+    assert.strictEqual(config.statusline.show_context_tokens, true);
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+
+test('config-set statusline.show_context_tokens yes → rejected', () => {
+  const tmpDir = createTempProject();
+  try {
+    const r = runGsdTools(['config-set', 'statusline.show_context_tokens', 'yes'], tmpDir);
+    assert.equal(r.success, false, 'non-boolean value must be rejected');
+    assert.match(r.error || r.output, /boolean|true|false/i);
+  } finally {
+    cleanup(tmpDir);
+  }
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Context meter token count (statusline.show_context_tokens)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { test, describe } = require('node:test');
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { runHook: runHookSeam } = require('./helpers/process-seam.cjs');
+  const { cleanup } = require('./helpers.cjs');
+  const { formatTokens, contextTokenSuffix } = require('../hooks/gsd-statusline.js');
+  const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config-schema.cjs');
+
+  const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+
+  describe('config schema: statusline.show_context_tokens', () => {
+    test('registers statusline.show_context_tokens', () => {
+      assert.ok(
+        VALID_CONFIG_KEYS.has('statusline.show_context_tokens'),
+        'statusline.show_context_tokens must be in VALID_CONFIG_KEYS',
+      );
+    });
+  });
+
+  describe('formatTokens', () => {
+    test('passes small counts through', () => {
+      assert.equal(formatTokens(0), '0');
+      assert.equal(formatTokens(999), '999');
+    });
+    test('rounds thousands to k', () => {
+      assert.equal(formatTokens(1000), '1k');
+      assert.equal(formatTokens(156342), '156k');
+      assert.equal(formatTokens(156700), '157k');
+    });
+    test('formats millions with one decimal', () => {
+      assert.equal(formatTokens(1000000), '1.0M');
+      assert.equal(formatTokens(1234567), '1.2M');
+    });
+    test('k-to-M threshold boundary: limit-1 / limit / limit+1', () => {
+      // 999,999 k-rounds to 1000 — must promote to the M branch, never "1000k"
+      assert.equal(formatTokens(999999), '1.0M');
+      assert.equal(formatTokens(1000000), '1.0M');
+      assert.equal(formatTokens(1000001), '1.0M');
+      // 999,499 is the last value that still k-rounds below 1000
+      assert.equal(formatTokens(999499), '999k');
+      assert.equal(formatTokens(999500), '1.0M');
+    });
+  });
+
+  describe('contextTokenSuffix', () => {
+    test('returns empty string for absent/malformed usage', () => {
+      assert.equal(contextTokenSuffix(null), '');
+      assert.equal(contextTokenSuffix(undefined), '');
+      assert.equal(contextTokenSuffix('nope'), '');
+      assert.equal(contextTokenSuffix({}), '');
+    });
+    test('sums all four token dimensions', () => {
+      const suffix = contextTokenSuffix({
+        input_tokens: 1000,
+        cache_creation_input_tokens: 2000,
+        cache_read_input_tokens: 150000,
+        output_tokens: 3000,
+      });
+      assert.equal(suffix, ' (156k)');
+    });
+    test('tolerates missing dimensions', () => {
+      assert.equal(contextTokenSuffix({ input_tokens: 500 }), ' (500)');
+    });
+  });
+
+  describe('statusline output token suffix (e2e)', () => {
+    function makeProject(flag) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ctx-tokens-'));
+      fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+      if (flag !== undefined) {
+        fs.writeFileSync(
+          path.join(dir, '.planning', 'config.json'),
+          JSON.stringify({ statusline: { show_context_tokens: flag } }),
+        );
+      }
+      return dir;
+    }
+
+    function runHook(dir) {
+      const payload = JSON.stringify({
+        model: { display_name: 'Claude' },
+        workspace: { current_dir: dir },
+        session_id: `test-tokens-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        context_window: contextWindow({
+          remaining_percentage: 70,
+          context_window_size: 200000,
+          current_usage: {
+            input_tokens: 1000,
+            cache_read_input_tokens: 150000,
+            output_tokens: 5000,
+          },
+        }),
+      });
+      const r = runHookSeam(hookPath, [], { input: payload, timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS });
+      // eslint-disable-next-line no-control-regex -- stripping ANSI SGR sequences from captured CLI output
+      return r.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    }
+
+    test('flag=true appends the token count after the percentage', () => {
+      const dir = makeProject(true);
+      try {
+        const out = runHook(dir);
+        assert.match(out, /% \(156k\)/, `expected "(156k)" after the meter %; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('default (flag absent) meter is unchanged — no token count', () => {
+      const dir = makeProject(undefined);
+      try {
+        const out = runHook(dir);
+        assert.doesNotMatch(out, /\(\d+(?:\.\d+)?[kM]?\)/, `expected no token suffix; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('flag=false meter is unchanged — no token count', () => {
+      const dir = makeProject(false);
+      try {
+        const out = runHook(dir);
+        assert.doesNotMatch(out, /\(\d+(?:\.\d+)?[kM]?\)/, `expected no token suffix; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Compact GSD-state format (statusline.state_format)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { test, describe } = require('node:test');
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { runGsdTools, createTempProject, cleanup } = require('./helpers.cjs');
+  const statusline = require('../hooks/gsd-statusline.js');
+  const { shortGsdStatus, formatGsdStateCompact, formatGsdState } = statusline;
+  const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config-schema.cjs');
+
+  describe('config schema: statusline.state_format', () => {
+    test('registers statusline.state_format', () => {
+      assert.ok(
+        VALID_CONFIG_KEYS.has('statusline.state_format'),
+        'statusline.state_format must be in VALID_CONFIG_KEYS',
+      );
+    });
+    // Direct config-set write-path coverage, mirroring the sibling
+    // context_position tests (the ENUM_KEYS matrix covers only the JSON
+    // coercion-bypass shapes, not the plain-string paths).
+    test('config-set accepts "compact" and rejects an invalid plain string', () => {
+      const tmpDir = createTempProject();
+      try {
+        const ok = runGsdTools(['config-set', 'statusline.state_format', 'compact'], tmpDir);
+        assert.ok(ok.success, ok.error);
+        const bad = runGsdTools(['config-set', 'statusline.state_format', 'tiny'], tmpDir);
+        assert.equal(bad.success, false, 'invalid enum value must be rejected');
+        assert.ok(
+          /statusline\.state_format|Invalid/i.test(bad.error),
+          `stderr must reference key or "Invalid"; got: ${bad.error}`,
+        );
+      } finally {
+        cleanup(tmpDir);
+      }
+    });
+  });
+
+  describe('shortGsdStatus', () => {
+    test('returns null for empty input', () => {
+      assert.equal(shortGsdStatus(null), null);
+      assert.equal(shortGsdStatus(''), null);
+      assert.equal(shortGsdStatus(undefined), null);
+    });
+    test('paused — the canonical stuck state — renders uppercase (#2162 condition)', () => {
+      // The #2162 shout applies to the canonical token, which is what the
+      // state writer persists (#4186 anchored vocabulary).
+      assert.equal(shortGsdStatus('paused'), 'PAUSED');
+      assert.equal(shortGsdStatus('Paused'), 'PAUSED');
+      // #4186: narrative prose is no longer keyword-guessed — a paused-led
+      // narrative renders its first word (visible, never a silent wrong
+      // token), so the shout is reserved for the recognized token itself.
+      assert.equal(shortGsdStatus('paused — waiting on credentials'), 'paused');
+      assert.equal(shortGsdStatus('stopped by user'), 'stopped');
+    });
+    test('collapses vocabulary values to canonical keywords via normalizeStateStatus (#4186 anchored)', () => {
+      // #4186: normalizeStateStatus recognizes the DECLARED vocabulary
+      // (whole-field match), so exactly those values collapse to keywords.
+      assert.equal(shortGsdStatus('Executing Phase 7'), 'executing');
+      assert.equal(shortGsdStatus('ready to plan'), 'planning');
+      assert.equal(shortGsdStatus('Discussing'), 'discussing');
+      assert.equal(shortGsdStatus('Verifying Phase 2'), 'verifying');
+      assert.equal(shortGsdStatus('Work complete'), 'Work');
+      // Narrative prose — vocabulary words embedded in longer sentences — is
+      // no longer guessed at (a `.planning/` mention in non-English prose
+      // used to render `planning`); it falls back to the first word.
+      assert.equal(shortGsdStatus('Executing phase 7 of the parser milestone'), 'Executing');
+      assert.equal(shortGsdStatus('Ready to plan next phase'), 'Ready');
+    });
+    test('matches the canonical vocabulary exactly — no drift from normalizeStateStatus', () => {
+      const { normalizeStateStatus } = require('../gsd-core/bin/lib/state-document.cjs');
+      for (const canonical of ['discussing', 'planning', 'executing', 'verifying', 'completed', 'paused']) {
+        const rendered = shortGsdStatus(canonical);
+        const expected = canonical === 'paused' ? 'PAUSED' : canonical;
+        assert.equal(rendered, expected);
+        assert.equal(normalizeStateStatus(canonical, null), canonical,
+          `canonical vocabulary changed upstream: ${canonical}`);
+      }
+    });
+    test('unknown shapes fall back to the first word, capped at 16 chars', () => {
+      assert.equal(shortGsdStatus('reticulating splines'), 'reticulating');
+      assert.equal(shortGsdStatus('supercalifragilisticexpialidocious state'), 'supercalifragili');
+    });
+    test('16-char cap boundary: limit-1 / limit / limit+1', () => {
+      assert.equal(shortGsdStatus('x'.repeat(15)), 'x'.repeat(15));
+      assert.equal(shortGsdStatus('x'.repeat(16)), 'x'.repeat(16));
+      assert.equal(shortGsdStatus('x'.repeat(17)), 'x'.repeat(16));
+    });
+  });
+
+  describe('formatGsdStateCompact', () => {
+    test('renders version · phase/total · status', () => {
+      const out = formatGsdStateCompact({
+        milestone: 'v1.12', phaseNum: '7', phaseTotal: '12',
+        status: 'Executing Phase 7',
+      });
+      assert.equal(out, 'v1.12 · P7/12 · executing');
+      // #4186: narrative status is not keyword-guessed — first word renders.
+      const narrative = formatGsdStateCompact({
+        milestone: 'v1.12', phaseNum: '7', phaseTotal: '12',
+        status: 'Executing phase 7 — building the parser',
+      });
+      assert.equal(narrative, 'v1.12 · P7/12 · Executing');
+    });
+    test('prefers lifecycle active_phase over body phase number', () => {
+      const out = formatGsdStateCompact({
+        milestone: 'v2.0', activePhase: '4.5', phaseNum: '4', status: 'executing',
+      });
+      assert.equal(out, 'v2.0 · P4.5 · executing');
+    });
+    test('paused state renders uppercase in the compact line', () => {
+      const out = formatGsdStateCompact({
+        milestone: 'v2.0', activePhase: '4.5', status: 'paused',
+      });
+      assert.equal(out, 'v2.0 · P4.5 · PAUSED');
+    });
+    test('milestone completion renders "complete"', () => {
+      assert.equal(formatGsdStateCompact({ milestone: 'v2.0', percent: '100' }), 'v2.0 · complete');
+      assert.equal(
+        formatGsdStateCompact({ milestone: 'v2.0', completedPhases: '5', totalPhases: '5' }),
+        'v2.0 · complete');
+    });
+    test('scene exclusivity: an in-flight phase wins over milestone-complete', () => {
+      // Non-atomic STATE.md edits can leave active_phase populated alongside
+      // percent=100 — the compact format must mirror formatGsdState's
+      // if/else-chain precedence (Scene 1 beats Scene 3), never render both.
+      const state = {
+        milestone: 'v2.0', activePhase: '4.5', percent: '100', status: 'executing',
+      };
+      assert.equal(formatGsdStateCompact(state), 'v2.0 · P4.5 · executing');
+      const full = formatGsdState(state);
+      assert.ok(!/(complete)/.test(full) || !/4\.5/.test(full),
+        `full format must not co-render phase and complete either; got: ${full}`);
+      // The legacy body-phase shape (phaseNum, no activePhase) does NOT hold
+      // completion back — formatGsdState reaches Scene 3 on percent=100
+      // regardless of phaseNum, and compact must agree (#2175 re-review Major).
+      const legacyDone = { milestone: 'v2.0', phaseNum: '5', phaseTotal: '5', percent: '100', status: 'verifying' };
+      assert.equal(formatGsdStateCompact(legacyDone), 'v2.0 · P5/5 · complete');
+      assert.ok(formatGsdState(legacyDone).includes('milestone complete'),
+        'parity: full format must render Scene 3 for the same input');
+    });
+    test('parity: both renderers agree on completion for the same input', () => {
+      // Feed identical state objects to both renderers and require they agree
+      // on whether the milestone reads as complete — the drift guard for the
+      // parallel rendering surfaces.
+      const cases = [
+        { milestone: 'v2.0', percent: '100' },
+        { milestone: 'v2.0', phaseNum: '5', phaseTotal: '5', percent: '100', status: 'verifying' },
+        { milestone: 'v2.0', completedPhases: '5', totalPhases: '5' },
+        { milestone: 'v2.0', activePhase: '4.5', percent: '100', status: 'executing' },
+        { milestone: 'v1.9', percent: '40', status: 'executing', phaseNum: '2', phaseTotal: '5' },
+        // #3945: the vacuous 0-of-0 shape must agree on NOT-complete too.
+        { milestone: 'v1.15', status: 'planning', completedPhases: '0', totalPhases: '0', percent: '0' },
+      ];
+      for (const s of cases) {
+        const fullDone = formatGsdState(s).includes('milestone complete');
+        const compactDone = / complete$|^complete$/.test(formatGsdStateCompact(s));
+        assert.equal(compactDone, fullDone,
+          `completion parity diverged for ${JSON.stringify(s)}`);
+      }
+    });
+    test('compact — 0 of 0 counters does not render complete (#3945)', () => {
+      // Same vacuous-equality defect as the full renderer's Scene 3; the
+      // compact completion branch must also require a non-empty denominator.
+      const out = formatGsdStateCompact({
+        milestone: 'v1.15', status: 'planning',
+        completedPhases: '0', totalPhases: '0', percent: '0',
+      });
+      assert.ok(!/(^|\s)complete(\s|$)/.test(out),
+        `0 of 0 phases must not read as complete in compact; got: ${out}`);
+      assert.ok(out.includes('planning'), `compact should render the status; got: ${out}`);
+    });
+
+    test('idle with queued next action renders "next <action> <phases>"', () => {
+      const out = formatGsdStateCompact({
+        milestone: 'v2.0', nextAction: 'execute-phase', nextPhases: ['4.5', '4.6'],
+      });
+      assert.equal(out, 'v2.0 · next execute-phase 4.5/4.6');
+    });
+    test('empty state renders empty string', () => {
+      assert.equal(formatGsdStateCompact({}), '');
+    });
+    test('drops the milestone name and progress bar the full format shows', () => {
+      const state = {
+        milestone: 'v1.9', milestoneName: 'Code Quality', percent: '40',
+        status: 'executing', phaseNum: '2', phaseTotal: '5',
+      };
+      const full = formatGsdState(state);
+      const compact = formatGsdStateCompact(state);
+      assert.ok(full.includes('Code Quality'), `full keeps name; got: ${full}`);
+      assert.ok(!compact.includes('Code Quality'), `compact drops name; got: ${compact}`);
+      assert.ok(!compact.includes('█'), `compact drops bar; got: ${compact}`);
+    });
+  });
+
+  describe('state_format via renderStatusline', () => {
+    function makeProject(stateFormat) {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'state-fmt-'));
+      fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+      if (stateFormat !== undefined) {
+        fs.writeFileSync(
+          path.join(dir, '.planning', 'config.json'),
+          JSON.stringify({ statusline: { state_format: stateFormat } }),
+        );
+      }
+      fs.writeFileSync(path.join(dir, '.planning', 'STATE.md'), [
+        '---',
+        'milestone: v1.9',
+        'milestone_name: Code Quality',
+        'status: executing',
+        '---',
+        '',
+        'Phase: 2 of 5 (parser-rewrite)',
+        '',
+      ].join('\n'));
+      return dir;
+    }
+
+    test('compact format drops the milestone name', () => {
+      const dir = makeProject('compact');
+      try {
+        const out = statusline.renderStatusline({
+          model: { display_name: 'Claude' },
+          workspace: { current_dir: dir },
+        });
+        assert.ok(out.includes('v1.9 · P2/5 · executing'), `expected compact state; got: ${out}`);
+        assert.ok(!out.includes('Code Quality'), `expected no milestone name; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('default (key absent) keeps the full format unchanged', () => {
+      const dir = makeProject(undefined);
+      try {
+        const out = statusline.renderStatusline({
+          model: { display_name: 'Claude' },
+          workspace: { current_dir: dir },
+        });
+        assert.ok(out.includes('Code Quality'), `expected full format; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('explicit "full" matches the default rendering', () => {
+      const dirDefault = makeProject(undefined);
+      const dirFull = makeProject('full');
+      try {
+        const input = (dir) => ({
+          model: { display_name: 'Claude' },
+          workspace: { current_dir: dir },
+        });
+        const a = statusline.renderStatusline(input(dirDefault));
+        const b = statusline.renderStatusline(input(dirFull));
+        // Same STATE.md content → same rendered middle segment (the trailing
+        // directory basename differs per temp dir, so compare with it removed)
+        assert.equal(
+          a.replace(path.basename(dirDefault), ''),
+          b.replace(path.basename(dirFull), ''));
+      } finally {
+        cleanup(dirDefault);
+        cleanup(dirFull);
+      }
+    });
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Compact 1M model badge
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { test, describe } = require('node:test');
+  const assert = require('node:assert/strict');
+  const statusline = require('../hooks/gsd-statusline.js');
+  const { compactModelName } = statusline;
+
+  describe('compactModelName', () => {
+    test('collapses "(1M context)" to "(1M)"', () => {
+      assert.equal(compactModelName('Sonnet 4.5 (1M context)'), 'Sonnet 4.5 (1M)');
+    });
+    test('is case-insensitive on "context" and preserves the token case', () => {
+      assert.equal(compactModelName('Opus 4.6  (1m CONTEXT)'), 'Opus 4.6 (1m)');
+    });
+    test('tolerates future window sizes (#2160 approval condition)', () => {
+      assert.equal(compactModelName('Sonnet 5 (500K context)'), 'Sonnet 5 (500K)');
+      assert.equal(compactModelName('Opus 5 (2M context)'), 'Opus 5 (2M)');
+    });
+    test('handles the abbreviated "ctx" variant (#2160 approval condition)', () => {
+      assert.equal(compactModelName('Sonnet 4.5 (1M ctx)'), 'Sonnet 4.5 (1M)');
+      assert.equal(compactModelName('Opus 5 (2M CTX)'), 'Opus 5 (2M)');
+    });
+    test('leaves non-context parentheticals untouched', () => {
+      assert.equal(compactModelName('Sonnet 5 (beta)'), 'Sonnet 5 (beta)');
+      assert.equal(compactModelName('Opus 4 (deprecated)'), 'Opus 4 (deprecated)');
+    });
+    test('leaves ordinary names unchanged', () => {
+      assert.equal(compactModelName('Claude'), 'Claude');
+      assert.equal(compactModelName('Sonnet 4.5'), 'Sonnet 4.5');
+    });
+    test('only matches the suffix position', () => {
+      assert.equal(
+        compactModelName('(1M context) Special'), '(1M context) Special');
+    });
+    test('passes non-strings through', () => {
+      assert.equal(compactModelName(undefined), undefined);
+      assert.equal(compactModelName(null), null);
+    });
+  });
+
+  describe('renderStatusline uses the compact badge', () => {
+    test('rendered output carries (1M), not (1M context)', () => {
+      const out = statusline.renderStatusline({
+        model: { display_name: 'Sonnet 4.5 (1M context)' },
+        workspace: { current_dir: require('node:os').tmpdir() },
+      });
+      assert.ok(out.includes('Sonnet 4.5 (1M)'), `expected compact badge; got: ${out}`);
+      assert.ok(!out.includes('(1M context)'), `expected no verbose suffix; got: ${out}`);
+    });
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Git segment (statusline.show_git)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { test, describe } = require('node:test');
+  const assert = require('node:assert/strict');
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { runHook: runHookSeam } = require('./helpers/process-seam.cjs');
+  const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+  const { cleanup } = require('./helpers.cjs');
+  const statusline = require('../hooks/gsd-statusline.js');
+  const { parseGitStatus, buildGitSegment, readGitStatus, composeStatusline } = statusline;
+  const { VALID_CONFIG_KEYS } = require('../gsd-core/bin/lib/config-schema.cjs');
+
+  describe('config schema: statusline.show_git', () => {
+    test('registers statusline.show_git', () => {
+      assert.ok(
+        VALID_CONFIG_KEYS.has('statusline.show_git'),
+        'statusline.show_git must be in VALID_CONFIG_KEYS',
+      );
+    });
+  });
+
+  describe('parseGitStatus', () => {
+    test('returns null for non-string / missing branch header', () => {
+      assert.equal(parseGitStatus(null), null);
+      assert.equal(parseGitStatus(undefined), null);
+      assert.equal(parseGitStatus(''), null);
+      assert.equal(parseGitStatus('? some-file\n'), null);
+    });
+
+    test('parses a clean, in-sync branch', () => {
+      const text = [
+        '# branch.oid abc123',
+        '# branch.head main',
+        '# branch.upstream origin/main',
+        '# branch.ab +0 -0',
+        '',
+      ].join('\n');
+      assert.deepEqual(parseGitStatus(text), {
+        branch: 'main', ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0,
+      });
+    });
+
+    test('counts staged, unstaged, untracked, ahead, behind', () => {
+      const text = [
+        '# branch.oid abc123',
+        '# branch.head feat/x',
+        '# branch.upstream origin/feat/x',
+        '# branch.ab +2 -1',
+        '1 M. N... 100644 100644 100644 aaa bbb staged-only.txt',
+        '1 .M N... 100644 100644 100644 aaa bbb unstaged-only.txt',
+        '1 MM N... 100644 100644 100644 aaa bbb both.txt',
+        '2 R. N... 100644 100644 100644 aaa bbb R100 new.txt\told.txt',
+        '? untracked-1.txt',
+        '? untracked-2.txt',
+        '',
+      ].join('\n');
+      assert.deepEqual(parseGitStatus(text), {
+        branch: 'feat/x', ahead: 2, behind: 1, staged: 3, unstaged: 2, untracked: 2,
+      });
+    });
+
+    test('counts unmerged (conflict) entries as unstaged', () => {
+      const text = [
+        '# branch.head main',
+        'u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.txt',
+        '',
+      ].join('\n');
+      const info = parseGitStatus(text);
+      assert.equal(info.unstaged, 1);
+      assert.equal(info.staged, 0);
+    });
+
+    test('detached HEAD passes through as "(detached)"', () => {
+      const text = '# branch.head (detached)\n';
+      assert.equal(parseGitStatus(text).branch, '(detached)');
+    });
+
+    test('no upstream (no branch.ab line) leaves ahead/behind at 0', () => {
+      const text = '# branch.head local-only\n? new.txt\n';
+      const info = parseGitStatus(text);
+      assert.deepEqual([info.ahead, info.behind, info.untracked], [0, 0, 1]);
+    });
+  });
+
+  describe('buildGitSegment', () => {
+    const strip = (s) =>
+      // eslint-disable-next-line no-control-regex -- stripping ANSI SGR sequences to assert on visible text
+      s.replace(/\x1b\[[0-9;]*m/g, '');
+
+    test('returns empty string for null info', () => {
+      assert.equal(buildGitSegment(null), '');
+      assert.equal(buildGitSegment({}), '');
+    });
+
+    test('clean repo renders branch with a check mark', () => {
+      const seg = buildGitSegment({ branch: 'main', ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });
+      assert.equal(strip(seg), ' │ main✓');
+    });
+
+    test('dirty repo renders each nonzero marker in order', () => {
+      const seg = buildGitSegment({ branch: 'feat/x', ahead: 2, behind: 1, staged: 3, unstaged: 2, untracked: 4 });
+      assert.equal(strip(seg), ' │ feat/x+3~2?4↑2↓1');
+    });
+
+    test('omits zero markers', () => {
+      const seg = buildGitSegment({ branch: 'main', ahead: 1, behind: 0, staged: 0, unstaged: 0, untracked: 0 });
+      assert.equal(strip(seg), ' │ main↑1');
+    });
+  });
+
+  describe('readGitStatus + parseGitStatus against a real repo', () => {
+    function makeGitRepo() {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-seg-'));
+      const run = (args) => gitOrThrow(['-C', dir, ...args], {
+        env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' },
+      });
+      run(['init', '-q', '-b', 'main']);
+      run(['config', 'user.email', 'test@test.invalid']);
+      run(['config', 'user.name', 'Test']);
+      return { dir, run };
+    }
+
+    test('non-repo directory yields null', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-seg-plain-'));
+      try {
+        assert.equal(parseGitStatus(readGitStatus(dir)), null);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    // Deterministic IO-failure injection (repo convention, cf. the fs
+    // monkeypatch in ensure-runtime-build.test.cjs): readGitStatus shares the
+    // one cached child_process module object, so replacing execFileSync here
+    // injects the failure without a real hang or oversized repo.
+    test('maxBuffer overflow degrades to null (segment absent)', () => {
+      const childProcess = require('node:child_process');
+      const original = childProcess.execFileSync;
+      childProcess.execFileSync = () => {
+        const err = new RangeError('stdout maxBuffer length exceeded');
+        err.code = 'ERR_CHILD_PROCESS_STDOUT_MAXBUFFER';
+        throw err;
+      };
+      try {
+        assert.equal(readGitStatus('/tmp'), null);
+      } finally {
+        childProcess.execFileSync = original;
+      }
+    });
+
+    test('spawn timeout degrades to null (segment absent)', () => {
+      const childProcess = require('node:child_process');
+      const original = childProcess.execFileSync;
+      childProcess.execFileSync = () => {
+        const err = new Error('spawnSync git ETIMEDOUT');
+        err.code = 'ETIMEDOUT';
+        err.errno = -110;
+        throw err;
+      };
+      try {
+        assert.equal(readGitStatus('/tmp'), null);
+      } finally {
+        childProcess.execFileSync = original;
+      }
+    });
+
+    test('fresh repo with an untracked file is counted', () => {
+      const { dir } = makeGitRepo();
+      try {
+        fs.writeFileSync(path.join(dir, 'new.txt'), 'hello');
+        const info = parseGitStatus(readGitStatus(dir));
+        assert.equal(info.branch, 'main');
+        assert.equal(info.untracked, 1);
+        assert.equal(info.staged, 0);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('staged and committed states are reflected', () => {
+      const { dir, run } = makeGitRepo();
+      try {
+        fs.writeFileSync(path.join(dir, 'a.txt'), '1');
+        run(['add', 'a.txt']);
+        let info = parseGitStatus(readGitStatus(dir));
+        assert.equal(info.staged, 1);
+        run(['commit', '-q', '-m', 'init']);
+        info = parseGitStatus(readGitStatus(dir));
+        assert.deepEqual(
+          [info.staged, info.unstaged, info.untracked], [0, 0, 0]);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    // #5048: the statusline spawns `git status` on EVERY render. Left at git's
+    // default, that read refreshes the index and takes an optional
+    // .git/index.lock to write the refreshed copy back, so a purely cosmetic
+    // render becomes a contender for the lock a real `git add`/`git commit`
+    // needs. GIT_OPTIONAL_LOCKS=0 turns off exactly that optional write and
+    // nothing else, so the segment still reports the same state.
+    describe('read-only git spawns opt out of the optional index lock (#5048)', () => {
+      // Deterministic env capture, same monkeypatch seam the two injection
+      // tests above use: readGitStatus shares the one cached child_process
+      // module object, so replacing execFileSync here records the options
+      // object without needing a real repo or a real lock race.
+      function captureGitStatusOptions() {
+        const childProcess = require('node:child_process');
+        const original = childProcess.execFileSync;
+        let captured = null;
+        childProcess.execFileSync = (file, args, options) => {
+          captured = { file, args, options };
+          return '';
+        };
+        try {
+          readGitStatus('/tmp');
+        } finally {
+          childProcess.execFileSync = original;
+        }
+        return captured;
+      }
+
+      test('readGitStatus passes GIT_OPTIONAL_LOCKS=0', () => {
+        const captured = captureGitStatusOptions();
+        assert.ok(captured, 'execFileSync was not called');
+        assert.equal(captured.file, 'git');
+        assert.equal(captured.options.env.GIT_OPTIONAL_LOCKS, '0');
+      });
+
+      test('the env inherits the parent environment, not a bare replacement', () => {
+        // A minimal { GIT_OPTIONAL_LOCKS } would drop PATH, HOME and the user's
+        // git config, breaking the spawn for reasons unrelated to the lock.
+        const captured = captureGitStatusOptions();
+        for (const key of Object.keys(process.env)) {
+          assert.deepEqual(
+            captured.options.env[key], process.env[key],
+            `env must inherit ${key} from the parent process`);
+        }
+      });
+
+      test('the command and its bounds are unchanged', () => {
+        // Only the env may change: a different argv or a dropped timeout /
+        // maxBuffer would be a behavior change smuggled in under this fix.
+        const captured = captureGitStatusOptions();
+        assert.deepEqual(captured.args, ['-C', '/tmp', 'status', '--porcelain=v2', '--branch']);
+        assert.equal(captured.options.encoding, 'utf8');
+        assert.equal(captured.options.timeout, GIT_STATUS_TIMEOUT_MS);
+        assert.equal(captured.options.maxBuffer, 8 * 1024 * 1024);
+        assert.equal(captured.options.windowsHide, true);
+      });
+    });
+  });
+
+  describe('composeStatusline gitSuffix placement', () => {
+    test('git segment renders after the directory in end layout', () => {
+      const out = composeStatusline({
+        model: 'Claude', dirname: 'proj',
+        gitSuffix: ' │ main✓', ctx: ' CTX', lastCmdSuffix: ' │ last: /foo',
+      });
+      assert.ok(
+        out.includes('proj\x1b[0m │ main✓ CTX │ last: /foo'),
+        `expected dir → git → ctx → last-cmd order; got: ${out}`,
+      );
+    });
+    test('git segment renders after the directory in front layout', () => {
+      const out = composeStatusline({
+        model: 'Claude', dirname: 'proj',
+        gitSuffix: ' │ main✓', position: 'front',
+      });
+      assert.ok(out.endsWith('proj\x1b[0m │ main✓'), `got: ${out}`);
+    });
+    test('default (no gitSuffix) output is unchanged', () => {
+      const a = composeStatusline({ model: 'Claude', dirname: 'proj' });
+      const b = composeStatusline({ model: 'Claude', dirname: 'proj', gitSuffix: '' });
+      assert.equal(a, b);
+    });
+  });
+
+  describe('show_git e2e through the hook', () => {
+    const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+
+    function runHook(dir) {
+      const payload = JSON.stringify({
+        model: { display_name: 'Claude' },
+        workspace: { current_dir: dir },
+        session_id: `test-git-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      });
+      const r = runHookSeam(hookPath, [], { input: payload, timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS });
+      // eslint-disable-next-line no-control-regex -- stripping ANSI SGR sequences from captured CLI output
+      return r.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    }
+
+    test('flag=true renders the branch segment', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-seg-e2e-'));
+      try {
+        gitOrThrow(['-C', dir, 'init', '-q', '-b', 'main']);
+        fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+        fs.writeFileSync(
+          path.join(dir, '.planning', 'config.json'),
+          JSON.stringify({ statusline: { show_git: true } }),
+        );
+        const out = runHook(dir);
+        assert.ok(out.includes('│ main'), `expected branch segment; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+
+    test('default (flag absent) has no git segment', () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-seg-e2e-'));
+      try {
+        gitOrThrow(['-C', dir, 'init', '-q', '-b', 'main']);
+        fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+        const out = runHook(dir);
+        assert.ok(!out.includes('│ main'), `expected no git segment; got: ${out}`);
+      } finally {
+        cleanup(dir);
+      }
+    });
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/issue-607-cache-lineage.test.cjs — H3 Wave 5 (#3337)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe('folded:issue-607-cache-lineage (H3 Wave 5 #3337)', () => {
+'use strict';
+
+/**
+ * Tests for cache lineage validation (issue #607).
+ *
+ * Verifies that per-package cache filenames and package_name lineage guards
+ * are correctly enforced across gsd-update-banner.js, gsd-statusline.js,
+ * and the worker result shape.
+ */
+
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { PACKAGE_NAME, updateCacheFileName } = require('../gsd-core/bin/lib/package-identity.cjs');
+const { buildBannerOutput } = require('../hooks/gsd-update-banner.js');
+const { evaluateUpdateCache } = require('../hooks/gsd-statusline.js');
+
+// ─── Package identity constants ──────────────────────────────────────────────
+
+describe('package-identity exports', () => {
+  test('PACKAGE_NAME is @opengsd/gsd-core', () => {
+    assert.equal(PACKAGE_NAME, '@opengsd/gsd-core');
+  });
+
+  test('updateCacheFileName is per-package filename', () => {
+    assert.equal(updateCacheFileName, 'gsd-update-check-opengsd-gsd-core.json');
+  });
+});
+
+// ─── Worker result shape: package_name field ─────────────────────────────────
+// The worker writes { ..., package_name: PACKAGE_NAME } to the cache.
+// We assert the documented contract by confirming PACKAGE_NAME is correct
+// and that it equals the value that the worker will embed.
+
+describe('worker result shape contract', () => {
+  test('PACKAGE_NAME value matches the expected installed package', () => {
+    // The worker adds package_name: PACKAGE_NAME to its result object.
+    // This test asserts the value that will appear in the cache.
+    assert.equal(PACKAGE_NAME, '@opengsd/gsd-core');
+  });
+});
+
+// ─── buildBannerOutput: lineage guard ────────────────────────────────────────
+
+describe('buildBannerOutput lineage guard', () => {
+  test('returns null when package_name is present but foreign', () => {
+    const out = buildBannerOutput({
+      cache: {
+        update_available: true,
+        installed: '1.2.0',
+        latest: '1.42.3',
+        package_name: 'get-shit-done-cc',
+      },
+      parseError: false,
+      suppressFailureWarning: false,
+    });
+    assert.equal(out, null, 'foreign lineage must be rejected');
+  });
+
+  test('returns banner when package_name matches PACKAGE_NAME', () => {
+    const out = buildBannerOutput({
+      cache: {
+        update_available: true,
+        installed: '1.2.0',
+        latest: '1.3.0',
+        package_name: '@opengsd/gsd-core',
+      },
+      parseError: false,
+      suppressFailureWarning: false,
+    });
+    assert.ok(out, 'expected banner envelope for matching lineage');
+    assert.equal(typeof out.systemMessage, 'string');
+    assert.ok(out.systemMessage.includes('1.2.0'));
+    assert.ok(out.systemMessage.includes('1.3.0'));
+    assert.ok(out.systemMessage.includes('/gsd:update'));
+  });
+
+  test('returns null when package_name is absent (untrusted cache)', () => {
+    const out = buildBannerOutput({
+      cache: {
+        update_available: true,
+        installed: '1.2.0',
+        latest: '1.3.0',
+        // no package_name field
+      },
+      parseError: false,
+      suppressFailureWarning: false,
+    });
+    assert.equal(out, null, 'absent package_name must be treated as untrusted → null');
+  });
+});
+
+// ─── evaluateUpdateCache: lineage guard in statusline ────────────────────────
+
+describe('evaluateUpdateCache lineage guard', () => {
+  test('returns showUpdate=false when cache is null', () => {
+    const r = evaluateUpdateCache(null);
+    assert.equal(r.showUpdate, false);
+    assert.equal(r.staleWarning, 'none');
+  });
+
+  test('returns showUpdate=false when package_name is absent (untrusted)', () => {
+    const r = evaluateUpdateCache({
+      update_available: true,
+      installed: '1.2.0',
+      latest: '1.3.0',
+    });
+    assert.equal(r.showUpdate, false);
+    assert.equal(r.staleWarning, 'none');
+  });
+
+  test('returns showUpdate=false when package_name is foreign', () => {
+    const r = evaluateUpdateCache({
+      update_available: true,
+      installed: '1.2.0',
+      latest: '1.3.0',
+      package_name: 'some-other-package',
+    });
+    assert.equal(r.showUpdate, false);
+    assert.equal(r.staleWarning, 'none');
+  });
+
+  test('returns showUpdate=true when update_available and package_name matches', () => {
+    const r = evaluateUpdateCache({
+      update_available: true,
+      installed: '1.2.0',
+      latest: '1.3.0',
+      package_name: '@opengsd/gsd-core',
+    });
+    assert.equal(r.showUpdate, true);
+    assert.equal(r.staleWarning, 'none');
+  });
+
+  test('returns showUpdate=false when update_available=false', () => {
+    const r = evaluateUpdateCache({
+      update_available: false,
+      installed: '1.3.0',
+      latest: '1.3.0',
+      package_name: '@opengsd/gsd-core',
+    });
+    assert.equal(r.showUpdate, false);
+    assert.equal(r.staleWarning, 'none');
+  });
+
+  test('returns staleWarning=stale when stale_hooks present and matching package_name', () => {
+    const r = evaluateUpdateCache({
+      update_available: false,
+      installed: '1.3.0',
+      latest: '1.3.0',
+      package_name: '@opengsd/gsd-core',
+      stale_hooks: [{ file: 'gsd-statusline.js', hookVersion: '1.2.0', installedVersion: '1.3.0' }],
+    });
+    assert.equal(r.staleWarning, 'stale');
+  });
+
+  test('returns staleWarning=dev when installed > latest (dev install) and matching package_name', () => {
+    const r = evaluateUpdateCache({
+      update_available: false,
+      installed: '2.0.0',
+      latest: '1.3.0',
+      package_name: '@opengsd/gsd-core',
+      stale_hooks: [{ file: 'gsd-statusline.js', hookVersion: '1.2.0', installedVersion: '2.0.0' }],
+    });
+    assert.equal(r.staleWarning, 'dev');
+  });
+
+  test('returns staleWarning=none when stale_hooks present but package_name is foreign', () => {
+    const r = evaluateUpdateCache({
+      update_available: false,
+      installed: '1.3.0',
+      latest: '1.2.0',
+      package_name: 'foreign-pkg',
+      stale_hooks: [{ file: 'gsd-statusline.js', hookVersion: '1.2.0', installedVersion: '1.3.0' }],
+    });
+    assert.equal(r.staleWarning, 'none');
+  });
+});
+  });
+}
+
+// ─── #3582: cold tree (no gsd-core/bin/lib/*.cjs) — degrade, not crash ─────
+//
+// gsd-core/bin/lib/semver-compare.cjs, package-identity.cjs,
+// state-document.cjs, active-workstream-store.cjs, and planning-workspace.cjs
+// are tsc build artifacts (ADR-457), gitignored and absent on a raw
+// plugin-marketplace / git-clone install that never ran `npm run build:lib`.
+// The statusline renders on EVERY prompt — before #3582 a missing library
+// crashed the whole hook process at module load (bare "Cannot find module"),
+// so Claude Code's statusline would show nothing AND emit a visible error on
+// every single render. The fix: the spawned-as-a-script path
+// (`require.main === module`) calls ensureRuntimeBuild() first and, on
+// failure, writes empty stdout and exits 0 — the SAME quiet no-signal
+// behavior every other internal failure in this hook already degrades to
+// (see e.g. the `try { ... } catch (e) { /* Silent fail */ }` wrapping
+// runStatusline's own body). Simulated hermetically via a fixture install
+// tree that copies hooks/ + the seam module but never gsd-core/bin/lib/ or
+// tsconfig.build.json (tests/helpers/cold-runtime-lib-fixture.cjs) — the REAL
+// gsd-core/bin/lib/ is never touched.
+{
+  const { describe, test } = require('node:test');
+  const assert = require('node:assert/strict');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { runHook: runHookSeam } = require('./helpers/process-seam.cjs');
+  const { buildColdInstallTree } = require('./helpers/cold-runtime-lib-fixture.cjs');
+
+  describe('gsd-statusline.js: #3582 cold tree — degrade to empty output, exit 0', () => {
+    test('missing compiled runtime library -> empty stdout, exit 0, no crash', (t) => {
+      const cold = buildColdInstallTree();
+      t.after(cold.cleanup);
+
+      const payload = JSON.stringify({
+        model: { display_name: 'Claude' },
+        workspace: { current_dir: os.tmpdir() },
+        session_id: `test-3582-${Date.now()}`,
+      });
+      const r = runHookSeam(path.join(cold.hooksDir, 'gsd-statusline.js'), [], {
+        input: payload,
+        timeoutMs: STATUSLINE_HOOK_TIMEOUT_MS,
+      });
+      assert.equal(r.exitCode, 0, `must exit 0 on a build failure; stdout: ${r.stdout} stderr: ${r.stderr}`);
+      assert.equal(r.stdout, '', 'must degrade to empty output, not throw a stack trace to stdout');
+    });
+  });
+}
+
+// ─── #2734: STATE.md freshness marker (failing-first — API does not exist yet) ─
+//
+// Test matrix: .gsd/phase/feat-2734-statusline-state-freshness/50-test-matrix.md
+// Design:      .gsd/phase/feat-2734-statusline-state-freshness/40-design.md
+//
+// This block binds the new hook contract (STATE_HEAD_ADVISORY_COMMITS,
+// isValidStateHeadStamp, parseRevListCounts, deriveStateFreshness,
+// formatStateFreshness, resolveStatuslineOptions, readGsdState's opts arg,
+// parseStateMd's stateHead field, and the renderers' freshness suffix) —
+// none of it is implemented yet, so every test below is expected to fail
+// (or error at call time) until the hook change lands.
+{
+  const {
+    STATE_HEAD_ADVISORY_COMMITS, isValidStateHeadStamp, parseRevListCounts,
+    deriveStateFreshness, formatStateFreshness, resolveStatuslineOptions,
+  } = require('../hooks/gsd-statusline.js');
+  const { createTempGitProject, createTempProject } = require('./helpers.cjs');
+  const { gitOrThrow, GIT_FIXTURE_TIMEOUT_MS } = require('./helpers/git-fixture.cjs');
+  const { runHook: runHookSeam, OUTCOME } = require('./helpers/process-seam.cjs');
+  const childProcess = require('node:child_process');
+
+  // Deterministic IO-failure / fake-response injection (repo convention —
+  // never chmod 0o000, which root bypasses). Lives in a module-level helper,
+  // never inline in a test body, per the repo's no-try/finally-in-tests rule.
+  function withSpawnSpy(impl, body) {
+    const original = childProcess.execFileSync;
+    const calls = [];
+    childProcess.execFileSync = (...args) => {
+      calls.push(args);
+      return impl(...args);
+    };
+    try {
+      body(calls);
+    } finally {
+      childProcess.execFileSync = original;
+    }
+  }
+
+  // Returns HEAD's sha BEFORE writing n filler commits, so the returned sha
+  // is exactly n commits behind the new HEAD. Unique filenames per call so
+  // multiple commitN() invocations against the same repo (e.g. two branches,
+  // or a re-stamp mid-test) never collide.
+  function commitN(dir, n) {
+    const sha = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+    for (let i = 0; i < n; i++) {
+      const marker = `freshness-filler-${Date.now()}-${Math.random().toString(36).slice(2)}-${i}.txt`;
+      fs.writeFileSync(path.join(dir, marker), String(i));
+      gitOrThrow(['add', '-A'], { cwd: dir, timeoutMs: GIT_FIXTURE_TIMEOUT_MS });
+      gitOrThrow(['commit', '-m', `filler ${i}`], { cwd: dir, timeoutMs: GIT_FIXTURE_TIMEOUT_MS });
+    }
+    return sha;
+  }
+
+  function writeConfig(dir, cfg) {
+    fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.planning', 'config.json'), JSON.stringify(cfg));
+  }
+
+  // Writes a STATE.md carrying `state_head: <stateHeadValue>` and returns the
+  // exact content string written, so callers can feed the same content to
+  // parseStateMd() directly without a redundant readFileSync of a fixture file.
+  function writeStateHead(dir, stateHeadValue, extraLines = []) {
+    const content = [
+      '---',
+      'status: executing',
+      ...extraLines,
+      `state_head: ${stateHeadValue}`,
+      '---',
+      '',
+      '# State',
+    ].join('\n');
+    fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.planning', 'STATE.md'), content);
+    return content;
+  }
+
+  describe('gsd-statusline.js: #2734 STATE.md freshness marker', () => {
+    // ─── rows 1-7: deriveStateFreshness threshold boundary ─────────────────
+
+    describe('deriveStateFreshness: advisory threshold boundary', () => {
+      test('rendersMarkerAtAdvisoryThreshold', (t) => {
+        const dir = createTempGitProject('gsd-freshness-at-threshold-');
+        t.after(() => cleanup(dir));
+        const stamp = commitN(dir, STATE_HEAD_ADVISORY_COMMITS);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, STATE_HEAD_ADVISORY_COMMITS);
+        assert.equal(ir.commit_stale, true);
+        assert.equal(formatStateFreshness(ir), `state ~${STATE_HEAD_ADVISORY_COMMITS} commits back`);
+      });
+
+      test('omitsMarkerJustBelowThreshold', (t) => {
+        const dir = createTempGitProject('gsd-freshness-below-threshold-');
+        t.after(() => cleanup(dir));
+        const n = STATE_HEAD_ADVISORY_COMMITS - 1;
+        const stamp = commitN(dir, n);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, n);
+        assert.equal(formatStateFreshness(ir), '');
+      });
+
+      test('rendersMarkerExactlyAtThreshold', (t) => {
+        const dir = createTempGitProject('gsd-freshness-exact-threshold-');
+        t.after(() => cleanup(dir));
+        const stamp = commitN(dir, STATE_HEAD_ADVISORY_COMMITS);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.state_head, stamp.slice(0, 7));
+        assert.equal(ir.commits_behind, STATE_HEAD_ADVISORY_COMMITS);
+        assert.notEqual(formatStateFreshness(ir), '');
+      });
+
+      test('rendersMarkerJustAboveThreshold', (t) => {
+        const dir = createTempGitProject('gsd-freshness-above-threshold-');
+        t.after(() => cleanup(dir));
+        const n = STATE_HEAD_ADVISORY_COMMITS + 1;
+        const stamp = commitN(dir, n);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, n);
+        assert.equal(formatStateFreshness(ir), `state ~${n} commits back`);
+      });
+
+      test('omitsMarkerWhenStampIsHead', (t) => {
+        const dir = createTempGitProject('gsd-freshness-stamp-is-head-');
+        t.after(() => cleanup(dir));
+        const stamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, 0);
+        assert.equal(ir.commit_stale, false);
+        assert.equal(formatStateFreshness(ir), '');
+      });
+
+      test('omitsMarkerForCommitDocsOffByOne', (t) => {
+        const dir = createTempGitProject('gsd-freshness-off-by-one-');
+        t.after(() => cleanup(dir));
+        const stamp = commitN(dir, 1);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, 1);
+        assert.equal(ir.commit_stale, true);
+        assert.equal(formatStateFreshness(ir), '', 'a single commit_docs restamp commit must not alarm');
+      });
+
+      test('rendersLargeCountUncapped', (t) => {
+        const dir = createTempGitProject('gsd-freshness-large-count-');
+        t.after(() => cleanup(dir));
+        const stamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        withSpawnSpy(() => '0\t99999\n', () => {
+          const ir = deriveStateFreshness(dir, stamp);
+          assert.equal(ir.commits_behind, 99999);
+          assert.equal(formatStateFreshness(ir), 'state ~99999 commits back');
+        });
+      });
+    });
+
+    // ─── rows 8-10: resolveStatuslineOptions flag gating ───────────────────
+
+    describe('resolveStatuslineOptions: show_state_freshness gating', () => {
+      test('omitsMarkerAndSpawnsNothingWhenFlagOff', (t) => {
+        const dir = createTempGitProject('gsd-freshness-flag-off-');
+        t.after(() => cleanup(dir));
+        const stamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        writeStateHead(dir, stamp);
+        assert.equal(resolveStatuslineOptions({}).showStateFreshness, false);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir);
+          assert.equal('freshness' in state, false);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('defaultsToDisabledWhenKeyAbsent', () => {
+        assert.equal(resolveStatuslineOptions({}).showStateFreshness, false);
+        assert.equal(resolveStatuslineOptions({ statusline: {} }).showStateFreshness, false);
+        assert.equal(resolveStatuslineOptions(undefined).showStateFreshness, false);
+      });
+
+      test('requiresStrictTrueToEnable', () => {
+        assert.equal(resolveStatuslineOptions({ statusline: { show_state_freshness: 'yes' } }).showStateFreshness, false);
+        assert.equal(resolveStatuslineOptions({ statusline: { show_state_freshness: 1 } }).showStateFreshness, false);
+        assert.equal(resolveStatuslineOptions({ statusline: { show_state_freshness: true } }).showStateFreshness, true);
+      });
+    });
+
+    // ─── rows 11-14: stamp-presence guards ──────────────────────────────────
+
+    describe('deriveStateFreshness wiring: stamp-absence guards', () => {
+      test('omitsMarkerWhenStampAbsent', (t) => {
+        const dir = createTempGitProject('gsd-freshness-no-stamp-');
+        t.after(() => cleanup(dir));
+        const content = ['---', 'status: executing', '---', '', '# State'].join('\n');
+        fs.mkdirSync(path.join(dir, '.planning'), { recursive: true });
+        fs.writeFileSync(path.join(dir, '.planning', 'STATE.md'), content);
+        assert.equal(parseStateMd(content).stateHead, undefined);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir, { stateFreshness: true });
+          assert.equal(state.freshness, undefined);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('treatsLiteralNullStampAsAbsent', (t) => {
+        const dir = createTempGitProject('gsd-freshness-null-stamp-');
+        t.after(() => cleanup(dir));
+        const content = writeStateHead(dir, 'null');
+        assert.equal(parseStateMd(content).stateHead, null);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir, { stateFreshness: true });
+          assert.equal(state.freshness, undefined);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('treatsEmptyStampAsAbsent', (t) => {
+        const dir = createTempGitProject('gsd-freshness-empty-stamp-');
+        t.after(() => cleanup(dir));
+        const content = writeStateHead(dir, '""');
+        assert.equal(parseStateMd(content).stateHead, null);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir, { stateFreshness: true });
+          assert.equal(state.freshness, undefined);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('treatsWhitespaceStampAsAbsent', () => {
+        assert.equal(isValidStateHeadStamp('   '), false);
+        assert.equal(isValidStateHeadStamp('\t\t'), false);
+      });
+    });
+
+    // ─── rows 15-19: hash-fence boundaries ──────────────────────────────────
+
+    describe('isValidStateHeadStamp: hash-fence boundaries', () => {
+      test('rejectsStampBelowFenceMinimum', () => {
+        assert.equal(isValidStateHeadStamp('abc'), false);
+      });
+
+      test('acceptsStampAtFenceMinimum', () => {
+        assert.equal(isValidStateHeadStamp('abcd'), true);
+      });
+
+      test('acceptsStampAtFenceMaximum', () => {
+        assert.equal(isValidStateHeadStamp('a'.repeat(40)), true);
+      });
+
+      test('rejectsStampAboveFenceMaximum', () => {
+        assert.equal(isValidStateHeadStamp('a'.repeat(41)), false);
+      });
+
+      test('rejectsNonHexStamp', () => {
+        assert.equal(isValidStateHeadStamp('zzzz'), false);
+        assert.equal(isValidStateHeadStamp('g1b2'), false);
+      });
+    });
+
+    // ─── rows 20-22: hostile stamps — negative proof (git never invoked) ───
+
+    describe('deriveStateFreshness: hostile stamps never reach git', () => {
+      test('rejectsFlagLookalikeStampBeforeSpawn', (t) => {
+        const dir = createTempGitProject('gsd-freshness-hostile-flag-');
+        t.after(() => cleanup(dir));
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const ir = deriveStateFreshness(dir, '--upload-pack=/bin/sh');
+          assert.equal(ir.state_head, null);
+          assert.equal(ir.commits_behind, null);
+          assert.equal(calls.length, 0, 'git must never be invoked for a flag-lookalike stamp');
+        });
+      });
+
+      test('rejectsRevisionSyntaxStamp', (t) => {
+        const dir = createTempGitProject('gsd-freshness-hostile-revsyntax-');
+        t.after(() => cleanup(dir));
+        const hostileStamps = ['HEAD', '..', '@{u}', '-'];
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          for (const stamp of hostileStamps) {
+            const ir = deriveStateFreshness(dir, stamp);
+            assert.equal(ir.state_head, null, `expected state_head null for ${JSON.stringify(stamp)}`);
+            assert.equal(ir.commits_behind, null, `expected commits_behind null for ${JSON.stringify(stamp)}`);
+          }
+          assert.equal(calls.length, 0, 'git must never be invoked for revision-syntax stamps');
+        });
+      });
+
+      test('rejectsShellMetacharacterStamp', (t) => {
+        const dir = createTempGitProject('gsd-freshness-hostile-shellmeta-');
+        t.after(() => cleanup(dir));
+        const hostileStamps = ['abcd1234\nrm -rf /', 'abcd1234;rm -rf /', '`touch /tmp/pwned`', '$(touch /tmp/pwned)'];
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          for (const stamp of hostileStamps) {
+            const ir = deriveStateFreshness(dir, stamp);
+            assert.equal(ir.state_head, null, `expected state_head null for ${JSON.stringify(stamp)}`);
+            assert.equal(ir.commits_behind, null, `expected commits_behind null for ${JSON.stringify(stamp)}`);
+          }
+          assert.equal(calls.length, 0, 'git must never be invoked for shell-metacharacter stamps');
+        });
+      });
+    });
+
+    // ─── rows 23-30: ancestry + provenance degradation guards ──────────────
+
+    describe('deriveStateFreshness: ancestry and provenance guards', () => {
+      test('omitsMarkerForUnknownStamp', (t) => {
+        const dir = createTempGitProject('gsd-freshness-unknown-stamp-');
+        t.after(() => cleanup(dir));
+        const ir = deriveStateFreshness(dir, 'deadbeef');
+        assert.equal(ir.state_head, 'deadbee');
+        assert.equal(ir.commits_behind, null);
+        assert.equal(ir.commit_stale, null);
+      });
+
+      test('omitsMarkerWhenStampIsNotAncestor', (t) => {
+        const dir = createTempGitProject('gsd-freshness-rewind-');
+        t.after(() => cleanup(dir));
+        const preSha = commitN(dir, 3);
+        const advancedSha = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        gitOrThrow(['reset', '--hard', preSha], { cwd: dir });
+        const ir = deriveStateFreshness(dir, advancedSha);
+        assert.equal(ir.state_head, advancedSha.slice(0, 7));
+        assert.equal(ir.commits_behind, null);
+        assert.equal(ir.commit_stale, null);
+      });
+
+      test('omitsMarkerForDivergedHistory', (t) => {
+        const dir = createTempGitProject('gsd-freshness-diverge-');
+        t.after(() => cleanup(dir));
+        const originalBranch = gitOrThrow(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: dir }).trim();
+        gitOrThrow(['checkout', '-b', 'gsd-freshness-side'], { cwd: dir });
+        commitN(dir, 2);
+        const divergedStamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        gitOrThrow(['checkout', originalBranch], { cwd: dir });
+        commitN(dir, 2);
+        const ir = deriveStateFreshness(dir, divergedStamp);
+        assert.equal(ir.commits_behind, null);
+        assert.equal(ir.commit_stale, null);
+      });
+
+      test('omitsMarkerWhenProjectDoesNotOwnRepo', (t) => {
+        const outerDir = createTempGitProject('gsd-freshness-outer-');
+        t.after(() => cleanup(outerDir));
+        const nestedDir = path.join(outerDir, 'nested-project');
+        fs.mkdirSync(path.join(nestedDir, '.planning'), { recursive: true });
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const ir = deriveStateFreshness(nestedDir, 'abcd1234');
+          assert.equal(ir.commits_behind, null);
+          assert.equal(ir.commit_stale, null);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('omitsMarkerInSubReposWorkspace', (t) => {
+        const dir = createTempGitProject('gsd-freshness-subrepos-');
+        t.after(() => cleanup(dir));
+        writeConfig(dir, { planning: { sub_repos: ['child-a', 'child-b'] } });
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const ir = deriveStateFreshness(dir, 'abcd1234');
+          assert.equal(ir.commits_behind, null);
+          assert.equal(ir.commit_stale, null);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('omitsMarkerForFlatSubReposKey', (t) => {
+        const dir = createTempGitProject('gsd-freshness-subrepos-flat-');
+        t.after(() => cleanup(dir));
+        writeConfig(dir, { 'planning.sub_repos': ['child-a'] });
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const ir = deriveStateFreshness(dir, 'abcd1234');
+          assert.equal(ir.commits_behind, null);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('allowsMarkerWhenSubReposEmpty', (t) => {
+        const dir = createTempGitProject('gsd-freshness-subrepos-empty-');
+        t.after(() => cleanup(dir));
+        writeConfig(dir, { planning: { sub_repos: [] } });
+        const stamp = commitN(dir, STATE_HEAD_ADVISORY_COMMITS);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, STATE_HEAD_ADVISORY_COMMITS);
+        assert.equal(formatStateFreshness(ir), `state ~${STATE_HEAD_ADVISORY_COMMITS} commits back`);
+      });
+
+      test('ignoresNonArraySubRepos', (t) => {
+        const dir = createTempGitProject('gsd-freshness-subrepos-scalar-');
+        t.after(() => cleanup(dir));
+        writeConfig(dir, { planning: { sub_repos: 'child-a' } });
+        const stamp = commitN(dir, STATE_HEAD_ADVISORY_COMMITS);
+        const ir = deriveStateFreshness(dir, stamp);
+        assert.equal(ir.commits_behind, STATE_HEAD_ADVISORY_COMMITS);
+      });
+    });
+
+    // ─── rows 31-34: IO fault injection ─────────────────────────────────────
+
+    describe('deriveStateFreshness: never throws on git faults', () => {
+      test('degradesWhenGitMissing', (t) => {
+        const dir = createTempGitProject('gsd-freshness-enoent-');
+        t.after(() => cleanup(dir));
+        withSpawnSpy(() => {
+          const err = new Error('spawnSync git ENOENT');
+          err.code = 'ENOENT';
+          throw err;
+        }, () => {
+          let ir;
+          assert.doesNotThrow(() => { ir = deriveStateFreshness(dir, 'abcd1234'); });
+          assert.equal(ir.commits_behind, null);
+          assert.equal(ir.commit_stale, null);
+        });
+      });
+
+      test('degradesOnGitTimeout', (t) => {
+        const dir = createTempGitProject('gsd-freshness-timeout-');
+        t.after(() => cleanup(dir));
+        withSpawnSpy(() => {
+          const err = new Error('spawnSync git ETIMEDOUT');
+          err.code = 'ETIMEDOUT';
+          err.errno = -110;
+          throw err;
+        }, () => {
+          let ir;
+          assert.doesNotThrow(() => { ir = deriveStateFreshness(dir, 'abcd1234'); });
+          assert.equal(ir.commits_behind, null);
+          assert.equal(ir.commit_stale, null);
+        });
+      });
+
+      test('degradesOnUnparseableRevListOutput', (t) => {
+        const dir = createTempGitProject('gsd-freshness-bad-stdout-');
+        t.after(() => cleanup(dir));
+        assert.equal(parseRevListCounts(null), null);
+        assert.equal(parseRevListCounts(''), null);
+        assert.equal(parseRevListCounts('garbage'), null);
+        assert.equal(parseRevListCounts('1'), null);
+        assert.equal(parseRevListCounts('a\tb'), null);
+        assert.equal(parseRevListCounts('\t'), null);
+        assert.equal(parseRevListCounts('not-a-count\n'), null);
+        withSpawnSpy(() => 'not-a-count\n', () => {
+          const ir = deriveStateFreshness(dir, 'abcd1234');
+          assert.equal(ir.commits_behind, null);
+          assert.equal(ir.commit_stale, null);
+        });
+      });
+
+      test('neverThrowsFromDerivation', (t) => {
+        const dir = createTempGitProject('gsd-freshness-arbitrary-throw-');
+        t.after(() => cleanup(dir));
+        withSpawnSpy(() => { throw new TypeError('arbitrary failure'); }, () => {
+          assert.doesNotThrow(() => deriveStateFreshness(dir, 'abcd1234'));
+        });
+      });
+    });
+
+    // ─── rows 35-39: renderer composition ───────────────────────────────────
+
+    describe('formatGsdState / formatGsdStateCompact: freshness suffix', () => {
+      test('fullRendererShowsMarker', () => {
+        const freshness = { state_head: 'abcd123', commits_behind: 20, commit_stale: true };
+        const s = { status: 'executing', phaseNum: '1', phaseTotal: '5', freshness };
+        const expected = ['executing', 'ph 1/5', formatStateFreshness(freshness)].join(' · ');
+        assert.equal(formatGsdState(s), expected);
+      });
+
+      test('compactRendererShowsMarker', () => {
+        const freshness = { state_head: 'abcd123', commits_behind: 20, commit_stale: true };
+        const s = { milestone: 'v1.9', status: 'executing', freshness };
+        const expected = ['v1.9', 'executing', formatStateFreshness(freshness)].join(' · ');
+        assert.equal(formatGsdStateCompact(s), expected);
+      });
+
+      test('compactRendererOmitsBelowThreshold', () => {
+        const freshness = { state_head: 'abcd123', commits_behind: 5, commit_stale: true };
+        const s = { milestone: 'v1.9', status: 'executing', freshness };
+        const expected = ['v1.9', 'executing'].join(' · ');
+        assert.equal(formatGsdStateCompact(s), expected);
+      });
+
+      test('workstreamSentinelSuppressesMarker', () => {
+        const freshness = { state_head: 'abcd123', commits_behind: 20, commit_stale: true };
+        const s = { noActiveWorkstream: true, freshness };
+        assert.equal(formatGsdState(s), 'no active workstream');
+        assert.equal(formatGsdStateCompact(s), 'no active workstream');
+      });
+
+      test('markerCoexistsWithMilestoneComplete', () => {
+        const freshness = { state_head: 'abcd123', commits_behind: 25, commit_stale: true };
+        const sFull = { milestone: 'v1.9', percent: '100', freshness };
+        const expectedFull = ['v1.9 [██████████] 100%', 'milestone complete', formatStateFreshness(freshness)].join(' · ');
+        assert.equal(formatGsdState(sFull), expectedFull);
+
+        const sCompact = { milestone: 'v1.9', percent: '100', freshness };
+        const expectedCompact = ['v1.9', 'complete', formatStateFreshness(freshness)].join(' · ');
+        assert.equal(formatGsdStateCompact(sCompact), expectedCompact);
+      });
+    });
+
+    // ─── row 40: todo-task gate (no wasted spawn while a task is active) ───
+
+    describe('runStatusline wiring: todo-task gate', () => {
+      test('skipsFreshnessWorkWhenTodoTaskActive', { skip: process.platform === 'win32' ? 'POSIX-only git shim' : false }, (t) => {
+        const dir = createTempGitProject('gsd-freshness-todo-gate-');
+        t.after(() => cleanup(dir));
+        writeConfig(dir, { statusline: { show_state_freshness: true } });
+        const stamp = commitN(dir, STATE_HEAD_ADVISORY_COMMITS);
+        writeStateHead(dir, stamp);
+
+        // A `git` shim on PATH that appends a line to a marker file on
+        // EVERY invocation and always fails — proves the ONLY way to
+        // detect a spawn across a real subprocess boundary (an in-process
+        // execFileSync monkeypatch can't reach a child node process's own
+        // module cache). Asserting the marker file never exists is a
+        // filesystem fact, not a text match against rendered output.
+        const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-freshness-shim-'));
+        t.after(() => cleanup(shimDir));
+        const marker = path.join(shimDir, 'git-was-invoked');
+        fs.writeFileSync(path.join(shimDir, 'git'), ['#!/bin/sh', `echo invoked >> "${marker}"`, 'exit 1', ''].join('\n'));
+        fs.chmodSync(path.join(shimDir, 'git'), 0o755);
+
+        const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-freshness-todo-claude-'));
+        t.after(() => cleanup(claudeDir));
+        const todosDir = path.join(claudeDir, 'todos');
+        fs.mkdirSync(todosDir, { recursive: true });
+        const session = `sess-2734-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        fs.writeFileSync(path.join(todosDir, `${session}-agent-A.json`), JSON.stringify([
+          { content: 'task', status: 'in_progress', activeForm: 'ACTIVE TASK 2734' },
+        ]));
+
+        const hookPath = path.join(__dirname, '..', 'hooks', 'gsd-statusline.js');
+        const payload = JSON.stringify({
+          model: { display_name: 'Claude' },
+          workspace: { current_dir: dir },
+          session_id: session,
+          context_window: contextWindow({ remaining_percentage: 80, context_window_size: 1_000_000 }),
+        });
+        const r = runHookSeam(hookPath, [], {
+          input: payload,
+          env: { ...process.env, PATH: `${shimDir}${path.delimiter}${process.env.PATH}`, CLAUDE_CONFIG_DIR: claudeDir },
+          timeoutMs: STATUSLINE_HOOK_GIT_SHIM_TIMEOUT_MS,
+        });
+        assert.equal(r.outcome, OUTCOME.EXITED, `expected clean exit, got outcome=${r.outcome}`);
+        assert.equal(r.exitCode, 0);
+        assert.equal(fs.existsSync(marker), false, 'git must never be invoked while a todo task is active');
+      });
+    });
+
+    // ─── rows 41-45: parseStateMd state_head extraction edge cases ─────────
+
+    describe('parseStateMd: state_head extraction', () => {
+      test('parsesStampFromCrlfStateMd', () => {
+        const lf = ['---', 'status: executing', 'state_head: abcd1234', '---', '', '# State'].join('\n');
+        const crlf = lf.replace(/\n/g, '\r\n');
+        assert.equal(parseStateMd(crlf).stateHead, parseStateMd(lf).stateHead);
+        assert.equal(parseStateMd(crlf).stateHead, 'abcd1234');
+      });
+
+      test('omitsMarkerWithoutFrontmatter', () => {
+        const content = ['# State', 'Status: executing'].join('\n');
+        assert.equal(parseStateMd(content).stateHead, undefined);
+      });
+
+      test('handlesEmptyStateFile', () => {
+        assert.doesNotThrow(() => parseStateMd(''));
+        assert.equal(parseStateMd('').stateHead, undefined);
+      });
+
+      test('handlesDuplicateStampKey', () => {
+        const content = ['---', 'state_head: aaaa1111', 'state_head: bbbb2222', '---'].join('\n');
+        assert.equal(parseStateMd(content).stateHead, 'bbbb2222');
+      });
+
+      test('stripsQuotesFromStamp', () => {
+        const content = ['---', 'state_head: "abc1234"', '---'].join('\n');
+        assert.equal(parseStateMd(content).stateHead, 'abc1234');
+      });
+    });
+
+    // ─── rows 46-52: independence + parity ──────────────────────────────────
+
+    describe('independence + parity', () => {
+      test('defaultCallShapeIsUnchanged', (t) => {
+        const dir = createTempGitProject('gsd-freshness-default-shape-');
+        t.after(() => cleanup(dir));
+        const stamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        writeStateHead(dir, stamp);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir);
+          assert.equal('freshness' in state, false);
+          assert.equal(calls.length, 0);
+        });
+      });
+
+      test('spendsExactlyOneSpawnPerRender', (t) => {
+        const dir = createTempGitProject('gsd-freshness-spawn-count-');
+        t.after(() => cleanup(dir));
+        const stamp = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        writeStateHead(dir, stamp);
+        withSpawnSpy(() => '0\t20\n', (calls) => {
+          const state = readGsdState(dir, { stateFreshness: true });
+          assert.equal(calls.length, 1, `expected exactly one git spawn, got ${calls.length}`);
+          assert.equal(state.freshness.commits_behind, 20);
+        });
+      });
+
+      test('thresholdMatchesHealthConstant', () => {
+        const { STATE_HEAD_ADVISORY_COMMITS: healthConstant } = require('../gsd-core/bin/lib/verify.cjs');
+        assert.equal(STATE_HEAD_ADVISORY_COMMITS, healthConstant);
+      });
+
+      test('fenceAgreesWithStateModule', (t) => {
+        const { readStateHeadFreshness } = require('../gsd-core/bin/lib/state.cjs');
+        const dir = createTempProject('gsd-freshness-fence-parity-');
+        t.after(() => cleanup(dir));
+        const candidates = [
+          'abcd', 'abcd1234', 'a'.repeat(40), 'a'.repeat(41), 'abc', 'zzzz', 'g1b2',
+          '', '   ', 'null', '--upload-pack=x', 'HEAD', '..', '@{u}', '-',
+          'abcd1234\nrm -rf /', 'abcd1234;rm -rf /', '`abcd1234`', '$(abcd1234)', '"abcd1234"',
+        ];
+        for (const candidate of candidates) {
+          const hookAccepts = isValidStateHeadStamp(candidate);
+          const moduleAccepts = readStateHeadFreshness(dir, candidate).state_head !== null;
+          assert.equal(hookAccepts, moduleAccepts, `fence mismatch for candidate ${JSON.stringify(candidate)}`);
+        }
+      });
+
+      test('derivationAgreesWithStateModule', (t) => {
+        const { readStateHeadFreshness } = require('../gsd-core/bin/lib/state.cjs');
+
+        // Registers cleanup for THIS fixture's directory at scheduling time
+        // (captured as a function parameter, not a reused outer `dir`
+        // binding) so a throw partway through the fixture list still tears
+        // down every directory created up to that point.
+        function registerCleanup(fixtureDir) {
+          t.after(() => cleanup(fixtureDir));
+        }
+
+        function assertAgree(dir, stamp) {
+          const hookIr = deriveStateFreshness(dir, stamp);
+          const moduleIr = readStateHeadFreshness(dir, stamp);
+          assert.equal(hookIr.state_head, moduleIr.state_head, 'state_head mismatch');
+          assert.equal(hookIr.commits_behind, moduleIr.commits_behind, 'commits_behind mismatch');
+          assert.equal(hookIr.commit_stale, moduleIr.commit_stale, 'commit_stale mismatch');
+        }
+
+        // Ancestor stamp, 5 commits behind.
+        let dir = createTempGitProject('gsd-freshness-parity-ancestor-');
+        registerCleanup(dir);
+        let stamp = commitN(dir, 5);
+        assertAgree(dir, stamp);
+
+        // Rewound (non-ancestor) stamp.
+        dir = createTempGitProject('gsd-freshness-parity-rewound-');
+        registerCleanup(dir);
+        const preSha = commitN(dir, 3);
+        const advancedSha = gitOrThrow(['rev-parse', 'HEAD'], { cwd: dir }).trim();
+        gitOrThrow(['reset', '--hard', preSha], { cwd: dir });
+        assertAgree(dir, advancedSha);
+
+        // Invalid (non-hex) stamp.
+        dir = createTempGitProject('gsd-freshness-parity-invalid-');
+        registerCleanup(dir);
+        assertAgree(dir, 'zzzznothex');
+
+        // .git-less root.
+        dir = createTempProject('gsd-freshness-parity-nogit-');
+        registerCleanup(dir);
+        assertAgree(dir, 'abcd1234');
+
+        // sub_repos workspace.
+        dir = createTempGitProject('gsd-freshness-parity-subrepos-');
+        registerCleanup(dir);
+        writeConfig(dir, { planning: { sub_repos: ['child-a'] } });
+        assertAgree(dir, 'abcd1234');
+      });
+
+      test('bothEntryPointsResolveOptionsIdentically', () => {
+        const cfgs = [
+          {},
+          { statusline: { show_state_freshness: true } },
+          { statusline: { state_format: 'compact', show_git: true, show_state_freshness: true } },
+          { 'statusline.show_state_freshness': true, 'statusline.context_position': 'front' },
+        ];
+        for (const cfg of cfgs) {
+          const o = resolveStatuslineOptions(cfg);
+          assert.equal(typeof o.showStateFreshness, 'boolean', `showStateFreshness type for ${JSON.stringify(cfg)}`);
+          assert.equal(typeof o.showGit, 'boolean', `showGit type for ${JSON.stringify(cfg)}`);
+          assert.ok(o.stateFormat === 'full' || o.stateFormat === 'compact', `unexpected stateFormat for ${JSON.stringify(cfg)}: ${o.stateFormat}`);
+          assert.ok(o.position === 'end' || o.position === 'front', `unexpected position for ${JSON.stringify(cfg)}: ${o.position}`);
+        }
+
+        const flat = resolveStatuslineOptions({ 'statusline.show_state_freshness': true, 'statusline.state_format': 'compact' });
+        const nested = resolveStatuslineOptions({ statusline: { show_state_freshness: true, state_format: 'compact' } });
+        assert.deepEqual(flat, nested, 'flat dotted-key and nested config forms must resolve identically');
+      });
+
+      test('derivationIsNotMemoizedAcrossRenders', (t) => {
+        const dir = createTempGitProject('gsd-freshness-no-memo-');
+        t.after(() => cleanup(dir));
+        // This row asserts non-memoization, not the timeout degrade: keep the
+        // real git spawn, lift only the hook's 1500 ms production bound so
+        // runner load cannot turn its designed `null` into a red (#4850).
+        const realExec = childProcess.execFileSync;
+        const unbounded = (file, args, opts) => realExec(file, args, { ...opts, timeout: GIT_FIXTURE_TIMEOUT_MS });
+        const read = () => {
+          let state;
+          withSpawnSpy(unbounded, () => { state = readGsdState(dir, { stateFreshness: true }); });
+          return state;
+        };
+
+        const stampA = commitN(dir, 5);
+        writeStateHead(dir, stampA);
+        const first = read();
+        assert.equal(first.freshness.commits_behind, 5);
+
+        const stampB = commitN(dir, 10);
+        writeStateHead(dir, stampB);
+        const second = read();
+        assert.equal(second.freshness.commits_behind, 10);
+        assert.notEqual(first.freshness.commits_behind, second.freshness.commits_behind);
+      });
+    });
+  });
+}

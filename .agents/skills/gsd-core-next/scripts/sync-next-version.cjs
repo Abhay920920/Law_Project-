@@ -1,0 +1,174 @@
+'use strict';
+/**
+ * Sync the `next` branch's package.json version to a published release version.
+ *
+ * The release pipeline bumps the version only on the release/X.Y.Z branch at
+ * publish time, so `next` drifts and can carry a never-published placeholder
+ * (e.g. 1.3.1-dev.0) that leaks to source/dev installs reporting package.json
+ * version. This keeps `next` equal to the last published release for every
+ * release type (rc / hotfix / final). See issue #1104.
+ *
+ * Modes:
+ *   default     — open + admin-merge a `chore: sync next version` PR, or enqueue it
+ *                 when the base requires the merge queue (#5746) (used by
+ *                 release.yml's rc job, which has no next-targeting PR of its
+ *                 own). Idempotent: a no-op when `next` is already at the target.
+ *   --in-place  — set the version (+ manifests, via the npm `version` hook) in
+ *                 the current working tree only; the caller commits/pushes (used
+ *                 by auto-backmerge.yml, which folds it into its existing
+ *                 main->next PR).
+ *
+ * Subprocesses are bounded (repo convention) and the exec seam is injectable so
+ * the orchestration is unit-testable without git/gh/npm.
+ */
+const { execFileSync } = require('child_process');
+
+const RELEASE_VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(-(rc|beta)\.[0-9]+)?$/;
+
+/** True iff `v` is a publishable release version: X.Y.Z optionally -rc.N / -beta.N. Rejects -dev and anything else. */
+function isReleaseVersion(v) {
+  return typeof v === 'string' && RELEASE_VERSION.test(v);
+}
+
+// The branch syncViaPr opens. scripts/release-pipeline-pr.cjs exempts exactly
+// this shape from the issue-link and PR-title gates (#5890).
+const SYNC_BRANCH_PREFIX = 'chore/sync-next-version-';
+
+/** The head branch of the sync PR for `version`. */
+function syncBranchName(version) {
+  return `${SYNC_BRANCH_PREFIX}${version}`;
+}
+
+/** Read the `version` field out of a package.json text blob. Throws on a missing/non-string version. */
+function versionFromPackageJson(text) {
+  const parsed = JSON.parse(text);
+  if (typeof parsed.version !== 'string') throw new Error('package.json has no string version');
+  return parsed.version;
+}
+
+function defaultRun(cmd, args, opts = {}) {
+  return execFileSync(cmd, args, {
+    encoding: 'utf8',
+    timeout: opts.timeout ?? 30000,
+    stdio: opts.stdio ?? ['ignore', 'pipe', 'inherit'],
+  });
+}
+
+/** Set package.json version (and manifests, via the npm `version` lifecycle hook) in the current tree. */
+function applyVersion(version, { run = defaultRun } = {}) {
+  if (!isReleaseVersion(version)) {
+    throw new Error(`refusing to sync next to invalid/non-release version '${version}'`);
+  }
+  run('npm', ['version', version, '--no-git-tag-version', '--allow-same-version'], { timeout: 60000 });
+}
+
+// What `gh pr merge --admin` says when the base branch is behind a merge-queue ruleset.
+const MERGE_QUEUE_REJECTION_RE = /merge queue/i;
+
+// stdin ignored, stdout and stderr captured so a failed `gh` call carries its own text.
+const PIPED_STDERR = ['ignore', 'pipe', 'pipe'];
+
+/** Piped stderr is not visible on its own: write it out, then rethrow. */
+function rethrowWithStderr(err) {
+  if (err && err.stderr) process.stderr.write(String(err.stderr));
+  throw err;
+}
+
+/** Full PR-based sync to the `next` branch. Returns 'noop' | 'synced' | 'queued' (enqueued, not yet merged). */
+function syncViaPr(version, { run = defaultRun } = {}) {
+  if (!isReleaseVersion(version)) {
+    throw new Error(`refusing to sync next to invalid/non-release version '${version}'`);
+  }
+  run('git', ['fetch', 'origin', 'next'], { timeout: 30000 });
+  const current = versionFromPackageJson(run('git', ['show', 'origin/next:package.json'], { timeout: 15000 }));
+  if (current === version) {
+    process.stdout.write(`next already at ${version} — nothing to sync\n`);
+    return 'noop';
+  }
+  const branch = syncBranchName(version);
+  run('git', ['checkout', '-B', branch, 'origin/next'], { timeout: 15000 });
+  applyVersion(version, { run });
+  run('git', ['add', '-u'], { timeout: 15000 });
+  // `git diff --cached --quiet` exits 0 when there is NO staged diff (execFileSync
+  // returns), exits 1 when there IS one (execFileSync throws). Proceed only on a diff.
+  let hasDiff = false;
+  try {
+    run('git', ['diff', '--cached', '--quiet'], { timeout: 15000 });
+  } catch (err) {
+    // exit 1 == there is a staged diff (expected); anything else is a real failure.
+    if (err && err.status === 1) hasDiff = true;
+    else throw err;
+  }
+  if (!hasDiff) {
+    process.stdout.write('no changes to commit — nothing to sync\n');
+    return 'noop';
+  }
+  run('git', ['commit', '-m', `chore: sync next package version to ${version}`], { timeout: 15000 });
+  run('git', ['push', '--force-with-lease', 'origin', branch], { timeout: 60000 });
+  let prUrl = run('gh', ['pr', 'list', '--head', branch, '--base', 'next', '--state', 'open',
+    '--json', 'url', '--jq', '.[0].url // ""'], { timeout: 30000 }).trim();
+  if (!prUrl) {
+    prUrl = run('gh', ['pr', 'create', '--base', 'next', '--head', branch,
+      '--title', `chore: sync next package version to ${version}`,
+      '--body', `Automated: keep \`next\`'s package.json at the last published release (\`${version}\`) so the default branch never carries a never-published version. Generated by the release pipeline (#1104).`,
+    ], { timeout: 60000 }).trim();
+  }
+  const m = prUrl.match(/\/pull\/(\d+)\b/);
+  if (!m) throw new Error(`could not parse PR number from gh output: ${prUrl}`);
+  const prNum = m[1];
+  try {
+    run('gh', ['pr', 'edit', prNum, '--add-label', 'automation', '--add-label', 'no-changelog'], { timeout: 30000 });
+  } catch {
+    /* labels are best-effort; admin-merge below still lands the PR */
+  }
+  try {
+    // stderr is piped, not inherited: with the default 'inherit' the GitHub text goes
+    // to the terminal and err.stderr is null, so the classification below would only
+    // ever see "Command failed: gh pr merge ..." (#5746).
+    run('gh', ['pr', 'merge', '--admin', '--merge', prNum], { timeout: 60000, stdio: PIPED_STDERR });
+  } catch (err) {
+    const msg = String((err && (err.stderr || err.message)) || '');
+    if (/already merged/i.test(msg)) {
+      // a PR that is already merged must never be enqueued
+    } else if (MERGE_QUEUE_REJECTION_RE.test(msg)) {
+      // #5746: `next` is governed by a merge-queue ruleset, which --admin cannot bypass.
+      // Enqueue instead; the queue chooses the merge strategy, so no --merge here. A
+      // failed enqueue is a real failure: its text is surfaced and it propagates.
+      try {
+        run('gh', ['pr', 'merge', '--auto', prNum], { timeout: 60000, stdio: PIPED_STDERR });
+      } catch (enqueueErr) {
+        rethrowWithStderr(enqueueErr);
+      }
+      process.stdout.write(`queued sync of next -> ${version} via PR #${prNum}\n`);
+      return 'queued';
+    } else if (!/not mergeable|Merged/i.test(msg)) {
+      // the older tolerance, kept after the queue rule so a queue rejection that happens
+      // to mention "mergeable" is not mistaken for success
+      rethrowWithStderr(err);
+    }
+  }
+  process.stdout.write(`synced next -> ${version} via PR #${prNum}\n`);
+  return 'synced';
+}
+
+function main(argv = process.argv.slice(2), deps = {}) {
+  const inPlace = argv.includes('--in-place');
+  const version = argv.find((a) => !a.startsWith('--'));
+  if (!version) throw new Error('usage: sync-next-version.cjs <version> [--in-place]');
+  if (inPlace) {
+    applyVersion(version, deps);
+    return;
+  }
+  syncViaPr(version, deps);
+}
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (e) {
+    process.stderr.write(`error: ${e.message}\n`);
+    process.exitCode = 1;
+  }
+}
+
+module.exports = { isReleaseVersion, versionFromPackageJson, applyVersion, syncViaPr, main, defaultRun, SYNC_BRANCH_PREFIX, syncBranchName };

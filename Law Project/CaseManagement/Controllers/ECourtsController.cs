@@ -267,9 +267,23 @@ namespace MVCCaseManagement.Controllers
 
             var filtered = itemsList.AsEnumerable();
 
-            if (!string.IsNullOrWhiteSpace(bench) && bench != "All")
+            if (!string.IsNullOrWhiteSpace(bench) && !bench.Equals("All", StringComparison.OrdinalIgnoreCase) && !bench.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
-                filtered = filtered.Where(i => i.HighCourtBench.Equals(bench, StringComparison.OrdinalIgnoreCase));
+                string bNorm = bench.Trim().ToUpperInvariant();
+                filtered = filtered.Where(i =>
+                {
+                    if (string.Equals(i.HighCourtBench, bench, StringComparison.OrdinalIgnoreCase)) return true;
+                    if (bNorm == "KAHC01" || bNorm.Contains("BENGALURU") || bNorm.Contains("PRINCIPAL"))
+                        return (i.HighCourtBench != null && (i.HighCourtBench.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) || i.HighCourtBench.Contains("Principal", StringComparison.OrdinalIgnoreCase))) || 
+                               (i.CNRNumber != null && i.CNRNumber.StartsWith("KAHC01", StringComparison.OrdinalIgnoreCase));
+                    if (bNorm == "KAHC02" || bNorm.Contains("DHARWAD"))
+                        return (i.HighCourtBench != null && i.HighCourtBench.Contains("Dharwad", StringComparison.OrdinalIgnoreCase)) || 
+                               (i.CNRNumber != null && i.CNRNumber.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase));
+                    if (bNorm == "KAHC03" || bNorm.Contains("KALABURAGI") || bNorm.Contains("GULBARGA"))
+                        return (i.HighCourtBench != null && (i.HighCourtBench.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase) || i.HighCourtBench.Contains("Gulbarga", StringComparison.OrdinalIgnoreCase))) || 
+                               (i.CNRNumber != null && i.CNRNumber.StartsWith("KAHC03", StringComparison.OrdinalIgnoreCase));
+                    return i.HighCourtBench != null && i.HighCourtBench.IndexOf(bench, StringComparison.OrdinalIgnoreCase) >= 0;
+                });
             }
 
             if (!string.IsNullOrWhiteSpace(division) && division != "All")
@@ -299,11 +313,11 @@ namespace MVCCaseManagement.Controllers
             return View(vm);
         }
 
-        // GET: /ECourts/GetLiveHighCourtPartyCases?estCode=KAHC02&partyName=NWKRTC&regYear=2024&pendDisp=P&multiAlias=false&hearingDate=...&todayOnly=false
+        // GET: /ECourts/GetLiveHighCourtPartyCases?estCode=ALL&partyName=NWKRTC&regYear=2024&pendDisp=P&multiAlias=false&hearingDate=...&todayOnly=false
         [HttpGet]
         [AllowAnonymous]
         public async Task<IActionResult> GetLiveHighCourtPartyCases(
-            string estCode = "KAHC02", 
+            string estCode = "ALL", 
             string partyName = "NWKRTC", 
             string? regYear = null, 
             string pendDisp = "P", 
@@ -435,7 +449,7 @@ namespace MVCCaseManagement.Controllers
                 string comb = $"{pName} {rName} {adv}".ToUpperInvariant();
                 bool isDharwad = (sc.HighCourtBench != null && sc.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0) ||
                                  (sc.CNRNumber != null && sc.CNRNumber.StartsWith("KAHC02", StringComparison.OrdinalIgnoreCase)) ||
-                                 estCodes.Any(e => string.Equals(e, "KAHC02", StringComparison.OrdinalIgnoreCase));
+                                 (estCodes.Length == 1 && string.Equals(estCodes[0], "KAHC02", StringComparison.OrdinalIgnoreCase));
 
                 // 0. Strict Exclusions & Subject Category Gate:
                 // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), Commercial Tender (GM, TEN),
@@ -571,7 +585,8 @@ namespace MVCCaseManagement.Controllers
                 {
                     string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                         ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
-                        : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
+                        : (item.HighCourtBench != null && (item.HighCourtBench.IndexOf("Bengaluru", StringComparison.OrdinalIgnoreCase) >= 0 || item.HighCourtBench.IndexOf("Principal", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC01" :
+                          (item.HighCourtBench != null && item.HighCourtBench.IndexOf("Kalaburagi", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC03" : "KAHC02"));
                     var r = NwkrtcPartyMatcher.DetectRole(item.PetitionerName ?? "", item.RespondentName ?? "", estCode: itemEst, advocate: item.Advocate);
                     item.NwkrtcRole = r.Role;
                     item.MatchedDesignation = r.MatchedDesignation;
@@ -624,7 +639,8 @@ namespace MVCCaseManagement.Controllers
 
                 string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                     ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
-                    : (!string.IsNullOrEmpty(item.HighCourtBench) && item.HighCourtBench.IndexOf("Dharwad", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC02" : "KAHC02");
+                    : (item.HighCourtBench != null && (item.HighCourtBench.IndexOf("Bengaluru", StringComparison.OrdinalIgnoreCase) >= 0 || item.HighCourtBench.IndexOf("Principal", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC01" :
+                      (item.HighCourtBench != null && item.HighCourtBench.IndexOf("Kalaburagi", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC03" : "KAHC02"));
                 bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
                 bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
 
@@ -645,6 +661,18 @@ namespace MVCCaseManagement.Controllers
                        .ThenByDescending(x => x.RegYear)
                        .ThenBy(x => x.RegNumber)
                        .ToList();
+
+            foreach (var itm in allSorted)
+            {
+                if (string.IsNullOrWhiteSpace(itm.HighCourtBench))
+                {
+                    itm.HighCourtBench = (!string.IsNullOrEmpty(itm.CNRNumber) && itm.CNRNumber.StartsWith("KAHC01", StringComparison.OrdinalIgnoreCase))
+                        ? "Principal Bench (Bengaluru)"
+                        : ((!string.IsNullOrEmpty(itm.CNRNumber) && itm.CNRNumber.StartsWith("KAHC03", StringComparison.OrdinalIgnoreCase))
+                            ? "Kalaburagi Bench"
+                            : "Dharwad Bench");
+                }
+            }
 
             var displayList = todayOnly
                 ? allSorted.Where(x => x.IsListedToday).ToList()
@@ -866,10 +894,10 @@ namespace MVCCaseManagement.Controllers
             });
         }
 
-                // POST / GET: /ECourts/SyncDailyHighCourtCauseList?estCode=KAHC02&date=30-10-2026&force=true
+        // POST / GET: /ECourts/SyncDailyHighCourtCauseList?estCode=ALL&date=30-10-2026&force=true
         [HttpPost, HttpGet]
         [AllowAnonymous]
-        public async Task<IActionResult> SyncDailyHighCourtCauseList(string estCode = "KAHC02", string? date = null, bool force = true)
+        public async Task<IActionResult> SyncDailyHighCourtCauseList(string estCode = "ALL", string? date = null, bool force = true)
         {
             DateTime targetDate = DateTime.Today;
             if (!string.IsNullOrWhiteSpace(date))
@@ -892,14 +920,15 @@ namespace MVCCaseManagement.Controllers
 
             try
             {
-                var items = await _causeListScanner.GetOrScanDailyCauseListAsync(estCode, targetDate, forceRefresh: force);
+                string normEst = string.IsNullOrWhiteSpace(estCode) ? "ALL" : estCode.Trim().ToUpperInvariant();
+                var items = await _causeListScanner.GetOrScanDailyCauseListAsync(normEst, targetDate, forceRefresh: force);
                 return Json(new
                 {
                     success = true,
-                    estCode = estCode,
+                    estCode = normEst,
                     date = targetDate.ToString("dd-MM-yyyy"),
                     count = items.Count,
-                    message = $"Successfully scanned High Court benches. Identified {items.Count} NWKRTC listed matters.",
+                    message = $"Successfully scanned High Court benches across {(normEst == "ALL" ? "All Benches (Bengaluru, Dharwad, Kalaburagi)" : normEst)}. Identified {items.Count} NWKRTC listed matters.",
                     cases = items
                 });
             }
@@ -910,15 +939,62 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
-        // GET: /ECourts/GetHighCourtCauselistBenches?estCode=KAHC01&causelistDate=13-08-2026
+        // GET: /ECourts/GetHighCourtCauselistBenches?estCode=ALL&causelistDate=13-08-2026
         [HttpGet]
         [AllowAnonymous]
-
-        public async Task<IActionResult> GetHighCourtCauselistBenches(string estCode = "KAHC01", string? causelistDate = null)
+        public async Task<IActionResult> GetHighCourtCauselistBenches(string estCode = "ALL", string? causelistDate = null)
         {
             string dateStr = string.IsNullOrWhiteSpace(causelistDate) ? DateTime.Today.ToString("dd-MM-yyyy") : causelistDate;
-            var result = await _napixService.GetHighCourtCauselistBenchesAsync(estCode, dateStr);
-            if (result.HasValue) return Json(new { success = true, data = result.Value });
+            if (string.IsNullOrWhiteSpace(estCode) || string.Equals(estCode, "ALL", StringComparison.OrdinalIgnoreCase))
+            {
+                var multiBenches = new List<object>();
+                var targetEsts = new[] 
+                { 
+                    ("KAHC02", "Dharwad Bench"), 
+                    ("KAHC01", "Principal Bench (Bengaluru)"), 
+                    ("KAHC03", "Kalaburagi Bench") 
+                };
+
+                foreach (var (code, name) in targetEsts)
+                {
+                    try
+                    {
+                        var result = await _napixService.GetHighCourtCauselistBenchesAsync(code, dateStr);
+                        if (result.HasValue && result.Value.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var prop in result.Value.EnumerateObject())
+                            {
+                                if (prop.Value.ValueKind == JsonValueKind.Object)
+                                {
+                                    string bId = prop.Value.TryGetProperty("bench_id", out var bp) ? bp.ToString() : "";
+                                    string jName = prop.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() ?? "" : "";
+                                    string courtNo = prop.Value.TryGetProperty("court_no", out var cp) ? cp.ToString() : "";
+                                    if (!string.IsNullOrEmpty(bId))
+                                    {
+                                        multiBenches.Add(new
+                                        {
+                                            bench_id = bId,
+                                            judge_name = jName,
+                                            court_no = courtNo,
+                                            est_code = code,
+                                            court_est_name = name
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[GetHighCourtCauselistBenches] Error querying benches for {EstCode}", code);
+                    }
+                }
+
+                return Json(new { success = true, data = multiBenches });
+            }
+
+            var singleResult = await _napixService.GetHighCourtCauselistBenchesAsync(estCode, dateStr);
+            if (singleResult.HasValue) return Json(new { success = true, data = singleResult.Value });
             return Json(new { success = false, message = "Unable to fetch High Court Causelist Benches." });
         }
 

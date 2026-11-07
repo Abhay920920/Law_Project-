@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "99"
+  ],
+  "fixture": "schema-drift",
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"message\": \"Phase directory not found: 99\"\n}",
+  "stderr": "",
+  "exitCode": 69
+}

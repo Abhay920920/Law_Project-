@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift"
+  ],
+  "fixture": "schema-drift",
+  "env": {
+    "GSD_JSON_ERRORS": "1"
+  },
+  "stdout": "",
+  "stderr": "{\"ok\":false,\"reason\":\"unknown\",\"message\":\"Usage: verify schema-drift <phase> [--skip]\"}\n",
+  "exitCode": 1
+}

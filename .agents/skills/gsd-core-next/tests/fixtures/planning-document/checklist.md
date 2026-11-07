@@ -1,0 +1,2 @@
+- [ ] Verify this fixture parses as a checklist node
+- [x] Confirm the positive-control registry references this file

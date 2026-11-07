@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.ui-safety-gate"
+  ],
+  "fixture": "ui",
+  "stdout": "",
+  "stderr": "Error: ui-safety-gate requires a phase argument: check ui-safety-gate <phase>\n",
+  "exitCode": 1
+}

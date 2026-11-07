@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/06-none-override"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"coverage_present\": true,\n  \"matrix\": \"COVERAGE.md\",\n  \"counts\": {\n    \"surface\": 0,\n    \"integrate\": 0,\n    \"optout\": 0\n  },\n  \"none_declared\": true,\n  \"detected\": true,\n  \"signals\": [\n    {\n      \"verb\": \"integrate\",\n      \"noun\": \"api\"\n    },\n    {\n      \"verb\": \"(surface)\",\n      \"noun\": \"api\"\n    }\n  ],\n  \"message\": \"api-coverage: COVERAGE.md declares no external API integration, overriding 2 detected signal(s) — confirm the declaration is accurate\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

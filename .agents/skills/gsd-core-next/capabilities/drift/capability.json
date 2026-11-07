@@ -1,0 +1,101 @@
+{
+  "id": "drift",
+  "role": "feature",
+  "version": "1.20.1",
+  "title": "Drift detection gates",
+  "description": "Drift detection gates for the planning loop. At execute:wave:post: a blocking schema drift gate (detects schema files changed without a database push) and a non-blocking codebase drift gate (detects structural additions outside the codebase map and modified or deleted files inside it). At plan:pre: a non-blocking, warn-only codebase drift gate (gated on workflow.plan_drift_precheck) that flags a stale codebase map before planning, so plans are authored against a fresh STRUCTURE.md instead of discovering drift mid-execution.",
+  "tier": "full",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtimeCompat": {
+    "supported": [
+      "*"
+    ],
+    "unsupported": []
+  },
+  "skills": [],
+  "agents": [],
+  "hooks": [],
+  "config": {
+    "workflow.drift_threshold": {
+      "type": "number",
+      "default": 3,
+      "description": "Minimum number of drift elements (new directories, barrel exports, migrations, routes, plus modified and deleted files inside mapped directories) before the codebase drift gate triggers a warn or auto-remap action."
+    },
+    "workflow.drift_action": {
+      "type": "enum",
+      "values": [
+        "warn",
+        "auto-remap"
+      ],
+      "default": "warn",
+      "description": "Action taken by the codebase drift gate when the threshold is exceeded: warn (advisory message) or auto-remap (spawn gsd-codebase-mapper agent to refresh STRUCTURE.md)."
+    },
+    "workflow.schema_drift_gate": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the drift gates at execute:wave:post. When enabled, the schema drift gate blocks verification if schema-relevant files changed during execution but no database push command was executed; the codebase drift gate (non-blocking) warns when drift elements exceed the drift_threshold."
+    },
+    "workflow.plan_drift_precheck": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the non-blocking codebase drift pre-check at plan:pre, before /gsd:plan-phase spawns the planner. When enabled, a stale STRUCTURE.md (drift elements exceeding drift_threshold) is surfaced up front as a warn-only advisory pointing to /gsd:map-codebase; it never blocks planning and never spawns the mapper agent. Separate from schema_drift_gate so autonomous/CI runs can silence the plan-time advisory while keeping the execute:wave:post gates enabled."
+    },
+    "workflow.context_drift_precheck": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the non-blocking context-drift pre-check at plan:pre, before /gsd:plan-phase reuses an existing RESEARCH.md/PATTERNS.md/VALIDATION.md/SPEC.md. Compares each artifact's effective last-changed time (git commit time, falling back to mtime for uncommitted edits) against CONTEXT.md's own — an artifact that predates CONTEXT.md's newest decision was derived from a premise that has since changed. Warn-only by default (see workflow.context_drift_action); never blocks planning on its own."
+    },
+    "workflow.context_drift_action": {
+      "type": "enum",
+      "values": [
+        "warn",
+        "block"
+      ],
+      "default": "warn",
+      "description": "Action taken by the context-drift gate when a stale upstream artifact is found: warn (advisory message naming the stale artifacts and how to regenerate them) or block (halt plan-phase until the artifacts are regenerated or the check is disabled)."
+    }
+  },
+  "steps": [],
+  "contributions": [],
+  "gates": [
+    {
+      "point": "execute:wave:post",
+      "check": {
+        "query": "verify.schema-drift"
+      },
+      "when": "workflow.schema_drift_gate",
+      "blocking": true,
+      "onError": "skip"
+    },
+    {
+      "point": "execute:wave:post",
+      "check": {
+        "query": "verify.codebase-drift"
+      },
+      "when": "workflow.schema_drift_gate",
+      "blocking": false,
+      "onError": "skip"
+    },
+    {
+      "point": "plan:pre",
+      "check": {
+        "query": "verify.codebase-drift"
+      },
+      "when": "workflow.plan_drift_precheck",
+      "blocking": false,
+      "onError": "skip"
+    },
+    {
+      "point": "plan:pre",
+      "check": {
+        "query": "verify.context-drift"
+      },
+      "when": "workflow.context_drift_precheck",
+      "blocking": false,
+      "onError": "skip"
+    }
+  ]
+}

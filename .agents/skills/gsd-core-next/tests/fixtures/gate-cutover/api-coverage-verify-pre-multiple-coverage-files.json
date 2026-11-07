@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/07-multi"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": true,\n  \"passed\": false,\n  \"coverage_present\": false,\n  \"message\": \"api-coverage: multiple *-COVERAGE.md files found (2) — consolidate into one COVERAGE.md before sealing\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.gap-analysis-plan-post",
+    "../../outside"
+  ],
+  "fixture": "gap",
+  "stdout": "",
+  "stderr": "Error: path escapes its allowed directory: ../../outside\n",
+  "exitCode": 1
+}

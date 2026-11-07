@@ -1,0 +1,73 @@
+{
+  "id": "llama-cpp",
+  "role": "reviewer",
+  "version": "1.20.1",
+  "title": "llama.cpp",
+  "description": "llama.cpp server — cross-AI /gsd:review reviewer lane only; not a GSD install target (no runtime body, no artifacts). OpenAI-compatible HTTP transport against a user-configured `review.llama_cpp_host` (POST /v1/chat/completions); model discovered via GET /v1/models piped through jq. Capability id/folder are kebab (`llama-cpp`, required by KEBAB_RE); `reviewer.slug` stays snake (`llama_cpp`) to match the shipped roster and the `review.llama_cpp_host` config key (ADR-2782's three-namespace trap).",
+  "tier": "full",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.8.0"
+  },
+  "reviewer": {
+    "slug": "llama_cpp",
+    "flags": [
+      "--llama-cpp"
+    ],
+    "transport": "openai-http",
+    "probe": {
+      "kind": "http-reachable",
+      "hostConfigKey": "review.llama_cpp_host",
+      "path": "/v1/models",
+      "timeoutMs": 2000
+    },
+    "invoke": {
+      "hostConfigKey": "review.llama_cpp_host",
+      "defaultHost": "http://localhost:8080",
+      "path": "/v1/chat/completions",
+      "modelDiscovery": "first-from-models-endpoint",
+      "fallbackModel": "local-model",
+      "effortChannel": "none"
+    },
+    "timeoutFloorMs": 120000,
+    "timeoutConfigKey": "review.timeouts.llama_cpp",
+    "emptyOutput": "stub-with-stderr",
+    "reviewsSection": "llama.cpp",
+    "evidenceClass": "source-grounded",
+    "requiresBinaries": [],
+    "promptBudgetKey": "review.max_prompt_tokens_per_reviewer.llama_cpp",
+    "contextWindowTokens": null,
+    "contextWindowConfigKey": "review.context_window_tokens.llama_cpp",
+    "modelConfigKey": "review.models.llama_cpp",
+    "effortConfigKey": null,
+    "defaultEffort": null,
+    "handler": "openai-compatible"
+  },
+  "config": {
+    "review.models.llama_cpp": {
+      "type": "string",
+      "default": "",
+      "description": "Model requested from the llama.cpp reviewer lane; empty discovers the first model from /v1/models."
+    },
+    "review.llama_cpp_host": {
+      "type": "string",
+      "default": "",
+      "description": "Base URL of the llama.cpp OpenAI-compatible server."
+    },
+    "review.max_prompt_tokens_per_reviewer.llama_cpp": {
+      "type": "number",
+      "default": -1,
+      "description": "Prompt-token budget for the llama.cpp reviewer lane. Unset is -1, a sentinel that inherits the global cap and then the lane's context-window default; 0 is a legitimate value meaning \"no prompt cap for this lane\", so it cannot double as \"not configured\"."
+    },
+    "review.context_window_tokens.llama_cpp": {
+      "type": "number",
+      "default": -1,
+      "description": "Context window in tokens used to derive the default prompt cap for the llama_cpp reviewer lane at 65% of the window. Unset is -1: use none (no declared window, so no derived cap); 0 disables the derived cap; a positive number overrides the window."
+    },
+    "review.timeouts.llama_cpp": {
+      "type": "number",
+      "default": -1,
+      "description": "Outer wall-clock timeout override (seconds) for the llama.cpp reviewer lane. Unset is -1, a sentinel: 0 or a negative number is also treated as unset (a timeout has no legitimate zero/negative value), so no second sentinel is needed. Falls back to the lane's built-in timeoutFloorMs when unset."
+    }
+  }
+}

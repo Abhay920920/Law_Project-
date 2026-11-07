@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.prohibition-enforcement",
+    "--json",
+    "{not json"
+  ],
+  "fixture": "prohibition",
+  "stdout": "",
+  "stderr": "Error: prohibition-enforcement requires a JSON request: check prohibition-enforcement <request.json> | --json '{\"prohibition\":{...},\"check\":{...}}'\n",
+  "exitCode": 1
+}

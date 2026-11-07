@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    "99-missing"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": true,\n  \"passed\": false,\n  \"coverage_present\": false,\n  \"detected\": false,\n  \"phase_lookup_failed\": true,\n  \"message\": \"api-coverage: could not resolve phase \\\"99-missing\\\" under .planning/phases/. Resolve the phase directory (or produce COVERAGE.md) before sealing.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

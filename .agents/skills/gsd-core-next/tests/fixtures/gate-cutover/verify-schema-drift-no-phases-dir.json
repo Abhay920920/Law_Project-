@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "1"
+  ],
+  "fixture": "bare",
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"message\": \"No phases directory\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

@@ -1,0 +1,843 @@
+#!/usr/bin/env node
+/**
+ * scripts/release-tarball-smoke.cjs
+ *
+ * Release tarball smoke test for issue #3686.
+ *
+ * Guards against the class of bugs that can't be caught by working-tree tests:
+ *   - #3684: maskIfSecret import/export mismatch shipped in v1.42.3 (runtime
+ *     crash on installed package, invisible to unit tests)
+ *
+ * Strategy: pack the working tree, install into a temp prefix, invoke the
+ * installed binary, assert the version matches package.json. Exercises the
+ * INSTALLED package, not the working tree.
+ *
+ * Exports:
+ *   SMOKE  — frozen enum of result codes
+ *   runSmoke({ tarballPath, installPrefix, expectedVersion, fixtureDir,
+ *              lifecycleCommands, dryRun })
+ *     → { code: SMOKE.*, details: { version, tarball, ... } }
+ *
+ * CLI entry: node scripts/release-tarball-smoke.cjs --json
+ *   Packs working tree, installs to a temp prefix, checks version.
+ *   Exits 0 on SMOKE.OK, 1 otherwise.
+ *   Always prints JSON to stdout when --json flag is present.
+ *
+ * Lifecycle command checks (Cycle 2):
+ *   For each command name (other than 'init') in lifecycleCommands:
+ *     - Assert commands/gsd/<cmd>.md exists in the installed package
+ *     - Parse the .md for a workflow @-import or inline reference
+ *     - Assert the referenced workflow .md exists in the installed package
+ *   If 'init' is in lifecycleCommands, runs `gsd-core --local --claude`
+ *   in fixtureDir to verify the installer is callable (INIT_FAILED on crash).
+ *   Non-interactive: --local --claude flags skip all prompts.
+ *
+ * Workflow-body checks (Cycle 3 — informational):
+ *   - Scans all installed gsd-core/workflows/*.md for /gsd:<known-cmd>
+ *     colon-namespace leaks (WORKFLOW_BODY_COLON_LEAK).
+ *   This check populates result.details with counters but does NOT return a
+ *   failure code by default; it is informational until enforcement is enabled.
+ *
+ * Configured-entrypoint checks (Cycle 4 — #4154):
+ *   For each runtime in entrypointRuntimes, runs the tarball-installed
+ *   installer into a throwaway HOME, then re-reads that runtime's own written
+ *   config files and asserts every GSD-managed script path they name resolves
+ *   to a file (ENTRYPOINT_UNRESOLVED). Requires fixtureDir.
+ */
+
+'use strict';
+
+const { execFileSync, spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { PACKAGE_NAME } = require('../gsd-core/bin/lib/package-identity.cjs');
+const { ExitError, runMain } = require('./lib/cli-exit.cjs');
+const shellCmdProjection = require('../gsd-core/bin/lib/shell-command-projection.cjs');
+const { escapeRegex } = require('../gsd-core/bin/lib/pattern.cjs');
+// 120 s proved too tight for cold-cache `npm install -g` of a 1499-file tarball:
+// spawnSync fires SIGTERM at the deadline and returns { status: null, stdout: '',
+// stderr: '' } (Node docs: status is null when a subprocess is terminated by a
+// signal). The INSTALL_FAILED branch checks `status !== 0`, which null satisfies,
+// so the test sees empty stdout/stderr and a spurious INSTALL_FAILED (surfaced as
+// `installError: spawnSync npm ETIMEDOUT`).
+//
+// First observed on Windows GitHub-hosted runners, which are slower for
+// filesystem-heavy work
+// (https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners/about-github-hosted-runners#standard-github-hosted-runners-for-public-repositories),
+// then again on a slow Linux bench (cartographer: cold disk, constrained CPU) —
+// the same failure the before() helper's SLOW_HOST_TIMEOUT already guards for
+// pack+install. The slow-host reality is not platform-specific, so the ceiling is
+// now uniform 600 s across all platforms AND shared with before() via this
+// exported constant, so the two surfaces cannot diverge again. 600 s stays well
+// clear of a real cold install (3–6 min) without masking a genuine hang.
+const CHILD_TIMEOUT_MS = 600_000;
+const QUIET_NPM_ENV = Object.freeze({
+  npm_config_loglevel: 'error',
+  npm_config_update_notifier: 'false',
+  NO_UPDATE_NOTIFIER: '1',
+});
+
+// ---------------------------------------------------------------------------
+// Frozen result-code enum
+// ---------------------------------------------------------------------------
+
+const SMOKE = Object.freeze({
+  OK: 'ok',
+  VERSION_MISMATCH: 'version_mismatch',
+  PACK_FAILED: 'pack_failed',
+  INSTALL_FAILED: 'install_failed',
+  BIN_NOT_CALLABLE: 'bin_not_callable',
+  // Cycle 2 codes
+  COMMAND_FILE_MISSING: 'command_file_missing',
+  WORKFLOW_FILE_MISSING: 'workflow_file_missing',
+  INIT_FAILED: 'init_failed',
+  // Cycle 3 code
+  WORKFLOW_BODY_COLON_LEAK: 'workflow_body_colon_leak',
+  // Cycle 4 code (#4154)
+  ENTRYPOINT_UNRESOLVED: 'entrypoint_unresolved',
+});
+
+// ---------------------------------------------------------------------------
+// Exported helper: binInvocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the { command, args, shell } descriptor needed to spawn an installed
+ * npm bin correctly on both Windows and POSIX.
+ *
+ * On Windows, npm installs a `.cmd` (or `.bat`) shim in .bin/.  Node ≥18.20.2
+ * / ≥20.12.2 throws EINVAL when you try to spawnSync a .cmd/.bat without
+ * shell:true (CVE-2024-27980 mitigation).  With shell:true, Node does NOT
+ * auto-quote argv, so a bin path that contains spaces must be wrapped in
+ * double-quotes to arrive at the shell as one token.
+ *
+ * On POSIX the bin is a regular shebang JS file; we invoke it directly via
+ * process.execPath (the same Node binary) without a shell.
+ *
+ * @param {string}   binPath  - Absolute path to the resolved bin file.
+ * @param {string[]} [args]   - Additional arguments (e.g. ['--help']).
+ * @returns {{ command: string, args: string[], shell: boolean }}
+ */
+function binInvocation(binPath, args = []) {
+  const lower = binPath.toLowerCase();
+  // Note: .ps1 shims are intentionally NOT handled here.  The bin-resolution
+  // helpers (findGsdToolsBin / findInstallerBin) only ever surface a .cmd path
+  // on Windows — npm does not write .ps1 shims into .bin/ by default — so a
+  // .ps1 path never reaches this function in practice.
+  if (lower.endsWith('.cmd') || lower.endsWith('.bat')) {
+    // Quote the path if it contains a space so the Windows shell treats it as
+    // a single token.  Simple double-quote wrap is sufficient because npm-
+    // generated shim paths don't contain embedded double-quotes.
+    const command = binPath.includes(' ') ? `"${binPath}"` : binPath;
+    return { command, args: [...args], shell: true };
+  }
+  // POSIX: invoke via node, no shell needed.
+  return { command: process.execPath, args: [binPath, ...args], shell: false };
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Locate the lib/node_modules/@opengsd/gsd-core package root inside
+ * an npm --prefix install directory.
+ */
+function pkgRoot(installPrefix) {
+  // POSIX: <prefix>/lib/node_modules/<scope>/<pkg>
+  // Windows: <prefix>/node_modules/<scope>/<pkg>
+  // PACKAGE_NAME is scoped (@scope/pkg), so split('/') yields the two path segments.
+  const pkgSegments = PACKAGE_NAME.split('/');
+  const posix = path.join(installPrefix, 'lib', 'node_modules', ...pkgSegments);
+  const win = path.join(installPrefix, 'node_modules', ...pkgSegments);
+  return fs.existsSync(posix) ? posix : win;
+}
+
+/**
+ * Return the ordered list of candidate paths to check when locating an npm
+ * global bin named `name` under `installPrefix`.
+ *
+ * On Windows, `npm install -g --prefix X` writes shims (*.cmd, *.ps1, bare)
+ * to the PREFIX ROOT (X\), NOT to X\node_modules\.bin\.  We therefore probe
+ * the prefix root first, then fall back to node_modules\.bin in case a
+ * non-standard layout puts them there.
+ *
+ * On POSIX the shim lands in <prefix>/bin/ as a symlink; only one candidate.
+ */
+function binCandidates(installPrefix, name) {
+  if (process.platform === 'win32') {
+    return [
+      // npm global --prefix on Windows writes shims to the prefix ROOT
+      path.join(installPrefix, `${name}.cmd`),
+      path.join(installPrefix, name),
+      // fallback: some layouts use node_modules/.bin
+      path.join(installPrefix, 'node_modules', '.bin', `${name}.cmd`),
+      path.join(installPrefix, 'node_modules', '.bin', name),
+    ];
+  }
+  return [path.join(installPrefix, 'bin', name)];
+}
+
+/**
+ * Locate the installed gsd-tools binary (symlink in <prefix>/bin/).
+ */
+function findGsdToolsBin(installPrefix) {
+  for (const c of binCandidates(installPrefix, 'gsd-tools')) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+/**
+ * Locate the gsd-core installer binary (the symlink in <prefix>/bin/).
+ */
+function findInstallerBin(installPrefix) {
+  for (const c of binCandidates(installPrefix, 'gsd-core')) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+/**
+ * Parse a command .md file and return the first workflow path it references.
+ *
+ * Structured parser — only inspects individual lines; never regexes on the
+ * whole-file string. Two recognised forms (in priority order):
+ *
+ *   1. @-import line:  `@~/.claude/gsd-core/workflows/<name>.md`
+ *   2. Inline mention: any line containing `~/.claude/gsd-core/workflows/<name>.md`
+ *      (takes the LAST occurrence so conditional-dispatch files resolve to the
+ *       default / unconditional branch, e.g. discuss-phase.md)
+ *
+ * Returns the bare workflow filename (e.g. `"discuss-phase.md"`) or null.
+ */
+function parseWorkflowRef(mdContent) {
+  const WORKFLOW_PREFIX = 'gsd-core/workflows/';
+  let atImportResult = null;
+  let lastInlineResult = null;
+
+  const lines = mdContent.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Form 1: @-import
+    if (trimmed.startsWith('@') && trimmed.includes(WORKFLOW_PREFIX)) {
+      const idx = trimmed.indexOf(WORKFLOW_PREFIX);
+      const rest = trimmed.slice(idx + WORKFLOW_PREFIX.length);
+      // rest is like "discuss-phase.md" or "discuss-phase.md end-to-end."
+      const name = rest.split(/[\s`"]/)[0];
+      if (name.endsWith('.md')) {
+        atImportResult = name;
+        break; // @-imports are authoritative; stop on first
+      }
+    }
+
+    // Form 2: inline mention (collect last)
+    if (trimmed.includes(WORKFLOW_PREFIX)) {
+      const idx = trimmed.indexOf(WORKFLOW_PREFIX);
+      const rest = trimmed.slice(idx + WORKFLOW_PREFIX.length);
+      const name = rest.split(/[\s`"]/)[0];
+      if (name.endsWith('.md')) {
+        lastInlineResult = name;
+      }
+    }
+  }
+
+  return atImportResult !== null ? atImportResult : lastInlineResult;
+}
+
+/**
+ * Read the list of known GSD command names from the installed package.
+ * Returns an array of strings like `['init', 'discuss-phase', ...]`.
+ */
+function readInstalledCmdNames(pkg) {
+  const commandsDir = path.join(pkg, 'commands', 'gsd');
+  if (!fs.existsSync(commandsDir)) return [];
+  return fs.readdirSync(commandsDir)
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => f.slice(0, -3)); // strip .md
+}
+
+/**
+ * Scan a single workflow .md file for /gsd:<cmd> colon-namespace leaks.
+ *
+ * Uses the word-boundary-safe regex shape from scripts/fix-slash-commands.cjs:
+ *   /gsd-(<cmd1>|<cmd2>|...)(?=[^a-zA-Z0-9_-]|$)/g  — forward
+ * We check the colon form: /gsd:<cmd> leaking in installed workflow bodies.
+ *
+ * Returns the first leaking { line, lineNumber } or null.
+ */
+function scanWorkflowColonLeak(filePath, cmdNames) {
+  if (!cmdNames || cmdNames.length === 0) return null;
+  const sorted = [...cmdNames].sort((a, b) => b.length - a.length);
+  const pattern = new RegExp(`/gsd:(${sorted.join('|')})(?=[^a-zA-Z0-9_-]|$)`, 'g');
+
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    pattern.lastIndex = 0;
+    if (pattern.test(lines[i])) {
+      return { line: i + 1, content: lines[i].trim() };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Cycle 4 helpers: configured-entrypoint resolution (#4154)
+// ---------------------------------------------------------------------------
+
+/**
+ * Top-level config files this scan reads. These are the surfaces that carry
+ * every GSD-managed launch path for the runtimes Cycle 4 actually installs
+ * (`entrypointRuntimes`, default claude + codex): claude registers into
+ * settings.json, codex into hooks.json and config.toml.
+ *
+ * This is NOT an exhaustive map of where GSD writes launch paths across all
+ * runtimes, and the scan is top-level only by design. Two known surfaces sit
+ * outside it: Cline registers its hook at `.clinerules/hooks/PreToolUse` (a
+ * subdirectory, and not one of these names — see writeClineArtifacts in
+ * src/runtime-hooks-surface.cts), and Kimi's native `[[hooks]]` config.toml
+ * lives under `resolveKimiHooksTomlDir()` (`~/.kimi`), a directory separate
+ * from Kimi's own GSD configDir. Adding either runtime to entrypointRuntimes
+ * requires teaching scanConfiguredEntrypoints about its surface first,
+ * otherwise the scan reports zero entrypoints and silently proves nothing.
+ */
+const RUNTIME_CONFIG_FILES = Object.freeze(['settings.json', 'hooks.json', 'config.toml']);
+
+/**
+ * Extract every script path `text` names underneath `configDir`.
+ *
+ * #4249 (antigravity review): anchored on the literal, already-known
+ * `configDir` prefix instead of a generic "any absolute path" character
+ * class. The prior version excluded whitespace from the match to avoid
+ * swallowing a shell command's trailing args, which also truncated any
+ * legitimate path containing a space (e.g. `/Users/John Doe/.claude`) —
+ * `scanConfiguredEntrypoints` would then silently report zero checked
+ * paths. Anchoring on `configDir` removes the ambiguity outright: a match
+ * can only start where the known prefix literally occurs in the text, so
+ * an interpreter path concatenated ahead of it (`"/usr/bin/node
+ * /configDir/hooks/foo.js"`) is never swallowed either, and interior
+ * whitespace inside `configDir` or the script's own path segments is safe
+ * to allow. This still scans raw, unparsed config text on purpose (see
+ * scanConfiguredEntrypoints's doc comment) — it catches a writer that
+ * embeds a launch path without registering it, which a structured
+ * JSON.parse of the expected schema would miss entirely.
+ *
+ * Every writer bakes `configDir` through the same posixNormalize seam
+ * (src/runtime-hooks-surface.cts) before writing it into config text, on
+ * every platform — so the anchor must match that projection, not the
+ * OS-native `configDir` string this function receives.
+ *
+ * The scanned text goes through that same projection (#5084): a registration
+ * the installer did not write — a hand-edited settings.json, another tool's
+ * writer — may spell its path with Windows-native backslashes, and an anchor
+ * and haystack in different separator forms never match, so the dangling-hook
+ * check would skip it silently. Scan both the backslash-unescaped projection
+ * (JSON and TOML basic strings) and the unchanged projection (TOML literal
+ * strings). Unescaping a literal UNC prefix drops a leading separator, so
+ * neither projection alone is sufficient. A Set combines identical paths.
+ */
+function configuredEntrypointsIn(text, configDir) {
+  const normalizedPrefix = shellCmdProjection.posixNormalize(configDir).replace(/\/+$/, '') + '/';
+  const scriptPathRe = new RegExp(`${escapeRegex(normalizedPrefix)}[^"']{0,400}?\\.(?:js|cjs|mjs|sh|cmd|ps1)`, 'g');
+  const found = new Set();
+  for (const candidateText of [text.replace(/\\\\/g, '\\'), text]) {
+    const scannedText = shellCmdProjection.posixNormalize(candidateText);
+    for (const match of scannedText.matchAll(scriptPathRe)) {
+      found.add(path.resolve(match[0]));
+    }
+  }
+  return [...found];
+}
+
+/**
+ * Throwaway HOME the Cycle 4 install for `runtime` runs against. Exported so a
+ * test can seed that runtime's config before the install rather than
+ * hard-coding the layout runSmoke picks.
+ */
+function entrypointFixtureHome(fixtureDir, runtime) {
+  return path.join(fixtureDir, `entrypoints-${runtime}`);
+}
+
+/**
+ * Re-derive the configured entrypoints a completed install wrote into a
+ * runtime's own config files and report the ones that do not resolve to a
+ * file. Internal to Cycle 4; the smoke's verdict is the exported contract.
+ *
+ * This deliberately does NOT consult the installer's own entrypoint list (the
+ * assertConfiguredEntrypoints gate in bin/install.js). That gate can only
+ * validate paths a config writer remembered to register; reading the written
+ * config back is what catches a writer that emits a launch path without
+ * registering it, and a stale registration an install left behind.
+ *
+ * @param {string} configDir - Absolute path to the runtime config dir.
+ * @returns {{ checked: string[], unresolved: { configPath: string, scriptPath: string }[] }}
+ */
+function scanConfiguredEntrypoints(configDir) {
+  const checked = [];
+  const unresolved = [];
+  for (const name of RUNTIME_CONFIG_FILES) {
+    const configPath = path.join(configDir, name);
+    if (!fs.existsSync(configPath) || !fs.statSync(configPath).isFile()) continue;
+    const text = fs.readFileSync(configPath, 'utf-8');
+    for (const scriptPath of configuredEntrypointsIn(text, configDir)) {
+      checked.push(scriptPath);
+      if (fs.existsSync(scriptPath) && fs.statSync(scriptPath).isFile()) continue;
+      unresolved.push({ configPath, scriptPath });
+    }
+  }
+  return { checked, unresolved };
+}
+
+// ---------------------------------------------------------------------------
+// Pure function: runSmoke
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {object} opts
+ * @param {string}   opts.tarballPath        - Absolute path to a pre-packed .tgz
+ * @param {string}   opts.installPrefix      - Temp directory to use as npm --prefix
+ * @param {string}   opts.expectedVersion    - semver string to assert (e.g. "1.50.0")
+ * @param {string}   [opts.fixtureDir]       - Temp dir to run `init` into (must NOT be HOME)
+ * @param {string[]} [opts.lifecycleCommands] - Commands to file-check (default: see below)
+ * @param {string[]} [opts.entrypointRuntimes] - Runtime profiles whose configured entrypoints are
+ *   re-checked after a real install (default: see below). Requires fixtureDir; pass [] to skip.
+ * @param {boolean}  [opts.dryRun=false]     - If true, skip actual npm install; validate input only
+ * @param {object}   [opts.npmEnv]           - Optional env dict for the internal npm install
+ *   spawnSync call. Pass an isolated HOME env (e.g. from isolatedNpmEnv() in tests/helpers.cjs)
+ *   to prevent npm from reading/writing the caller's $HOME — required on Docker hosts where HOME
+ *   may be unwritable. Defaults to process.env. (#131)
+ * @returns {{ code: string, details: object }}
+ */
+function runSmoke({
+  tarballPath,
+  installPrefix,
+  expectedVersion,
+  fixtureDir,
+  lifecycleCommands = ['init', 'discuss-phase', 'plan-phase', 'execute-phase'],
+  // claude and codex cover the two top-level config surfaces this scan knows
+  // how to read (settings.json, and hooks.json + config.toml). Most other
+  // runtimes reuse one of those two shapes; Cline and Kimi do not (see
+  // RUNTIME_CONFIG_FILES), so they are out of scope here rather than covered.
+  entrypointRuntimes = ['claude', 'codex'],
+  dryRun = false,
+  npmEnv = undefined,
+}) {
+  const details = {
+    tarball: tarballPath,
+    prefix: installPrefix,
+    expectedVersion,
+  };
+
+  if (dryRun) {
+    return { code: SMOKE.OK, details: { ...details, version: expectedVersion, dryRun: true } };
+  }
+
+  // --- Install the tarball into the temp prefix ----------------------------
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  // Use the caller-supplied npmEnv if provided (allows HOME isolation on Docker
+  // hosts where HOME may be unwritable — same pattern as runNpm() in helpers.cjs).
+  // Falls back to process.env to preserve existing CLI / programmatic behaviour. (#131)
+  const effectiveNpmEnv = { ...(npmEnv !== undefined ? npmEnv : process.env), ...QUIET_NPM_ENV };
+  const installResult = spawnSync(
+    npmCmd,
+    ['install', '-g', '--prefix', installPrefix, tarballPath],
+    { encoding: 'utf-8', shell: process.platform === 'win32', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv },
+  );
+
+  if (installResult.status !== 0) {
+    return {
+      code: SMOKE.INSTALL_FAILED,
+      details: {
+        ...details,
+        stderr: installResult.stderr,
+        stdout: installResult.stdout,
+        // Expose signal + error so a timeout (status=null, signal='SIGTERM',
+        // stdout='', stderr='') is immediately diagnosable in CI logs.
+        signal: installResult.signal ?? null,
+        installError: installResult.error ? String(installResult.error) : null,
+      },
+    };
+  }
+
+  // --- Locate the installed gsd-tools binary --------------------------------
+  const actualBin = findGsdToolsBin(installPrefix);
+
+  if (!actualBin) {
+    const searched = binCandidates(installPrefix, 'gsd-tools');
+    return {
+      code: SMOKE.BIN_NOT_CALLABLE,
+      details: { ...details, searched },
+    };
+  }
+
+  // --- Invoke `gsd-tools --help` to assert the shipped binary is callable ---
+  // Use effectiveNpmEnv so the installed binary sees an isolated HOME on Docker
+  // hosts where HOME may be unwritable (same isolation as the npm install). (#131)
+  const versionInvocation = binInvocation(actualBin, ['--help']);
+  const versionResult = spawnSync(
+    versionInvocation.command,
+    versionInvocation.args,
+    { encoding: 'utf-8', timeout: CHILD_TIMEOUT_MS, env: effectiveNpmEnv, shell: versionInvocation.shell },
+  );
+
+  if (versionResult.status !== 0) {
+    return {
+      code: SMOKE.BIN_NOT_CALLABLE,
+      details: {
+        ...details,
+        bin: actualBin,
+        stderr: versionResult.stderr,
+        stdout: versionResult.stdout,
+      },
+    };
+  }
+
+  // Source of truth for shipped version is the installed package.json.
+  const installedPkgPath = path.join(pkgRoot(installPrefix), 'package.json');
+  const installedPkg = JSON.parse(fs.readFileSync(installedPkgPath, 'utf-8'));
+  const installedVersion = String(installedPkg.version || '').trim();
+
+  details.version = installedVersion;
+  details.bin = actualBin;
+  details.installedPackageJson = installedPkgPath;
+
+  if (installedVersion !== expectedVersion) {
+    return {
+      code: SMOKE.VERSION_MISMATCH,
+      details: { ...details, installedVersion, expectedVersion },
+    };
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cycle 2: lifecycle command file-resolution checks
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const pkg = pkgRoot(installPrefix);
+  const shouldRunInit = lifecycleCommands.includes('init');
+  const commandsToCheck = lifecycleCommands.filter((c) => c !== 'init');
+
+  // --- Run init if requested -----------------------------------------------
+  if (shouldRunInit && fixtureDir) {
+    const installerBin = findInstallerBin(installPrefix);
+    if (!installerBin) {
+      return {
+        code: SMOKE.INIT_FAILED,
+        details: {
+          ...details,
+          reason: 'gsd-core binary not found in installPrefix',
+          installPrefix,
+        },
+      };
+    }
+
+    // Non-interactive: --local --claude installs to .claude/ in cwd (fixtureDir).
+    // GSD_TEST_MODE must be cleared — install.js skips its main() block when
+    // GSD_TEST_MODE is set, which would cause the installer to exit 0 silently
+    // without actually creating any files.
+    const initEnv = { ...process.env };
+    delete initEnv.GSD_TEST_MODE;
+
+    const initInvocation = binInvocation(installerBin, ['--local', '--claude']);
+    const initResult = spawnSync(
+      initInvocation.command,
+      initInvocation.args,
+      {
+        encoding: 'utf-8',
+        cwd: fixtureDir,
+        // Ensure no TTY so the installer's non-interactive fallback fires
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: initEnv,
+        timeout: CHILD_TIMEOUT_MS,
+        shell: initInvocation.shell,
+      },
+    );
+
+    if (initResult.status !== 0) {
+      return {
+        code: SMOKE.INIT_FAILED,
+        details: {
+          ...details,
+          fixtureDir,
+          stderr: initResult.stderr,
+          stdout: initResult.stdout,
+        },
+      };
+    }
+
+    // Verify expected dirs were created
+    const expectedDirs = [
+      path.join(fixtureDir, '.claude', 'commands'),
+      path.join(fixtureDir, '.claude', 'gsd-core'),
+    ];
+    for (const dir of expectedDirs) {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+        return {
+          code: SMOKE.INIT_FAILED,
+          details: {
+            ...details,
+            fixtureDir,
+            reason: `expected dir not created: ${dir}`,
+          },
+        };
+      }
+    }
+  }
+
+  // --- Check command files and workflow references -------------------------
+  const lifecycleResolved = [];
+
+  for (const cmd of commandsToCheck) {
+    const cmdFilePath = path.join(pkg, 'commands', 'gsd', `${cmd}.md`);
+
+    if (!fs.existsSync(cmdFilePath) || !fs.statSync(cmdFilePath).isFile()) {
+      return {
+        code: SMOKE.COMMAND_FILE_MISSING,
+        details: {
+          ...details,
+          command: cmd,
+          path: cmdFilePath,
+        },
+      };
+    }
+
+    // Parse workflow reference
+    const mdContent = fs.readFileSync(cmdFilePath, 'utf-8');
+    const workflowName = parseWorkflowRef(mdContent);
+
+    let workflowPath = null;
+    if (workflowName) {
+      // Workflow files live at gsd-core/workflows/<name> in the package.
+      // Some live in subdirectories; try flat first then scan once.
+      const flat = path.join(pkg, 'gsd-core', 'workflows', workflowName);
+      workflowPath = fs.existsSync(flat) ? flat : null;
+
+      if (!workflowPath) {
+        return {
+          code: SMOKE.WORKFLOW_FILE_MISSING,
+          details: {
+            ...details,
+            command: cmd,
+            path: flat,
+          },
+        };
+      }
+    }
+
+    lifecycleResolved.push({
+      command: cmd,
+      commandPath: cmdFilePath,
+      workflowPath,
+    });
+  }
+
+  details.lifecycleResolved = lifecycleResolved;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cycle 3: workflow-body validation (informational)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // --- Workflow-body checks (informational — #3668 not yet fixed) ----------
+  const workflowsDir = path.join(pkg, 'gsd-core', 'workflows');
+  const installedCmdNames = readInstalledCmdNames(pkg);
+
+  let workflowsScanned = 0;
+  let colonLeakCount = 0;
+  // Store first finding for potential future enforcement mode.
+  let firstColonLeak = null;
+
+  if (fs.existsSync(workflowsDir)) {
+    // Collect all .md files (flat only — subdirs contain sub-workflows that
+    // follow the same contract, but the top-level .md files are the primary surface)
+    const entries = fs.readdirSync(workflowsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+      const filePath = path.join(workflowsDir, entry.name);
+      workflowsScanned++;
+
+      const leak = scanWorkflowColonLeak(filePath, installedCmdNames);
+      if (leak) {
+        colonLeakCount++;
+        if (!firstColonLeak) {
+          firstColonLeak = { file: filePath, line: leak.line };
+        }
+      }
+
+    }
+  }
+
+  details.workflowsScanned = workflowsScanned;
+  details.colonLeakCount = colonLeakCount;
+  if (firstColonLeak) details.firstColonLeak = firstColonLeak;
+
+  // NOTE: colonLeakCount is informational here. Once the backlog is fixed,
+  // a future enforcement mode can fail on non-zero counts.
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Cycle 4: configured-entrypoint resolution (#4154)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // The installer's own gate (assertConfiguredEntrypoints) runs in-process and
+  // only sees the paths a config writer registered with it. Installing the
+  // packed tarball for real and reading each runtime's written config back is
+  // what proves the launch paths a user's runtime will actually invoke exist
+  // in the shipped layout.
+  const entrypointProfiles = [];
+  if (fixtureDir && entrypointRuntimes.length > 0) {
+    for (const runtime of entrypointRuntimes) {
+      // Own HOME per runtime so a --global install cannot reach the real one.
+      const runtimeHome = entrypointFixtureHome(fixtureDir, runtime);
+      const configDir = path.join(runtimeHome, `.${runtime}`);
+      fs.mkdirSync(runtimeHome, { recursive: true });
+
+      const installResult = spawnSync(
+        process.execPath,
+        [path.join(pkg, 'bin', 'install.js'), `--${runtime}`, '--global', '--config-dir', configDir],
+        {
+          encoding: 'utf-8',
+          cwd: runtimeHome,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: {
+            ...effectiveNpmEnv,
+            HOME: runtimeHome,
+            USERPROFILE: runtimeHome,
+            GSD_HOME: runtimeHome, // #5017: the defaults store root follows HOME
+            // Same reason as the init check above: install.js skips its main()
+            // block when GSD_TEST_MODE is set and would exit 0 writing nothing.
+            GSD_TEST_MODE: '',
+            NO_UPDATE_NOTIFIER: '1',
+          },
+          timeout: CHILD_TIMEOUT_MS,
+        },
+      );
+
+      if (installResult.status !== 0) {
+        // #4249 (antigravity review): this is the Cycle 4 per-runtime install,
+        // not Cycle 1's `gsd init` — SMOKE.INSTALL_FAILED is the code Cycle 2's
+        // identical spawnSync-failure check already uses for the same failure
+        // class; reusing SMOKE.INIT_FAILED here conflated the two lifecycle
+        // stages in the reported code.
+        return {
+          code: SMOKE.INSTALL_FAILED,
+          details: {
+            ...details,
+            runtime,
+            configDir,
+            stderr: installResult.stderr,
+            stdout: installResult.stdout,
+          },
+        };
+      }
+
+      const scan = scanConfiguredEntrypoints(configDir);
+      if (scan.unresolved.length > 0) {
+        return {
+          code: SMOKE.ENTRYPOINT_UNRESOLVED,
+          details: { ...details, runtime, configDir, unresolved: scan.unresolved },
+        };
+      }
+
+      entrypointProfiles.push({ runtime, configDir, entrypointsChecked: scan.checked.length });
+    }
+  }
+
+  details.entrypointProfiles = entrypointProfiles;
+
+  return { code: SMOKE.OK, details };
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry
+// ---------------------------------------------------------------------------
+
+function cliMain() {
+  const args = process.argv.slice(2);
+  const isJson = args.includes('--json');
+
+  const pkgPath = path.join(__dirname, '..', 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+  const expectedVersion = process.env.SMOKE_FORCE_EXPECTED_VERSION || pkg.version;
+
+  // Pack the working tree into a temp directory
+  const packDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-smoke-pack-'));
+  const installPrefix = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-smoke-prefix-'));
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-smoke-fixture-'));
+
+  let tarballPath;
+  try {
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const packOutput = execFileSync(
+      npmCmd,
+      ['pack', '--pack-destination', packDir],
+      {
+        cwd: path.join(__dirname, '..'),
+        encoding: 'utf-8',
+        shell: process.platform === 'win32',
+        timeout: CHILD_TIMEOUT_MS,
+        env: { ...process.env, ...QUIET_NPM_ENV },
+      },
+    ).trim();
+    // npm pack outputs the filename on stdout (last line when verbose)
+    const lines = packOutput.split(/\r?\n/).filter(Boolean);
+    const tgzName = lines[lines.length - 1];
+    tarballPath = path.join(packDir, tgzName);
+    if (!fs.existsSync(tarballPath)) {
+      // npm 7+ may print just the filename without .tgz extension on some platforms
+      const found = fs.readdirSync(packDir).find((f) => f.endsWith('.tgz'));
+      if (found) {
+        tarballPath = path.join(packDir, found);
+      } else {
+        const result = {
+          code: SMOKE.PACK_FAILED,
+          details: { packDir, packOutput, reason: 'no .tgz in pack destination' },
+        };
+        if (isJson) process.stdout.write(JSON.stringify(result) + '\n');
+        cleanup(packDir, installPrefix, fixtureDir);
+        throw new ExitError(1);
+      }
+    }
+  } catch (err) {
+    if (err instanceof ExitError) throw err;
+    const result = {
+      code: SMOKE.PACK_FAILED,
+      details: { error: err.message, stderr: err.stderr },
+    };
+    if (isJson) process.stdout.write(JSON.stringify(result) + '\n');
+    cleanup(packDir, installPrefix, fixtureDir);
+    throw new ExitError(1);
+  }
+
+  const result = runSmoke({ tarballPath, installPrefix, expectedVersion, fixtureDir });
+  if (isJson) process.stdout.write(JSON.stringify(result) + '\n');
+  cleanup(packDir, installPrefix, fixtureDir);
+  return result.code === SMOKE.OK ? 0 : 1;
+}
+
+function cleanup(...dirs) {
+  for (const dir of dirs) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Exports
+// ---------------------------------------------------------------------------
+
+module.exports = {
+  SMOKE,
+  runSmoke,
+  binInvocation,
+  entrypointFixtureHome,
+  CHILD_TIMEOUT_MS,
+  configuredEntrypointsIn,
+};
+
+if (require.main === module) {
+  runMain(cliMain);
+}

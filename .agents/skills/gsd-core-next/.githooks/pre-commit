@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# GIT_OVERRIDE / NPM_OVERRIDE: optional test-injection seams (default to bare commands).
+# Hooks remain production-equivalent when these are unset.
+GIT_CMD="${GIT_OVERRIDE:-git}"
+NPM_CMD="${NPM_OVERRIDE:-npm}"
+
+# Tracked sources of the command-alias surface. These are the `src/*.cts` files,
+# never the `gsd-core/bin/lib/*.cjs` artifacts they compile to: those are
+# gitignored, so `git diff --cached --name-only` never lists them and a guard
+# keyed on them can never fire (#2725). Kept in sync with
+# scripts/lib/alias-drift-families.cjs by tests/precommit-alias-drift-hook.test.cjs.
+alias_drift_paths=(
+  'src/command-aliases.cts'
+  'src/state-command-router.cts'
+  'src/verify-command-router.cts'
+  'src/init-command-router.cts'
+  'src/phase-command-router.cts'
+  'src/phases-command-router.cts'
+  'src/validate-command-router.cts'
+  'src/roadmap-command-router.cts'
+  'src/eval-command-router.cts'
+  'scripts/check-alias-drift.cjs'
+  'scripts/lib/alias-drift-families.cjs'
+)
+
+# `tr -d '\r'` first: a whole-line match fails on a CR-terminated path.
+# Collected into a variable rather than piped straight into grep, because
+# `grep -q` exits on first match and would SIGPIPE its upstream — which under
+# `set -o pipefail` turns a successful match into a non-zero pipeline status.
+staged_paths="$("$GIT_CMD" diff --cached --name-only | tr -d '\r')"
+
+# -F -x: fixed strings, whole line. Exact path equality, no regex anchoring to
+# get wrong, and no escaping burden as the list grows.
+if grep -Fxqf <(printf '%s\n' "${alias_drift_paths[@]}") <<< "$staged_paths"; then
+  "$NPM_CMD" run check:alias-drift
+fi

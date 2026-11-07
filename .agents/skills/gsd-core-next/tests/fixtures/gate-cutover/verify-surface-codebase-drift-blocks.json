@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "verify",
+    "codebase-drift"
+  ],
+  "fixture": "cb-block",
+  "stdout": "{\n  \"block\": true,\n  \"skipped\": false,\n  \"reason\": null,\n  \"action_required\": true,\n  \"directive\": \"warn\",\n  \"spawn_mapper\": false,\n  \"affected_paths\": [\n    \"alpha\",\n    \"beta\",\n    \"gamma\"\n  ],\n  \"withheld_paths\": [],\n  \"withheld_count\": 0,\n  \"documents_read\": [\n    \"STRUCTURE.md\"\n  ],\n  \"documents_unreadable\": [],\n  \"elements\": [\n    {\n      \"category\": \"new_dir\",\n      \"path\": \"alpha/index.js\"\n    },\n    {\n      \"category\": \"new_dir\",\n      \"path\": \"beta/index.js\"\n    },\n    {\n      \"category\": \"new_dir\",\n      \"path\": \"gamma/index.js\"\n    }\n  ],\n  \"threshold\": 3,\n  \"action\": \"warn\",\n  \"last_mapped_commit\": \"e37741bc82b4cc731fe8afb5cfcc4ec998dc7a00\",\n  \"message\": \"Codebase drift detected: 3 structural element(s) since last mapping.\\n\\nNew directories:\\n  - alpha/index.js\\n  - beta/index.js\\n  - gamma/index.js\\n\\nRun /gsd-map-codebase --paths alpha,beta,gamma to refresh planning context.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

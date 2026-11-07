@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/CONTEXT-empty.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": true,\n  \"skipped\": true,\n  \"reason\": \"no trackable decisions\",\n  \"total\": 0,\n  \"covered\": 0,\n  \"uncovered\": [],\n  \"message\": \"No trackable decisions in CONTEXT.md.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

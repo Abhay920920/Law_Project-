@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-context-drift",
+    "1"
+  ],
+  "fixture": "bare",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": true,\n  \"reason\": \"no-phases-directory\",\n  \"stale_artifacts\": [],\n  \"message\": \"No phases directory\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

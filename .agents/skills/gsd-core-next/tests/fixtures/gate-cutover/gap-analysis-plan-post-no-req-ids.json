@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.gap-analysis-plan-post",
+    ".planning/phases/01-gap"
+  ],
+  "fixture": "gap",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"enabled\": true,\n  \"table\": \"## Post-Planning Gap Analysis\\n\\n| Source | Item | Status |\\n|--------|------|--------|\\n| REQUIREMENTS.md | REQ-01 | ✓ Covered |\\n| REQUIREMENTS.md | REQ-02 | ✗ Not covered |\\n| REQUIREMENTS.md | REQ-03 | ✗ Not covered |\\n| CONTEXT.md | D-01 | ✓ Covered |\\n\\n⚠ 2 of 4 items not covered by any plan\\n\",\n  \"summary\": \"⚠ 2 of 4 items not covered by any plan\",\n  \"counts\": {\n    \"total\": 4,\n    \"covered\": 2,\n    \"uncovered\": 2\n  },\n  \"message\": \"## Post-Planning Gap Analysis\\n\\n| Source | Item | Status |\\n|--------|------|--------|\\n| REQUIREMENTS.md | REQ-01 | ✓ Covered |\\n| REQUIREMENTS.md | REQ-02 | ✗ Not covered |\\n| REQUIREMENTS.md | REQ-03 | ✗ Not covered |\\n| CONTEXT.md | D-01 | ✓ Covered |\\n\\n⚠ 2 of 4 items not covered by any plan\\n\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

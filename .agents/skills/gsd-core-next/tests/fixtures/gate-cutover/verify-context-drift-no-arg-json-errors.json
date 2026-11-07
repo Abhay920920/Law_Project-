@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.verify-context-drift"
+  ],
+  "fixture": "ctx-drift",
+  "env": {
+    "GSD_JSON_ERRORS": "1"
+  },
+  "stdout": "",
+  "stderr": "{\"ok\":false,\"reason\":\"unknown\",\"message\":\"Usage: verify context-drift <phase>\"}\n",
+  "exitCode": 1
+}

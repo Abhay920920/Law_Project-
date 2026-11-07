@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/09-suffixed"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": false,\n  \"passed\": true,\n  \"coverage_present\": true,\n  \"matrix\": \"09-COVERAGE.md\",\n  \"counts\": {\n    \"surface\": 2,\n    \"integrate\": 1,\n    \"optout\": 1\n  },\n  \"message\": \"api-coverage: matrix present (2 capabilities, 1 opt-out)\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

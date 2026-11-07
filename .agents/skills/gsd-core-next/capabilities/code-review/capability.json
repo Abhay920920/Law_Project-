@@ -1,0 +1,86 @@
+{
+  "id": "code-review",
+  "role": "feature",
+  "version": "1.20.1",
+  "title": "Code review",
+  "description": "Source-file code review and review-fix workflow support for completed execution work.",
+  "tier": "full",
+  "requires": [],
+  "engines": {
+    "gsd": ">=1.6.0"
+  },
+  "runtimeCompat": {
+    "supported": [
+      "*"
+    ],
+    "unsupported": []
+  },
+  "skills": [
+    "code-review"
+  ],
+  "agents": [
+    "gsd-code-reviewer",
+    "gsd-code-fixer"
+  ],
+  "hooks": [],
+  "config": {
+    "workflow.code_review": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable code-review participation in post-execution review flows."
+    },
+    "workflow.code_review_depth": {
+      "type": "enum",
+      "values": [
+        "quick",
+        "standard",
+        "deep"
+      ],
+      "default": "standard",
+      "description": "Default depth for code review when no --depth override is supplied."
+    },
+    "workflow.code_review_point": {
+      "type": "enum",
+      "values": [
+        "execute:post",
+        "execute:wave:post"
+      ],
+      "default": "execute:post",
+      "description": "Loop point at which the code-review step registers — execute:post reviews once per phase (default); execute:wave:post reviews once per completed wave, scoped to that wave's diff."
+    }
+  },
+  "steps": [
+    {
+      "point": "execute:post",
+      "ref": {
+        "skill": "code-review"
+      },
+      "produces": [
+        "REVIEW.md"
+      ],
+      "consumes": [
+        "SUMMARY.md"
+      ],
+      "supportsReviewerLanes": true,
+      "when": "workflow.code_review",
+      "pointFrom": "workflow.code_review_point",
+      "onError": "skip"
+    },
+    {
+      "point": "execute:wave:post",
+      "ref": {
+        "skill": "code-review"
+      },
+      "produces": [
+        "REVIEW.md"
+      ],
+      "consumes": [],
+      "supportsReviewerLanes": true,
+      "when": "workflow.code_review",
+      "pointFrom": "workflow.code_review_point",
+      "onError": "skip"
+    }
+  ],
+  "contributions": [],
+  "gates": []
+}

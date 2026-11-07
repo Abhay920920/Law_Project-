@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-failure-directions",
+    "1"
+  ],
+  "fixture": "vp",
+  "stdout": "{\n  \"status\": \"blocked\",\n  \"commands\": [\n    {\n      \"command\": \"cd web && npm test\",\n      \"statement\": \"non-zero exit\",\n      \"status\": \"ok\",\n      \"severity\": \"none\",\n      \"plan\": \"01-01-PLAN.md\",\n      \"task\": \"Run web tests\"\n    },\n    {\n      \"command\": \"npm run lint --prefix ./missing\",\n      \"statement\": null,\n      \"status\": \"missing\",\n      \"severity\": \"blocker\",\n      \"plan\": \"01-01-PLAN.md\",\n      \"task\": \"Lint the missing package\"\n    }\n  ],\n  \"counts\": {\n    \"blocker\": 1,\n    \"warning\": 0,\n    \"total\": 2\n  },\n  \"readError\": null\n}",
+  "stderr": "",
+  "exitCode": 0
+}

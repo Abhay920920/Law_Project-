@@ -1,0 +1,885 @@
+// allow-test-rule: source-text-is-the-product
+// Workflow markdown is the installed orchestration contract.
+
+'use strict';
+
+/**
+ * Worktree Lifecycle Module — branch-check and workspace-safety tests
+ *
+ * Seam: gsd-core/workflows/{execute-phase,execute-plan,quick}.md,
+ *       agents/gsd-executor.md
+ *
+ * Split from the consolidated 13→2 worktree cluster (≤800 LOC/file):
+ *   - tests/bug-2015-worktree-base-branch.test.cjs      (#2015: reset --hard)
+ *   - tests/bug-2075-worktree-deletion-safeguards.test.cjs (#2075: git clean prohibition)
+ *   - tests/bug-2431-worktree-locked-surfacing.test.cjs  (#2431: locked-worktree errors)
+ *   - tests/bug-2774-worktree-cleanup-workspace-safety.test.cjs (#2774: discovery pipeline)
+ *
+ * See also: worktree-cleanup.test.cjs (#2924, #1496, #1756, #1977, #1511, #3384, #3425)
+ *           worktree-safety.test.cjs  (safety function unit tests)
+ */
+
+const { describe, test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+
+const { cleanup } = require('./helpers.cjs');
+const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+const { runHook } = require('./helpers/process-seam.cjs');
+const { HOOK_FANOUT_TIMEOUT_MS } = require('./helpers/timeouts.cjs');
+
+/**
+ * Bound for every subprocess in this file: git plumbing/worktree commands
+ * against small mkdtemp fixture repos, plus the bash discovery-pipeline and
+ * process-substitution probes below — all orders of magnitude under this.
+ * #3144.
+ */
+const WORKTREE_TIMEOUT_MS = 30000;
+
+const REPO_ROOT = path.join(__dirname, '..');
+const EXECUTE_PHASE_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'execute-phase.md');
+const EXECUTE_PLAN_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'execute-plan.md');
+const QUICK_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'quick.md');
+const EXECUTOR_AGENT_PATH = path.join(REPO_ROOT, 'agents', 'gsd-executor.md');
+const DIAGNOSE_PATH = path.join(REPO_ROOT, 'gsd-core', 'workflows', 'diagnose-issues.md');
+const _GIT_INTEGRATION_PATH = path.join(REPO_ROOT, 'gsd-core', 'references', 'git-integration.md');
+const WORKTREE_BRANCH_CHECK_FRAGMENT = path.join(REPO_ROOT, 'gsd-core', 'references', 'worktree-branch-check.md');
+
+const isWindows = process.platform === 'win32';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function _extractNamedBlock(markdown, blockName) {
+  const open = `<${blockName}>`;
+  const close = `</${blockName}>`;
+  const start = markdown.indexOf(open);
+  if (start === -1) return null;
+  const end = markdown.indexOf(close, start + open.length);
+  if (end === -1) return null;
+  return markdown.slice(start + open.length, end);
+}
+
+/**
+ * Extract all fenced code blocks (```...```) from a markdown chunk.
+ * Returns array of { lang, body } objects.
+ */
+function _extractFencedCodeBlocks(markdown) {
+  const blocks = [];
+  const lines = markdown.split('\n');
+  let inFence = false;
+  let fenceLang = '';
+  let buffer = [];
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith('```')) {
+      if (!inFence) {
+        inFence = true;
+        fenceLang = trimmed.slice(3).trim();
+        buffer = [];
+      } else {
+        blocks.push({ lang: fenceLang, body: buffer.join('\n') });
+        inFence = false;
+        fenceLang = '';
+        buffer = [];
+      }
+    } else if (inFence) {
+      buffer.push(line);
+    }
+  }
+  return blocks;
+}
+
+/**
+ * Tokenize a shell-like script into individual statements (split on `;`, `&&`, `||`, newlines)
+ * and return commands as arrays of word tokens. Handles `$(cmd ...)` command substitution
+ * and `VAR=$(cmd ...)` assignments by extracting the inner command. This is intentionally
+ * simple — adequate for asserting on the presence of well-known git invocations.
+ */
+function _shellStatements(script) {
+  const statements = [];
+  const lines = script.split('\n');
+  for (let raw of lines) {
+    const line = raw.replace(/#.*$/, '').trim();
+    if (!line) continue;
+    // Split on shell statement separators
+    const parts = line.split(/(?:&&|\|\||;)/);
+    for (const part of parts) {
+      let trimmed = part.trim();
+      if (!trimmed) continue;
+      // Strip leading `VAR=` assignments so the substituted command surfaces as cmd[0].
+      // Then unwrap `$(...)` command substitution.
+      const assignMatch = trimmed.match(/^[A-Za-z_][A-Za-z0-9_]*=(.*)$/);
+      if (assignMatch) trimmed = assignMatch[1];
+      const subMatch = trimmed.match(/^\$\((.*?)\)?$/);
+      if (subMatch) trimmed = subMatch[1];
+      // Also handle leading `$(` without closing paren (paren may have been split off)
+      if (trimmed.startsWith('$(')) trimmed = trimmed.slice(2);
+      // Strip trailing closing parens left over from substitution
+      trimmed = trimmed.replace(/\)+\s*$/, '').trim();
+      if (!trimmed) continue;
+      // Strip surrounding quotes on the leading word
+      statements.push(trimmed.split(/\s+/).filter(Boolean));
+    }
+  }
+  return statements;
+}
+
+/**
+ * Find the line index of the first command matching a predicate.
+ * Returns -1 when not found.
+ */
+function _findCommandIndex(statements, predicate) {
+  for (let i = 0; i < statements.length; i++) {
+    if (predicate(statements[i])) return i;
+  }
+  return -1;
+}
+
+
+// ─── Canonical fragment: single source of truth ─────────────────────────────
+
+describe('canonical worktree-branch-check fragment is the single source of truth', () => {
+  const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+  // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+  const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+  const block = blockMatch ? blockMatch[1] : '';
+
+  test('fragment file exists and contains a <worktree_branch_check> block', () => {
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+  });
+
+  test('fragment block is verify-only (no git reset)', () => {
+    assert.ok(!/git\s+reset/.test(block), 'fragment block must NOT run git reset — orchestrator owns base recovery (#48)');
+  });
+
+  test('fragment block does NOT contain reset --soft', () => {
+    assert.ok(!block.includes('reset --soft'), 'fragment block must not use reset --soft');
+  });
+
+  test('fragment block protected-ref alternation contains main', () => {
+    assert.ok(/\bmain\b/.test(block), 'fragment protected-ref alternation must include main');
+  });
+
+  test('fragment block protected-ref alternation contains master', () => {
+    assert.ok(/\bmaster\b/.test(block), 'fragment protected-ref alternation must include master');
+  });
+
+  test('fragment block protected-ref alternation contains develop', () => {
+    assert.ok(/\bdevelop\b/.test(block), 'fragment protected-ref alternation must include develop');
+  });
+
+  test('fragment block protected-ref alternation contains trunk', () => {
+    assert.ok(/\btrunk\b/.test(block), 'fragment protected-ref alternation must include trunk');
+  });
+
+  test('fragment block protected-ref alternation contains release', () => {
+    assert.ok(/\brelease\b/.test(block), 'fragment protected-ref alternation must include release');
+  });
+
+  test('fragment block positive allow-list matches ^((worktree-)?agent-|worktree-wf_) pattern', () => {
+    const allowListRe = /grep\s+-Eq?\s+'\^\(\(worktree-\)\?agent-\|worktree-wf_/;
+    assert.ok(allowListRe.test(block), 'fragment block must enforce a positive allow-list matching ^((worktree-)?agent-|worktree-wf_) (#3021)');
+  });
+
+  test('fragment block contains update-ref prohibition text', () => {
+    assert.ok(block.includes('update-ref'), 'fragment block must reference update-ref prohibition');
+  });
+
+  test('fragment block asserts an allowed base set and fails closed with exit 42 (#48, #1265)', () => {
+    assert.ok(block.includes('git rev-parse HEAD') && block.includes('{EXPECTED_BASE}'), 'fragment must assert HEAD against {EXPECTED_BASE} (#48)');
+    assert.ok(block.includes('{EXPECTED_BASE_ALTERNATE}'), 'fragment must support one orchestrator-approved alternate base for quick parent/plan forks (#1265)');
+    assert.ok(/exit 42/.test(block), 'fragment must fail closed with exit 42 on mismatch (#48)');
+  });
+});
+
+// ─── #48: execute-plan mandate is verify-only ───────────────────────────────
+
+describe('bug #48: execute-plan.md worktree mandate is verify-only', () => {
+  test('execute-plan.md worktree mandate is verify-only (no reset --hard self-recovery) (#48)', () => {
+    const content = fs.readFileSync(EXECUTE_PLAN_PATH, 'utf-8');
+    assert.ok(content.includes('worktree-branch-check.md'), 'execute-plan.md must reference the canonical fragment');
+    assert.ok(!/hard-reset/.test(content) && !/reset --hard/.test(content), 'execute-plan.md must not describe reset --hard self-recovery — verify-only per #48');
+    assert.ok(/exit 42/.test(content), 'execute-plan.md mandate must specify fail-closed exit 42 (#48)');
+  });
+});
+
+const DISCOVERY_PIPELINE =
+  'grep "^worktree " | grep "\\.claude/worktrees/agent-" | sed \'s/^worktree //\'';
+
+function runDiscoveryAgainstFixture(porcelain) {
+  // Bash FAN-OUT: a `grep | grep | sed` pipeline under one `bash`
+  // interpreter, not a single git plumbing call — the wrong class for
+  // `WORKTREE_TIMEOUT_MS`. Same class as the observed CI failures in
+  // tests/quick-branching.test.cjs (PR #3787 run 32668773524) and
+  // tests/worktree-safety.test.cjs (`next` run 32608945654). See
+  // HOOK_FANOUT_TIMEOUT_MS in ./helpers/timeouts.cjs for the class rationale.
+  const out = runHook('-c', [DISCOVERY_PIPELINE], {
+    interpreter: 'bash',
+    input: porcelain,
+    timeoutMs: HOOK_FANOUT_TIMEOUT_MS,
+  }).stdout;
+  return out.split('\n').filter((l) => l.length > 0);
+}
+
+function runDiscoveryAgainstRepo(repoCwd) {
+  // Bash FAN-OUT: `git worktree list` piped through `grep | grep | sed`
+  // under one `bash` interpreter — same class rationale as
+  // `runDiscoveryAgainstFixture` above.
+  const out = runHook('-c', [`git worktree list --porcelain | ${DISCOVERY_PIPELINE}`], {
+    interpreter: 'bash',
+    cwd: repoCwd,
+    timeoutMs: HOOK_FANOUT_TIMEOUT_MS,
+  }).stdout;
+  return out.split('\n').filter((l) => l.length > 0);
+}
+
+function makeTempUpstreamRepo(prefix) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  gitOrThrow(['init', '-b', 'main'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  gitOrThrow(['config', 'user.email', 'test@test.com'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  gitOrThrow(['config', 'user.name', 'Test'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  gitOrThrow(['config', 'commit.gpgsign', 'false'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  fs.writeFileSync(path.join(tmpDir, 'README.md'), '# upstream\n');
+  gitOrThrow(['add', '-A'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  gitOrThrow(['commit', '-m', 'initial'], { cwd: tmpDir, timeoutMs: WORKTREE_TIMEOUT_MS });
+  return tmpDir;
+}
+
+// ─── #2015: reset --hard not --soft ─────────────────────────────────────────
+
+describe('verify-only: worktree_branch_check must NOT run git reset (#48, supersedes #2015)', () => {
+
+  test('execute-phase.md worktree_branch_check does not use reset --soft', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+
+    // Extract the worktree_branch_check block from the canonical fragment
+    // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+
+    const block = blockMatch[1];
+    assert.ok(
+      !block.includes('reset --soft'),
+      'worktree_branch_check must not use reset --soft (leaves working tree files unchanged).'
+    );
+  });
+
+  test('verify-only: execute-phase.md worktree_branch_check must not run git reset at all (#48, supersedes #2015)', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+
+    const block = blockMatch[1];
+    assert.ok(
+      !/git\s+reset/.test(block),
+      'worktree_branch_check must NOT run git reset — orchestrator owns base recovery (#48, supersedes #2015)'
+    );
+  });
+
+  test('quick.md worktree_branch_check does not use reset --soft', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+
+    const block = blockMatch[1];
+    assert.ok(
+      !block.includes('reset --soft'),
+      'quick.md worktree_branch_check must not use reset --soft.'
+    );
+  });
+
+  test('verify-only: quick.md worktree_branch_check must not run git reset at all (#48, supersedes #2015)', () => {
+    const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+    // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+    const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+    assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+
+    const block = blockMatch[1];
+    assert.ok(
+      !/git\s+reset/.test(block),
+      'quick.md worktree_branch_check must NOT run git reset — orchestrator owns base recovery (#48, supersedes #2015)'
+    );
+  });
+
+  test('execute-phase.md references the canonical fragment', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    assert.ok(
+      content.includes('worktree-branch-check.md'),
+      'execute-phase.md must reference the canonical worktree-branch-check.md fragment'
+    );
+  });
+
+  test('quick.md references the canonical fragment', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    assert.ok(
+      content.includes('worktree-branch-check.md'),
+      'quick.md must reference the canonical worktree-branch-check.md fragment'
+    );
+  });
+});
+
+// ─── #2075: worktree deletion safeguards ────────────────────────────────────
+
+describe('bug-2075: worktree deletion safeguards', () => {
+
+  describe('Failure Mode B: git clean prohibition in executor agent', () => {
+    test('gsd-executor.md explicitly prohibits git clean in worktree context', () => {
+      const content = fs.readFileSync(EXECUTOR_AGENT_PATH, 'utf-8');
+
+      // Must have an explicit prohibition section mentioning git clean
+      const prohibitsGitClean = (
+        content.includes('git clean') &&
+        (
+          /NEVER.*git clean/i.test(content) ||
+          /git clean.*NEVER/i.test(content) ||
+          /do not.*git clean/i.test(content) ||
+          /git clean.*prohibited/i.test(content) ||
+          /prohibited.*git clean/i.test(content) ||
+          /forbidden.*git clean/i.test(content) ||
+          /git clean.*forbidden/i.test(content) ||
+          /must not.*git clean/i.test(content) ||
+          /git clean.*must not/i.test(content)
+        )
+      );
+
+      assert.ok(
+        prohibitsGitClean,
+        'gsd-executor.md must explicitly prohibit git clean — running it inside a worktree deletes files committed on the feature branch (#2075 Failure Mode B)'
+      );
+    });
+
+    test('gsd-executor.md git clean prohibition explains the worktree data-loss risk', () => {
+      const content = fs.readFileSync(EXECUTOR_AGENT_PATH, 'utf-8');
+
+      // The prohibition must be accompanied by a reason — not just a bare rule
+      // Look for the word "worktree" near the git clean prohibition
+      const gitCleanIdx = content.indexOf('git clean');
+      assert.ok(gitCleanIdx > -1, 'gsd-executor.md must mention git clean (to prohibit it)');
+
+      // Extract context around the git clean mention (500 chars either side)
+      const contextStart = Math.max(0, gitCleanIdx - 500);
+      const contextEnd = Math.min(content.length, gitCleanIdx + 500);
+      const context = content.slice(contextStart, contextEnd);
+
+      const hasWorktreeRationale = (
+        /worktree/i.test(context) ||
+        /delete/i.test(context) ||
+        /untracked/i.test(context)
+      );
+
+      assert.ok(
+        hasWorktreeRationale,
+        'The git clean prohibition in gsd-executor.md must explain why: git clean in a worktree deletes files that appear untracked but are committed on the feature branch'
+      );
+    });
+  });
+
+  describe('Failure Mode A: worktree_branch_check audit across all worktree-spawning workflows', () => {
+    test('execute-phase.md has worktree_branch_check block (verify-only, no git reset) (#48)', () => {
+      const executePhaseContent = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+      assert.ok(
+        executePhaseContent.includes('worktree-branch-check.md'),
+        'execute-phase.md must reference the canonical worktree-branch-check.md fragment'
+      );
+
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      assert.ok(
+        blockMatch,
+        'worktree-branch-check.md must contain a <worktree_branch_check> block'
+      );
+
+      const block = blockMatch[1];
+      assert.ok(
+        !/git\s+reset/.test(block),
+        'execute-phase.md worktree_branch_check must NOT run git reset — verify-only per #48'
+      );
+      assert.ok(
+        !block.includes('reset --soft'),
+        'execute-phase.md worktree_branch_check must not use git reset --soft'
+      );
+    });
+
+    test('quick.md has worktree_branch_check block (verify-only, no git reset) (#48)', () => {
+      const quickContent = fs.readFileSync(QUICK_PATH, 'utf-8');
+      assert.ok(
+        quickContent.includes('worktree-branch-check.md'),
+        'quick.md must reference the canonical worktree-branch-check.md fragment'
+      );
+
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      assert.ok(
+        blockMatch,
+        'worktree-branch-check.md must contain a <worktree_branch_check> block'
+      );
+
+      const block = blockMatch[1];
+      assert.ok(
+        !/git\s+reset/.test(block),
+        'quick.md worktree_branch_check must NOT run git reset — verify-only per #48'
+      );
+      assert.ok(
+        !block.includes('reset --soft'),
+        'quick.md worktree_branch_check must not use git reset --soft'
+      );
+    });
+
+    test('diagnose-issues.md has worktree_branch_check instruction for spawned agents', () => {
+      const diagnoseContent = fs.readFileSync(DIAGNOSE_PATH, 'utf-8');
+      assert.ok(
+        diagnoseContent.includes('worktree-branch-check.md'),
+        'diagnose-issues.md must reference the canonical worktree-branch-check.md fragment for spawned debug agents'
+      );
+
+      const fragmentContent = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf-8');
+      // eslint-disable-next-line local/no-unbounded-quantifier -- parses this repo's own workflow fragment .md content, fixed-size author-controlled content
+      const blockMatch = fragmentContent.match(/<worktree_branch_check>([\s\S]*?)<\/worktree_branch_check>/);
+      assert.ok(blockMatch, 'worktree-branch-check.md must contain a <worktree_branch_check> block');
+      const block = blockMatch[1];
+      assert.ok(
+        !/git\s+reset/.test(block),
+        'diagnose-issues.md worktree_branch_check must NOT run git reset — verify-only per #48'
+      );
+    });
+  });
+
+  describe('Defense-in-depth: post-commit deletion check (from #1977)', () => {
+    test('gsd-executor.md task_commit_protocol has post-commit deletion verification', () => {
+      const content = fs.readFileSync(EXECUTOR_AGENT_PATH, 'utf-8');
+
+      assert.ok(
+        content.includes('--diff-filter=D'),
+        'gsd-executor.md must include --diff-filter=D to detect accidental file deletions after each commit'
+      );
+
+      // Must have a warning about unexpected deletions
+      assert.ok(
+        content.includes('DELETIONS') || content.includes('WARNING'),
+        'gsd-executor.md must emit a warning when a commit includes unexpected file deletions'
+      );
+    });
+  });
+
+  describe('Defense-in-depth: pre-merge deletion check (from #1977)', () => {
+    test('execute-phase.md worktree merge section has pre-merge deletion check', () => {
+      const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+
+      const worktreeCleanupStart = content.indexOf('Worktree cleanup');
+      assert.ok(
+        worktreeCleanupStart > -1,
+        'execute-phase.md must have a worktree cleanup section'
+      );
+
+      const cleanupSection = content.slice(worktreeCleanupStart);
+
+      // After #3797 architectural fix: deletion check is handled by SDK worktree.cleanup-wave.
+      // Accept either (a) --diff-filter=D inline OR (b) SDK delegation with deletion mention.
+      const hasInlineDiffFilterCheck = cleanupSection.includes('--diff-filter=D');
+      const hasSdkDelegationWithDeletionMention = (
+        cleanupSection.includes('worktree.cleanup-wave') &&
+        (cleanupSection.includes('deletion') || cleanupSection.includes('BLOCKED'))
+      );
+      assert.ok(
+        hasInlineDiffFilterCheck || hasSdkDelegationWithDeletionMention,
+        'execute-phase.md cleanup section must either include --diff-filter=D or delegate to SDK (worktree.cleanup-wave) with documented deletion-diff validation (#2384/#3797)',
+      );
+    });
+
+    test('quick.md worktree merge section has pre-merge deletion check', () => {
+      const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+
+      // Find the worktree cleanup block (starts after "Worktree cleanup")
+      const worktreeCleanupStart = content.indexOf('Worktree cleanup');
+      assert.ok(
+        worktreeCleanupStart > -1,
+        'quick.md must have a worktree cleanup section'
+      );
+
+      const cleanupSection = content.slice(worktreeCleanupStart);
+
+      // After #3797 architectural fix: deletion check is handled by SDK worktree.cleanup-wave.
+      // Accept either (a) --diff-filter=D / diff-filter inline OR (b) SDK delegation with deletion mention.
+      const hasInlineDiffFilterCheck = (
+        cleanupSection.includes('--diff-filter=D') || cleanupSection.includes('diff-filter')
+      );
+      const hasSdkDelegationWithDeletionMention = (
+        cleanupSection.includes('worktree.cleanup-wave') &&
+        (cleanupSection.includes('deletion') || cleanupSection.includes('BLOCKED'))
+      );
+      assert.ok(
+        hasInlineDiffFilterCheck || hasSdkDelegationWithDeletionMention,
+        'quick.md cleanup section must either check for file deletions inline or delegate to SDK (worktree.cleanup-wave) with documented deletion-diff validation (#2384/#3797)',
+      );
+    });
+  });
+
+});
+
+// ─── #2431: locked-worktree error surfacing ──────────────────────────────────
+
+describe('bug-2431: worktree teardown must surface locked-worktree errors', () => {
+  test('quick.md exists', () => {
+    assert.ok(fs.existsSync(QUICK_PATH), 'quick.md should exist');
+  });
+
+  test('execute-phase.md exists', () => {
+    assert.ok(fs.existsSync(EXECUTE_PHASE_PATH), 'execute-phase.md should exist');
+  });
+
+  test('quick.md: no silent worktree remove pattern', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    const silentRemovePattern = /git worktree remove[^\n]*--force\s+2>\/dev\/null\s*\|\|\s*true/;
+    assert.ok(!silentRemovePattern.test(content), 'quick.md: must not contain silent git worktree remove pattern');
+  });
+
+  test('execute-phase.md: no silent worktree remove pattern', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    const silentRemovePattern = /git worktree remove[^\n]*--force\s+2>\/dev\/null\s*\|\|\s*true/;
+    assert.ok(!silentRemovePattern.test(content), 'execute-phase.md: must not contain silent git worktree remove pattern');
+  });
+
+  test('quick.md: has lock-aware detection block', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    // After #3797 architectural fix: quick.md delegates entirely to SDK worktree.cleanup-wave,
+    // which handles lock detection internally. Accept either inline .git/worktrees/.../locked
+    // check OR SDK delegation (the SDK documents locked-worktree handling).
+    const hasInlineLockCheck = content.includes('.git/worktrees/') && content.includes('locked');
+    const hasSdkDelegation = content.includes('worktree.cleanup-wave');
+    assert.ok(
+      hasInlineLockCheck || hasSdkDelegation,
+      'quick.md: must include lock-aware detection (.git/worktrees/.../locked check) or delegate to SDK worktree.cleanup-wave (#2431/#3797)'
+    );
+  });
+
+  test('execute-phase.md: has lock-aware detection block', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    assert.ok(
+      content.includes('.git/worktrees/') && content.includes('locked'),
+      'execute-phase.md: must include lock-aware detection'
+    );
+  });
+
+  test('quick.md: has git worktree unlock retry', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    // After #3797 architectural fix: quick.md delegates entirely to SDK worktree.cleanup-wave.
+    // Accept either inline "git worktree unlock" OR SDK delegation.
+    const hasInlineUnlock = content.includes('git worktree unlock');
+    const hasSdkDelegation = content.includes('worktree.cleanup-wave');
+    assert.ok(
+      hasInlineUnlock || hasSdkDelegation,
+      'quick.md: must include "git worktree unlock" retry attempt or delegate to SDK worktree.cleanup-wave (#2431/#3797)'
+    );
+  });
+
+  test('execute-phase.md: has git worktree unlock retry', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    assert.ok(content.includes('git worktree unlock'), 'execute-phase.md: must include "git worktree unlock" retry attempt');
+  });
+
+  test('quick.md: has user-visible warning on residual worktree', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf-8');
+    // After #3797 architectural fix: quick.md delegates entirely to SDK worktree.cleanup-wave,
+    // which surfaces residual worktree warnings internally. Accept either inline warning
+    // OR SDK delegation.
+    const hasInlineWarning = content.includes('Residual worktree') || content.includes('manual cleanup');
+    const hasSdkDelegation = content.includes('worktree.cleanup-wave');
+    assert.ok(
+      hasInlineWarning || hasSdkDelegation,
+      'quick.md: must include user-visible warning when worktree removal fails, or delegate to SDK worktree.cleanup-wave (#2431/#3797)'
+    );
+  });
+
+  test('execute-phase.md: has user-visible warning on residual worktree', () => {
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf-8');
+    assert.ok(
+      content.includes('Residual worktree') || content.includes('manual cleanup'),
+      'execute-phase.md: must include user-visible warning when worktree removal fails'
+    );
+  });
+});
+
+// ─── #2774: cleanup pipeline workspace safety ────────────────────────────────
+
+describe('bug #2774 — worktree cleanup pipeline must not target the parent workspace', () => {
+  describe('discovery pipeline (unit)', () => {
+    test('selects only the agent worktree when workspace itself is a worktree', () => {
+      // Fixture mirrors the multi-workspace setup: upstream main + sibling
+      // workspace worktree + agent worktree under workspace's
+      // `.claude/worktrees/agent-` namespace.
+      const porcelain = [
+        'worktree /Users/dev/upstream/gsd-core',
+        'HEAD abc123',
+        'branch refs/heads/main',
+        '',
+        'worktree /Users/dev/workspaces/feature-x',
+        'HEAD def456',
+        'branch refs/heads/workspace/feature-x',
+        '',
+        'worktree /Users/dev/workspaces/feature-x/.claude/worktrees/agent-deadbeef',
+        'HEAD 789abc',
+        'branch refs/heads/worktree-agent-deadbeef',
+        '',
+      ].join('\n');
+
+      const discovered = runDiscoveryAgainstFixture(porcelain);
+
+      assert.deepEqual(
+        discovered,
+        ['/Users/dev/workspaces/feature-x/.claude/worktrees/agent-deadbeef'],
+        'pipeline must select only the agent-spawned worktree, never the ' +
+          'workspace or upstream main repo'
+      );
+    });
+
+    test('selects nothing when no agent worktrees exist', () => {
+      const porcelain = [
+        'worktree /Users/dev/upstream/gsd-core',
+        'HEAD abc123',
+        'branch refs/heads/main',
+        '',
+        'worktree /Users/dev/workspaces/feature-x',
+        'HEAD def456',
+        'branch refs/heads/workspace/feature-x',
+        '',
+      ].join('\n');
+
+      const discovered = runDiscoveryAgainstFixture(porcelain);
+
+      assert.deepEqual(discovered, []);
+    });
+
+    test('selects multiple agent worktrees and excludes non-agent paths', () => {
+      const porcelain = [
+        'worktree /repo/main',
+        'HEAD a',
+        'branch refs/heads/main',
+        '',
+        'worktree /repo/main/.claude/worktrees/agent-aaa',
+        'HEAD b',
+        'branch refs/heads/agent-aaa',
+        '',
+        'worktree /repo/main/.claude/worktrees/agent-bbb',
+        'HEAD c',
+        'branch refs/heads/agent-bbb',
+        '',
+        'worktree /repo/main/some-other-dir',
+        'HEAD d',
+        'branch refs/heads/feature',
+        '',
+      ].join('\n');
+
+      const discovered = runDiscoveryAgainstFixture(porcelain);
+
+      assert.deepEqual(discovered.sort(), [
+        '/repo/main/.claude/worktrees/agent-aaa',
+        '/repo/main/.claude/worktrees/agent-bbb',
+      ]);
+    });
+
+    test('selects agent worktree even when path contains whitespace', () => {
+      // Regression for CodeRabbit feedback on PR #2778: `for WT in $WORKTREES`
+      // splits on whitespace and would emit broken half-paths like
+      // "/Users/dev/My" and "Workspace/.claude/worktrees/agent-xyz". The
+      // pipeline output itself is line-delimited and preserves the full path —
+      // the workflow's loop must consume it line-by-line via `while IFS= read`.
+      const porcelain = [
+        'worktree /Users/dev/My Workspace',
+        'HEAD def456',
+        'branch refs/heads/workspace/feature-x',
+        '',
+        'worktree /Users/dev/My Workspace/.claude/worktrees/agent-deadbeef',
+        'HEAD 789abc',
+        'branch refs/heads/worktree-agent-deadbeef',
+        '',
+      ].join('\n');
+
+      const discovered = runDiscoveryAgainstFixture(porcelain);
+
+      assert.deepEqual(
+        discovered,
+        ['/Users/dev/My Workspace/.claude/worktrees/agent-deadbeef'],
+        'pipeline output must preserve whitespace-bearing agent worktree path on a single line'
+      );
+    });
+
+    test('while/read loop iterates each whitespace-bearing path exactly once',
+      { skip: isWindows ? 'POSIX bash process-substitution `< <(...)` under test; not portable to cmd.exe / git-bash variance' : false },
+      () => {
+      // Verify the actual consumer pattern from quick.md / execute-phase.md:
+      //   while IFS= read -r WT; do ...; done < <(<pipeline>)
+      // Counts the lines yielded to the loop body. With the previous
+      // `for WT in $WORKTREES` form, a path containing one space would yield
+      // 2 iterations (broken halves). The `while/read` form yields exactly 1.
+      const porcelain = [
+        'worktree /tmp/has space/.claude/worktrees/agent-aaa',
+        'HEAD a',
+        'branch refs/heads/agent-aaa',
+        '',
+        'worktree /tmp/two  spaces/.claude/worktrees/agent-bbb',
+        'HEAD b',
+        'branch refs/heads/agent-bbb',
+        '',
+      ].join('\n');
+
+      // Mirror the workflow's loop verbatim. Print one line per iteration with
+      // a sentinel so we can count and inspect what the loop actually saw.
+      const script = `
+while IFS= read -r WT; do
+  [ -z "$WT" ] && continue
+  printf 'ITER:%s\\n' "$WT"
+done < <(${DISCOVERY_PIPELINE})
+`;
+      // bash needed for process substitution `< <(...)`. FAN-OUT: the
+      // `while/read` loop drives the `grep | grep | sed` discovery
+      // pipeline under one `bash` interpreter — same class rationale as
+      // runDiscoveryAgainstRepo above; see HOOK_FANOUT_TIMEOUT_MS in
+      // ./helpers/timeouts.cjs.
+      const out = runHook('-c', [script], {
+        interpreter: 'bash',
+        input: porcelain,
+        timeoutMs: HOOK_FANOUT_TIMEOUT_MS,
+      }).stdout;
+      const iterations = out
+        .split('\n')
+        .filter((l) => l.startsWith('ITER:'))
+        .map((l) => l.slice('ITER:'.length));
+
+      assert.deepEqual(
+        iterations,
+        [
+          '/tmp/has space/.claude/worktrees/agent-aaa',
+          '/tmp/two  spaces/.claude/worktrees/agent-bbb',
+        ],
+        'while/read loop must yield exactly one iteration per worktree, with whitespace preserved'
+      );
+    });
+  });
+
+  describe('end-to-end against real git worktrees',
+    { skip: isWindows ? 'POSIX shell discovery pipeline under test + Windows 8.3 short-name (RUNNER~1) vs long-name path mismatch in temp dirs' : false },
+    () => {
+    let upstream;
+    let workspace;
+    let agentWorktree;
+    let workspacesParent;
+
+    beforeEach(() => {
+      // Build the multi-worktree scenario from #2774:
+      //   upstream/         <- main repo
+      //   workspace/        <- worktree of upstream (the "workspace")
+      //   workspace/.claude/worktrees/agent-XXXX/  <- agent worktree
+      upstream = makeTempUpstreamRepo('gsd-2774-upstream-');
+
+      workspacesParent = fs.mkdtempSync(
+        path.join(os.tmpdir(), 'gsd-2774-workspaces-')
+      );
+      workspace = path.join(workspacesParent, 'feature-x');
+      gitOrThrow(['worktree', 'add', '-b', 'workspace/feature-x', workspace], {
+        cwd: upstream,
+        timeoutMs: WORKTREE_TIMEOUT_MS,
+      });
+
+      const agentDir = path.join(workspace, '.claude', 'worktrees');
+      fs.mkdirSync(agentDir, { recursive: true });
+      agentWorktree = path.join(agentDir, 'agent-deadbeef');
+      gitOrThrow(
+        ['worktree', 'add', '-b', 'worktree-agent-deadbeef', agentWorktree],
+        { cwd: upstream, timeoutMs: WORKTREE_TIMEOUT_MS }
+      );
+    });
+
+    afterEach(() => {
+      try {
+        gitOrThrow(['worktree', 'prune'], { cwd: upstream, timeoutMs: WORKTREE_TIMEOUT_MS });
+      } catch (_) {
+        /* ignore */
+      }
+      cleanup(upstream);
+      cleanup(workspacesParent);
+    });
+
+    test('discovery from inside workspace returns only the agent worktree', () => {
+      const discovered = runDiscoveryAgainstRepo(workspace);
+
+      // Resolve symlinks (macOS /var → /private/var) for stable comparison.
+      const expected = fs.realpathSync(agentWorktree);
+      const actual = discovered.map((p) => fs.realpathSync(p));
+
+      assert.deepEqual(
+        actual,
+        [expected],
+        'pipeline must list only the agent worktree, not the workspace or upstream'
+      );
+    });
+
+    test('running cleanup loop on discovered paths preserves workspace .git', () => {
+      const workspaceGitBefore = fs.readFileSync(
+        path.join(workspace, '.git'),
+        'utf-8'
+      );
+      assert.ok(
+        fs.existsSync(path.join(upstream, '.git')),
+        'precondition: upstream .git must exist'
+      );
+
+      const discovered = runDiscoveryAgainstRepo(workspace);
+      assert.equal(
+        discovered.length,
+        1,
+        'precondition: exactly one agent worktree should be discovered'
+      );
+
+      // Execute the cleanup behavior end-to-end: `git worktree remove --force`
+      // each discovered path. This mirrors the workflow's cleanup loop.
+      for (const wt of discovered) {
+        gitOrThrow(['worktree', 'remove', '--force', wt], {
+          cwd: workspace,
+          timeoutMs: WORKTREE_TIMEOUT_MS,
+        });
+      }
+
+      // Agent worktree dir must be gone.
+      assert.equal(
+        fs.existsSync(agentWorktree),
+        false,
+        'agent worktree dir should be removed by cleanup'
+      );
+
+      // Workspace `.git` pointer file must still exist and be unchanged —
+      // the regression we are guarding against.
+      assert.ok(
+        fs.existsSync(path.join(workspace, '.git')),
+        'workspace .git pointer must survive cleanup (regression #2774)'
+      );
+      assert.equal(
+        fs.readFileSync(path.join(workspace, '.git'), 'utf-8'),
+        workspaceGitBefore,
+        'workspace .git pointer contents must be unchanged'
+      );
+
+      // Upstream repo's .git directory must also be intact.
+      assert.ok(
+        fs.existsSync(path.join(upstream, '.git')),
+        'upstream .git must survive cleanup'
+      );
+
+      // Workspace must still be a functional git worktree.
+      const branch = gitOrThrow(['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: workspace,
+        timeoutMs: WORKTREE_TIMEOUT_MS,
+      }).trim();
+      assert.equal(
+        branch,
+        'workspace/feature-x',
+        'workspace must still be a functional worktree on its branch'
+      );
+    });
+  });
+});

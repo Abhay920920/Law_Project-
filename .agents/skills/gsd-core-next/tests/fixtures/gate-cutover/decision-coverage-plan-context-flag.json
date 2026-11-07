@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    "--context",
+    ".planning/phases/01-decisions/CONTEXT.md"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": false,\n  \"skipped\": false,\n  \"total\": 3,\n  \"covered\": 2,\n  \"uncovered\": [\n    {\n      \"id\": \"D-03\",\n      \"text\": \"Log every retry\",\n      \"category\": \"\"\n    }\n  ],\n  \"message\": \"## Decision Coverage Gap\\n\\n1 CONTEXT.md decision(s) are not covered by any plan:\\n\\n- **D-03** (uncategorized): Log every retry\\n\\nResolve by citing `D-NN:` in any of the scanned plan surfaces: front-matter\\n`must_haves`/`truths`/`objective`, a `## must_haves`/`truths`/`tasks`/`objective`\\nheading, or an `<objective>`/`<tasks>`/`<task>`/`<action>`/`<read_first>`/`<behavior>`/`<verify>`/`<acceptance_criteria>`/`<done>`\\ntag body. Other locations (prose outside those headings, comments, other XML tags) are not scanned.\\nOR move the decision to `### Claude's Discretion` / tag it `[informational]` if it should not be tracked.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{\"kind\":\"artifact-frontmatter-equals\",\"artifact\":\"STATUS.md\",\"field\":\"status\",\"equals\":\"done\"}",
+    "--phase-dir",
+    ".planning/phases/01-pred"
+  ],
+  "fixture": "pred",
+  "stdout": "{\n  \"block\": false,\n  \"message\": \"Frontmatter field \\\"status\\\" matches expected value (done)\",\n  \"details\": {\n    \"kind\": \"artifact-frontmatter-equals\",\n    \"match\": true\n  }\n}",
+  "stderr": "",
+  "exitCode": 0
+}

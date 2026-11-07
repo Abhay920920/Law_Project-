@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-context-drift",
+    "2"
+  ],
+  "fixture": "ctx-drift",
+  "stdout": "{\n  \"block\": false,\n  \"skipped\": false,\n  \"stale_artifacts\": [],\n  \"action\": \"warn\",\n  \"message\": \"\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

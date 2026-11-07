@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/08-empty"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": true,\n  \"passed\": false,\n  \"coverage_present\": false,\n  \"detected\": false,\n  \"scope_unavailable\": true,\n  \"message\": \"api-coverage: the phase scope is empty — no plan body and no roadmap section were found, so nothing was examined. Refusing to certify no external-API integration from an unestablished scope. Add the phase plan, or add a COVERAGE.md declaration.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

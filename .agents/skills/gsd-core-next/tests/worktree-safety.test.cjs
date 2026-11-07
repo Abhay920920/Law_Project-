@@ -1,0 +1,9407 @@
+// docs-guard-exempt: 'docs/SUMMARY.md' is a synthetic fixture path and a predicate-check literal (isSummaryArtifactRelPath), never read as content.
+'use strict';
+
+/**
+ * Worktree Safety Policy Module — typed IR tests
+ *
+ * Seam: gsd-core/bin/lib/worktree-safety.cjs
+ * Interface: resolveWorktreeContext, parseWorktreePorcelain, planWorktreePrune,
+ *            executeWorktreePrunePlan, listLinkedWorktreePaths, inspectWorktreeHealth,
+ *            snapshotWorktreeInventory, planWorktreeWaveCleanup,
+ *            executeWorktreeWaveCleanupPlan
+ *
+ * Consolidated from:
+ *   - tests/worktree-safety-policy.test.cjs (policy module unit tests)
+ *   - tests/bug-3281-worktree-git-timeout.test.cjs (AC1–AC4: timeout/degraded-git)
+ *   - tests/bug-3384-worktree-cleanup-manifest.test.cjs (manifest-scoped cleanup module)
+ */
+
+const { describe, test, afterEach, mock } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const childProcess = require('node:child_process');
+const fc = require('fast-check');
+const { createTempDir, cleanup } = require('./helpers.cjs');
+const { createFixture } = require('./fixtures/index.cjs');
+const { makeFaultyGit } = require('./helpers/faulty-deps.cjs');
+const { escapeRegex } = require('../gsd-core/bin/lib/pattern.cjs');
+const { HOOK_FANOUT_TIMEOUT_MS } = require('./helpers/timeouts.cjs');
+
+// 30000ms: this file's single named bound for every migrated subprocess call
+// below (git plumbing on small mkdtemp fixtures, gsd-tools.cjs/hook CLI runs,
+// and bash guard snippets) — well over any observed duration for any of
+// those classes of call on this file's fixtures.
+const SUBPROCESS_TIMEOUT_MS = 30_000;
+
+const WORKTREE_SAFETY_PATH = path.join(
+  __dirname, '..', 'gsd-core', 'bin', 'lib', 'worktree-safety.cjs'
+);
+const CORE_PATH = path.join(
+  __dirname, '..', 'gsd-core', 'bin', 'lib', 'worktree-safety.cjs'
+);
+
+const {
+  resolveWorktreeContext,
+  resolveWorktreeLinkage,
+  parseWorktreePorcelain,
+  planWorktreePrune,
+  executeWorktreePrunePlan,
+  listLinkedWorktreePaths,
+  inspectWorktreeHealth,
+  snapshotWorktreeInventory,
+  planWorktreeWaveCleanup,
+  executeWorktreeWaveCleanupPlan,
+  planWorktreeRecordAgent,
+  cmdWorktreeRecordAgent,
+  planWorktreeCreate,
+  executeWorktreeCreatePlan,
+  cmdWorktreeCreate,
+} = require(WORKTREE_SAFETY_PATH);
+
+const isWindows = process.platform === 'win32';
+
+// ─── Shared stubs ─────────────────────────────────────────────────────────────
+
+/**
+ * #4758 (windows conformance lanes): the SUMMARY rescue resolves the manifest's
+ * worktree_path against repoRoot before handing it to the fs walker and its own
+ * `git -C` calls.  A driveless-absolute fixture value ('/repo/...') rewrites to
+ * '<cwd-drive>:\repo\...' under win32 path.resolve, so fakes must key on the
+ * RESOLVED path — a verbatim string key silently never matches there and the
+ * rescue stops being exercised on Windows.  gitKeyFor mirrors git's own
+ * `-C <relative>` resolution (against the plan's repoRoot) so one fake answers
+ * both the caller's calls (verbatim values, resolved by git's cwd) and the
+ * rescue's calls (already-resolved values) through the same branch set.
+ */
+function gitKeyFor(repoRoot, args) {
+  if (args[0] === '-C') {
+    return `-C ${path.resolve(repoRoot, args[1])} ${args.slice(2).join(' ')}`;
+  }
+  return args.join(' ');
+}
+
+/**
+ * Returns an execGit stub that simulates what spawnSync returns when the
+ * subprocess is killed by SIGTERM after exceeding its timeout.
+ * Per Node.js docs: result.status === null, result.signal === 'SIGTERM',
+ * result.error?.code === 'ETIMEDOUT'.
+ *
+ * The production execGit implementation must detect this shape and:
+ *   - return { ..., timedOut: true } so callers can distinguish timeout from auth failure
+ *   - not throw
+ */
+function makeTimeoutStub() {
+  return function stubTimedOutExecGit(_args, _opts) {
+    return {
+      exitCode: null,
+      stdout: '',
+      stderr: '',
+      timedOut: true,
+      signal: 'SIGTERM',
+      error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+    };
+  };
+}
+
+// ─── resolveWorktreeContext ───────────────────────────────────────────────────
+
+describe('resolveWorktreeContext', () => {
+  test('prefers current directory when .planning exists', () => {
+    const context = resolveWorktreeContext('/repo/wt', {
+      existsSync: () => true,
+      execGit: () => ({ exitCode: 1, stdout: '', stderr: '' }),
+    });
+    assert.strictEqual(context.effectiveRoot, '/repo/wt');
+    assert.strictEqual(context.reason, 'has_local_planning');
+    assert.strictEqual(context.mode, 'current_directory');
+  });
+
+  test('maps linked worktree to common-dir parent',
+    { skip: isWindows ? 'POSIX-rooted fixture paths cannot be expressed on Windows path.resolve' : false },
+    () => {
+    const context = resolveWorktreeContext('/repo/wt', {
+      existsSync: () => false,
+      execGit: (args) => {
+        if (args[1] === '--git-dir') return { exitCode: 0, stdout: '.git/worktrees/wt', stderr: '' };
+        if (args[1] === '--git-common-dir') return { exitCode: 0, stdout: '../.git', stderr: '' };
+        return { exitCode: 1, stdout: '', stderr: '' };
+      },
+    });
+    assert.strictEqual(context.effectiveRoot, '/repo');
+    assert.strictEqual(context.reason, 'linked_worktree');
+    assert.strictEqual(context.mode, 'linked_worktree_root');
+  });
+
+  test('falls back when git metadata is unavailable', () => {
+    const context = resolveWorktreeContext('/repo/wt', {
+      existsSync: () => false,
+      execGit: () => ({ exitCode: 1, stdout: '', stderr: '' }),
+    });
+    assert.strictEqual(context.effectiveRoot, '/repo/wt');
+    assert.strictEqual(context.reason, 'not_git_repo');
+  });
+
+  test('keeps cwd for main worktree checkout', () => {
+    const context = resolveWorktreeContext('/repo/main', {
+      existsSync: () => false,
+      execGit: (args) => {
+        if (args[1] === '--git-dir') return { exitCode: 0, stdout: '.git', stderr: '' };
+        if (args[1] === '--git-common-dir') return { exitCode: 0, stdout: '.git', stderr: '' };
+        return { exitCode: 1, stdout: '', stderr: '' };
+      },
+    });
+    assert.strictEqual(context.effectiveRoot, '/repo/main');
+    assert.strictEqual(context.reason, 'main_worktree');
+    assert.strictEqual(context.mode, 'current_directory');
+  });
+
+  // Counter-test: timeout returns the canonical degraded shape, not just an object (Contract 6)
+  test('returns effectiveRoot=cwd, mode=current_directory, reason=git_timed_out on timeout, not throw', () => {
+    let threw = false;
+    let result;
+    try {
+      result = resolveWorktreeContext('/tmp', { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'must not throw on timeout');
+    assert.deepStrictEqual(result, {
+      effectiveRoot: '/tmp',
+      mode: 'current_directory',
+      reason: 'git_timed_out',
+    });
+  });
+
+  // ─── #3050 DEFECT 2: timeout must be distinguishable from not_git_repo ─────
+  test('git rev-parse --git-dir/--git-common-dir TIMES OUT → reason "git_timed_out" (#3050)', () => {
+    const execGit = (args) => {
+      if (args.includes('--git-dir')) return { ...makeTimeoutStub()(args), timedOut: true };
+      return { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository', timedOut: false };
+    };
+    const context = resolveWorktreeContext('/repo', { execGit, existsSync: () => false });
+    assert.strictEqual(context.reason, 'git_timed_out');
+    assert.notStrictEqual(context.reason, 'not_git_repo');
+    assert.strictEqual(context.effectiveRoot, '/repo');
+  });
+
+  // ─── #3050 item 7: drive the REAL spawn seam, not a hand-set execGit stub ──
+  // Every test above injects deps.execGit with a hand-set `timedOut`, so the
+  // production execGitDefault → shell-command-projection's execGit →
+  // isSpawnTimeout chain is never actually exercised, and a Windows-shaped
+  // timeout (spawnSync reports no `signal`, only `error.code === 'ETIMEDOUT'`)
+  // is unexercised on this half. This test omits deps.execGit entirely so
+  // resolveWorktreeContext falls through to the real execGitDefault, and
+  // mocks node:child_process.spawnSync — the actual primitive
+  // shell-command-projection.cjs's execGit wraps — to return that exact
+  // Windows shape.
+  describe('execGitDefault (real spawn seam)', () => {
+    afterEach(() => {
+      mock.restoreAll();
+    });
+
+    test('Windows-shaped timeout (no signal, error.code ETIMEDOUT) is detected as a real timeout (#3050)', () => {
+      mock.method(childProcess, 'spawnSync', () => ({
+        status: null,
+        stdout: '',
+        stderr: '',
+        signal: null,
+        error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+      }));
+
+      const context = resolveWorktreeContext('/repo', { existsSync: () => false });
+      assert.strictEqual(context.reason, 'git_timed_out');
+      assert.strictEqual(context.effectiveRoot, '/repo');
+    });
+
+    test('POSIX-shaped timeout (SIGTERM + error.code ETIMEDOUT) is also detected as a real timeout', () => {
+      mock.method(childProcess, 'spawnSync', () => ({
+        status: null,
+        stdout: '',
+        stderr: '',
+        signal: 'SIGTERM',
+        error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+      }));
+
+      const context = resolveWorktreeContext('/repo', { existsSync: () => false });
+      assert.strictEqual(context.reason, 'git_timed_out');
+    });
+
+    test('externally-delivered SIGTERM with no ETIMEDOUT error is NOT reported as a timeout', () => {
+      // Boundary: the timeout carve-out must not swallow a plain non-zero exit
+      // that merely happens to carry a signal, absent an ETIMEDOUT error.
+      mock.method(childProcess, 'spawnSync', () => ({
+        status: null,
+        stdout: '',
+        stderr: 'fatal: not a git repository',
+        signal: 'SIGTERM',
+        error: null,
+      }));
+
+      const context = resolveWorktreeContext('/repo', { existsSync: () => false });
+      assert.notStrictEqual(context.reason, 'git_timed_out');
+    });
+  });
+});
+
+// ─── resolveWorktreeLinkage (#3045) ──────────────────────────────────────────
+// resolveWorktreeContext's `has_local_planning` shortcut answers "is there a
+// usable project root right here", not "is this a linked worktree" — a linked
+// worktree created to isolate an executor is a full checkout, so it normally
+// has its OWN checked-out .planning/ too. resolveWorktreeLinkage is the
+// shortcut-free primitive the isolation guard (hooks/gsd-cursor-subagent-start.js)
+// needs instead: it must report "linked_worktree_root" for such a worktree even
+// though .planning exists locally — exactly the case that would defeat the guard
+// if resolveWorktreeContext were reused as-is.
+describe('resolveWorktreeLinkage', () => {
+  test('reports linked_worktree_root even when .planning exists locally (the case resolveWorktreeContext would misclassify)',
+    { skip: isWindows ? 'POSIX-rooted fixture paths cannot be expressed on Windows path.resolve' : false },
+    () => {
+      // deliberately no `existsSync` dep at all — resolveWorktreeLinkage must
+      // never consult the filesystem for .planning; only git-dir comparison.
+      const linkage = resolveWorktreeLinkage('/repo/wt', {
+        execGit: (args) => {
+          if (args[1] === '--git-dir') return { exitCode: 0, stdout: '.git/worktrees/wt', stderr: '' };
+          if (args[1] === '--git-common-dir') return { exitCode: 0, stdout: '../.git', stderr: '' };
+          return { exitCode: 1, stdout: '', stderr: '' };
+        },
+      });
+      assert.strictEqual(linkage.mode, 'linked_worktree_root');
+      assert.strictEqual(linkage.reason, 'linked_worktree');
+      assert.strictEqual(linkage.effectiveRoot, '/repo');
+    });
+
+  test('reports main_worktree for the primary checkout', () => {
+    const linkage = resolveWorktreeLinkage('/repo/main', {
+      execGit: (args) => {
+        if (args[1] === '--git-dir') return { exitCode: 0, stdout: '.git', stderr: '' };
+        if (args[1] === '--git-common-dir') return { exitCode: 0, stdout: '.git', stderr: '' };
+        return { exitCode: 1, stdout: '', stderr: '' };
+      },
+    });
+    assert.strictEqual(linkage.mode, 'current_directory');
+    assert.strictEqual(linkage.reason, 'main_worktree');
+  });
+
+  test('git timeout → git_timed_out, never throws', () => {
+    const linkage = resolveWorktreeLinkage('/repo', { execGit: makeTimeoutStub() });
+    assert.strictEqual(linkage.reason, 'git_timed_out');
+    assert.strictEqual(linkage.effectiveRoot, '/repo');
+  });
+
+  test('not a git repo → not_git_repo', () => {
+    const linkage = resolveWorktreeLinkage('/repo', {
+      execGit: () => ({ exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' }),
+    });
+    assert.strictEqual(linkage.reason, 'not_git_repo');
+  });
+});
+
+// ─── #3050 item 4: shared timeout predicate — single source, no divergence ──
+// worktree-safety.cjs's execGitDefault and worktree-base-ref.cjs's
+// isExecGitTimeout both now delegate to shell-command-projection.cjs's
+// isSpawnTimeout. This describe block asserts the parity half of that claim
+// for worktree-base-ref's PUBLIC evaluateWorktreeBaseDegrade — driving it
+// against the same synthetic spawn results the shared predicate is tested
+// with directly, so a future edit that reintroduces a local, diverging copy
+// of the timeout check in worktree-base-ref.cts will make this test fail
+// rather than silently drift. (worktree-safety.cjs's own half of this parity
+// — execGitDefault via resolveWorktreeContext — is covered separately above,
+// by "execGitDefault (real spawn seam)", which drives the real
+// node:child_process.spawnSync primitive rather than a synthetic result.)
+describe('shared isSpawnTimeout predicate — parity for worktree-base-ref evaluateWorktreeBaseDegrade (#3050)', () => {
+  const { isSpawnTimeout } = require(path.join(
+    __dirname, '..', 'gsd-core', 'bin', 'lib', 'shell-command-projection.cjs'
+  ));
+  const { evaluateWorktreeBaseDegrade } = require(path.join(
+    __dirname, '..', 'gsd-core', 'bin', 'lib', 'worktree-base-ref.cjs'
+  ));
+
+  const cases = [
+    {
+      name: 'SIGTERM + ETIMEDOUT (POSIX shape)',
+      result: { signal: 'SIGTERM', error: Object.assign(new Error('x'), { code: 'ETIMEDOUT' }) },
+      expectTimeout: true,
+    },
+    {
+      name: 'no signal + ETIMEDOUT (Windows shape)',
+      result: { signal: null, error: Object.assign(new Error('x'), { code: 'ETIMEDOUT' }) },
+      expectTimeout: true,
+    },
+    {
+      name: 'externally-delivered SIGTERM, no error (not a timeout)',
+      result: { signal: 'SIGTERM', error: null },
+      expectTimeout: false,
+    },
+    {
+      name: 'clean non-zero exit, no signal, no error',
+      result: { signal: null, error: null },
+      expectTimeout: false,
+    },
+  ];
+
+  for (const { name, result, expectTimeout } of cases) {
+    test(`isSpawnTimeout(${name}) === ${expectTimeout}, and evaluateWorktreeBaseDegrade agrees`, () => {
+      assert.strictEqual(isSpawnTimeout(result), expectTimeout);
+
+      // exitCode 128 ("not a git repository") is git's own definitive,
+      // completed answer. Since #4734 it degrades (no worktree can exist
+      // without a resolvable HEAD) but keeps its OWN reason — so pairing it
+      // with each non-timeout signal/error combination still yields a real
+      // divergence signal: if isExecGitTimeout ever mis-classifies one of
+      // these as a timeout, the reason flips from 'no-head' (#4734 degrade)
+      // to 'head-unresolvable' and the test fails.
+      const execGit = () => ({
+        exitCode: expectTimeout ? null : 128,
+        stdout: '',
+        stderr: '',
+        signal: result.signal,
+        error: result.error,
+      });
+      const degradeResult = evaluateWorktreeBaseDegrade({ execGit, effectiveBaseRef: null, cwd: '/repo' });
+      if (expectTimeout) {
+        assert.strictEqual(degradeResult.shouldDegrade, true);
+        assert.strictEqual(degradeResult.reason, 'head-unresolvable');
+      } else {
+        assert.strictEqual(degradeResult.shouldDegrade, true);
+        assert.strictEqual(degradeResult.reason, 'no-head');
+      }
+    });
+  }
+});
+
+// ─── parseWorktreePorcelain ───────────────────────────────────────────────────
+
+describe('parseWorktreePorcelain', () => {
+  test('skips detached HEAD entries', () => {
+    const porcelain = [
+      'worktree /repo/main',
+      'HEAD deadbeef',
+      'branch refs/heads/main',
+      '',
+      'worktree /repo/wt-detached',
+      'HEAD cafe1234',
+      'detached',
+      '',
+      'worktree /repo/wt-feature',
+      'HEAD f00dbabe',
+      'branch refs/heads/feature-x',
+      '',
+    ].join('\n');
+    const parsed = parseWorktreePorcelain(porcelain);
+    assert.deepStrictEqual(parsed, [
+      { path: '/repo/main', branch: 'main' },
+      { path: '/repo/wt-feature', branch: 'feature-x' },
+    ]);
+  });
+});
+
+// ─── planWorktreePrune ────────────────────────────────────────────────────────
+
+describe('planWorktreePrune', () => {
+  test('is non-destructive by default', () => {
+    const plan = planWorktreePrune('/repo/main', {}, {
+      execGit: () => ({ exitCode: 0, stdout: 'worktree /repo/main\nbranch refs/heads/main\n', stderr: '' }),
+      parseWorktreePorcelain: () => [{ path: '/repo/main', branch: 'main' }],
+    });
+    assert.strictEqual(plan.action, 'metadata_prune_only');
+    assert.strictEqual(plan.reason, 'worktrees_present');
+    assert.strictEqual(plan.destructiveModeRequested, false);
+  });
+
+  test('keeps metadata-prune action when destructive mode is requested (scaffold)', () => {
+    const plan = planWorktreePrune('/repo/main', { allowDestructive: true }, {
+      execGit: () => ({ exitCode: 0, stdout: '', stderr: '' }),
+      parseWorktreePorcelain: () => [],
+    });
+    assert.strictEqual(plan.action, 'metadata_prune_only');
+    assert.strictEqual(plan.reason, 'no_worktrees');
+    assert.strictEqual(plan.destructiveModeRequested, true);
+  });
+
+  test('skips when git worktree list fails', () => {
+    const plan = planWorktreePrune('/repo/main', {}, {
+      execGit: () => ({ exitCode: 2, stdout: '', stderr: 'fatal' }),
+    });
+    assert.strictEqual(plan.action, 'skip');
+    assert.strictEqual(plan.reason, 'git_list_failed');
+  });
+
+  test('still metadata-prunes when porcelain parser throws', () => {
+    const plan = planWorktreePrune('/repo/main', {}, {
+      execGit: () => ({ exitCode: 0, stdout: 'not-porcelain', stderr: '' }),
+      parseWorktreePorcelain: () => {
+        throw new Error('parse failed');
+      },
+    });
+    assert.strictEqual(plan.action, 'metadata_prune_only');
+    // #3050/#3057 (B6): a parse failure must NOT collide with the
+    // genuinely-empty-list verdict below ('no_worktrees') — see the paired
+    // test 'reason distinguishes a parse failure from a genuinely empty list'.
+    assert.strictEqual(plan.reason, 'parse_failed');
+  });
+
+  // Counter-test pair (B5/B6 negative-space, #3057): the same 0-worktrees
+  // shape must yield a DIFFERENT reason depending on WHY the list came back
+  // empty — a parser that threw vs a porcelain output that genuinely listed
+  // nothing. Asserting only one of these could not prove they are
+  // distinguishable; asserting both, side by side, proves it.
+  test('reason distinguishes a parse failure from a genuinely empty list', () => {
+    const failurePlan = planWorktreePrune('/repo/main', {}, {
+      execGit: () => ({ exitCode: 0, stdout: 'not-porcelain', stderr: '' }),
+      parseWorktreePorcelain: () => {
+        throw new Error('parse failed');
+      },
+    });
+    assert.strictEqual(failurePlan.action, 'metadata_prune_only');
+    assert.strictEqual(failurePlan.reason, 'parse_failed');
+
+    const benignPlan = planWorktreePrune('/repo/main', {}, {
+      execGit: () => ({ exitCode: 0, stdout: '', stderr: '' }),
+      parseWorktreePorcelain: () => [],
+    });
+    assert.strictEqual(benignPlan.action, 'metadata_prune_only');
+    assert.strictEqual(benignPlan.reason, 'no_worktrees');
+
+    assert.notStrictEqual(failurePlan.reason, benignPlan.reason,
+      'a parse failure must not be reported as the same reason as a genuinely empty worktree list');
+  });
+
+  // Counter-test: timeout path (Contract 6)
+  test('returns action=skip, reason=git_timed_out when execGit times out', () => {
+    let threw = false;
+    let result;
+    try {
+      result = planWorktreePrune('/tmp', {}, { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'must not throw on timeout');
+    assert.strictEqual(typeof result, 'object');
+    assert.strictEqual(result.action, 'skip');
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must surface the specific git_timed_out reason, not a generic non-empty string'
+    );
+  });
+
+  // AC4 strict: must use specific reason string 'git_timed_out'
+  test('reason is git_timed_out (not generic git_list_failed) on timeout', () => {
+    const result = planWorktreePrune('/tmp', {}, { execGit: makeTimeoutStub() });
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must use reason=git_timed_out when execGit returns timedOut:true — not the generic git_list_failed'
+    );
+  });
+});
+
+// ─── executeWorktreePrunePlan ─────────────────────────────────────────────────
+
+describe('executeWorktreePrunePlan', () => {
+  test('runs git worktree prune for metadata plan', () => {
+    const calls = [];
+    const result = executeWorktreePrunePlan(
+      { repoRoot: '/repo/main', action: 'metadata_prune_only', reason: 'worktrees_present' },
+      {
+        execGit: (args, opts) => {
+          calls.push({ cwd: opts.cwd, args });
+          return { exitCode: 0, stdout: '', stderr: '' };
+        },
+      }
+    );
+    assert.strictEqual(result.ok, true);
+    assert.deepStrictEqual(calls, [{ cwd: '/repo/main', args: ['worktree', 'prune'] }]);
+  });
+
+  test('returns skip for missing plan', () => {
+    const result = executeWorktreePrunePlan(null, {
+      execGit: () => ({ exitCode: 0, stdout: '', stderr: '' }),
+    });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.action, 'skip');
+    assert.strictEqual(result.reason, 'missing_plan');
+  });
+
+  test('returns skip plan unchanged without git call', () => {
+    let called = false;
+    const result = executeWorktreePrunePlan(
+      { repoRoot: '/repo/main', action: 'skip', reason: 'git_list_failed' },
+      {
+        execGit: () => {
+          called = true;
+          return { exitCode: 0, stdout: '', stderr: '' };
+        },
+      }
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.action, 'skip');
+    assert.strictEqual(result.reason, 'git_list_failed');
+    assert.strictEqual(called, false);
+  });
+
+  test('rejects unsupported actions', () => {
+    const result = executeWorktreePrunePlan(
+      { repoRoot: '/repo/main', action: 'remove_missing_paths', reason: 'explicit' },
+      {
+        execGit: () => ({ exitCode: 0, stdout: '', stderr: '' }),
+      }
+    );
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.action, 'remove_missing_paths');
+    assert.strictEqual(result.reason, 'unsupported_action');
+  });
+
+  // Counter-test: timeout path (Contract 6)
+  test('returns {ok:false, action:skip, reason:git_timed_out, pruned:[]} when plan is skip (timeout path)', () => {
+    const plan = planWorktreePrune('/tmp', {}, { execGit: makeTimeoutStub() });
+    const result = executeWorktreePrunePlan(plan, { execGit: makeTimeoutStub() });
+    assert.deepStrictEqual(result, {
+      ok: false,
+      action: 'skip',
+      reason: 'git_timed_out',
+      pruned: [],
+    });
+  });
+
+  // AC4 strict: timedOut must be surfaced as a first-class field
+  test('result.timedOut is true when prune git call times out', () => {
+    const plan = {
+      repoRoot: '/tmp',
+      action: 'metadata_prune_only',
+      reason: 'no_worktrees',
+      destructiveModeRequested: false,
+    };
+    const result = executeWorktreePrunePlan(plan, { execGit: makeTimeoutStub() });
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(
+      result.timedOut,
+      true,
+      'must include timedOut:true in result when the execGit call returns timedOut:true'
+    );
+  });
+});
+
+// ─── listLinkedWorktreePaths ──────────────────────────────────────────────────
+
+describe('listLinkedWorktreePaths', () => {
+  test('parses porcelain and skips first/main path', () => {
+    const listed = listLinkedWorktreePaths('/repo/main', {
+      execGit: () => ({
+        exitCode: 0,
+        stdout: [
+          'worktree /repo/main',
+          'HEAD aaa',
+          'branch refs/heads/main',
+          '',
+          'worktree /repo/wt-a',
+          'HEAD bbb',
+          'branch refs/heads/feat-a',
+          '',
+          'worktree /repo/wt-b',
+          'HEAD ccc',
+          'detached',
+          '',
+        ].join('\n'),
+        stderr: '',
+      }),
+    });
+    assert.strictEqual(listed.ok, true);
+    assert.deepStrictEqual(listed.paths, ['/repo/wt-a', '/repo/wt-b']);
+  });
+
+  // Counter-test: failure path (Contract 6)
+  test('returns ok:false, reason:git_timed_out on timeout, not throw', () => {
+    let threw = false;
+    let result;
+    try {
+      result = listLinkedWorktreePaths('/tmp', { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'must not throw on timeout');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must surface the specific git_timed_out reason, not a generic non-empty string'
+    );
+  });
+
+  test('reason is git_timed_out on timeout', () => {
+    const result = listLinkedWorktreePaths('/tmp', { execGit: makeTimeoutStub() });
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must use reason=git_timed_out when execGit returns timedOut:true'
+    );
+  });
+});
+
+// ─── inspectWorktreeHealth ────────────────────────────────────────────────────
+
+describe('inspectWorktreeHealth', () => {
+  test('reports orphan and stale findings', () => {
+    const health = inspectWorktreeHealth(
+      '/repo/main',
+      { staleAfterMs: 60 * 60 * 1000, nowMs: 2 * 60 * 60 * 1000 },
+      {
+        execGit: () => ({
+          exitCode: 0,
+          stdout: [
+            'worktree /repo/main',
+            'HEAD aaa',
+            'branch refs/heads/main',
+            '',
+            'worktree /repo/wt-orphan',
+            'HEAD bbb',
+            'branch refs/heads/feat-a',
+            '',
+            'worktree /repo/wt-stale',
+            'HEAD ccc',
+            'branch refs/heads/feat-b',
+            '',
+          ].join('\n'),
+          stderr: '',
+        }),
+        existsSync: p => p !== '/repo/wt-orphan',
+        statSync: () => ({ mtimeMs: 0 }),
+      }
+    );
+    assert.strictEqual(health.ok, true);
+    assert.deepStrictEqual(health.findings, [
+      { kind: 'orphan', path: '/repo/wt-orphan' },
+      { kind: 'stale', path: '/repo/wt-stale', ageMinutes: 120 },
+    ]);
+  });
+
+  // Counter-test: timeout path (Contract 6). This function's own reason on
+  // timeout is not pinned by any sibling test in this file (unlike
+  // planWorktreePrune/listLinkedWorktreePaths/snapshotWorktreeInventory,
+  // which each have a dedicated "reason is git_timed_out" test) — pin it here.
+  test('returns {ok:false, reason:git_timed_out, findings:[]} when git times out', () => {
+    let threw = false;
+    let result;
+    try {
+      result = inspectWorktreeHealth('/tmp', {}, { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'must not throw on timeout');
+    assert.deepStrictEqual(result, {
+      ok: false,
+      reason: 'git_timed_out',
+      findings: [],
+    });
+  });
+
+  test('findings is an empty array, not undefined, on timeout', () => {
+    const result = inspectWorktreeHealth('/tmp', {}, { execGit: makeTimeoutStub() });
+    assert.deepStrictEqual(result.findings, [], 'findings must be [] (not undefined) even when ok:false');
+  });
+
+  // Counter-test (B5, #3057): a statSync throw must surface as its own
+  // 'unverified' finding, distinct from 'orphan' (the case above, where
+  // existsSync itself says the path is absent). Silently producing NO finding
+  // for an unverifiable worktree would be the fail-open this row exists to close.
+  test('reports an unverified finding (not silently healthy, not orphan) when statSync throws', () => {
+    const health = inspectWorktreeHealth(
+      '/repo/main',
+      { staleAfterMs: 60 * 60 * 1000, nowMs: 2 * 60 * 60 * 1000 },
+      {
+        execGit: () => ({
+          exitCode: 0,
+          stdout: [
+            'worktree /repo/main',
+            'HEAD aaa',
+            'branch refs/heads/main',
+            '',
+            'worktree /repo/wt-unverified',
+            'HEAD bbb',
+            'branch refs/heads/feat-a',
+            '',
+          ].join('\n'),
+          stderr: '',
+        }),
+        existsSync: () => true,
+        statSync: () => {
+          throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        },
+      }
+    );
+    assert.strictEqual(health.ok, true);
+    assert.deepStrictEqual(health.findings, [
+      { kind: 'unverified', path: '/repo/wt-unverified' },
+    ]);
+  });
+});
+
+// ─── snapshotWorktreeInventory ────────────────────────────────────────────────
+
+describe('snapshotWorktreeInventory', () => {
+  test('returns typed linked-worktree entries', () => {
+    const inventory = snapshotWorktreeInventory(
+      '/repo/main',
+      { staleAfterMs: 60 * 60 * 1000, nowMs: 2 * 60 * 60 * 1000 },
+      {
+        execGit: () => ({
+          exitCode: 0,
+          stdout: [
+            'worktree /repo/main',
+            'HEAD aaa',
+            'branch refs/heads/main',
+            '',
+            'worktree /repo/wt-a',
+            'HEAD bbb',
+            'branch refs/heads/feat-a',
+            '',
+            'worktree /repo/wt-b',
+            'HEAD ccc',
+            'branch refs/heads/feat-b',
+            '',
+          ].join('\n'),
+          stderr: '',
+        }),
+        existsSync: p => p !== '/repo/wt-b',
+        statSync: () => ({ mtimeMs: 0 }),
+      }
+    );
+    assert.strictEqual(inventory.ok, true);
+    assert.deepStrictEqual(inventory.entries, [
+      { path: '/repo/wt-a', exists: 'present', isStale: true, ageMinutes: 120 },
+      { path: '/repo/wt-b', exists: 'absent', isStale: false, ageMinutes: null },
+    ]);
+  });
+
+  // Counter-test: timeout path (Contract 6)
+  test('returns ok:false, reason:git_timed_out on timeout, not throw', () => {
+    let threw = false;
+    let result;
+    try {
+      result = snapshotWorktreeInventory('/tmp', {}, { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'must not throw on timeout');
+    assert.strictEqual(typeof result, 'object');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must surface the specific git_timed_out reason, not a generic non-empty string'
+    );
+  });
+
+  test('reason is git_timed_out on timeout', () => {
+    const result = snapshotWorktreeInventory('/tmp', {}, { execGit: makeTimeoutStub() });
+    assert.strictEqual(
+      result.reason,
+      'git_timed_out',
+      'must use reason=git_timed_out when execGit returns timedOut:true'
+    );
+  });
+
+  // Counter-test pair (B5, #3057): a statSync throw must NOT be reported as
+  // exists:'present' (unverified presence masquerading as confirmed presence),
+  // and must be distinguishable from a genuinely-absent worktree (existsSync
+  // returns false for a different entry in the SAME call). Asserting only one
+  // side could not prove the two are distinguishable.
+  test("exists is 'unverified' (not 'present') when statSync throws — distinct from a genuinely absent worktree", () => {
+    const porcelain = [
+      'worktree /repo/main',
+      'HEAD aaa',
+      'branch refs/heads/main',
+      '',
+      'worktree /repo/wt-unverified',
+      'HEAD bbb',
+      'branch refs/heads/feat-a',
+      '',
+      'worktree /repo/wt-absent',
+      'HEAD ccc',
+      'branch refs/heads/feat-b',
+      '',
+    ].join('\n');
+    const inventory = snapshotWorktreeInventory(
+      '/repo/main',
+      { staleAfterMs: 60 * 60 * 1000, nowMs: 2 * 60 * 60 * 1000 },
+      {
+        execGit: () => ({ exitCode: 0, stdout: porcelain, stderr: '' }),
+        existsSync: (p) => p !== '/repo/wt-absent',
+        statSync: (p) => {
+          if (p === '/repo/wt-unverified') {
+            throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+          }
+          return { mtimeMs: 0 };
+        },
+      }
+    );
+    assert.strictEqual(inventory.ok, true);
+    assert.deepStrictEqual(inventory.entries, [
+      { path: '/repo/wt-unverified', exists: 'unverified', isStale: false, ageMinutes: null },
+      { path: '/repo/wt-absent', exists: 'absent', isStale: false, ageMinutes: null },
+    ]);
+    assert.notStrictEqual(
+      inventory.entries[0].exists,
+      inventory.entries[1].exists,
+      'an unverifiable statSync failure must not collapse to the same exists value as a genuinely absent worktree'
+    );
+  });
+});
+
+// ─── Degraded-git prune flow (AC3) ───────────────────────────────────────────
+
+describe('prune flow under degraded git', () => {
+  test('full prune flow (plan -> execute) completes without throwing on timeout', () => {
+    let threw = false;
+    try {
+      const plan = planWorktreePrune('/tmp', {}, { execGit: makeTimeoutStub() });
+      executeWorktreePrunePlan(plan, { execGit: makeTimeoutStub() });
+    } catch {
+      threw = true;
+    }
+    assert.strictEqual(threw, false, 'full prune flow must not throw on timeout — must degrade gracefully');
+  });
+});
+
+// ─── planWorktreeWaveCleanup ──────────────────────────────────────────────────
+
+describe('planWorktreeWaveCleanup', () => {
+  test('includes only manifest entries and never discovers global agent worktrees', () => {
+    const plan = planWorktreeWaveCleanup('/repo/main', {
+      worktrees: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+          allowed_bases: ['abc123', 'def456'],
+        },
+      ],
+    });
+    assert.equal(plan.ok, true);
+    assert.deepEqual(plan.entries.map((entry) => ({
+      agent_id: entry.agent_id,
+      worktree_path: entry.worktree_path,
+      branch: entry.branch,
+      expected_base: entry.expected_base,
+      allowed_bases: entry.allowed_bases,
+    })), [{
+      agent_id: 'a1',
+      worktree_path: '/repo/.claude/worktrees/agent-a1',
+      branch: 'worktree-agent-a1',
+      expected_base: 'abc123',
+      allowed_bases: ['abc123', 'def456'],
+    }]);
+    assert.equal(plan.discovery, 'manifest');
+  });
+
+  // Counter-test: invalid entries rejected (Contract 6)
+  test('rejects entries without expected base or disposable branch namespace', () => {
+    const plan = planWorktreeWaveCleanup('/repo/main', {
+      worktrees: [
+        {
+          agent_id: 'missing-base',
+          worktree_path: '/repo/.claude/worktrees/agent-missing-base',
+          branch: 'worktree-agent-missing-base',
+        },
+        {
+          agent_id: 'feature-branch',
+          worktree_path: '/repo/.claude/worktrees/agent-feature',
+          branch: 'feature/user-work',
+          expected_base: 'abc123',
+        },
+      ],
+    });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'empty_manifest');
+    assert.deepEqual(plan.entries, []);
+  });
+});
+
+// ─── planWorktreeRecordAgent (#1298 writer verb) ──────────────────────────────
+// These tests pin the verb's reason for existing: a per-agent entry that
+// record-agent ACCEPTS must survive the cleanup-wave reader, and one it REJECTS
+// is exactly what the reader would have dropped silently. If write- and
+// read-side validation ever diverge, the round-trip tests below fail.
+
+describe('planWorktreeRecordAgent', () => {
+  const VALID = {
+    agentId: 'a1',
+    worktreePath: '/repo/.claude/worktrees/agent-a1',
+    branch: 'worktree-agent-a1',
+    base: 'abc123',
+  };
+
+  test('appends a validated entry that the cleanup-wave reader accepts (write/read parity)', () => {
+    const plan = planWorktreeRecordAgent('{"orchestrator_root":"/repo/main","worktrees":[]}', VALID);
+    assert.equal(plan.ok, true);
+    assert.deepEqual(plan.entry, {
+      agent_id: 'a1',
+      worktree_path: '/repo/.claude/worktrees/agent-a1',
+      branch: 'worktree-agent-a1',
+      expected_base: 'abc123',
+    });
+    // The serialized manifest must round-trip through the reader the cleanup
+    // path uses — proving write and read validate identically.
+    const written = JSON.parse(plan.manifest);
+    assert.equal(written.orchestrator_root, '/repo/main'); // preserved, no schema change
+    const readBack = planWorktreeWaveCleanup('/repo/main', written);
+    assert.equal(readBack.ok, true);
+    assert.equal(readBack.entries.length, 1);
+    assert.equal(readBack.entries[0].agent_id, 'a1');
+  });
+
+  test('preserves existing entries and other top-level keys when appending', () => {
+    const existing = JSON.stringify({
+      orchestrator_root: '/repo/main',
+      worktrees: [{
+        agent_id: 'a0',
+        worktree_path: '/repo/.claude/worktrees/agent-a0',
+        branch: 'worktree-agent-a0',
+        expected_base: 'aaa000',
+      }],
+    });
+    const plan = planWorktreeRecordAgent(existing, VALID);
+    assert.equal(plan.ok, true);
+    const written = JSON.parse(plan.manifest);
+    assert.equal(written.orchestrator_root, '/repo/main');
+    assert.equal(written.worktrees.length, 2);
+    assert.deepEqual(written.worktrees.map((w) => w.agent_id), ['a0', 'a1']);
+  });
+
+  test('accepts a bare top-level array manifest', () => {
+    const plan = planWorktreeRecordAgent('[]', VALID);
+    assert.equal(plan.ok, true);
+    const written = JSON.parse(plan.manifest);
+    assert.ok(Array.isArray(written));
+    assert.equal(written.length, 1);
+    assert.equal(written[0].branch, 'worktree-agent-a1');
+  });
+
+  // Write-strict agent_id: the reader treats agent_id as nullable, but the
+  // writer requires it — an entry whose author cannot be identified defeats the
+  // verb's purpose. This is the deliberate write-strict-vs-read-lenient decision.
+  test('fails loudly when --agent-id is empty (write-strict, unlike the lenient reader)', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', { ...VALID, agentId: '' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'missing_field');
+    assert.match(plan.hint, /--agent-id/);
+    assert.equal(plan.manifest, null);
+  });
+
+  test('reports every missing field, not just the first', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', {
+      agentId: '', worktreePath: '', branch: '', base: '',
+    });
+    assert.equal(plan.reason, 'missing_field');
+    for (const flag of ['--agent-id', '--path', '--branch', '--base']) {
+      assert.match(plan.hint, new RegExp(escapeRegex(flag)));
+    }
+  });
+
+  // Branch-regex consistency caveat: a branch outside the disposable namespace
+  // is what the reader drops silently — record-agent must reject it at write time.
+  test('rejects a branch outside the worktree-agent-* namespace (the entry the reader would drop)', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', { ...VALID, branch: 'feature/user-work' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'invalid_entry');
+    assert.match(plan.hint, /worktree-agent-/);
+    assert.equal(plan.manifest, null);
+    // Confirm the rejected entry is genuinely one the reader drops.
+    const readBack = planWorktreeWaveCleanup('/repo/main', {
+      worktrees: [{ agent_id: 'a1', worktree_path: VALID.worktreePath, branch: 'feature/user-work', expected_base: 'abc123' }],
+    });
+    assert.equal(readBack.ok, false);
+    assert.equal(readBack.reason, 'empty_manifest');
+  });
+
+  test('accepts the current agent-<id> namespace (#1995)', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', { ...VALID, branch: 'agent-a1' });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.entry.branch, 'agent-a1');
+    const readBack = planWorktreeWaveCleanup('/repo/main', JSON.parse(plan.manifest));
+    assert.equal(readBack.ok, true);
+    assert.equal(readBack.entries.length, 1);
+    assert.equal(readBack.entries[0].branch, 'agent-a1');
+  });
+
+  test('fails loudly on malformed manifest JSON instead of clobbering it', () => {
+    const plan = planWorktreeRecordAgent('{not valid json', VALID);
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'invalid_manifest_json');
+    assert.equal(plan.manifest, null);
+  });
+
+  test('rejects a manifest whose worktrees field is not an array', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":{}}', VALID);
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'manifest_shape_invalid');
+    assert.equal(plan.manifest, null);
+  });
+
+  // The reader dedups on (worktree_path, branch); a re-record would be silently
+  // dropped at cleanup — exactly the failure mode the verb exists to eliminate —
+  // so the writer must reject it loudly rather than swallow it.
+  test('rejects a duplicate (worktree_path, branch) loudly instead of writing a droppable entry', () => {
+    const existing = JSON.stringify({
+      worktrees: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    });
+    // Same path+branch, different agent_id/base — still a duplicate by the reader's key.
+    const plan = planWorktreeRecordAgent(existing, { ...VALID, agentId: 'a1-retry', base: 'deadbee' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'duplicate_entry');
+    assert.match(plan.hint, /worktree-agent-a1/);
+    assert.equal(plan.manifest, null);
+  });
+
+  test('detects a duplicate stored under the legacy `path` field too', () => {
+    const existing = JSON.stringify({
+      worktrees: [{ path: '/repo/.claude/worktrees/agent-a1', branch: 'worktree-agent-a1', expected_base: 'abc123' }],
+    });
+    const plan = planWorktreeRecordAgent(existing, VALID);
+    assert.equal(plan.reason, 'duplicate_entry');
+  });
+
+  // Reader-alignment: the cleanup reader dedups only over entries that normalize
+  // successfully, so a malformed same-key entry it would DROP must not block a
+  // valid recording — otherwise the writer is stricter than the reader and
+  // blocks legitimate recovery.
+  test('a malformed same-key existing entry does not block recording a valid one', () => {
+    const existing = JSON.stringify({
+      // Same path+branch as VALID but no expected_base — the reader drops this.
+      worktrees: [{ worktree_path: '/repo/.claude/worktrees/agent-a1', branch: 'worktree-agent-a1' }],
+    });
+    const plan = planWorktreeRecordAgent(existing, VALID);
+    assert.equal(plan.ok, true);
+    const readBack = planWorktreeWaveCleanup('/repo/main', JSON.parse(plan.manifest));
+    assert.equal(readBack.ok, true);
+    assert.equal(readBack.entries.length, 1); // reader keeps only the valid one
+    assert.equal(readBack.entries[0].expected_base, 'abc123');
+  });
+
+  test('rejects whitespace-only --path/--base (values are trimmed)', () => {
+    const wsPath = planWorktreeRecordAgent('{"worktrees":[]}', { ...VALID, worktreePath: '   ' });
+    assert.equal(wsPath.reason, 'missing_field');
+    assert.match(wsPath.hint, /--path/);
+    const wsBase = planWorktreeRecordAgent('{"worktrees":[]}', { ...VALID, base: '  \t ' });
+    assert.equal(wsBase.reason, 'missing_field');
+    assert.match(wsBase.hint, /--base/);
+  });
+
+  test('trims incidental surrounding whitespace on accepted values', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', {
+      agentId: ' a1 ', worktreePath: ' /repo/wt-a1 ', branch: ' worktree-agent-a1 ', base: ' abc123 ',
+    });
+    assert.equal(plan.ok, true);
+    assert.deepEqual(plan.entry, {
+      agent_id: 'a1', worktree_path: '/repo/wt-a1', branch: 'worktree-agent-a1', expected_base: 'abc123',
+    });
+  });
+});
+
+// ─── planWorktreeRecordAgent — property-based write/read parity (#1298) ────────
+// The verb's reason for existing is the write→read parity invariant, so it must
+// carry a fast-check property test (RULESET.TESTS.property-based-testing): an
+// entry the writer ACCEPTS must survive the cleanup reader unchanged, and an
+// entry with an invalid branch must be REJECTED symmetrically.
+
+describe('planWorktreeRecordAgent — fast-check parity invariant (#1298)', () => {
+  const seg = fc.stringMatching(/^[A-Za-z0-9._/-]+$/); // include '/' — the namespace allows it
+  const legacyAgentBranch = seg.map((s) => `worktree-agent-${s}`);
+  const currentAgentBranch = seg.map((s) => `agent-${s}`);
+  const agentBranch = fc.oneof(legacyAgentBranch, currentAgentBranch);
+  const nonEmpty = fc.stringMatching(/^\S[\S ]*$/); // no leading whitespace, not blank
+
+  test('any writer-accepted entry round-trips through the cleanup reader unchanged', () => {
+    fc.assert(fc.property(
+      fc.record({ agentId: nonEmpty, worktreePath: nonEmpty, branch: agentBranch, base: nonEmpty }),
+      (fields) => {
+        const plan = planWorktreeRecordAgent('{"worktrees":[]}', fields);
+        if (!plan.ok) return; // rejection is fine; this property is about accepted entries
+        const readBack = planWorktreeWaveCleanup('/repo/main', JSON.parse(plan.manifest));
+        assert.equal(readBack.ok, true);
+        assert.equal(readBack.entries.length, 1);
+        const e = readBack.entries[0];
+        assert.equal(e.worktree_path, fields.worktreePath.trim());
+        assert.equal(e.branch, fields.branch.trim());
+        assert.equal(e.expected_base, fields.base.trim());
+        assert.equal(e.agent_id, fields.agentId.trim());
+      },
+    ));
+  });
+
+  test('an entry with a branch outside the worktree-agent-* namespace is always rejected', () => {
+    fc.assert(fc.property(
+      fc.record({
+        agentId: nonEmpty,
+        worktreePath: nonEmpty,
+        // Any branch that does NOT match the disposable namespace.
+        branch: fc.string({ minLength: 1 }).filter((b) => !/^(worktree-)?agent-[A-Za-z0-9._/-]+$/.test(b.trim())),
+        base: nonEmpty,
+      }),
+      (fields) => {
+        const plan = planWorktreeRecordAgent('{"worktrees":[]}', fields);
+        assert.equal(plan.ok, false);
+        assert.equal(plan.manifest, null);
+      },
+    ));
+  });
+});
+
+// ─── branch namespace boundary tests (#1995) ─────────────────────────────────
+// Claude Code's isolation="worktree" branch naming changed from worktree-agent-<id>
+// to agent-<id>. Both namespaces must be accepted; non-agent branches rejected.
+
+describe('worktree branch namespace boundaries (#1995)', () => {
+  const ACCEPTED_BRANCHES = [
+    'agent-a1',
+    'agent-abc123',
+    'agent-session.42',
+    'worktree-agent-a1',
+    'worktree-agent-abc123',
+    'worktree-agent-session.42',
+    // #3021: Workflow backend naming convention
+    'worktree-wf_run123-1',
+    'worktree-wf_execute-phase-71-env-vars-3',
+  ];
+  const REJECTED_BRANCHES = [
+    'feature-x',
+    'main',
+    'agent',
+    'worktree-agent',
+    'xagent-y',
+    'worktree-foo',
+    'worktree-agent-',
+    'agent-',
+    '',
+  ];
+
+  for (const branch of ACCEPTED_BRANCHES) {
+    test(`planWorktreeRecordAgent accepts branch "${branch}"`, () => {
+      const plan = planWorktreeRecordAgent('{"worktrees":[]}', {
+        agentId: 'a1', worktreePath: '/repo/wt', branch, base: 'abc123',
+      });
+      assert.equal(plan.ok, true, `expected branch "${branch}" to be accepted`);
+      assert.equal(plan.entry.branch, branch);
+    });
+  }
+
+  for (const branch of REJECTED_BRANCHES) {
+    test(`planWorktreeRecordAgent rejects branch "${branch}"`, () => {
+      const plan = planWorktreeRecordAgent('{"worktrees":[]}', {
+        agentId: 'a1', worktreePath: '/repo/wt', branch, base: 'abc123',
+      });
+      if (branch === '') {
+        assert.equal(plan.reason, 'missing_field');
+      } else {
+        assert.equal(plan.ok, false, `expected branch "${branch}" to be rejected`);
+        assert.equal(plan.reason, 'invalid_entry');
+        assert.match(plan.hint, /\(worktree-\)\?agent-/);
+      }
+    });
+  }
+
+  test('cleanup-wave retains agent-<id> entries alongside worktree-agent-<id> entries', () => {
+    const manifest = {
+      orchestrator_root: '/repo/main',
+      worktrees: [
+        { agent_id: 'a1', worktree_path: '/repo/wt-a1', branch: 'agent-a1', expected_base: 'abc' },
+        { agent_id: 'a2', worktree_path: '/repo/wt-a2', branch: 'worktree-agent-a2', expected_base: 'def' },
+      ],
+    };
+    const result = planWorktreeWaveCleanup('/repo/main', manifest);
+    assert.equal(result.ok, true);
+    assert.equal(result.entries.length, 2);
+    assert.deepEqual(result.entries.map((e) => e.branch), ['agent-a1', 'worktree-agent-a2']);
+  });
+
+  test('hint string names the widened accepted pattern', () => {
+    const plan = planWorktreeRecordAgent('{"worktrees":[]}', {
+      agentId: 'a1', worktreePath: '/repo/wt', branch: 'feature-x', base: 'abc123',
+    });
+    assert.equal(plan.ok, false);
+    // #3021: hint must now mention the worktree-wf_ namespace too
+    assert.match(plan.hint, /worktree-wf_/);
+  });
+});
+
+// ─── cmdWorktreeRecordAgent (#1298 CLI wrapper) ───────────────────────────────
+
+describe('cmdWorktreeRecordAgent', () => {
+  // process.exitCode is global; each failure-path test resets it so a failing
+  // exit code does not leak into the test runner's own exit status.
+  function withExitCode(fn) {
+    const saved = process.exitCode;
+    try { return fn(); } finally { process.exitCode = saved; }
+  }
+
+  const okArgs = [
+    '--manifest', 'manifest.json',
+    '--agent-id', 'a1',
+    '--path', '/repo/.claude/worktrees/agent-a1',
+    '--branch', 'worktree-agent-a1',
+    '--base', 'abc123',
+  ];
+
+  test('writes the manifest and reports ok on the happy path', () => {
+    let writtenPath = null;
+    let writtenContent = null;
+    const out = [];
+    const result = cmdWorktreeRecordAgent('/repo/main', okArgs, {
+      readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+      writeFile: (p, c) => { writtenPath = p; writtenContent = c; },
+      write: (s) => out.push(s),
+      writeErr: () => {},
+    });
+    assert.equal(result.ok, true);
+    assert.equal(writtenPath, path.resolve('/repo/main', 'manifest.json'));
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees.length, 1);
+    assert.equal(written.worktrees[0].agent_id, 'a1');
+    assert.match(out.join(''), /"ok": true/);
+  });
+
+  test('accepts the current agent-<id> namespace via CLI (#1995)', () => {
+    let writtenContent = null;
+    const agentArgs = [
+      '--manifest', 'manifest.json',
+      '--agent-id', 'a1',
+      '--path', '/repo/.claude/worktrees/agent-a1',
+      '--branch', 'agent-a1',
+      '--base', 'abc123',
+    ];
+    const result = cmdWorktreeRecordAgent('/repo/main', agentArgs, {
+      readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+      writeFile: (_p, c) => { writtenContent = c; },
+      write: () => {},
+      writeErr: () => {},
+    });
+    assert.equal(result.ok, true);
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees[0].branch, 'agent-a1');
+  });
+
+  test('exits 2 with usage when --manifest is missing', () => {
+    withExitCode(() => {
+      const errs = [];
+      const result = cmdWorktreeRecordAgent('/repo/main', ['--agent-id', 'a1'], {
+        writeErr: (s) => errs.push(s),
+        write: () => {},
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'usage');
+      assert.equal(process.exitCode, 2);
+      assert.match(errs.join(''), /Usage: worktree record-agent/);
+    });
+  });
+
+  test('exits 1 loudly when the manifest cannot be read', () => {
+    withExitCode(() => {
+      const errs = [];
+      const result = cmdWorktreeRecordAgent('/repo/main', okArgs, {
+        readFile: () => { throw new Error('ENOENT'); },
+        writeErr: (s) => errs.push(s),
+        write: () => {},
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'manifest_read_failed');
+      assert.equal(process.exitCode, 1);
+      assert.match(errs.join(''), /manifest_read_failed/);
+    });
+  });
+
+  test('does not write the manifest when the entry is invalid', () => {
+    withExitCode(() => {
+      let wrote = false;
+      const errs = [];
+      const result = cmdWorktreeRecordAgent('/repo/main',
+        ['--manifest', 'm.json', '--agent-id', 'a1', '--path', '/p', '--branch', 'feature/x', '--base', 'abc123'], {
+          readFile: () => '{"worktrees":[]}',
+          writeFile: () => { wrote = true; },
+          writeErr: (s) => errs.push(s),
+          write: () => {},
+        });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'invalid_entry');
+      assert.equal(wrote, false); // must NOT append an under-populated entry
+      assert.equal(process.exitCode, 1);
+      assert.match(errs.join(''), /worktree-agent-/);
+    });
+  });
+});
+
+// ─── record-agent: real CLI dispatch + workflow wiring (#1298 integration) ────
+// The unit tests above inject IO; these pin the live `gsd-tools.cjs query
+// worktree.record-agent` dispatch and the execute-phase.md call site, so a
+// future typo in the dotted command or the workflow wiring fails loudly.
+
+describe('worktree record-agent — real CLI dispatch (#1298)', () => {
+  const fs = require('node:fs');
+  const { runNode } = require('./helpers/process-seam.cjs');
+  const { throwIfFailed } = require('./helpers/git-fixture.cjs');
+  const GSD_TOOLS = path.join(__dirname, '..', 'gsd-core', 'bin', 'gsd-tools.cjs');
+
+  // runNode never throws; this describe's tests are written against the
+  // legacy execFileSync throw (an implicit dependency at the success-path
+  // call, and an explicit `err.status`/`err.stderr` read in the failure-path
+  // catch below) — this helper re-throws in that shape via the shared
+  // tests/helpers/git-fixture.cjs mechanism, for a non-git target.
+  function runGsdToolsOrThrow(args, opts) {
+    const r = runNode(args, opts);
+    throwIfFailed(r, `node ${args.join(' ')}`);
+    return r.stdout;
+  }
+
+  test('the dotted `query worktree.record-agent` path writes an entry the cleanup reader accepts', () => {
+    const dir = createTempDir();
+    try {
+      const manifest = path.join(dir, 'wave-manifest.json');
+      fs.writeFileSync(manifest, `${JSON.stringify({ orchestrator_root: dir, worktrees: [] })}\n`);
+      const out = runGsdToolsOrThrow([
+        GSD_TOOLS, 'query', 'worktree.record-agent',
+        '--manifest', manifest,
+        '--agent-id', 'a1',
+        '--path', path.join(dir, 'wt-a1'),
+        '--branch', 'worktree-agent-a1',
+        '--base', 'abc123',
+      ], { timeoutMs: SUBPROCESS_TIMEOUT_MS });
+      assert.match(out, /"ok": true/);
+      const written = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+      assert.equal(written.worktrees.length, 1);
+      assert.equal(written.worktrees[0].agent_id, 'a1');
+      // What the live CLI wrote must read back through the cleanup reader.
+      const readBack = planWorktreeWaveCleanup(dir, written);
+      assert.equal(readBack.ok, true);
+      assert.equal(readBack.entries[0].branch, 'worktree-agent-a1');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('a missing field fails loudly via the real CLI (non-zero exit, manifest untouched)', () => {
+    const dir = createTempDir();
+    try {
+      const manifest = path.join(dir, 'wave-manifest.json');
+      fs.writeFileSync(manifest, `${JSON.stringify({ worktrees: [] })}\n`);
+      let threw = false;
+      try {
+        runGsdToolsOrThrow([
+          GSD_TOOLS, 'query', 'worktree.record-agent',
+          '--manifest', manifest,
+          '--path', path.join(dir, 'wt'), '--branch', 'worktree-agent-x', '--base', 'abc123',
+        ], { timeoutMs: SUBPROCESS_TIMEOUT_MS });
+      } catch (err) {
+        threw = true;
+        assert.equal(err.status, 1);
+        assert.match(String(err.stderr), /record-agent: missing_field/);
+      }
+      assert.ok(threw, 'CLI must exit non-zero when --agent-id is missing');
+      assert.deepEqual(JSON.parse(fs.readFileSync(manifest, 'utf8')).worktrees, []);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('the execute-phase.md per-agent append calls the record-agent verb', () => {
+    const wf = fs.readFileSync(
+      path.join(__dirname, '..', 'gsd-core', 'workflows', 'execute-phase.md'), 'utf8',
+    );
+    assert.match(wf, /worktree\.record-agent/, 'execute-phase.md must wire the record-agent verb');
+  });
+});
+
+// ─── worktree create (#2584 ADR-1239 Codex-binding amendment — Phase 2) ───────
+// UNCONSUMED in Phase 2: no scheduler calls this yet (Phase 3 wires it). These
+// tests pin the git-worktree-creation primitive itself.
+
+describe('planWorktreeCreate', () => {
+  const okFields = {
+    agentId: 'a1',
+    worktreePath: '/repo/.claude/worktrees/agent-a1',
+    branch: 'worktree-agent-a1',
+    base: 'abc123',
+  };
+
+  test('happy path returns ok:true with the normalized entry', () => {
+    const plan = planWorktreeCreate(okFields);
+    assert.equal(plan.ok, true);
+    assert.equal(plan.reason, 'ok');
+    assert.equal(plan.entry.agent_id, 'a1');
+    assert.equal(plan.entry.worktree_path, okFields.worktreePath);
+    assert.equal(plan.entry.branch, 'worktree-agent-a1');
+    assert.equal(plan.entry.expected_base, 'abc123');
+  });
+
+  test('missing --agent-id reports the missing flag', () => {
+    const plan = planWorktreeCreate({ ...okFields, agentId: '' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'missing_field');
+    assert.match(plan.hint, /--agent-id/);
+    assert.equal(plan.entry, null);
+  });
+
+  test('whitespace-only field is treated as missing', () => {
+    const plan = planWorktreeCreate({ ...okFields, base: '   ' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'missing_field');
+    assert.match(plan.hint, /--base/);
+  });
+
+  test('branch-regex fail-closed: a branch outside the worktree-agent-* namespace is rejected', () => {
+    const plan = planWorktreeCreate({ ...okFields, branch: 'not-worktree-agent-x' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'invalid_entry');
+    assert.equal(plan.entry, null);
+  });
+
+  test('accepts the current agent-<id> namespace (#1995)', () => {
+    const plan = planWorktreeCreate({ ...okFields, branch: 'agent-a1' });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.entry.branch, 'agent-a1');
+  });
+
+  // ─── #2584 FIX 4: git argument-injection + path-traversal guards ──────────
+
+  test('FIX4: a leading-dash branch is rejected (fail-closed via the pre-existing branch-namespace regex)', () => {
+    // The leading-dash guard runs AFTER normalizeCleanupManifestEntry (per the
+    // fix ordering), and WORKTREE_AGENT_BRANCH_RE anchors on `^(worktree-)?agent-`
+    // — no string starting with '-' can ever match it. So a dash-prefixed branch
+    // is already fully fail-closed by the EARLIER regex gate (reason
+    // 'invalid_entry') and never reaches the leading-dash check at all; the
+    // net security property (a branch value can never reach git as a bare
+    // flag) holds either way.
+    const plan = planWorktreeCreate({ ...okFields, branch: '-x' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'invalid_entry');
+    assert.equal(plan.entry, null);
+  });
+
+  test('FIX4: a leading-dash base is rejected', () => {
+    const plan = planWorktreeCreate({ ...okFields, base: '-f' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'unsafe_leading_dash');
+  });
+
+  test('FIX4: a leading-dash path is rejected', () => {
+    const plan = planWorktreeCreate({ ...okFields, worktreePath: '-f' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'unsafe_leading_dash');
+  });
+
+  test('FIX4: a ".." path-traversal segment is rejected (POSIX separator)', () => {
+    const plan = planWorktreeCreate({ ...okFields, worktreePath: 'a/../../etc/x' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'unsafe_path_traversal');
+  });
+
+  test('FIX4: a ".." path-traversal segment is rejected (Windows separator)', () => {
+    const plan = planWorktreeCreate({ ...okFields, worktreePath: 'a\\..\\..\\etc\\x' });
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'unsafe_path_traversal');
+  });
+
+  test('FIX4: a normal path with a hyphen in a segment name still passes', () => {
+    const plan = planWorktreeCreate({ ...okFields, worktreePath: '/tmp/wt-1' });
+    assert.equal(plan.ok, true);
+  });
+
+  test('FIX4: an absolute path is NOT rejected (the orchestrator legitimately uses absolute paths)', () => {
+    const plan = planWorktreeCreate({ ...okFields, worktreePath: '/repo/.claude/worktrees/agent-a1' });
+    assert.equal(plan.ok, true);
+    assert.equal(plan.entry.worktree_path, '/repo/.claude/worktrees/agent-a1');
+  });
+});
+
+describe('executeWorktreeCreatePlan', () => {
+  const okFields = {
+    agentId: 'a1',
+    worktreePath: '/repo/.claude/worktrees/agent-a1',
+    branch: 'worktree-agent-a1',
+    base: 'abc123',
+  };
+
+  test('base_unresolved: a non-zero rev-parse --verify blocks BEFORE any worktree add is attempted', () => {
+    const plan = planWorktreeCreate(okFields);
+    const calls = [];
+    const execGit = (args) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse') return { exitCode: 1, stdout: '', stderr: 'fatal: bad revision', timedOut: false };
+      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+    };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'base_unresolved');
+    assert.ok(!calls.some((c) => c[0] === 'worktree'), 'must NOT attempt `git worktree add` when the base is unresolved');
+  });
+
+  test('successful create: ok:true, cwd is the posix-normalized worktree path', () => {
+    const plan = planWorktreeCreate(okFields);
+    const calls = [];
+    const execGit = (args) => {
+      calls.push(args);
+      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+    };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'created');
+    assert.equal(result.cwd, okFields.worktreePath);
+    assert.equal(result.worktree_path, okFields.worktreePath);
+    assert.equal(result.branch, 'worktree-agent-a1');
+    assert.equal(result.base, 'abc123');
+    assert.ok(calls.some((c) => c[0] === 'worktree' && c[1] === 'add'), 'must call `git worktree add`');
+  });
+
+  test('timeout on the base check degrades to git_timeout — does not throw, and no rollback is attempted (nothing was created)', () => {
+    const plan = planWorktreeCreate(okFields);
+    const calls = [];
+    const timeoutStub = makeTimeoutStub();
+    const execGit = (args, opts) => { calls.push(args); return timeoutStub(args, opts); };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'git_timeout');
+    assert.ok(!calls.some((c) => c[0] === 'worktree'), 'must NOT attempt any `git worktree` call (nothing was ever created)');
+  });
+
+  test('FIX3: timeout on `git worktree add` degrades to git_timeout AND best-effort rolls back the partial worktree', () => {
+    const plan = planWorktreeCreate(okFields);
+    const timeoutStub = makeTimeoutStub();
+    const calls = [];
+    const execGit = (args, opts) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse') return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+      return timeoutStub(args, opts);
+    };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'git_timeout');
+    const rollbackCall = calls.find((c) => c[0] === 'worktree' && c[1] === 'remove');
+    assert.ok(rollbackCall, 'a best-effort `git worktree remove --force` rollback must be attempted');
+    assert.ok(rollbackCall.includes('--force'));
+    assert.equal(rollbackCall[rollbackCall.length - 1], okFields.worktreePath);
+  });
+
+  test('FIX5 [data-loss guard]: worktree_add_failed (clean collision exit) does NOT roll back — leaves a pre-existing peer worktree untouched', () => {
+    // The most common non-zero `add` exit is a COLLISION: the target
+    // path/branch is already a registered worktree. git fails FAST there and
+    // creates nothing. The branch namespace this verb writes into
+    // (worktree-agent-*/agent-*) IS the concurrent-executor namespace, so a
+    // colliding path is very plausibly a LIVE PEER executor — rolling it back
+    // would destroy real, uncommitted work. This must NEVER call
+    // `git worktree remove`.
+    const plan = planWorktreeCreate(okFields);
+    const calls = [];
+    const execGit = (args) => {
+      calls.push(args);
+      if (args[0] === 'rev-parse') return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+      return { exitCode: 128, stdout: '', stderr: `fatal: '${okFields.worktreePath}' already exists`, timedOut: false };
+    };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'worktree_add_failed');
+    assert.match(result.stderr, /already exists/);
+    assert.ok(
+      !calls.some((c) => c[0] === 'worktree' && c[1] === 'remove'),
+      'a clean non-zero `add` exit must NEVER trigger a rollback — the colliding path may be a live peer executor',
+    );
+  });
+
+  test('the timeout-path rollback never masks the original failure even if the rollback execGit itself throws', () => {
+    // The throwing-rollback contract is only exercised on the SURVIVING
+    // rollback call site (the timeout path) after FIX 5 removed the
+    // clean-exit rollback.
+    const plan = planWorktreeCreate(okFields);
+    const execGit = (args) => {
+      if (args[0] === 'rev-parse') return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+      if (args[0] === 'worktree' && args[1] === 'add') {
+        return { exitCode: null, stdout: '', stderr: '', timedOut: true, signal: 'SIGTERM' };
+      }
+      throw new Error('rollback execGit exploded');
+    };
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'git_timeout');
+  });
+
+  test('a skip plan (invalid_entry) is echoed back without any git call', () => {
+    const plan = planWorktreeCreate({ ...okFields, branch: 'not-worktree-agent-x' });
+    const calls = [];
+    const result = executeWorktreeCreatePlan(plan, '/repo/main', { execGit: (args) => { calls.push(args); return { exitCode: 0, stdout: '', stderr: '', timedOut: false }; } });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'invalid_entry');
+    assert.equal(calls.length, 0);
+  });
+
+  test('Windows path: a worktreePath with backslashes is posix-normalized in the result (worktree_path and cwd)',
+    () => {
+      const winFields = { ...okFields, worktreePath: 'C:\\repo\\.claude\\worktrees\\agent-a1' };
+      const plan = planWorktreeCreate(winFields);
+      const execGit = () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
+      const result = executeWorktreeCreatePlan(plan, 'C:\\repo\\main', { execGit });
+      assert.equal(result.ok, true);
+      assert.equal(result.cwd, 'C:/repo/.claude/worktrees/agent-a1');
+      assert.equal(result.worktree_path, 'C:/repo/.claude/worktrees/agent-a1');
+      assert.ok(!result.cwd.includes('\\'), 'cwd must contain no backslashes');
+    });
+});
+
+describe('cmdWorktreeCreate', () => {
+  function withExitCode(fn) {
+    const saved = process.exitCode;
+    try { return fn(); } finally { process.exitCode = saved; }
+  }
+
+  const okArgs = [
+    '--manifest', 'manifest.json',
+    '--agent-id', 'a1',
+    '--path', '/repo/.claude/worktrees/agent-a1',
+    '--branch', 'worktree-agent-a1',
+    '--base', 'abc123',
+    // #3050: --root is now mandatory (fail-closed confinement) — every test
+    // below that isn't specifically exercising the missing-root case must
+    // supply one. '/repo' confines every okArgs-derived --path used in this
+    // describe block (all live under /repo/.claude/worktrees/...).
+    '--root', '/repo',
+  ];
+
+  function okExecGit() {
+    return () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false });
+  }
+
+  test('creates the worktree and appends the entry to an empty manifest', () => {
+    let writtenPath = null;
+    let writtenContent = null;
+    const out = [];
+    const result = cmdWorktreeCreate('/repo/main', okArgs, {
+      readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+      writeFile: (p, c) => { writtenPath = p; writtenContent = c; },
+      write: (s) => out.push(s),
+      writeErr: () => {},
+      execGit: okExecGit(),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.reason, 'created');
+    assert.equal(result.cwd, '/repo/.claude/worktrees/agent-a1');
+    assert.equal(writtenPath, path.resolve('/repo/main', 'manifest.json'));
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees.length, 1);
+    assert.equal(written.worktrees[0].agent_id, 'a1');
+    assert.equal(written.worktrees[0].worktree_path, '/repo/.claude/worktrees/agent-a1');
+    assert.equal(written.worktrees[0].branch, 'worktree-agent-a1');
+    assert.equal(written.worktrees[0].expected_base, 'abc123');
+    assert.deepEqual(
+      Object.keys(written.worktrees[0]).sort(),
+      ['agent_id', 'branch', 'expected_base', 'worktree_path'],
+      'FIX2: the on-disk entry must be the minimal 4-field shape — no derived allowed_bases',
+    );
+    assert.match(out.join(''), /"ok": true/);
+  });
+
+  // #2627 Phase 3 / #3050: --root confines the created worktree. #3050
+  // hardened this from opt-in to MANDATORY — confinement must not depend on
+  // the caller remembering to pass the flag; omitting it now fails closed
+  // instead of silently creating an unconfined worktree.
+  describe('--root confinement', () => {
+    const rootedArgs = (wtPath, root) => [
+      '--manifest', 'manifest.json',
+      '--agent-id', 'a1',
+      '--path', wtPath,
+      '--branch', 'worktree-agent-a1',
+      '--base', 'abc123',
+      '--root', root,
+    ];
+
+    function run(args) {
+      const out = [];
+      let gitCalled = false;
+      const result = withExitCode(() => cmdWorktreeCreate('/repo/main', args, {
+        readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+        writeFile: () => {},
+        write: (s) => out.push(s),
+        writeErr: () => {},
+        execGit: () => { gitCalled = true; return { exitCode: 0, stdout: '', stderr: '', timedOut: false }; },
+      }));
+      return { result, out: out.join(''), gitCalled };
+    }
+
+    test('a path inside --root is accepted', () => {
+      const { result } = run(rootedArgs('/repo/main/.claude/worktrees/agent-a1', '/repo/main'));
+      assert.equal(result.ok, true);
+      assert.equal(result.reason, 'created');
+    });
+
+    test('a sibling path OUTSIDE --root is rejected before any git runs', () => {
+      const { result, gitCalled } = run(rootedArgs('/repo/.claude/worktrees/agent-a1', '/repo/main'));
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'path_outside_root');
+      assert.equal(gitCalled, false, 'confinement must reject BEFORE the git side effect');
+    });
+
+    test('an arbitrary absolute path is rejected (the hole a ".."-segment check cannot see)', () => {
+      const { result } = run(rootedArgs('/etc/gsd-evil', '/repo/main'));
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'path_outside_root');
+    });
+
+    test('a path EQUAL to --root is rejected (would clobber the checkout)', () => {
+      const { result } = run(rootedArgs('/repo/main', '/repo/main'));
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'path_outside_root');
+    });
+
+    test('a sibling whose name merely PREFIXES the root is rejected (not a substring check)', () => {
+      // '/repo/main-evil' starts with '/repo/main' textually but is not inside it.
+      const { result } = run(rootedArgs('/repo/main-evil/wt', '/repo/main'));
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'path_outside_root');
+    });
+
+    test('omitting --root fails closed (#3050 — confinement is mandatory, not opt-in)', () => {
+      const { result, gitCalled } = run([
+        '--manifest', 'manifest.json',
+        '--agent-id', 'a1',
+        '--path', '/repo/.claude/worktrees/agent-a1',
+        '--branch', 'worktree-agent-a1',
+        '--base', 'abc123',
+      ]);
+      assert.equal(result.ok, false, 'no --root → fail closed, never silently unconfined');
+      assert.equal(result.reason, 'root_required');
+      assert.equal(gitCalled, false, 'must fail before any git side effect');
+    });
+  });
+
+  test('boundary: appending to a manifest with 1 existing entry yields 2', () => {
+    let writtenContent = null;
+    const result = cmdWorktreeCreate('/repo/main', okArgs, {
+      readFile: () => JSON.stringify({
+        orchestrator_root: '/repo/main',
+        worktrees: [{ agent_id: 'other', worktree_path: '/repo/.claude/worktrees/agent-other', branch: 'worktree-agent-other', expected_base: 'def456' }],
+      }),
+      writeFile: (_p, c) => { writtenContent = c; },
+      write: () => {},
+      writeErr: () => {},
+      execGit: okExecGit(),
+    });
+    assert.equal(result.ok, true);
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees.length, 2);
+  });
+
+  test('boundary: appending to a manifest with 2 existing entries yields 3', () => {
+    let writtenContent = null;
+    const result = cmdWorktreeCreate('/repo/main', okArgs, {
+      readFile: () => JSON.stringify({
+        orchestrator_root: '/repo/main',
+        worktrees: [
+          { agent_id: 'x1', worktree_path: '/repo/.claude/worktrees/agent-x1', branch: 'worktree-agent-x1', expected_base: 'def456' },
+          { agent_id: 'x2', worktree_path: '/repo/.claude/worktrees/agent-x2', branch: 'worktree-agent-x2', expected_base: 'def456' },
+        ],
+      }),
+      writeFile: (_p, c) => { writtenContent = c; },
+      write: () => {},
+      writeErr: () => {},
+      execGit: okExecGit(),
+    });
+    assert.equal(result.ok, true);
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees.length, 3);
+  });
+
+  test('dedupe: re-recording an identical (worktree_path, branch) entry does NOT grow the manifest', () => {
+    let writtenContent = null;
+    const result = cmdWorktreeCreate('/repo/main', okArgs, {
+      readFile: () => JSON.stringify({
+        orchestrator_root: '/repo/main',
+        worktrees: [
+          { agent_id: 'a1', worktree_path: '/repo/.claude/worktrees/agent-a1', branch: 'worktree-agent-a1', expected_base: 'abc123' },
+        ],
+      }),
+      writeFile: (_p, c) => { writtenContent = c; },
+      write: () => {},
+      writeErr: () => {},
+      execGit: okExecGit(),
+    });
+    assert.equal(result.ok, true);
+    const written = JSON.parse(writtenContent);
+    assert.equal(written.worktrees.length, 1, 'dedupe must not append a second identical entry');
+  });
+
+  test('exits 2 with usage when --manifest is missing', () => {
+    withExitCode(() => {
+      const errs = [];
+      const result = cmdWorktreeCreate('/repo/main', ['--agent-id', 'a1'], {
+        writeErr: (s) => errs.push(s),
+        write: () => {},
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'usage');
+      assert.equal(process.exitCode, 2);
+      assert.match(errs.join(''), /Usage: worktree create/);
+    });
+  });
+
+  test('exits 1 loudly when the manifest cannot be read', () => {
+    withExitCode(() => {
+      const errs = [];
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => { throw new Error('ENOENT'); },
+        writeErr: (s) => errs.push(s),
+        write: () => {},
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'manifest_read_failed');
+      assert.equal(process.exitCode, 1);
+      assert.match(errs.join(''), /manifest_read_failed/);
+    });
+  });
+
+  test('does not write the manifest and does not call git when the entry is invalid', () => {
+    withExitCode(() => {
+      let wrote = false;
+      let gitCalled = false;
+      const result = cmdWorktreeCreate('/repo/main',
+        ['--manifest', 'm.json', '--agent-id', 'a1', '--path', '/p', '--branch', 'feature/x', '--base', 'abc123'], {
+          readFile: () => '{"worktrees":[]}',
+          writeFile: () => { wrote = true; },
+          write: () => {},
+          writeErr: () => {},
+          execGit: () => { gitCalled = true; return { exitCode: 0, stdout: '', stderr: '', timedOut: false }; },
+        });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'invalid_entry');
+      assert.equal(wrote, false);
+      assert.equal(gitCalled, false, 'must not call git before the entry validates');
+      assert.equal(process.exitCode, 1);
+    });
+  });
+
+  test('does not write the manifest when the base is unresolved', () => {
+    withExitCode(() => {
+      let wrote = false;
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => '{"worktrees":[]}',
+        writeFile: () => { wrote = true; },
+        write: () => {},
+        writeErr: () => {},
+        execGit: (args) => (args[0] === 'rev-parse'
+          ? { exitCode: 1, stdout: '', stderr: 'fatal: bad revision', timedOut: false }
+          : { exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'base_unresolved');
+      assert.equal(wrote, false, 'must not write the manifest when the worktree was never created');
+      assert.equal(process.exitCode, 1);
+    });
+  });
+
+  // ─── #2584 FIX 1: manifest work must ALL run before the git side effect ───
+
+  test('FIX1: a malformed (truncated JSON) manifest fails with the parse reason BEFORE any git command runs', () => {
+    withExitCode(() => {
+      let addCalled = false;
+      let wrote = false;
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => '{"worktrees": [', // truncated JSON — a git stub here WOULD succeed if ever called
+        writeFile: () => { wrote = true; },
+        write: () => {},
+        writeErr: () => {},
+        execGit: (args) => {
+          if (args[0] === 'worktree' && args[1] === 'add') addCalled = true;
+          return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+        },
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'invalid_manifest_json');
+      assert.equal(addCalled, false, 'git worktree add must never be invoked when the manifest fails to parse (no orphan possible)');
+      assert.equal(wrote, false);
+      assert.equal(process.exitCode, 1);
+    });
+  });
+
+  test('FIX1: a manifest whose "worktrees" is not an array fails with manifest_shape_invalid BEFORE any git command runs', () => {
+    withExitCode(() => {
+      let addCalled = false;
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => JSON.stringify({ orchestrator_root: '/repo/main', worktrees: 'not-an-array' }),
+        writeFile: () => {},
+        write: () => {},
+        writeErr: () => {},
+        execGit: (args) => {
+          if (args[0] === 'worktree' && args[1] === 'add') addCalled = true;
+          return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+        },
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'manifest_shape_invalid');
+      assert.equal(addCalled, false, 'git worktree add must never be invoked when the manifest shape is invalid');
+      assert.equal(process.exitCode, 1);
+    });
+  });
+
+  test('FIX1: a writeFile failure AFTER a successful git create rolls back the worktree and reports manifest_write_failed', () => {
+    withExitCode(() => {
+      const gitCalls = [];
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+        writeFile: () => { throw new Error('EACCES: permission denied'); },
+        write: () => {},
+        writeErr: () => {},
+        execGit: (args) => { gitCalls.push(args); return { exitCode: 0, stdout: '', stderr: '', timedOut: false }; },
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'manifest_write_failed');
+      assert.equal(process.exitCode, 1);
+      assert.ok(gitCalls.some((c) => c[0] === 'worktree' && c[1] === 'add'), 'the worktree must actually have been created before the write failed');
+      const rollbackCall = gitCalls.find((c) => c[0] === 'worktree' && c[1] === 'remove');
+      assert.ok(rollbackCall, 'a git worktree remove --force rollback call must be made after a manifest write failure');
+      assert.ok(rollbackCall.includes('--force'));
+      assert.equal(rollbackCall[rollbackCall.length - 1], '/repo/.claude/worktrees/agent-a1');
+    });
+  });
+
+  test('FIX1: a writeFile failure does not throw past cmdWorktreeCreate even when the rollback execGit itself throws', () => {
+    withExitCode(() => {
+      const result = cmdWorktreeCreate('/repo/main', okArgs, {
+        readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+        writeFile: () => { throw new Error('ENOSPC: no space left on device'); },
+        write: () => {},
+        writeErr: () => {},
+        execGit: (args) => {
+          if (args[0] === 'worktree' && args[1] === 'remove') throw new Error('rollback execGit exploded');
+          return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+        },
+      });
+      assert.equal(result.ok, false);
+      assert.equal(result.reason, 'manifest_write_failed');
+      assert.equal(process.exitCode, 1);
+    });
+  });
+});
+
+// ─── #2584 FIX 2: on-disk entry-shape parity between create and record-agent ──
+// Generative-fix-divergence guard: both verbs write into the SAME manifest, so
+// they must persist the identical field-set for equivalent inputs.
+
+describe('cmdWorktreeCreate / cmdWorktreeRecordAgent — on-disk entry parity (#2584 FIX 2)', () => {
+  test('both verbs persist the identical 4-field entry for equivalent inputs', () => {
+    const argsFor = (manifestFlag) => [
+      manifestFlag, 'manifest.json',
+      '--agent-id', 'a1',
+      '--path', '/repo/.claude/worktrees/agent-a1',
+      '--branch', 'worktree-agent-a1',
+      '--base', 'abc123',
+    ];
+    // cmdWorktreeCreate now requires --root (#3050); cmdWorktreeRecordAgent has
+    // no --root concept at all, so it's appended only to the create-side args.
+    const createArgs = [...argsFor('--manifest'), '--root', '/repo'];
+
+    let createdContent = null;
+    cmdWorktreeCreate('/repo/main', createArgs, {
+      readFile: () => '{"worktrees":[]}',
+      writeFile: (_p, c) => { createdContent = c; },
+      write: () => {},
+      writeErr: () => {},
+      execGit: () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    });
+
+    let recordedContent = null;
+    cmdWorktreeRecordAgent('/repo/main', argsFor('--manifest'), {
+      readFile: () => '{"worktrees":[]}',
+      writeFile: (_p, c) => { recordedContent = c; },
+      write: () => {},
+      writeErr: () => {},
+    });
+
+    assert.ok(createdContent, 'cmdWorktreeCreate must have written a manifest');
+    assert.ok(recordedContent, 'cmdWorktreeRecordAgent must have written a manifest');
+    const createdEntry = JSON.parse(createdContent).worktrees[0];
+    const recordedEntry = JSON.parse(recordedContent).worktrees[0];
+    assert.deepEqual(
+      Object.keys(createdEntry).sort(),
+      Object.keys(recordedEntry).sort(),
+      'both verbs must persist the SAME field-set (no derived allowed_bases from create)',
+    );
+    assert.deepEqual(createdEntry, recordedEntry, 'identical inputs must produce byte-identical on-disk entries');
+  });
+});
+
+// ─── executeWorktreeWaveCleanupPlan ───────────────────────────────────────────
+
+describe('executeWorktreeWaveCleanupPlan', () => {
+
+  // ── #4415 regression ───────────────────────────────────────────────────────
+  // Claude Code removes a subagent's worktree the moment the subagent finishes
+  // with a clean tree. A gsd-executor that committed everything (SUMMARY.md
+  // included, under `commit_docs: true`) is exactly that case, so by the time
+  // the orchestrator reaches wave cleanup the directory is routinely gone while
+  // the branch it left behind is intact and mergeable.
+  //
+  // `git -C <gone> rev-parse` fails, and that failure was indistinguishable
+  // from a genuine branch mismatch: the entry blocked as `branch_mismatch`,
+  // NOTHING merged, and the branch was left dangling. If the directory instead
+  // disappeared after the merge landed, `git worktree remove` failed with "is
+  // not a working tree" and the entry blocked as `worktree_remove_failed`,
+  // leaving the branch undeleted.
+  //
+  // Every row below stubs the ABSENT shape the way real git behaves: the
+  // in-worktree calls fail, AND `git worktree list --porcelain` still reports the
+  // path -> branch binding while adding a `prunable` line. That porcelain output
+  // is how each scenario states what git knows — measured against real git, which
+  // keeps the binding after an `rm -rf` and marks the entry prunable. An earlier
+  // cut of these rows injected `existsSync` instead, which could only say
+  // present/absent and so could not distinguish a removed checkout from an
+  // unreadable one, nor a swapped branch from the expected one.
+  describe('#4415 regression: a worktree the harness already removed', () => {
+    const WT = '/repo/.claude/worktrees/agent-a1';
+    const BR = 'worktree-agent-a1';
+    const ABSENT_ERR = `fatal: cannot change to '${WT}': No such file or directory`;
+
+    // Removal is an errno question, not a `prunable` question — measured: a parent
+    // directory at mode 000 makes git print `prunable gitdir file points to
+    // non-existent location` for a checkout that is still there. So every row states
+    // the errno explicitly rather than letting a fake path fall through to the real
+    // filesystem.
+    const ENOENT = Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
+    const EACCES = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    const statGone = () => { throw ENOENT; };
+    const statUnreadable = () => { throw EACCES; };
+    const statPresent = () => ({ isDirectory: () => true });
+
+    function plan(entries) {
+      return {
+        ok: true,
+        repoRoot: '/repo/main',
+        action: 'cleanup_wave',
+        discovery: 'manifest',
+        entries,
+      };
+    }
+
+    const entry = { agent_id: 'a1', worktree_path: WT, branch: BR, expected_base: 'abc123' };
+
+    // The porcelain output git actually produces, parameterised over the four
+    // states these rows need to state:
+    //   registered:false -> git has no record of the path at all
+    //   branch:'other'   -> the path is registered to a DIFFERENT branch (the
+    //                       #3677 swap, now visible on the absent path too)
+    //   prunable:false   -> registered and NOT stale, i.e. the checkout is there
+    //                       (an unreadable directory keeps its gitdir file, so
+    //                       git declines to mark it prunable)
+    // The main worktree is always listed first, as real git lists it.
+    function porcelainFor({ registered = true, branch = BR, prunable = true } = {}) {
+      let out = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n';
+      if (!registered) return out;
+      out += `\nworktree ${WT}\nHEAD deadbeef\n`;
+      if (branch) out += `branch refs/heads/${branch}\n`;
+      if (prunable) out += 'prunable gitdir file points to non-existent location\n';
+      return out;
+    }
+
+    // Stubs the repo-side calls that stay identical whether or not the worktree
+    // is present; every in-worktree (`-C <WT> ...`) call fails, as it does on a
+    // directory that is gone. `state` shapes the porcelain answer.
+    function absentWorktreeGit(overrides = {}, state = {}) {
+      return (args) => {
+        const key = args.join(' ');
+        if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key];
+        if (key === 'worktree list --porcelain') {
+          return { exitCode: 0, stdout: porcelainFor(state), stderr: '' };
+        }
+        if (key.startsWith(`-C ${WT} `)) return { exitCode: 128, stdout: '', stderr: ABSENT_ERR };
+        if (key === `rev-parse --verify --quiet refs/heads/${BR}`) {
+          return { exitCode: 0, stdout: 'deadbeef', stderr: '' };
+        }
+        if (key === `merge-base HEAD ${BR}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith(`merge ${BR}`)) return { exitCode: 0, stdout: '', stderr: '' };
+        // git's real failure when the path is already gone.
+        if (key === `worktree remove ${WT} --force`) {
+          return { exitCode: 128, stdout: '', stderr: `fatal: '${WT}' is not a working tree` };
+        }
+        if (key === 'worktree prune') return { exitCode: 0, stdout: '', stderr: '' };
+        // Explicit, not swallowed by a catch-all: the #3707 unlock/retry path
+        // runs whenever `worktree remove` fails, and a silent success for it
+        // would hide a call this scenario should be stating. (Codex round 1.)
+        if (key === `worktree unlock ${WT}`) return { exitCode: 1, stdout: '', stderr: 'not locked' };
+        if (key === `branch -D ${BR}`) return { exitCode: 0, stdout: '', stderr: '' };
+        throw new Error(`unexpected git call: ${key}`);
+      };
+    }
+
+    test('merges the branch instead of blocking as branch_mismatch', () => {
+      // Acceptance criterion 1. Pre-fix this returned blocked/branch_mismatch
+      // with the merge never attempted.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => { calls.push(args.join(' ')); return absentWorktreeGit()(args); },
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.equal(result.entries[0].reason, 'ok');
+      assert.equal(result.ok, true);
+      assert.ok(
+        calls.some((k) => k.startsWith(`merge ${BR}`)),
+        'the branch must actually be merged, not merely reported clean',
+      );
+      assert.ok(
+        calls.includes(`branch -D ${BR}`),
+        'the branch must be deleted — leaving it dangling is half the reported bug',
+      );
+    });
+
+    test('a path git does not list at all still blocks', () => {
+      // The absence must not become a silent pass. Identity comes from the
+      // porcelain binding, so an entry naming a path git has no record of has NO
+      // identity evidence and must block — it is not "absent", it is unknown.
+      //
+      // The override map returns VALUES, so a thrown-guard function placed in it
+      // is just handed back as a git result and never runs. Record the calls and
+      // assert on them instead. (Codex review round 1.)
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => {
+          calls.push(args.join(' '));
+          return absentWorktreeGit({}, { registered: false })(args);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+      assert.equal(
+        calls.some((k) => k.startsWith(`merge ${BR}`)), false,
+        'a path git does not list must never be merged',
+      );
+      assert.equal(
+        calls.some((k) => k === `branch -D ${BR}`), false,
+        'and must never be deleted',
+      );
+    });
+
+    test('#3677 swap control: an absent path registered to a DIFFERENT branch blocks', () => {
+      // Maintainer review on #4612, Blocker 3. `tests/gsd-quick-batch-merge-integration.test.cjs`
+      // covers the branch_mismatch swap control on the PRESENT path only, so the
+      // absent path could bypass it unnoticed — which is exactly how the earlier
+      // ref-based identity fallback slipped through a green suite.
+      //
+      // Git keeps the path -> branch binding after the checkout is removed, so the
+      // swap is still detectable here: the manifest names BR, git says the path is
+      // registered to a foreign branch. Identity loses, and nothing merges.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => {
+          calls.push(args.join(' '));
+          return absentWorktreeGit({}, { branch: 'worktree-agent-SOMEONE-ELSE' })(args);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+      assert.equal(
+        calls.some((k) => k.startsWith(`merge ${BR}`)), false,
+        'a swapped branch must never be merged through the absent path',
+      );
+      assert.equal(
+        calls.some((k) => k === `branch -D ${BR}`), false,
+        'and must never be deleted',
+      );
+      assert.equal(
+        calls.some((k) => k === 'worktree prune'), false,
+        'and its admin entry must not be tidied away either',
+      );
+    });
+
+    test('teardown prunes stale admin state instead of failing worktree_remove_failed', () => {
+      // Acceptance criterion 2 — the post-merge failure shape. `git worktree
+      // remove` on a vanished path cannot succeed; what is left behind is the
+      // .git/worktrees admin entry, which `prune` clears.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => { calls.push(args.join(' ')); return absentWorktreeGit()(args); },
+      });
+
+      assert.notEqual(result.entries[0].reason, 'worktree_remove_failed');
+      assert.ok(calls.includes('worktree prune'), 'stale admin state must be pruned');
+    });
+
+    test('a PRESENT worktree on the wrong branch still blocks with branch_mismatch', () => {
+      // Acceptance criterion 3 — the safety property this fix must not erode.
+      // The read SUCCEEDS here and simply disagrees, so neither the registration nor
+      // the errno is consulted and the behavior is byte-for-byte what it always was.
+      // (The pre-loop snapshot read still happens; it is wave setup, not this
+      // entry's decision.)
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statPresent,
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: porcelainFor({ prunable: false }), stderr: '' };
+          }
+          if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 0, stdout: 'some-other-branch', stderr: '' };
+          }
+          throw new Error(`no further git call may run after a branch mismatch: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+    });
+
+    test('a PRESENT worktree whose in-worktree read fails still blocks with branch_mismatch', () => {
+      // The other half of criterion 3: a read failure on a directory that IS
+      // there is a real failure, not a harness removal. Without the presence
+      // check this row and the first row are the same input.
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statPresent,
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' };
+          }
+          // Registered and not prunable; the errno below is what actually proves
+          // the checkout is there.
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: porcelainFor({ prunable: false }), stderr: '' };
+          }
+          throw new Error(`no further git call may run after a branch mismatch: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+    });
+
+    test('the base and deletion gates still run for an absent worktree', () => {
+      // Criterion 4 — skipping the in-worktree checks must not skip the checks
+      // that protect repoRoot. Both of these run against repoRoot already.
+      const baseBlocked = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit({
+          [`merge-base HEAD ${BR}`]: { exitCode: 0, stdout: 'unrelatedbase', stderr: '' },
+        }),
+      });
+      assert.equal(baseBlocked.entries[0].reason, 'base_mismatch');
+
+      const deletionBlocked = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit({
+          [`diff --diff-filter=D --name-only HEAD...${BR}`]:
+            { exitCode: 0, stdout: 'src/deleted.ts\n', stderr: '' },
+        }),
+      });
+      assert.equal(deletionBlocked.entries[0].reason, 'branch_contains_deletions');
+    });
+
+    test('an absent worktree does not attempt a SUMMARY rescue', () => {
+      // A worktree the harness removed had a clean tree by definition, so there
+      // is nothing to rescue — and calling the rescue would read a path that is
+      // gone. `findSummaryFiles` is the rescue's entry point; it must not run.
+      let rescueAttempted = false;
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        findSummaryFiles: () => { rescueAttempted = true; return []; },
+        execGit: absentWorktreeGit(),
+      });
+
+      assert.equal(rescueAttempted, false, 'the rescue must be skipped, not merely survive');
+      assert.equal(result.entries[0].status, 'merged_removed');
+    });
+
+
+    // ── Transition coverage (Codex review round 1) ──────────────────────────
+    // Every row above holds presence CONSTANT — absent throughout, or present
+    // throughout. The bug this fix addresses is caused by a directory that
+    // disappears WHILE cleanup runs, so a constant-presence stub cannot reach
+    // the windows that matter.
+    //
+    // The transition is driven by the GIT results, not by the presence stub: the
+    // branch read succeeds and the `status` read then fails, which is exactly
+    // "removed in between". The stub only has to answer the probe that follows.
+    // An earlier cut used a probe-COUNTING helper to place the removal at a
+    // chosen probe index; that coupled the tests to how many times the code
+    // probes — brittle, and wrong in spirit, since the SUMMARY rescue shares the
+    // same injected seam. (Codex review round 2 agreed; helper removed.)
+
+    test('a worktree removed AFTER the branch read merges instead of blocking dirty', () => {
+      // branch read succeeds (present) → harness removes it while the repoRoot
+      // base/deletion/scope checks run → `status` fails. Before this round that
+      // failure blocked `worktree_dirty` with nothing merged: the same bug as
+      // the branch read, one window later.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        // The branch read SUCCEEDS without consulting git's worktree list — that
+        // only happens when an in-worktree read fails — so the only porcelain read
+        // reached is the one after the failed `status`, and by then git reports the
+        // entry prunable.
+        execGit: (args) => {
+          const key = args.join(' ');
+          calls.push(key);
+          if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 0, stdout: BR, stderr: '' };
+          }
+          if (key.startsWith(`-C ${WT} status`)) {
+            return { exitCode: 128, stdout: '', stderr: ABSENT_ERR };
+          }
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: porcelainFor(), stderr: '' };
+          }
+          if (key === `merge-base HEAD ${BR}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+          if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key.startsWith(`merge ${BR}`)) return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `worktree remove ${WT} --force`) {
+            return { exitCode: 128, stdout: '', stderr: `fatal: '${WT}' is not a working tree` };
+          }
+          if (key === `worktree unlock ${WT}`) return { exitCode: 1, stdout: '', stderr: 'not locked' };
+          if (key === 'worktree prune') return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `branch -D ${BR}`) return { exitCode: 0, stdout: '', stderr: '' };
+          throw new Error(`unexpected git call: ${key}`);
+        },
+      });
+
+      assert.notEqual(result.entries[0].reason, 'worktree_dirty');
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.ok(calls.some((k) => k.startsWith(`merge ${BR}`)), 'the branch must be merged');
+    });
+
+    test('a PRESENT worktree whose status query fails still blocks worktree_dirty', () => {
+      // The other half: the read failed and the directory is still there, so
+      // this is a real failure and must keep blocking. Without the presence
+      // probe this row and the one above are the same input.
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statPresent,
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 0, stdout: BR, stderr: '' };
+          }
+          if (key.startsWith(`-C ${WT} status`)) {
+            return { exitCode: 128, stdout: '', stderr: 'fatal: something else broke' };
+          }
+          // Registered and NOT prunable — the directory is still there, so the
+          // status failure is a real failure and must keep blocking.
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: porcelainFor({ prunable: false }), stderr: '' };
+          }
+          if (key === `merge-base HEAD ${BR}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+          if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          throw new Error(`nothing may run after a dirty block: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'worktree_dirty');
+    });
+
+    test('a worktree removed between the clean status read and teardown still tears down', () => {
+      // The narrowest window: everything succeeds against a present worktree,
+      // the merge lands, and only then does the directory go. Teardown re-reads
+      // presence precisely so this does not report worktree_remove_failed after
+      // a successful merge.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => {
+          const key = args.join(' ');
+          calls.push(key);
+          if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 0, stdout: BR, stderr: '' };
+          }
+          if (key.startsWith(`-C ${WT} status`)) return { exitCode: 0, stdout: '', stderr: '' };
+          // Removed only after the clean status read: by teardown git calls it prunable.
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: porcelainFor(), stderr: '' };
+          }
+          if (key === `merge-base HEAD ${BR}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+          if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key.startsWith(`merge ${BR}`)) return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `worktree remove ${WT} --force`) {
+            return { exitCode: 128, stdout: '', stderr: `fatal: '${WT}' is not a working tree` };
+          }
+          if (key === `worktree unlock ${WT}`) return { exitCode: 1, stdout: '', stderr: 'not locked' };
+          if (key === 'worktree prune') return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `branch -D ${BR}`) return { exitCode: 0, stdout: '', stderr: '' };
+          throw new Error(`unexpected git call: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.ok(calls.includes('worktree prune'));
+      assert.ok(calls.includes(`branch -D ${BR}`), 'the branch must still be deleted');
+    });
+
+    test('a blocked absent entry does not abort the entries after it (#2852)', () => {
+      // Per-entry isolation across the new branches: entry 1 blocks because git
+      // does not list its path at all, entry 2 must still merge and nothing may
+      // land in `pending`.
+      const e2 = { agent_id: 'a2', worktree_path: '/repo/.claude/worktrees/agent-a2', branch: 'worktree-agent-a2', expected_base: 'abc123' };
+      const result = executeWorktreeWaveCleanupPlan(plan([entry, e2]), {
+        statSync: statGone,
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key.startsWith(`-C ${WT} `) || key.startsWith(`-C ${e2.worktree_path} `)) {
+            return { exitCode: 128, stdout: '', stderr: ABSENT_ERR };
+          }
+          if (key === 'worktree list --porcelain') {
+            // entry 1's path is absent from the list entirely (blocks); entry 2 is
+            // registered to its own branch and prunable (the absent case).
+            return {
+              exitCode: 0,
+              stdout: 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+                + `\nworktree ${e2.worktree_path}\nHEAD cafebabe\nbranch refs/heads/${e2.branch}\n`
+                + 'prunable gitdir file points to non-existent location\n',
+              stderr: '',
+            };
+          }
+          if (key === `merge-base HEAD ${e2.branch}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+          if (key === `diff --diff-filter=D --name-only HEAD...${e2.branch}`) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key.startsWith(`merge ${e2.branch}`)) return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `worktree remove ${e2.worktree_path} --force`) {
+            return { exitCode: 128, stdout: '', stderr: 'fatal: not a working tree' };
+          }
+          if (key === `worktree unlock ${e2.worktree_path}`) return { exitCode: 1, stdout: '', stderr: 'not locked' };
+          if (key === 'worktree prune') return { exitCode: 0, stdout: '', stderr: '' };
+          if (key === `branch -D ${e2.branch}`) return { exitCode: 0, stdout: '', stderr: '' };
+          throw new Error(`unexpected git call: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+      assert.equal(result.entries[1].status, 'merged_removed');
+      assert.deepEqual(result.pending, [], 'a blocked entry must never strand the ones after it');
+    });
+
+    test('a relative worktree_path is matched against the porcelain by resolving it against repoRoot', () => {
+      // `normalizeCleanupManifestEntry` takes worktree_path from the manifest
+      // verbatim, so it can be relative, while `git worktree list --porcelain`
+      // always reports ABSOLUTE paths. Matching the two therefore has to resolve
+      // the manifest path the same way git does — against `plan.repoRoot`, which
+      // is what every git call already does by passing `-C <path>` with
+      // `cwd: plan.repoRoot`. Resolving against the PROCESS working directory
+      // instead would fail to match, and the entry would block as an unknown path.
+      //
+      // This also carries the win32 point from the earlier cut of this row
+      // (verified on CI, not here — macOS has no current drive): `path.resolve`
+      // prepends the current drive to a drive-less absolute path where `path.join`
+      // does not. Both sides of this comparison go through `path.resolve`, so they
+      // agree on any platform.
+      const relEntry = {
+        agent_id: 'a1',
+        worktree_path: '.claude/worktrees/agent-a1',
+        branch: BR,
+        expected_base: 'abc123',
+      };
+      // The porcelain reports the absolute path; only a repoRoot-resolved match
+      // recognises it as this entry.
+      const absPath = path.resolve('/repo/main', relEntry.worktree_path);
+      const porcelain = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+        + `\nworktree ${absPath}\nHEAD deadbeef\nbranch refs/heads/${BR}\n`
+        + 'prunable gitdir file points to non-existent location\n';
+      const git = (listOutput) => (args) => {
+        const key = args.join(' ');
+        if (key === 'worktree list --porcelain') {
+          return { exitCode: 0, stdout: listOutput, stderr: '' };
+        }
+        if (key.startsWith(`-C ${relEntry.worktree_path} `)) {
+          return { exitCode: 128, stdout: '', stderr: ABSENT_ERR };
+        }
+        if (key === `merge-base HEAD ${BR}`) return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith(`merge ${BR}`)) return { exitCode: 0, stdout: '', stderr: '' };
+        if (key === 'worktree prune') return { exitCode: 0, stdout: '', stderr: '' };
+        if (key === `branch -D ${BR}`) return { exitCode: 0, stdout: '', stderr: '' };
+        throw new Error(`unexpected git call: ${key}`);
+      };
+
+      const matched = executeWorktreeWaveCleanupPlan(plan([relEntry]), { execGit: git(porcelain) });
+      assert.equal(matched.entries[0].status, 'merged_removed',
+        'the relative manifest path must match the absolute porcelain path');
+      assert.equal(matched.entries[0].reason, 'ok');
+
+      // Negative control: the same relative path resolved against a DIFFERENT root
+      // is a different entry, and must not match. Without this the row would pass
+      // on any implementation that matched loosely (by basename, say).
+      const elsewhere = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+        + `\nworktree ${path.resolve('/somewhere/else', relEntry.worktree_path)}\nHEAD deadbeef\nbranch refs/heads/${BR}\n`
+        + 'prunable gitdir file points to non-existent location\n';
+      const unmatched = executeWorktreeWaveCleanupPlan(plan([relEntry]), { execGit: git(elsewhere) });
+      assert.equal(unmatched.entries[0].status, 'blocked',
+        'a porcelain path under a different root is not this entry');
+      assert.equal(unmatched.entries[0].reason, 'branch_mismatch');
+    });
+
+    test('a genuine prune failure after the merge still reports worktree_remove_failed', () => {
+      // The fallback must not swallow a real teardown failure — the merge has
+      // already landed, and the operator needs to know the admin state is stale.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => {
+          calls.push(args.join(' '));
+          return absentWorktreeGit({
+            'worktree prune': { exitCode: 1, stdout: '', stderr: 'prune exploded' },
+          })(args);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'worktree_remove_failed');
+      assert.equal(result.ok, false);
+      // A blocked teardown must not go on to delete the branch — the same
+      // property the pre-existing `does not delete a branch when worktree
+      // removal fails` row pins for the present-worktree path. (Codex round 2.)
+      assert.equal(
+        calls.some((k) => k === `branch -D ${BR}`), false,
+        'branch deletion must be withheld when teardown blocked',
+      );
+    });
+
+    test('#4612 Major: a worktree that REAPPEARS before teardown blocks instead of losing its branch', () => {
+      // Maintainer review on #4612. Presence is classified once, at identification,
+      // and the base/deletion/scope gates plus the merge all run before teardown —
+      // a window in which a worktree can come back. The previous defence was
+      // "prune only, and a live checkout would make `branch -D` fail visibly",
+      // which holds only while prune's staleness check is not fooled by the same
+      // visibility gap that produced the false absence. If it is, prune succeeds,
+      // `branch -D` succeeds, and a live worktree loses its branch — destroying
+      // state where the original bug merely blocked.
+      //
+      // This is the transition the older row could not model: the stat answers
+      // "gone" at identification and "present" at teardown, which is exactly the
+      // race. Both teardown verbs must be withheld.
+      const calls = [];
+      let statCalls = 0;
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: () => {
+          statCalls += 1;
+          // First call (identification): gone. Later (teardown): back.
+          if (statCalls === 1) throw ENOENT;
+          return { isDirectory: () => true };
+        },
+        execGit: (args) => { calls.push(args.join(' ')); return absentWorktreeGit()(args); },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'worktree_remove_failed');
+      assert.match(result.entries[0].stderr || '', /reappeared/i);
+      assert.equal(
+        calls.includes('worktree prune'), false,
+        'a reappeared worktree must not be pruned — prune may clear the admin entry and unblock branch -D',
+      );
+      assert.equal(
+        calls.includes(`branch -D ${BR}`), false,
+        'and its branch must never be deleted: that is the unrecoverable outcome this guards',
+      );
+      assert.equal(
+        calls.some((k) => k === `worktree remove ${WT} --force`), false,
+        'nor may it be force-removed',
+      );
+    });
+
+    test('an entry accepted as ABSENT tears down by prune, never by force-remove', () => {
+      // Codex review round 2, P2. An absent entry is merged WITHOUT the rescue
+      // and dirty checks, on the evidence that it had no checkout. If one is
+      // recreated at that path before teardown, `worktree remove --force` would
+      // delete contents that never passed either check — strictly worse than the
+      // bug this PR fixes. Teardown for such an entry must prune, never force.
+      //
+      // Scope (Codex review round 3, P3): this row proves the UNCONDITIONAL
+      // contract — no force-remove is ever issued for an absent-accepted entry —
+      // which is what makes a reappearance harmless. It does NOT model the
+      // reappearance transition itself: on this path production probes presence
+      // once, at identification, so a stub that flips on a later call would never
+      // be asked. The row was previously named for a transition it does not
+      // exercise; the assertions below are unchanged and still meaningful.
+      const calls = [];
+      executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: (args) => {
+          const key = args.join(' ');
+          calls.push(key);
+          return absentWorktreeGit()(args);
+        },
+      });
+
+      assert.equal(
+        calls.some((k) => k === `worktree remove ${WT} --force`), false,
+        'a forced removal must never run for an entry accepted as absent',
+      );
+      assert.ok(calls.includes('worktree prune'), 'teardown still clears stale admin state');
+    });
+
+    test('an UNREADABLE worktree is not accepted as absent — it still blocks', () => {
+      // The row that encodes the measurement, and the reason `prunable` alone is not
+      // the removal test (Codex review round 4, P2). With a parent directory at mode
+      // 000, real git prints `prunable gitdir file points to non-existent location`
+      // for a checkout that is STILL THERE — it cannot traverse the parent, so it
+      // reports the gitdir file as missing. Verified directly against git, not
+      // reasoned about.
+      //
+      // So this row hands the implementation the hardest shape: git says prunable,
+      // the branch binding matches, and only the errno reveals that the directory is
+      // unreadable rather than gone. Accepting it as absent would skip the rescue and
+      // the dirty check and merge over uncommitted work — exactly what blocked before
+      // this PR, and what must keep blocking.
+      const calls = [];
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statUnreadable,
+        execGit: (args) => { calls.push(args.join(' ')); return absentWorktreeGit()(args); },
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+      assert.equal(result.ok, false);
+      assert.equal(
+        calls.some((k) => k.startsWith(`merge ${BR}`)), false,
+        'an unreadable worktree must not be merged — the dirty check never ran',
+      );
+      assert.equal(
+        calls.some((k) => k === 'worktree prune' || k === `worktree remove ${WT} --force`), false,
+        'no teardown may run for an entry that was never accepted',
+      );
+    });
+
+    test('#4415 P1: entry 1\'s repository-wide prune must not strand entry 2', () => {
+      // Codex review round 4, P1, and the defect the porcelain rework introduced by
+      // reading the list per entry. `git worktree prune` is repository-wide: measured
+      // on real git, two removed worktrees plus ONE prune leaves neither registration
+      // behind. So entry 1's teardown erases the identity evidence entry 2 needs, and
+      // a per-entry read would merge the first harness-removed worktree of a wave and
+      // block every one after it as branch_mismatch — worse than the bug being fixed,
+      // because a wave of parallel executors is the normal case.
+      //
+      // The porcelain here behaves as git does: both entries registered and prunable
+      // until a `worktree prune` runs, and empty of stale entries afterwards.
+      const e2 = { agent_id: 'a2', worktree_path: '/repo/.claude/worktrees/agent-a2', branch: 'worktree-agent-a2', expected_base: 'abc123' };
+      let pruned = false;
+      const listBoth = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+        + `\nworktree ${WT}\nHEAD deadbeef\nbranch refs/heads/${BR}\n`
+        + 'prunable gitdir file points to non-existent location\n'
+        + `\nworktree ${e2.worktree_path}\nHEAD cafebabe\nbranch refs/heads/${e2.branch}\n`
+        + 'prunable gitdir file points to non-existent location\n';
+      const listAfterPrune = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n';
+
+      const result = executeWorktreeWaveCleanupPlan(plan([entry, e2]), {
+        statSync: statGone,
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key === 'worktree list --porcelain') {
+            return { exitCode: 0, stdout: pruned ? listAfterPrune : listBoth, stderr: '' };
+          }
+          if (key === 'worktree prune') {
+            pruned = true;                      // as real git does: clears BOTH entries
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key.startsWith(`-C ${WT} `) || key.startsWith(`-C ${e2.worktree_path} `)) {
+            return { exitCode: 128, stdout: '', stderr: ABSENT_ERR };
+          }
+          if (key === `merge-base HEAD ${BR}` || key === `merge-base HEAD ${e2.branch}`) {
+            return { exitCode: 0, stdout: 'abc123', stderr: '' };
+          }
+          if (key.startsWith('diff --diff-filter=D --name-only HEAD...')) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key.startsWith(`merge ${BR}`) || key.startsWith(`merge ${e2.branch}`)) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          if (key === `branch -D ${BR}` || key === `branch -D ${e2.branch}`) {
+            return { exitCode: 0, stdout: '', stderr: '' };
+          }
+          throw new Error(`unexpected git call: ${key}`);
+        },
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed', 'entry 1 merges');
+      assert.equal(
+        result.entries[1].status, 'merged_removed',
+        'entry 2 must ALSO merge — its registration was captured before entry 1 pruned',
+      );
+      assert.equal(result.entries[1].reason, 'ok');
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.pending, []);
+    });
+
+    test('an entry accepted as absent warns, quoting git\'s own prunable reason', () => {
+      // Maintainer review round 3, both Medium findings. "The harness cleanly removed
+      // a finished executor" and "something else removed this path" are the SAME
+      // signature to this code, so accepting the routine case silently would take the
+      // operator's only signal away from the case that is not routine. Pre-fix, every
+      // anomalous absence blocked loudly.
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit(),
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed', 'the entry still merges — this is advisory, not a gate');
+      assert.equal(result.entries[0].reason, 'ok');
+
+      const warned = result.entries[0].warnings
+        .filter((w) => w.code === WAVE_CLEANUP_WARNING.ACCEPTED_ABSENT_WORKTREE);
+      assert.equal(warned.length, 1, `expected exactly one accepted-absent warning: ${JSON.stringify(result.entries[0].warnings)}`);
+      assert.equal(warned[0].branch, BR);
+      assert.equal(warned[0].path, WT);
+      assert.equal(
+        warned[0].detail, 'gitdir file points to non-existent location',
+        'the warning must quote git\'s own prunable reason, not paraphrase it',
+      );
+      assert.ok(
+        result.warnings.some((w) => w.code === WAVE_CLEANUP_WARNING.ACCEPTED_ABSENT_WORKTREE),
+        'and it must reach the wave-level warnings too, as the scope advisory does',
+      );
+    });
+
+    test('a bare `prunable` marker (no reason text) is accepted, and its detail is null', () => {
+      // git emits `prunable` bare in some versions and `prunable <reason>` in others.
+      // An earlier cut of this row asserted only `merged_removed`, which is driven by
+      // confirmedGone and the branch match — NOT by the bare-marker parsing it claimed
+      // to cover, so a regression in that parsing would not have reddened it
+      // (maintainer review round 3). Asserting the parsed value closes that.
+      const bare = 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+        + `\nworktree ${WT}\nHEAD deadbeef\nbranch refs/heads/${BR}\nprunable\n`;
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit({ 'worktree list --porcelain': { exitCode: 0, stdout: bare, stderr: '' } }),
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.equal(result.entries[0].reason, 'ok');
+
+      const warned = result.entries[0].warnings
+        .filter((w) => w.code === WAVE_CLEANUP_WARNING.ACCEPTED_ABSENT_WORKTREE);
+      assert.equal(warned.length, 1, 'a bare marker is still an acceptance, so it still warns');
+      assert.equal(
+        warned[0].detail, null,
+        `a bare marker carries no reason, so detail is null rather than the literal "prunable": ${JSON.stringify(warned[0])}`,
+      );
+    });
+
+    test('a worktree list that cannot be read blocks rather than guessing', () => {
+      // Fail-safe: with no registration evidence there is no identity, so the entry
+      // must block. Noted as untested in Codex review round 4.
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit({ 'worktree list --porcelain': { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } }),
+      });
+
+      assert.equal(result.entries[0].status, 'blocked');
+      assert.equal(result.entries[0].reason, 'branch_mismatch');
+      assert.equal(result.ok, false);
+    });
+
+    test('a genuinely absent path (git marks it prunable) is still accepted as absent', () => {
+      // The other side of the row above: the discrimination must not over-block.
+      // A `prunable` line is git's own statement of confirmed staleness, which is
+      // exactly the case this PR exists to handle, so the entry must still merge
+      // and tear down.
+      const result = executeWorktreeWaveCleanupPlan(plan([entry]), {
+        statSync: statGone,
+        execGit: absentWorktreeGit(),
+      });
+
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.equal(result.entries[0].reason, 'ok');
+      assert.equal(result.ok, true);
+    });
+  });
+  test('#1265 accepts a merge-base listed in allowed_bases even when expected_base is the plan commit', () => {
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'plancommit',
+        allowed_bases: ['plancommit', 'parentcommit'],
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'parentcommit', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.entries[0].status, 'merged_removed');
+  });
+
+  test('#1265 still blocks a merge-base outside expected_base and allowed_bases', () => {
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'plancommit',
+        allowed_bases: ['plancommit', 'parentcommit'],
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'unrelatedbase', stderr: '' };
+        }
+        throw new Error(`unexpected git call after rejected base: ${key}`);
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'base_mismatch');
+  });
+
+  test('does not delete a branch when worktree removal fails', () => {
+    const calls = [];
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      // #4415: this row's premise is a worktree that IS present and whose removal
+      // genuinely fails (locked). Cleanup now distinguishes that from a worktree the
+      // harness already deleted — which prunes instead of blocking — so the premise
+      // has to be stated rather than inferred from a path that never existed on disk.
+      // Stated on the two axes the implementation actually reads: git still registers
+      // the path (so identity holds) and the directory stats successfully (so it is
+      // present, not removed). An earlier cut left an `existsSync` stub here, which
+      // nothing consults any more — the row then blocked because registration was
+      // unknown, not because of its stated locked-removal premise. (Codex round 4, P3.)
+      statSync: () => ({ isDirectory: () => true }),
+      execGit: (args, opts) => {
+        calls.push({ cwd: opts && opts.cwd, args });
+        const key = args.join(' ');
+        if (key === 'worktree list --porcelain') {
+          return {
+            exitCode: 0,
+            stdout: 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+              + '\nworktree /repo/.claude/worktrees/agent-a1\nHEAD deadbeef\nbranch refs/heads/worktree-agent-a1\n',
+            stderr: '',
+          };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 1, stdout: '', stderr: 'locked' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          throw new Error('branch deletion must not run after remove failure');
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'worktree_remove_failed');
+    assert.equal(calls.some((call) => call.args.join(' ') === 'branch -D worktree-agent-a1'), false);
+  });
+
+  // #2852: this test previously asserted the wave-abort BUG — that a merge conflict on
+  // entry 1 left entry 2 stranded in `pending`, untouched. That is exactly the defect
+  // reported in #2852 (part b): one blocked branch must not abort the rest of the wave.
+  // The corrected contract is exercised as three rows of the #2852 test matrix below:
+  // "an ordinary merge_failed without entering a merge state" (no MERGE_HEAD was ever
+  // created — the common case, e.g. "your local changes would be overwritten" — isolate),
+  // "a recovered merge_failed" (a real conflict, `git merge --abort` clears MERGE_HEAD —
+  // isolate), and "an unrecoverable merge_failed" (MERGE_HEAD is STILL present after the
+  // abort attempt — the one case that genuinely corrupts repoRoot for every remaining
+  // entry — halt).
+  //
+  // CORRECTNESS NOTE (caught in review): `git merge --abort`'s own exit code is NOT the
+  // right signal for "unrecoverable". git legitimately fails abort with "There is no
+  // merge to abort (MERGE_HEAD missing)?" in the SAFE case too — whenever the original
+  // merge never entered a merge state in the first place (no conflict, just a refused
+  // merge). An earlier version of this fix trusted abort's exit code alone, which
+  // misclassified that common safe case as unrecoverable and stranded the rest of the
+  // wave — the exact bug #2852 exists to fix, reintroduced through the recovery path.
+  // The fix checks repoRoot's ACTUAL state via `git rev-parse --verify -q MERGE_HEAD`.
+
+  test('#2852: an ordinary merge_failed without entering a merge state does not abort the wave', () => {
+    // No MERGE_HEAD is ever created here — git refuses the merge outright (e.g. local
+    // changes would be overwritten). `git merge --abort` therefore legitimately fails
+    // with "There is no merge to abort", but repoRoot's tree was never touched, so this
+    // is an ORDINARY per-entry failure — entry 2 must still be evaluated and merge.
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        },
+        {
+          agent_id: 'a2',
+          worktree_path: '/repo/.claude/worktrees/agent-a2',
+          branch: 'worktree-agent-a2',
+          expected_base: 'abc123',
+        },
+      ],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          // No conflict — git refuses the merge outright. No MERGE_HEAD is created.
+          return { exitCode: 1, stdout: '', stderr: 'error: Your local changes to the following files would be overwritten by merge' };
+        }
+        if (key === 'merge --abort') {
+          // Legitimately fails — there was never a merge to abort. NOT a signal of
+          // repo corruption; the wave-isolation decision must not trust this exit code.
+          return { exitCode: 1, stdout: '', stderr: 'fatal: There is no merge to abort (MERGE_HEAD missing)?' };
+        }
+        if (key === 'rev-parse --verify -q MERGE_HEAD') {
+          // repoRoot is NOT mid-merge — the ref simply doesn't exist.
+          return { exitCode: 1, stdout: '', stderr: '' };
+        }
+        // Entry 2 must still be evaluated independently.
+        if (key === '-C /repo/.claude/worktrees/agent-a2 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a2', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a2') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a2') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a2 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a2')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a2 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a2') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false, 'overall ok is false because entry 1 blocked');
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.equal(result.entries[1].status, 'merged_removed', 'entry 2 must still merge — no merge state was ever entered');
+    assert.deepEqual(result.pending, [], 'pending must be empty — every entry was evaluated');
+  });
+
+  test('#2852: a recovered merge_failed isolates to entry 1, entry 2 still merges', () => {
+    const calls = [];
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        },
+        {
+          agent_id: 'a2',
+          worktree_path: '/repo/.claude/worktrees/agent-a2',
+          branch: 'worktree-agent-a2',
+          expected_base: 'abc123',
+        },
+      ],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        calls.push(key);
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          // A real conflict — MERGE_HEAD IS created.
+          return { exitCode: 1, stdout: '', stderr: 'CONFLICT' };
+        }
+        if (key === 'merge --abort') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'rev-parse --verify -q MERGE_HEAD') {
+          // abort succeeded — repoRoot is no longer mid-merge.
+          return { exitCode: 1, stdout: '', stderr: '' };
+        }
+        // Entry 2 must still be evaluated independently after recovery.
+        if (key === '-C /repo/.claude/worktrees/agent-a2 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a2', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a2') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a2') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a2 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a2')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a2 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a2') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false, 'overall ok is false because entry 1 blocked');
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.equal(result.entries[1].status, 'merged_removed', 'entry 2 must still merge — isolation, not wave-abort');
+    assert.deepEqual(result.pending, [], 'pending must be empty — every entry was evaluated');
+    assert.ok(calls.includes('merge --abort'), 'a failed merge must attempt recovery with git merge --abort');
+  });
+
+  test('#2852: an unrecoverable merge_failed (repoRoot STILL mid-merge after abort) legitimately halts the remaining wave', () => {
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        },
+        {
+          agent_id: 'a2',
+          worktree_path: '/repo/.claude/worktrees/agent-a2',
+          branch: 'worktree-agent-a2',
+          expected_base: 'abc123',
+        },
+      ],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 1, stdout: '', stderr: 'CONFLICT' };
+        }
+        if (key === 'merge --abort') {
+          return { exitCode: 1, stdout: '', stderr: 'fatal: unable to abort' };
+        }
+        if (key === 'rev-parse --verify -q MERGE_HEAD') {
+          // repoRoot IS genuinely still mid-merge — the abort attempt did not clear it.
+          // This, not abort's own exit code, is what legitimately halts the wave.
+          return { exitCode: 0, stdout: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef', stderr: '' };
+        }
+        throw new Error(`unexpected git call — repoRoot is unrecoverable, entry 2 must not be evaluated: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.equal(result.entries.length, 1, 'entry 2 must not have been evaluated at all');
+    assert.deepEqual(result.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  test('#2852: an unverifiable repo state after merge_failed (rev-parse times out) fails closed and halts the wave', () => {
+    // Boundary coverage for repoRootStillMidMerge's fail-closed branches (caught in
+    // review as an untested mutation-survivor risk): when the post-abort
+    // `git rev-parse --verify -q MERGE_HEAD` check itself cannot be trusted — here, it
+    // times out — the module's existing degrade-not-throw contract applies: treat the
+    // repo state as unknown-therefore-unsafe (still mid-merge) rather than guessing
+    // it's clean. Entry 2 must NOT be evaluated.
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        },
+        {
+          agent_id: 'a2',
+          worktree_path: '/repo/.claude/worktrees/agent-a2',
+          branch: 'worktree-agent-a2',
+          expected_base: 'abc123',
+        },
+      ],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 1, stdout: '', stderr: 'CONFLICT' };
+        }
+        if (key === 'merge --abort') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'rev-parse --verify -q MERGE_HEAD') {
+          // Cannot determine repo state — the check itself timed out.
+          return {
+            exitCode: null,
+            stdout: '',
+            stderr: '',
+            timedOut: true,
+            signal: 'SIGTERM',
+            error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+          };
+        }
+        throw new Error(`unexpected git call — repo state is unverified, entry 2 must not be evaluated: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.equal(result.entries.length, 1, 'entry 2 must not have been evaluated — state is unverified, fail closed');
+    assert.deepEqual(result.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  test('#2852: an unverifiable repo state after merge_failed (rev-parse errors unexpectedly) fails closed and halts the wave', () => {
+    // Same boundary as the timeout case, but for a non-0/1 exit code (e.g. a fatal git
+    // error, code 128) from the post-abort MERGE_HEAD check — neither "found" (0) nor
+    // the well-known "not found" (1). Must also fail closed.
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        {
+          agent_id: 'a1',
+          worktree_path: '/repo/.claude/worktrees/agent-a1',
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        },
+        {
+          agent_id: 'a2',
+          worktree_path: '/repo/.claude/worktrees/agent-a2',
+          branch: 'worktree-agent-a2',
+          expected_base: 'abc123',
+        },
+      ],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 1, stdout: '', stderr: 'CONFLICT' };
+        }
+        if (key === 'merge --abort') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'rev-parse --verify -q MERGE_HEAD') {
+          // A fatal git error (e.g. corrupted repo) — neither the "found" (0) nor the
+          // well-known "not found" (1) exit code.
+          return { exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' };
+        }
+        throw new Error(`unexpected git call — repo state is unverified, entry 2 must not be evaluated: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.equal(result.entries.length, 1, 'entry 2 must not have been evaluated — state is unverified, fail closed');
+    assert.deepEqual(result.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  // #4721: the wave's `git merge --no-ff` is the one call in the gauntlet that runs
+  // user hooks, and it used to inherit the module's 10 s plumbing timeout. A repo
+  // whose `pre-merge-commit` hook is a test-suite gate lost every executor merge:
+  // the kill was reported as a plain `merge_failed` carrying the hook's partial
+  // stdout, and — the dangerous half — it landed after git had staged the merged
+  // tree but before it wrote MERGE_HEAD, so the #2852 mid-merge check read the
+  // primary as clean while the executor's whole diff sat staged against the old
+  // HEAD. Committing from that state squashes the executor's history.
+
+  const fs = require('node:fs');
+  const WAVE_WARNING = require(WORKTREE_SAFETY_PATH).WAVE_CLEANUP_WARNING;
+  const MERGE_BUDGET_DEFAULT = require(WORKTREE_SAFETY_PATH).DEFAULT_MERGE_TIMEOUT_MS;
+
+  function mergeGauntletStub(overrides = {}) {
+    // A one-entry gauntlet whose every call before the merge succeeds; callers
+    // override the merge and the post-failure calls per row. Unknown calls throw so
+    // a row cannot pass by accident on a call it never modelled.
+    return (args) => {
+      const key = args.join(' ');
+      if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key](args);
+      for (const prefix of Object.keys(overrides)) {
+        if (prefix.endsWith('*') && key.startsWith(prefix.slice(0, -1))) return overrides[prefix](args);
+      }
+      if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+      if (key === 'merge-base HEAD worktree-agent-a1') return { exitCode: 0, stdout: 'abc123', stderr: '' };
+      if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') return { exitCode: 0, stdout: '', stderr: '' };
+      if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') return { exitCode: 0, stdout: '', stderr: '' };
+      if (key === '-C /repo/.claude/worktrees/agent-a2 rev-parse --abbrev-ref HEAD') return { exitCode: 0, stdout: 'worktree-agent-a2', stderr: '' };
+      if (key === 'merge-base HEAD worktree-agent-a2') return { exitCode: 0, stdout: 'abc123', stderr: '' };
+      if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a2') return { exitCode: 0, stdout: '', stderr: '' };
+      if (key === '-C /repo/.claude/worktrees/agent-a2 status --porcelain --untracked-files=all') return { exitCode: 0, stdout: '', stderr: '' };
+      if (key.startsWith('merge worktree-agent-a2')) return { exitCode: 0, stdout: '', stderr: '' };
+      if (key === 'worktree remove /repo/.claude/worktrees/agent-a2 --force') return { exitCode: 0, stdout: '', stderr: '' };
+      if (key === 'branch -D worktree-agent-a2') return { exitCode: 0, stdout: '', stderr: '' };
+      throw new Error(`unexpected git call: ${key}`);
+    };
+  }
+
+  const twoEntryPlan = () => ({
+    ok: true,
+    repoRoot: '/repo/main',
+    action: 'cleanup_wave',
+    discovery: 'manifest',
+    entries: [
+      { agent_id: 'a1', worktree_path: '/repo/.claude/worktrees/agent-a1', branch: 'worktree-agent-a1', expected_base: 'abc123' },
+      { agent_id: 'a2', worktree_path: '/repo/.claude/worktrees/agent-a2', branch: 'worktree-agent-a2', expected_base: 'abc123' },
+    ],
+  });
+
+  // The kill lands after the merged tree is staged and before MERGE_HEAD is written,
+  // so `git merge --abort` finds nothing and the MERGE_HEAD probe says "clean".
+  const killedMidHook = {
+    'merge worktree-agent-a1*': () => ({
+      exitCode: null,
+      stdout: 'pre-merge-commit: slow gate starting (sleep 15)\n',
+      stderr: '',
+      timedOut: true,
+      signal: 'SIGTERM',
+      error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+    }),
+    'merge --abort': () => ({ exitCode: 128, stdout: '', stderr: 'fatal: There is no merge to abort (MERGE_HEAD missing)?' }),
+    'rev-parse --verify -q MERGE_HEAD': () => ({ exitCode: 1, stdout: '', stderr: '' }),
+    'rev-parse --verify -q MERGE_AUTOSTASH': () => ({ exitCode: 1, stdout: '', stderr: '' }),
+  };
+
+  test('#4721: the merge carries its own budget; every other call in the gauntlet keeps the module default', () => {
+    const seen = [];
+    const plan = twoEntryPlan();
+    plan.entries.pop();
+    executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args, opts) => {
+        seen.push({ key: args.join(' '), timeout: opts && opts.timeout });
+        return mergeGauntletStub({
+          'merge worktree-agent-a1*': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'worktree remove /repo/.claude/worktrees/agent-a1 --force': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'branch -D worktree-agent-a1': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        })(args);
+      },
+    });
+    const merge = seen.filter((c) => c.key.startsWith('merge worktree-agent-a1'));
+    assert.equal(merge.length, 1);
+    assert.equal(merge[0].timeout, MERGE_BUDGET_DEFAULT, 'the merge must pass an explicit budget, not inherit the plumbing default');
+    assert.ok(MERGE_BUDGET_DEFAULT >= 60_000, 'the merge budget is sized for a hook, not for plumbing');
+    for (const other of seen.filter((c) => !c.key.startsWith('merge worktree-agent-a1'))) {
+      assert.equal(other.timeout, undefined, `${other.key} must keep the module default — only the merge runs hooks`);
+    }
+
+    // And the budget is a dep, so a caller can size it to its hooks.
+    const seenOverride = [];
+    executeWorktreeWaveCleanupPlan(plan, {
+      mergeTimeoutMs: 4242,
+      execGit: (args, opts) => {
+        seenOverride.push({ key: args.join(' '), timeout: opts && opts.timeout });
+        return mergeGauntletStub({
+          'merge worktree-agent-a1*': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'worktree remove /repo/.claude/worktrees/agent-a1 --force': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'branch -D worktree-agent-a1': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        })(args);
+      },
+    });
+    assert.equal(seenOverride.find((c) => c.key.startsWith('merge worktree-agent-a1')).timeout, 4242);
+  });
+
+  test('#4721: a merge killed at its budget is blocked as merge_timed_out, its staged residue is restored, and the wave continues', () => {
+    const calls = [];
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        let cachedReads = 0;
+        return mergeGauntletStub({
+          ...killedMidHook,
+          'diff --cached --name-only': () => {
+            // First read: the executor's tree, staged against the old HEAD. Second
+            // read (after `reset --merge`): clean.
+            cachedReads = calls.filter((c) => c === 'diff --cached --name-only').length;
+            return cachedReads === 1
+              ? { exitCode: 0, stdout: 'a.txt\nb.txt\n', stderr: '' }
+              : { exitCode: 0, stdout: '', stderr: '' };
+          },
+          'reset --merge': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        })(args);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'merge_timed_out', 'a timeout is not a merge_failed');
+    assert.notEqual(result.entries[0].reason, 'merge_failed');
+    assert.deepEqual(
+      result.entries[0].warnings,
+      [
+        { code: WAVE_WARNING.MERGE_RESIDUE_RESTORED, branch: 'worktree-agent-a1', path: 'a.txt' },
+        { code: WAVE_WARNING.MERGE_RESIDUE_RESTORED, branch: 'worktree-agent-a1', path: 'b.txt' },
+      ],
+      'every path the killed merge left staged is named as restored',
+    );
+    assert.equal(result.warnings.length, 2, 'residue warnings are aggregated on the wave result too');
+    assert.ok(calls.includes('reset --merge'), 'the staged residue is undone with git reset --merge');
+    assert.ok(calls.indexOf('reset --merge') > calls.indexOf('rev-parse --verify -q MERGE_HEAD'), 'the residue check runs only once the repo is known not to be mid-merge');
+    assert.equal(result.entries[1].status, 'merged_removed', 'entry 2 still merges — repoRoot was restored to clean');
+    assert.deepEqual(result.pending, []);
+  });
+
+  test('#4721: a merge git REFUSED never reads or resets the index — a pre-existing dirty index is the operator\'s work', () => {
+    // Caught in review: a refusal ("your local changes would be overwritten") is
+    // exactly what a pre-existing dirty index earns, and it leaves that index as it
+    // was. Attributing it to the merge and running `reset --merge` would discard
+    // the operator's staged work. The residue path is gated on the TIMEOUT.
+    const calls = [];
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        return mergeGauntletStub({
+          'merge worktree-agent-a1*': () => ({ exitCode: 1, stdout: '', stderr: 'error: Your local changes to the following files would be overwritten by merge:\n  d.txt' }),
+          'merge --abort': () => ({ exitCode: 128, stdout: '', stderr: 'fatal: There is no merge to abort (MERGE_HEAD missing)?' }),
+          'rev-parse --verify -q MERGE_HEAD': () => ({ exitCode: 1, stdout: '', stderr: '' }),
+          // The stub throws on any call not modelled here — so a `diff --cached`
+          // or `reset --merge` on this path fails the test loudly.
+        })(args);
+      },
+    });
+    assert.equal(result.entries[0].reason, 'merge_failed');
+    assert.deepEqual(result.entries[0].warnings, []);
+    assert.equal(calls.some((c) => c.startsWith('diff --cached')), false, 'a refused merge does not read the index');
+    assert.equal(calls.includes('reset --merge'), false, 'and never resets it');
+    assert.equal(result.entries[1].status, 'merged_removed');
+  });
+
+  test('#4721: a killed merge that had autostashed pre-existing work re-applies it after the reset', () => {
+    const calls = [];
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        return mergeGauntletStub({
+          ...killedMidHook,
+          // merge.autoStash parked the operator's staged edit here and started anyway.
+          'rev-parse --verify -q MERGE_AUTOSTASH': () => ({ exitCode: 0, stdout: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00\n', stderr: '' }),
+          'diff --cached --name-only': () => (calls.filter((c) => c === 'diff --cached --name-only').length === 1
+            ? { exitCode: 0, stdout: 'b.txt\n', stderr: '' }
+            : { exitCode: 0, stdout: '', stderr: '' }),
+          'reset --merge': () => ({ exitCode: 0, stdout: '', stderr: 'Autostash exists; creating a new stash entry.' }),
+          'stash pop --index': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        })(args);
+      },
+    });
+    assert.equal(result.entries[0].reason, 'merge_timed_out');
+    assert.deepEqual(result.entries[0].warnings, [{ code: WAVE_WARNING.MERGE_RESIDUE_RESTORED, branch: 'worktree-agent-a1', path: 'b.txt' }]);
+    assert.ok(calls.indexOf('stash pop --index') > calls.indexOf('reset --merge'), 'the autostash is re-applied AFTER the reset parks it in the stash list');
+    assert.equal(result.entries[1].status, 'merged_removed');
+
+    // Clean index, autostash present (killed before the index was populated): still reset + pop.
+    // The pop fails but leaves the index clean → reported, wave continues.
+    const calls2 = [];
+    const result2 = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls2.push(args.join(' '));
+        return mergeGauntletStub({
+          ...killedMidHook,
+          'rev-parse --verify -q MERGE_AUTOSTASH': () => ({ exitCode: 0, stdout: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00\n', stderr: '' }),
+          'diff --cached --name-only': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'reset --merge': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'stash pop --index': () => ({ exitCode: 1, stdout: '', stderr: 'error: could not restore untracked files from stash' }),
+        })(args);
+      },
+    });
+    assert.ok(calls2.includes('reset --merge') && calls2.includes('stash pop --index'));
+    assert.equal(calls2.filter((c) => c === 'diff --cached --name-only').length, 3, 'the index is re-read after a failed pop');
+    assert.deepEqual(result2.entries[0].warnings, [{ code: WAVE_WARNING.MERGE_AUTOSTASH_UNRESTORED, branch: 'worktree-agent-a1', path: null }], 'a failed pop is reported, never silent');
+    assert.equal(result2.entries[1].status, 'merged_removed', 'the index is clean, so the wave continues');
+
+    // A failed pop that leaves conflict entries behind is NOT clean — halt (caught in review:
+    // the next merge would fail on "you have unmerged files").
+    const calls3 = [];
+    const result3 = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls3.push(args.join(' '));
+        return mergeGauntletStub({
+          ...killedMidHook,
+          'rev-parse --verify -q MERGE_AUTOSTASH': () => ({ exitCode: 0, stdout: 'c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00\n', stderr: '' }),
+          'diff --cached --name-only': () => (calls3.filter((c) => c === 'diff --cached --name-only').length === 3
+            ? { exitCode: 0, stdout: 'a.txt\nb.txt\n', stderr: '' }
+            : { exitCode: 0, stdout: '', stderr: '' }),
+          'reset --merge': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+          'stash pop --index': () => ({ exitCode: 1, stdout: '', stderr: 'CONFLICT (content): Merge conflict in a.txt' }),
+        })(args);
+      },
+    });
+    assert.deepEqual(result3.entries[0].warnings, [
+      { code: WAVE_WARNING.MERGE_AUTOSTASH_UNRESTORED, branch: 'worktree-agent-a1', path: null },
+      { code: WAVE_WARNING.MERGE_RESIDUE_LEFT_STAGED, branch: 'worktree-agent-a1', path: 'a.txt' },
+      { code: WAVE_WARNING.MERGE_RESIDUE_LEFT_STAGED, branch: 'worktree-agent-a1', path: 'b.txt' },
+    ]);
+    assert.equal(result3.entries.length, 1, 'entry 2 must not merge over unmerged entries');
+    assert.deepEqual(result3.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  test('#4721: a merge killed by an external signal (no timedOut) takes the same restore path as a timeout', () => {
+    // The seam (`_spawnResult`) normalizes a signal death to exitCode 1 and carries
+    // the signal alongside, timedOut false — so the exit code is NOT the tell, the
+    // signal is (a refused merge has none). The index state a SIGTERM leaves is
+    // identical to the timeout's, so the residue path keys on "killed", not on
+    // "timed out" (caught in review, twice: first the gate, then the shape).
+    const calls = [];
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        return mergeGauntletStub({
+          ...killedMidHook,
+          'merge worktree-agent-a1*': () => ({ exitCode: 1, stdout: '', stderr: '', timedOut: false, signal: 'SIGTERM', error: null }),
+          'diff --cached --name-only': () => (calls.filter((c) => c === 'diff --cached --name-only').length === 1
+            ? { exitCode: 0, stdout: 'b.txt\n', stderr: '' }
+            : { exitCode: 0, stdout: '', stderr: '' }),
+          'reset --merge': () => ({ exitCode: 0, stdout: '', stderr: '' }),
+        })(args);
+      },
+    });
+    assert.equal(result.entries[0].reason, 'merge_failed', 'not a timeout — the reason stays merge_failed');
+    assert.deepEqual(result.entries[0].warnings, [{ code: WAVE_WARNING.MERGE_RESIDUE_RESTORED, branch: 'worktree-agent-a1', path: 'b.txt' }]);
+    assert.ok(calls.includes('reset --merge'));
+    assert.equal(result.entries[1].status, 'merged_removed');
+  });
+
+  test('#4721: residue that git reset --merge cannot clear is reported as left staged and halts the wave', () => {
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => mergeGauntletStub({
+        ...killedMidHook,
+        // Still `b.txt` on both reads: the reset refused (an unstaged edit overlaps),
+        // or ran but left it.
+        'diff --cached --name-only': () => ({ exitCode: 0, stdout: 'b.txt\n', stderr: '' }),
+        'reset --merge': () => ({ exitCode: 1, stdout: '', stderr: 'error: Entry \'b.txt\' not uptodate. Cannot merge.' }),
+      })(args),
+    });
+    assert.equal(result.entries[0].reason, 'merge_timed_out');
+    assert.deepEqual(
+      result.entries[0].warnings,
+      [{ code: WAVE_WARNING.MERGE_RESIDUE_LEFT_STAGED, branch: 'worktree-agent-a1', path: 'b.txt' }],
+    );
+    assert.equal(result.entries.length, 1, 'entry 2 must not be evaluated against a dirty index');
+    assert.deepEqual(result.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  test('#4721: an unverifiable index after merge_failed fails closed — null path, wave halted', () => {
+    const result = executeWorktreeWaveCleanupPlan(twoEntryPlan(), {
+      execGit: (args) => mergeGauntletStub({
+        ...killedMidHook,
+        'diff --cached --name-only': makeTimeoutStub(),
+      })(args),
+    });
+    assert.deepEqual(
+      result.entries[0].warnings,
+      [{ code: WAVE_WARNING.MERGE_RESIDUE_LEFT_STAGED, branch: 'worktree-agent-a1', path: null }],
+      'a null path marks "the check itself could not run", as scope_check_unavailable does',
+    );
+    assert.equal(result.entries.length, 1);
+    assert.deepEqual(result.pending.map((entry) => entry.branch), ['worktree-agent-a2']);
+  });
+
+  describe('#4721: real git — a pre-merge-commit hook slower than the merge budget', { skip: isWindows ? 'POSIX sh hook' : false }, () => {
+    const { gitOrThrow: gitFixture } = require('./helpers/git-fixture.cjs');
+    const HOOK_SLEEP_S = 4;
+    const KILL_BUDGET_MS = 1500;
+
+    function buildRepoWithSlowHook({ hook = true, hookName = 'pre-merge-commit', autoStash = false, prestage = false } = {}) {
+      const root = createTempDir('gsd-4721-');
+      const repo = path.join(root, 'rr');
+      const wt = path.join(root, 'rr-wt');
+      const git = (args, cwd = repo) => gitFixture(args, { cwd, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+      fs.mkdirSync(repo);
+      git(['init', '-q', '-b', 'main']);
+      git(['config', 'user.email', 'test@example.com']);
+      git(['config', 'user.name', 'test']);
+      git(['config', 'commit.gpgsign', 'false']);
+      fs.writeFileSync(path.join(repo, 'a.txt'), 'base\n');
+      git(['add', 'a.txt']);
+      git(['commit', '-q', '-m', 'base']);
+      if (hook) {
+        const hookPath = path.join(repo, '.git', 'hooks', hookName);
+        fs.writeFileSync(hookPath, `#!/bin/sh\necho "${hookName}: slow gate starting"\nsleep ${HOOK_SLEEP_S}\nexit 0\n`, { mode: 0o755 });
+      }
+      if (autoStash) git(['config', 'merge.autoStash', 'true']);
+      git(['worktree', 'add', '-q', '-b', 'agent-repro1', wt]);
+      fs.writeFileSync(path.join(wt, 'b.txt'), 'change\n');
+      fs.appendFileSync(path.join(wt, 'a.txt'), 'executor line\n');
+      git(['add', 'a.txt', 'b.txt'], wt);
+      git(['commit', '-q', '-m', 'executor: add b.txt'], wt);
+      const base = git(['rev-parse', 'HEAD']).trim();
+      if (prestage) {
+        // The operator's own staged work in the primary, unrelated to the branch.
+        fs.appendFileSync(path.join(repo, 'a.txt'), 'operator staged line\n');
+        fs.writeFileSync(path.join(repo, 'ops.txt'), 'precious\n');
+        git(['add', 'a.txt', 'ops.txt']);
+      }
+      const plan = {
+        ok: true,
+        repoRoot: repo,
+        action: 'cleanup_wave',
+        discovery: 'manifest',
+        entries: [{ agent_id: 'repro1', worktree_path: wt, branch: 'agent-repro1', expected_base: base }],
+      };
+      return { root, repo, wt, base, plan, git };
+    }
+
+    test('is blocked as merge_timed_out, leaves no MERGE_HEAD, and repoRoot ends with a clean index at the old HEAD', (t) => {
+      const fx = buildRepoWithSlowHook();
+      t.after(() => cleanup(fx.root));
+      const result = executeWorktreeWaveCleanupPlan(fx.plan, { mergeTimeoutMs: KILL_BUDGET_MS });
+      assert.equal(result.ok, false);
+      assert.equal(result.entries[0].reason, 'merge_timed_out');
+      assert.equal(fx.git(['rev-parse', 'HEAD']).trim(), fx.base, 'HEAD unmoved');
+      assert.equal(fx.git(['diff', '--cached', '--name-only']).trim(), '', 'the killed merge\'s staged tree was restored');
+      assert.equal(fx.git(['status', '--porcelain']).trim(), '', 'worktree clean too');
+      assert.equal(fs.readFileSync(path.join(fx.repo, 'a.txt'), 'utf8'), 'base\n');
+      assert.equal(fs.existsSync(path.join(fx.repo, 'b.txt')), false, 'the merge-added file is gone from the primary');
+      assert.deepEqual(
+        result.entries[0].warnings.map((w) => w.code),
+        [WAVE_WARNING.MERGE_RESIDUE_RESTORED, WAVE_WARNING.MERGE_RESIDUE_RESTORED],
+      );
+      assert.deepEqual(result.entries[0].warnings.map((w) => w.path).sort(), ['a.txt', 'b.txt']);
+      assert.equal(fs.existsSync(path.join(fx.wt, 'b.txt')), true, 'the executor branch and its worktree are untouched');
+    });
+
+    test('negative control: the same hook under the default budget merges cleanly', (t) => {
+      const fx = buildRepoWithSlowHook();
+      t.after(() => cleanup(fx.root));
+      const result = executeWorktreeWaveCleanupPlan(fx.plan);
+      assert.equal(result.ok, true, JSON.stringify(result));
+      assert.equal(result.entries[0].status, 'merged_removed');
+      assert.deepEqual(result.entries[0].warnings, []);
+      assert.equal(fx.git(['rev-list', '--count', 'HEAD']).trim(), '3', 'base + executor + merge commit: history preserved, not squashed');
+      assert.equal(fs.readFileSync(path.join(fx.repo, 'b.txt'), 'utf8'), 'change\n');
+    });
+
+    test('a merge git refuses because the primary index is dirty leaves the operator\'s staged work exactly as it was', (t) => {
+      // The review-caught case, on real git: no hook, pre-existing staged work in the
+      // primary. git refuses instantly; nothing may be reset.
+      const fx = buildRepoWithSlowHook({ hook: false, prestage: true });
+      t.after(() => cleanup(fx.root));
+      const result = executeWorktreeWaveCleanupPlan(fx.plan, { mergeTimeoutMs: KILL_BUDGET_MS });
+      assert.equal(result.entries[0].reason, 'merge_failed');
+      assert.deepEqual(result.entries[0].warnings, []);
+      assert.deepEqual(fx.git(['diff', '--cached', '--name-only']).trim().split('\n').sort(), ['a.txt', 'ops.txt'], 'the operator\'s staged set is untouched');
+      assert.equal(fs.readFileSync(path.join(fx.repo, 'ops.txt'), 'utf8'), 'precious\n');
+      assert.equal(fs.existsSync(path.join(fx.repo, 'b.txt')), false);
+    });
+
+    test('a killed merge under merge.autoStash restores the executor residue AND re-applies the operator\'s autostashed work', (t) => {
+      const fx = buildRepoWithSlowHook({ autoStash: true, prestage: true });
+      t.after(() => cleanup(fx.root));
+      const result = executeWorktreeWaveCleanupPlan(fx.plan, { mergeTimeoutMs: KILL_BUDGET_MS });
+      assert.equal(result.entries[0].reason, 'merge_timed_out');
+      assert.deepEqual(result.entries[0].warnings.map((w) => w.code), [WAVE_WARNING.MERGE_RESIDUE_RESTORED, WAVE_WARNING.MERGE_RESIDUE_RESTORED], 'no autostash warning — the pop succeeded');
+      assert.equal(fx.git(['rev-parse', 'HEAD']).trim(), fx.base);
+      assert.equal(fs.existsSync(path.join(fx.repo, 'b.txt')), false, 'executor residue gone');
+      assert.deepEqual(fx.git(['diff', '--cached', '--name-only']).trim().split('\n').sort(), ['a.txt', 'ops.txt'], 'the operator\'s staged work is back in the index');
+      assert.equal(fs.readFileSync(path.join(fx.repo, 'ops.txt'), 'utf8'), 'precious\n');
+      assert.equal(fs.readFileSync(path.join(fx.repo, 'a.txt'), 'utf8'), 'base\noperator staged line\n', 'a.txt carries the operator line, not the executor line');
+      assert.equal(fx.git(['stash', 'list']).trim(), '', 'nothing left parked in the stash');
+      assert.equal(fs.existsSync(path.join(fx.repo, '.git', 'MERGE_AUTOSTASH')), false);
+    });
+
+    test('a kill inside commit-msg (MERGE_HEAD already written) is the ordinary abort path — timed out, no residue, clean primary', (t) => {
+      // By commit-msg time git has written MERGE_HEAD, so `git merge --abort` can and
+      // does restore the tree; restoreMergeResidue then finds nothing to do.
+      const fx = buildRepoWithSlowHook({ hookName: 'commit-msg' });
+      t.after(() => cleanup(fx.root));
+      const result = executeWorktreeWaveCleanupPlan(fx.plan, { mergeTimeoutMs: KILL_BUDGET_MS });
+      assert.equal(result.entries[0].reason, 'merge_timed_out');
+      assert.deepEqual(result.entries[0].warnings, [], 'abort cleaned it; the residue path reports nothing');
+      assert.equal(fx.git(['rev-parse', 'HEAD']).trim(), fx.base);
+      assert.equal(fs.existsSync(path.join(fx.repo, '.git', 'MERGE_HEAD')), false, 'abort cleared MERGE_HEAD');
+      assert.equal(fx.git(['status', '--porcelain']).trim(), '');
+      assert.equal(fs.existsSync(path.join(fx.repo, 'b.txt')), false);
+    });
+  });
+
+  test('#3804: rescues uncommitted SUMMARY.md from worktree .planning/ before dirty check', () => {
+    // Fixture: the only dirty file is .planning/q1-SUMMARY.md (executor left it uncommitted
+    // per documented contract — orchestrator commits it).  cleanup-wave MUST rescue it
+    // (copy to main tree) and succeed, not return worktree_dirty.
+    const calls = [];
+    const rescued = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is NOT committed on the branch. `git cat-file -e HEAD:<path>` returns
+        // exit 128 (NOT 1) for an absent path (#2556): "fatal: path '...' does not exist
+        // in 'HEAD'". Rescue must fire on this real exit code.
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Only the SUMMARY is dirty — no other modified files
+          return { exitCode: 0, stdout: '?? .planning/q1-SUMMARY.md', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      // Inject FS deps so tests don't touch the real filesystem.
+      // Key on the RESOLVED path identity and return paths joined off it — the
+      // walker contract the default walker honors, and the only form whose
+      // slice-derived relPath is correct on every platform (#4758).
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: (p) => {
+        if (p === path.join(wtResolved, '.planning', 'q1-SUMMARY.md')) return 'summary content';
+        return '';
+      },
+      existsSync: (_p) => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+
+    // SUMMARY was rescued into the main tree
+    assert.equal(rescued.length, 1, 'SUMMARY.md must be rescued (copied) to main tree');
+    assert.equal(rescued[0].src, path.join(wtResolved, '.planning', 'q1-SUMMARY.md'));
+    // Normalize to forward slashes for cross-platform assertion (path.join uses \ on Windows)
+    assert.equal(rescued[0].dest.replace(/\\/g, '/'), '/repo/main/.planning/q1-SUMMARY.md');
+
+    // Cleanup succeeded — SUMMARY-only dirty state must not block
+    assert.equal(result.ok, true, 'cleanup must succeed when only SUMMARY.md is dirty');
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.equal(result.entries[0].reason, 'ok');
+  });
+
+  test('#3804: still blocks when worktree has non-SUMMARY dirty files alongside SUMMARY', () => {
+    // If there are OTHER dirty files (not SUMMARY), cleanup must still block.
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is NOT committed on the branch (uncommitted, per quick.md contract).
+        // cat-file -e returns 128 for an absent path (#2556).
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // SUMMARY plus another dirty file
+          return { exitCode: 0, stdout: '?? .planning/q1-SUMMARY.md\nM  src/foo.js', stderr: '' };
+        }
+        throw new Error(`unexpected git call after dirty check: ${key}`);
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: (p) => {
+        if (p === path.join(wtResolved, '.planning', 'q1-SUMMARY.md')) return 'summary content';
+        return '';
+      },
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: () => {},
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+  });
+
+  test('#4758: rescue resolves a relative worktree_path against repoRoot, not process.cwd()', (t) => {
+    const fs = require('node:fs');
+    // The manifest's worktree_path is RELATIVE and repoRoot (a temp dir) differs from
+    // process.cwd().  Every git consumer of the field resolves `-C <relative>` against
+    // its cwd=repoRoot; the rescue's filesystem walk must resolve the same field the
+    // same way.  Before the fix the walker resolved against process.cwd(), found
+    // nothing, and the entry blocked worktree_dirty instead of rescuing.
+    // The fs deps are deliberately NOT injected: the real default walker and the real
+    // copy are the subjects under test.
+    const repoRoot = createTempDir('gsd-4758-repo-');
+    t.after(() => cleanup(repoRoot));
+    const worktreePath = '.claude/worktrees/agent-rel-4758';
+    const absWorktree = path.join(repoRoot, worktreePath);
+    fs.mkdirSync(path.join(absWorktree, '.planning'), { recursive: true });
+    fs.writeFileSync(path.join(absWorktree, '.planning', 'q1-SUMMARY.md'), 'summary content');
+
+    const plan = {
+      ok: true,
+      repoRoot,
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: worktreePath,
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    // Resolution-agnostic fake: behavior keys on the repoRoot-resolved -C operand —
+    // the same resolution git itself applies to `-C <relative>`.
+    const resolveGitKey = (args) => (args[0] === '-C'
+      ? `-C ${path.resolve(repoRoot, args[1])} ${args.slice(2).join(' ')}`
+      : args.join(' '));
+    const wtKey = `-C ${absWorktree}`;
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = resolveGitKey(args);
+        if (key === `${wtKey} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is NOT committed on the branch (#2556: cat-file -e returns 128).
+        if (key === `${wtKey} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `${wtKey} status --porcelain --untracked-files=all`) {
+          return { exitCode: 0, stdout: '?? .planning/q1-SUMMARY.md', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+    });
+
+    const rescuedDest = path.join(repoRoot, '.planning', 'q1-SUMMARY.md');
+    assert.equal(fs.readFileSync(rescuedDest, 'utf8'), 'summary content',
+      'rescue must copy the worktree SUMMARY into repoRoot despite the relative manifest path');
+    assert.equal(result.ok, true, 'cleanup must succeed when only the SUMMARY was dirty');
+    assert.equal(result.entries[0].status, 'merged_removed',
+      'a rescued SUMMARY must not block the entry as worktree_dirty');
+    assert.equal(result.entries[0].reason, 'ok');
+  });
+
+  test('#4758: every rescue reader sees the repoRoot-resolved worktree path', () => {
+    // Seam contract: the rescue resolves entry.worktree_path ONCE against repoRoot and
+    // hands the same absolute path to every reader — the injected fs walker and its own
+    // `git -C` calls — instead of passing the manifest value verbatim to fs reads
+    // (which then resolve against process.cwd()).
+    const seenWalker = [];
+    const seenGit = [];
+    const repoRoot = '/repo/main';
+    // Computed, not literal: on win32 path.resolve rewrites driveless-absolute
+    // and forward-slash inputs to the current drive's backslash form — exactly
+    // the value the rescue must hand its readers there.
+    const resolvedWt = path.resolve(repoRoot, 'wt/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot,
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: 'wt/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        seenGit.push(key);
+        if (key === `-C wt/agent-a1 rev-parse --abbrev-ref HEAD`) {
+          // The CALLER's branch check passes the manifest value verbatim to git;
+          // its cwd=repoRoot resolves `-C <relative>`. Unchanged by the fix.
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === `-C ${resolvedWt} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === `-C ${resolvedWt} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `-C wt/agent-a1 status --porcelain --untracked-files=all`) {
+          // The CALLER's post-rescue dirty check passes the manifest value verbatim to
+          // git (cwd=repoRoot resolves it) — unchanged by the fix, so keep it answerable.
+          return { exitCode: 0, stdout: '?? .planning/q1-SUMMARY.md', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (p) => {
+        seenWalker.push(p);
+        return p === resolvedWt ? [path.join(resolvedWt, '.planning/q1-SUMMARY.md')] : [];
+      },
+      readFileSync: (p) => (String(p).endsWith('q1-SUMMARY.md') ? 'summary content' : ''),
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: () => {},
+    });
+
+    assert.deepEqual(seenWalker, [resolvedWt],
+      'the fs walker must receive the repoRoot-resolved path, not the verbatim relative value');
+    assert.ok(
+      seenGit.includes(`-C ${resolvedWt} cat-file -e HEAD:.planning/q1-SUMMARY.md`),
+      `the rescue's own git calls must use the same resolved path; saw: ${JSON.stringify(seenGit)}`);
+    assert.equal(result.entries[0].status, 'merged_removed');
+  });
+
+  test('#245: blocks with summary_rescue_failed when copyFileSync throws during rescue', () => {
+    // Fixture: the only dirty file is .planning/q1-SUMMARY.md, but copyFileSync throws
+    // (simulating ENOSPC / permission error).  The path must NOT be added to rescuedRelPaths,
+    // so the entry must be blocked with status='blocked', reason='summary_rescue_failed',
+    // and the worktree must NOT be merged or removed.
+    const calls = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is NOT committed — cat-file -e returns exit 128 for an absent path (#2556);
+        // rescue proceeds and copyFileSync throws (ENOSPC).
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Only the SUMMARY is dirty
+          return { exitCode: 0, stdout: '?? .planning/q1-SUMMARY.md', stderr: '' };
+        }
+        // Any merge or worktree-remove call proves we failed to block — throw to surface it
+        if (key.startsWith('merge worktree-agent-a1') || key.startsWith('worktree remove')) {
+          throw new Error(`worktree was not blocked before merge/remove: ${key}`);
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: (p) => {
+        if (p === path.join(wtResolved, '.planning', 'q1-SUMMARY.md')) return 'summary content';
+        return '';
+      },
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: () => { throw new Error('ENOSPC: no space left on device'); },
+    });
+
+    assert.equal(result.ok, false, 'result.ok must be false when rescue copy fails');
+    assert.equal(result.entries[0].status, 'blocked', 'entry status must be blocked');
+    assert.equal(result.entries[0].reason, 'summary_rescue_failed', 'entry reason must be summary_rescue_failed');
+    // Verify no merge or worktree-remove call was made (the execGit throw above would have surfaced it)
+    const mergeCalls = calls.filter((c) => c.startsWith('merge worktree-agent-a1') || c.startsWith('worktree remove'));
+    assert.equal(mergeCalls.length, 0, 'no merge or worktree-remove git call must have been made');
+  });
+
+  test('#706: does NOT rescue SUMMARY when it is already committed on the branch (execute-phase contract)', () => {
+    // Regression for issue #706: when execute-phase commits SUMMARY.md on the
+    // worktree branch, the cleanup-wave helper must NOT copy it as an untracked
+    // file into the main tree.  Doing so creates a collision that causes
+    // `git merge --no-ff` to abort with "untracked working tree files would be
+    // overwritten by merge".
+    //
+    // Fixture: SUMMARY.md is committed on the branch (git cat-file -e HEAD:<path>
+    // returns exit 0).  The worktree status shows the file as committed (not dirty).
+    // The rescue step must skip this file entirely.  The merge must succeed.
+    const calls = [];
+    const rescued = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is committed on the branch — cat-file -e HEAD:<path> succeeds (exit 0)
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 0, stdout: '.planning/q1-SUMMARY.md', stderr: '' };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Worktree is clean — SUMMARY is committed, not dirty
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: (_p) => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+
+    // The committed SUMMARY must NOT have been copied into the main tree as an untracked file
+    assert.equal(rescued.length, 0,
+      'rescueSummaryArtifacts must NOT copy an already-committed SUMMARY into the main tree — ' +
+      'doing so creates an untracked file that collides with the --no-ff merge');
+
+    // Cleanup must succeed
+    assert.equal(result.ok, true, 'cleanup must succeed when SUMMARY is committed on the branch');
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.equal(result.entries[0].reason, 'ok');
+  });
+
+  test('#706: SUMMARY committed on branch + untracked non-SUMMARY dirty file still blocks', () => {
+    // Even when SUMMARY is committed (no rescue needed), a non-SUMMARY dirty file must block.
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is committed on the branch
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 0, stdout: '.planning/q1-SUMMARY.md', stderr: '' };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Another untracked file exists alongside the committed SUMMARY
+          return { exitCode: 0, stdout: '?? scratch.txt', stderr: '' };
+        }
+        throw new Error(`unexpected git call after dirty check: ${key}`);
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: () => {},
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+  });
+
+  test('#706: SUMMARY staged-but-not-committed is rescued (cat-file -e HEAD only matches committed)', () => {
+    // Codex adversarial finding: git ls-files --error-unmatch would match staged
+    // files (added to index but not committed), causing rescue to be skipped for
+    // a file the merge would NOT carry.  cat-file -e HEAD:<path> only matches
+    // committed objects, so staged-but-not-committed SUMMARY is rescued correctly.
+    //
+    // Fixture: cat-file -e HEAD:<path> returns exit 1 (not in committed tree),
+    // but git status shows 'A  .planning/q1-SUMMARY.md' (staged).  Rescue must
+    // copy it into the main tree and the cleanup must proceed.
+    const rescued = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // SUMMARY is staged but NOT committed — absent from HEAD, cat-file returns 128 (#2556)
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // File is staged ('A  .planning/q1-SUMMARY.md')
+          return { exitCode: 0, stdout: 'A  .planning/q1-SUMMARY.md', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+
+    // The staged-but-not-committed SUMMARY must be rescued into the main tree
+    assert.equal(rescued.length, 1,
+      'staged-but-not-committed SUMMARY must be rescued — cat-file -e HEAD only skips truly committed files');
+    // Cleanup succeeded: staged-file shows as 'A  ..' which is in rescuedRelPaths filter
+    assert.equal(result.ok, true, 'cleanup must succeed when only staged SUMMARY is present');
+    assert.equal(result.entries[0].status, 'merged_removed');
+  });
+
+  test('#2556: cat-file exit 128 RESCUES the SUMMARY (fail-open — 128 is the normal absent code)', () => {
+    // #2556 reversal of the prior #706 "fail-closed on 128" policy. That policy
+    // assumed exit 128 = fatal git error. It does not — `git cat-file -e` returns
+    // 128 for an ABSENT path, which is the NORMAL uncommitted-SUMMARY state; a
+    // genuine fatal (corrupt store, unborn HEAD) is rare. Fail-closed on 128
+    // therefore skipped rescue in the common case and the untracked SUMMARY was
+    // silently discarded by `worktree remove --force`. Data safety wins: rescue on
+    // 128. The rare genuinely-fatal-128-with-actually-committed-file case may now
+    // produce a recoverable merge collision (caught by the merge) — far less
+    // severe than the silent, unrecoverable data loss fail-closed caused.
+    //
+    // Fixture: cat-file returns exitCode:128.  Rescue MUST fire (copy into main tree).
+    const rescued = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // cat-file returns 128 — the SUMMARY is absent from HEAD (#2556: the normal
+        // uncommitted state, NOT a fatal error)
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'", timedOut: false };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Worktree appears clean (SUMMARY is committed on branch)
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+
+    // #2556: on exit 128 rescue MUST fire — 128 is the normal absent-path code and
+    // skipping loses the uncommitted SUMMARY (silent data loss via worktree remove --force).
+    assert.equal(rescued.length, 1,
+      'cat-file exit 128 must RESCUE the SUMMARY — 128 is the normal absent-path code, not a fatal error (#2556)');
+    // The rest of cleanup proceeds normally (merge/remove/delete succeed in this fixture)
+    assert.equal(result.ok, true, 'cleanup can still succeed after rescuing on cat-file exit 128');
+  });
+
+  test('#2556: cat-file timeout RESCUES the SUMMARY (fail-open — data safety over uncertain status)', () => {
+    // #2556 reversal: on cat-file timeout we cannot determine committed status, but
+    // data safety wins — rescue anyway. Skipping rescue on timeout (the prior
+    // fail-closed policy) risks losing an uncommitted SUMMARY to `worktree remove
+    // --force`. If the file turns out to be committed, the rescue copy is a no-op
+    // when the main tree already holds identical content (the destination check),
+    // and any real collision is caught by the merge as a recoverable merge_failed.
+    //
+    // Fixture: cat-file returns timedOut:true.  Rescue MUST fire (copy into main tree).
+    const rescued = [];
+    const wtResolved = path.resolve('/repo/main', '/repo/.claude/worktrees/agent-a1');
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        // cat-file times out — cannot determine if SUMMARY is committed
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return {
+            exitCode: null,
+            stdout: '',
+            stderr: '',
+            timedOut: true,
+            signal: 'SIGTERM',
+            error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+          };
+        }
+        if (key === `-C ${wtResolved} status --porcelain --untracked-files=all`) {
+          // Worktree appears clean (SUMMARY is committed on branch)
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'branch -D worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        return { exitCode: 0, stdout: '', stderr: '' };
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+
+    // #2556: on timeout rescue MUST fire — skipping risks silent data loss; a copy
+    // of an actually-committed file is a no-op (destination check) or a recoverable
+    // merge collision, neither of which is as bad as losing the uncommitted SUMMARY.
+    assert.equal(rescued.length, 1,
+      'cat-file timeout must RESCUE the SUMMARY — data safety wins over uncertain status (#2556)');
+    // The rest of cleanup proceeds normally (merge/remove/delete succeed in this fixture)
+    assert.equal(result.ok, true, 'cleanup can still succeed after rescuing on cat-file timeout');
+  });
+
+  // ─── B7 (#3050/#3057): rescue-anyway on an uncertain cat-file, via the
+  // Phase 2 fault-injection adapter (makeFaultyGit) rather than a hand-rolled
+  // key-matching stub. The two tests above already prove the verdict with
+  // hand-written mocks; these prove it again through the in-process fault
+  // seam the epic standardized on, for both fault shapes the design calls
+  // "uncertain": a fatal exit (128) and a timeout.
+  //
+  // #3057 finding: `git cat-file -e` returns exit 128 BOTH for the normal
+  // "absent from HEAD" case (#2556's own comment above, line ~2833) and for a
+  // genuine fatal git error — there is no third exit code that means
+  // "confirmed absent, no ambiguity" as opposed to "uncertain". The
+  // production code's own non-zero-exit check (`catFileResult.exitCode === 0
+  // ? skip : rescue`) therefore CANNOT distinguish "uncertain" from
+  // "certain-and-fine" — every non-zero exit, whatever its cause, is uncertain
+  // by construction, and #2556 rescues all of them uniformly. That is not a
+  // gap the tests below can paper over: it is the reason "rescue whenever not
+  // confirmed committed" is the whole rule, rather than a narrower
+  // uncertain-only carve-out.
+  function makeWaveCleanupPassthrough() {
+    return (args) => {
+      const key = args.join(' ');
+      if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+        return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key === 'merge-base HEAD worktree-agent-a1') {
+        return { exitCode: 0, stdout: 'abc123', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+        return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+        return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key.startsWith('merge worktree-agent-a1')) {
+        return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+        return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      if (key === 'branch -D worktree-agent-a1') {
+        return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+      }
+      return { exitCode: 0, stdout: '', stderr: '', signal: null, error: null, timedOut: false };
+    };
+  }
+
+  const waveCleanupPlanFixture = {
+    ok: true,
+    repoRoot: '/repo/main',
+    action: 'cleanup_wave',
+    discovery: 'manifest',
+    entries: [{
+      agent_id: 'a1',
+      worktree_path: '/repo/.claude/worktrees/agent-a1',
+      branch: 'worktree-agent-a1',
+      expected_base: 'abc123',
+    }],
+  };
+
+  test('#3057/B7 (makeFaultyGit): cat-file exit 128 still rescues anyway (deliberate, #2556)', () => {
+    const rescued = [];
+    const execGit = makeFaultyGit({
+      faults: [{ kind: 'exit', exitCode: 128, when: (args) => args.includes('cat-file') }],
+      passthrough: makeWaveCleanupPassthrough(),
+    });
+    const result = executeWorktreeWaveCleanupPlan(waveCleanupPlanFixture, {
+      execGit,
+      findSummaryFiles: (worktreePath) => (
+        path.resolve(waveCleanupPlanFixture.repoRoot, worktreePath)
+          === path.resolve(waveCleanupPlanFixture.repoRoot, '/repo/.claude/worktrees/agent-a1')
+          ? [path.join(
+              path.resolve(waveCleanupPlanFixture.repoRoot, '/repo/.claude/worktrees/agent-a1'),
+              '.planning', 'q1-SUMMARY.md')]
+          : []
+      ),
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+    assert.strictEqual(rescued.length, 1,
+      'an uncertain cat-file (exit 128) must still rescue — the deliberate #2556 verdict');
+    assert.strictEqual(result.ok, true);
+  });
+
+  test('#3057/B7 (makeFaultyGit): cat-file timeout still rescues anyway (deliberate, #2556)', () => {
+    const rescued = [];
+    const execGit = makeFaultyGit({
+      faults: [{ kind: 'timeout', when: (args) => args.includes('cat-file') }],
+      passthrough: makeWaveCleanupPassthrough(),
+    });
+    const result = executeWorktreeWaveCleanupPlan(waveCleanupPlanFixture, {
+      execGit,
+      findSummaryFiles: (worktreePath) => (
+        path.resolve(waveCleanupPlanFixture.repoRoot, worktreePath)
+          === path.resolve(waveCleanupPlanFixture.repoRoot, '/repo/.claude/worktrees/agent-a1')
+          ? [path.join(
+              path.resolve(waveCleanupPlanFixture.repoRoot, '/repo/.claude/worktrees/agent-a1'),
+              '.planning', 'q1-SUMMARY.md')]
+          : []
+      ),
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: (src, dest) => { rescued.push({ src, dest }); },
+    });
+    assert.strictEqual(rescued.length, 1,
+      'an uncertain cat-file (timeout) must still rescue — the deliberate #2556 verdict, same as exit 128');
+    assert.strictEqual(result.ok, true);
+  });
+
+  test('blocks dirty worktrees before merge/remove/delete', () => {
+    const calls = [];
+    const plan = {
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'a1',
+        worktree_path: '/repo/.claude/worktrees/agent-a1',
+        branch: 'worktree-agent-a1',
+        expected_base: 'abc123',
+      }],
+    };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        calls.push(args.join(' '));
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '?? scratch.txt', stderr: '' };
+        }
+        throw new Error(`unexpected git call after dirty check: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+    assert.equal(calls.some((call) => call.startsWith('merge worktree-agent-a1')), false);
+    assert.equal(calls.some((call) => call === 'worktree remove /repo/.claude/worktrees/agent-a1 --force'), false);
+    assert.equal(calls.some((call) => call === 'branch -D worktree-agent-a1'), false);
+  });
+
+  // ─── #2852: wave-abort isolation ───────────────────────────────────────────
+  //
+  // Every per-entry block reason (branch_mismatch, base_mismatch,
+  // branch_contains_deletions, deletion_check_failed, summary_rescue_failed,
+  // worktree_dirty ×2, merge_failed, worktree_remove_failed) previously aborted
+  // the REST of the wave via `pending.push(...entries.slice(i + 1)); break;`.
+  // Fixed by isolating each block to its own entry (`continue`), except an
+  // unrecoverable `merge_failed` (repoRoot itself left mid-merge), which
+  // legitimately halts the remaining wave.
+  //
+  // Scope note: `branch_contains_deletions` itself STAYS unconditional — any
+  // deletion in an entry's branch blocks that entry, exactly as before this fix.
+  // Issue #2852's own triage explicitly scoped an opt-in for intentional
+  // deletions OUT of this fix as a separate, deferred product decision (see the
+  // tracked follow-up issue cited in the fix commit); only the wave-abort
+  // behavior is in scope here.
+
+  function makeEntry(id, branch, base = 'abc123') {
+    return {
+      agent_id: id,
+      worktree_path: `/repo/.claude/worktrees/agent-${id}`,
+      branch,
+      expected_base: base,
+    };
+  }
+
+  // Default git responses for an entry that should merge cleanly: no branch/base
+  // mismatch, no deletions, no dirty files. Returns undefined for an unmatched key
+  // so callers can layer entry-specific overrides in front of this fallback.
+  function cleanEntryResponse(key, branch, worktreePath) {
+    // #4758: answer both `-C` spellings — the caller passes the manifest value
+    // verbatim (git resolves it against its cwd=repoRoot) while tests that
+    // normalize keys hand the path.resolve(repoRoot, …) form; the two are
+    // identical on POSIX and drive-rewritten on win32.  '/repo/main' is this
+    // describe's shared fixture repoRoot.
+    const wtForms = [worktreePath, path.resolve('/repo/main', worktreePath)];
+    for (const wt of wtForms) {
+      if (key === `-C ${wt} rev-parse --abbrev-ref HEAD`) {
+        return { exitCode: 0, stdout: branch, stderr: '' };
+      }
+      if (key === `-C ${wt} status --porcelain --untracked-files=all`) {
+        return { exitCode: 0, stdout: '', stderr: '' };
+      }
+    }
+    if (key === `merge-base HEAD ${branch}`) {
+      return { exitCode: 0, stdout: 'abc123', stderr: '' };
+    }
+    if (key === `diff --diff-filter=D --name-only HEAD...${branch}`) {
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    if (key === `merge ${branch} --no-ff --no-edit -m chore: merge executor worktree (${branch})`) {
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    if (key === `worktree remove ${worktreePath} --force`) {
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    if (key === `branch -D ${branch}`) {
+      return { exitCode: 0, stdout: '', stderr: '' };
+    }
+    return undefined;
+  }
+
+  test('#2852: a branch_mismatch block on entry 1 does not abort entries 2 and 3', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const e3 = makeEntry('a3', 'worktree-agent-a3');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2, e3] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          // HEAD is on the wrong branch — branch_mismatch
+          return { exitCode: 0, stdout: 'some-other-branch', stderr: '' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        const clean3 = cleanEntryResponse(key, e3.branch, e3.worktree_path);
+        if (clean3) return clean3;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries.length, 3, 'all three entries must be evaluated');
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'branch_mismatch');
+    assert.equal(result.entries[1].status, 'merged_removed');
+    assert.equal(result.entries[2].status, 'merged_removed');
+    assert.deepEqual(result.pending, [], 'pending must be empty — every entry was evaluated');
+  });
+
+  test('#2852: a base_mismatch block on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'unrelatedbase', stderr: '' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'base_mismatch');
+    assert.equal(result.entries[1].status, 'merged_removed');
+    assert.deepEqual(result.pending, []);
+  });
+
+  test('#2852: a branch_contains_deletions block on entry 1 does not abort entry 2', () => {
+    // Scope note: the deletions guard itself stays UNCONDITIONAL (any deletion in
+    // entry 1's branch blocks entry 1) — issue #2852's own triage scoped an opt-in
+    // for intentional deletions OUT of this fix as a separate product decision
+    // (tracked in #3003). This fix only isolates the block to entry 1 instead of
+    // aborting the rest of the wave, same as every other block reason.
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'src/lib/payments/__tests__/payment-allocation.test.ts', stderr: '' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'branch_contains_deletions');
+    assert.equal(result.entries[1].status, 'merged_removed', 'entry 2 must still merge — isolation, not wave-abort');
+    assert.deepEqual(result.pending, []);
+  });
+
+  test('#2852: a worktree_remove_failed on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      // #4415: this row's premise is a worktree that IS present and whose removal
+      // genuinely fails (locked). Cleanup now distinguishes that from a worktree the
+      // harness already deleted — which prunes instead of blocking — so the premise
+      // has to be stated rather than inferred from a path that never existed on disk.
+      // Stated on both axes the implementation reads: git lists the entry (identity)
+      // and the directory stats successfully (present, not removed).
+      statSync: () => ({ isDirectory: () => true }),
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === 'worktree list --porcelain') {
+          return {
+            exitCode: 0,
+            stdout: 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+              + `\nworktree ${e1.worktree_path}\nHEAD deadbeef\nbranch refs/heads/${e1.branch}\n`,
+            stderr: '',
+          };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key.startsWith('merge worktree-agent-a1')) {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === 'worktree unlock /repo/.claude/worktrees/agent-a1') {
+          return { exitCode: 1, stdout: '', stderr: 'not locked' };
+        }
+        if (key === 'worktree remove /repo/.claude/worktrees/agent-a1 --force') {
+          return { exitCode: 1, stdout: '', stderr: 'still locked' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'worktree_remove_failed');
+    assert.equal(result.entries[1].status, 'merged_removed');
+    assert.deepEqual(result.pending, []);
+  });
+
+  test('#2852: a deletion_check_failed on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          // simulate a timed-out / errored git diff for entry 1
+          return { exitCode: 1, stdout: '', stderr: 'fatal: unable to read tree', timedOut: true };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'deletion_check_failed');
+    assert.equal(result.entries[1].status, 'merged_removed');
+    assert.deepEqual(result.pending, []);
+  });
+
+  test('#2852: worktree_dirty (status query failed) on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      // #4415: this row's premise is a worktree that IS present whose `status`
+      // query failed. Cleanup now distinguishes that from a worktree removed
+      // mid-entry — which merges rather than blocking — so the premise has to be
+      // stated rather than inferred from a path that never existed on disk.
+      // Stated on both axes the implementation reads: git lists the entry (identity)
+      // and the directory stats successfully (present, not removed).
+      statSync: () => ({ isDirectory: () => true }),
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === 'worktree list --porcelain') {
+          return {
+            exitCode: 0,
+            stdout: 'worktree /repo/main\nHEAD deadbeef\nbranch refs/heads/main\n'
+              + `\nworktree ${e1.worktree_path}\nHEAD deadbeef\nbranch refs/heads/${e1.branch}\n`,
+            stderr: '',
+          };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 1, stdout: '', stderr: 'fatal: index corrupt' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+    assert.equal(result.entries[1].status, 'merged_removed');
+  });
+
+  test('#2852: worktree_dirty (real dirty lines) on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        if (key === '-C /repo/.claude/worktrees/agent-a1 rev-parse --abbrev-ref HEAD') {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === '-C /repo/.claude/worktrees/agent-a1 status --porcelain --untracked-files=all') {
+          return { exitCode: 0, stdout: '?? scratch.txt', stderr: '' };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+    assert.equal(result.entries[1].status, 'merged_removed');
+  });
+
+  test('#2852: a summary_rescue_failed on entry 1 does not abort entry 2', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2] };
+    const wtResolved = path.resolve(plan.repoRoot, e1.worktree_path);
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = gitKeyFor(plan.repoRoot, args);
+        if (key === `-C ${wtResolved} rev-parse --abbrev-ref HEAD`) {
+          return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '' };
+        }
+        if (key === 'merge-base HEAD worktree-agent-a1') {
+          return { exitCode: 0, stdout: 'abc123', stderr: '' };
+        }
+        if (key === 'diff --diff-filter=D --name-only HEAD...worktree-agent-a1') {
+          return { exitCode: 0, stdout: '', stderr: '' };
+        }
+        if (key === `-C ${wtResolved} cat-file -e HEAD:.planning/q1-SUMMARY.md`) {
+          return { exitCode: 128, stdout: '', stderr: "fatal: path '.planning/q1-SUMMARY.md' does not exist in 'HEAD'" };
+        }
+        const clean2 = cleanEntryResponse(key, e2.branch, e2.worktree_path);
+        if (clean2) return clean2;
+        throw new Error(`unexpected git call: ${key}`);
+      },
+      findSummaryFiles: (worktreePath) => {
+        if (path.resolve(plan.repoRoot, worktreePath) === wtResolved) {
+          return [path.join(wtResolved, '.planning', 'q1-SUMMARY.md')];
+        }
+        return [];
+      },
+      readFileSync: () => 'summary content',
+      existsSync: () => false,
+      mkdirSync: () => {},
+      copyFileSync: () => { throw new Error('ENOSPC: no space left on device'); },
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'summary_rescue_failed');
+    assert.equal(result.entries[1].status, 'merged_removed');
+  });
+
+  test('#2852: an all-clean 3-entry wave still merges every entry (unchanged)', () => {
+    const e1 = makeEntry('a1', 'worktree-agent-a1');
+    const e2 = makeEntry('a2', 'worktree-agent-a2');
+    const e3 = makeEntry('a3', 'worktree-agent-a3');
+    const plan = { ok: true, repoRoot: '/repo/main', action: 'cleanup_wave', discovery: 'manifest', entries: [e1, e2, e3] };
+    const result = executeWorktreeWaveCleanupPlan(plan, {
+      execGit: (args) => {
+        const key = args.join(' ');
+        for (const e of [e1, e2, e3]) {
+          const clean = cleanEntryResponse(key, e.branch, e.worktree_path);
+          if (clean) return clean;
+        }
+        throw new Error(`unexpected git call: ${key}`);
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.entries.length, 3);
+    assert.ok(result.entries.every((e) => e.status === 'merged_removed'));
+    assert.deepEqual(result.pending, []);
+  });
+
+});
+
+// ─── MOVE 2: resolveWorktreeRoot and pruneOrphanedWorktrees (#1268 T0) ────────
+
+describe('worktree-safety: resolveWorktreeRoot and pruneOrphanedWorktrees relocation identity', () => {
+  const worktreeSafety = require(WORKTREE_SAFETY_PATH);
+  const core = require(CORE_PATH);
+
+  test('core.resolveWorktreeRoot === worktreeSafety.resolveWorktreeRoot (by reference)', () => {
+    assert.strictEqual(
+      core.resolveWorktreeRoot,
+      worktreeSafety.resolveWorktreeRoot,
+      'core.resolveWorktreeRoot must be the same function reference as worktreeSafety.resolveWorktreeRoot'
+    );
+  });
+
+  test('core.pruneOrphanedWorktrees === worktreeSafety.pruneOrphanedWorktrees (by reference)', () => {
+    assert.strictEqual(
+      core.pruneOrphanedWorktrees,
+      worktreeSafety.pruneOrphanedWorktrees,
+      'core.pruneOrphanedWorktrees must be the same function reference as worktreeSafety.pruneOrphanedWorktrees'
+    );
+  });
+});
+
+describe('worktree-safety: resolveWorktreeRoot behaviour', () => {
+  const worktreeSafety = require(WORKTREE_SAFETY_PATH);
+
+  // NOTE: createTempGitProject() always seeds .planning/ (createFixture's
+  // planning:true default), which makes resolveWorktreeContext short-circuit
+  // on the has_local_planning branch (src/worktree-safety.cts:203-216) BEFORE
+  // ever calling git — so a fixture built with it can never reach the
+  // git-based main_worktree path this test's name is about. Use a git fixture
+  // WITHOUT .planning/ (and without the projectDoc PROJECT.md, which — since
+  // projectDoc defaults to `git` in createFixture — would otherwise silently
+  // recreate the .planning/ directory it's writing into) so resolveWorktreeRoot
+  // actually reaches resolveWorktreeLinkage's real git rev-parse comparison.
+  test('resolveWorktreeRoot(git repo with no local .planning) reaches the git-based main_worktree path, returns {root: dir, reason: main_worktree}', (t) => {
+    const dir = createFixture({ prefix: 'gsd-wt-root-', planning: false, git: true, projectDoc: false });
+    t.after(() => cleanup(dir));
+    const result = worktreeSafety.resolveWorktreeRoot(dir);
+    assert.deepStrictEqual(result, { root: dir, reason: 'main_worktree' });
+  });
+
+  test('resolveWorktreeRoot propagates git_timed_out via the injected execGit seam (#3050)', () => {
+    const result = worktreeSafety.resolveWorktreeRoot('/repo/wt', {
+      existsSync: () => false,
+      execGit: makeTimeoutStub(),
+    });
+    assert.strictEqual(result.reason, 'git_timed_out');
+    assert.strictEqual(result.root, '/repo/wt');
+  });
+});
+
+describe('worktree-safety: pruneOrphanedWorktrees behaviour', () => {
+  const worktreeSafety = require(WORKTREE_SAFETY_PATH);
+
+  test('pruneOrphanedWorktrees(temp dir) returns [] and does not throw', (t) => {
+    const dir = createTempDir('gsd-prune-');
+    t.after(() => cleanup(dir));
+    const result = worktreeSafety.pruneOrphanedWorktrees(dir);
+    assert.deepStrictEqual(result, []);
+  });
+});
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-3707-locked-worktree-cleanup.test.cjs — consolidation epic #1969 (B3 #1972)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-3707-locked-worktree-cleanup (consolidation epic #1969 B3 #1972)", () => {
+// source-text-is-the-product (see #3707)
+// Real-filesystem tests for the two failure modes pinned in #3707:
+//   1. executeWorktreeWaveCleanupPlan must unlock-then-retry when a worktree is locked.
+//   2. reapOrphanWorktrees must reap dead-pid+merged entries and skip live / unmerged / fresh-mtime entries.
+//   3. quick.md and execute-phase.md must wire gsd-sdk query worktree.reap-orphans at startup.
+
+'use strict';
+
+const { describe, test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
+const { cleanup } = require('./helpers.cjs');
+const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+
+const {
+  executeWorktreeWaveCleanupPlan,
+  reapOrphanWorktrees,
+} = require('../gsd-core/bin/lib/worktree-safety.cjs');
+
+// ─── Fixed timestamps for deterministic stale-lock boundary ──────────────────
+//
+// ADR-456 clock-seam mandate: tests must not read the live clock to compute
+// fixture mtimes.  The SUT compares `Date.now() - lockMtime.getTime()` against
+// REAP_MTIME_GUARD_MS (5 minutes).  Because `reapOrphanWorktrees` accepts a
+// `deps.mtimeSafe` injection, we can supply fixed Date objects that sit
+// unconditionally on the "stale" or "fresh" side of the boundary regardless of
+// when the test runs, without touching the real filesystem mtime at all.
+//
+//   STALE_MTIME  → Unix epoch (1970-01-01T00:00:00Z).  At any point in time
+//                   after that epoch `Date.now() - 0` is orders of magnitude
+//                   larger than any staleness threshold.
+//
+//   FRESH_MTIME  → Far-future sentinel (year 9999 + large offset).
+//                   `Date.now() - FRESH_MTIME.getTime()` is always negative,
+//                   which is always < REAP_MTIME_GUARD_MS.
+//
+// Tests that need stale behaviour pass `{ mtimeSafe: () => STALE_MTIME }` in
+// deps.  Tests that need fresh behaviour pass `{ mtimeSafe: () => FRESH_MTIME }`.
+// No `fs.utimesSync` calls are needed and no live `Date.now()` reads appear in
+// fixture setup.
+
+/** Always older than any staleness threshold. */
+const STALE_MTIME = new Date(0); // 1970-01-01T00:00:00.000Z
+
+/** Always newer than the current time, so always treated as "fresh". */
+const FRESH_MTIME = new Date(8640000000000000); // max safe JS Date (year ~275760)
+
+// ─── PID helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Return a PID that is guaranteed to be dead.
+ * Spawns a short-lived child, captures its PID, waits for it to exit, then
+ * returns that PID.  This is cross-platform and not subject to pid_max races
+ * (unlike a hardcoded high number such as 999999).
+ */
+function deadPid() {
+  // Use the shortest possible no-op: `node -e ""` on all platforms.
+  // Bounded directly (not routed through the process-seam) because the
+  // point of this call is `result.pid` — the seam's discriminated-union
+  // result does not expose the child's pid, only outcome/exitCode/etc.
+  const nodeExe = process.execPath;
+  const result = spawnSync(nodeExe, ['-e', ''], { stdio: 'ignore', timeout: SUBPROCESS_TIMEOUT_MS });
+  if (result.pid == null || result.status === null) {
+    // Fallback: use a PID above the system max — 2^31-1 always exceeds any
+    // real OS limit (Linux max: 4194304, macOS max: 99998, Windows: variable).
+    return 2147483647;
+  }
+  return result.pid;
+}
+
+// ─── Git repo helpers ─────────────────────────────────────────────────────────
+
+function canonicalPath(p) {
+  try { return fs.realpathSync.native(path.resolve(p)); } catch { return path.resolve(p); }
+}
+
+/**
+ * Return a canonical (long-form) path for os.tmpdir().
+ * On Windows CI, os.tmpdir() often contains 8.3 short-name components
+ * (e.g. RUNNER~1 instead of runneradmin).  When 8.3 names are disabled
+ * (common in modern CI environments), those short paths are not resolvable
+ * and fs.realpathSync.native fails with ENOENT.  Pre-resolving the base
+ * ensures every path created under it uses the same long-form representation
+ * that git stores when given absolute paths.
+ */
+function resolvedTmpDir() {
+  try { return fs.realpathSync.native(os.tmpdir()); } catch { return os.tmpdir(); }
+}
+
+function git(args, cwd) {
+  return gitOrThrow(args, { cwd, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+}
+
+function initRepo(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  git(['init'], dir);
+  git(['config', 'user.email', 'test@test.com'], dir);
+  git(['config', 'user.name', 'Test'], dir);
+  git(['config', 'commit.gpgsign', 'false'], dir);
+  fs.writeFileSync(path.join(dir, 'README.md'), '# Test\n');
+  git(['add', '-A'], dir);
+  git(['commit', '-m', 'initial commit'], dir);
+  try { git(['branch', '-m', 'master', 'main'], dir); } catch { /* already main */ }
+}
+
+function addWorktree(repoDir, wtDir, branchName) {
+  git(['worktree', 'add', wtDir, '-b', branchName], repoDir);
+}
+
+function commitInWorktree(wtDir, filename) {
+  const fname = filename || 'work.txt';
+  fs.writeFileSync(path.join(wtDir, fname), 'content\n');
+  git(['add', '-A'], wtDir);
+  git(['commit', '-m', `work in ${path.basename(wtDir)}`], wtDir);
+}
+
+function mergeIntoMain(repoDir, branchName) {
+  git(['merge', branchName, '--no-ff', '-m', `merge ${branchName}`], repoDir);
+}
+
+function worktreeMeta(repoDir, wtDir) {
+  // Return the .git/worktrees/<name>/ directory for a given linked worktree
+  const worktrees = git(['worktree', 'list', '--porcelain'], repoDir);
+  const canonical = canonicalPath(wtDir);
+  // Normalize CRLF → LF before splitting (git on Windows may emit CRLF).
+  const normalized = worktrees.replace(/\r\n/g, '\n');
+  const blocks = normalized.split('\n\n').filter(Boolean);
+  for (const block of blocks) {
+    const lines = block.split('\n');
+    const wtLine = lines.find((l) => l.startsWith('worktree '));
+    if (!wtLine) continue;
+    const wtPath = wtLine.slice('worktree '.length).trim();
+    if (canonicalPath(wtPath) !== canonical) continue;
+    const gitCommonDir = git(['rev-parse', '--git-common-dir'], repoDir).trim();
+    const worktreesDir = path.join(path.resolve(repoDir, gitCommonDir), 'worktrees');
+    if (!fs.existsSync(worktreesDir)) continue;
+    for (const entry of fs.readdirSync(worktreesDir)) {
+      const gitdirFile = path.join(worktreesDir, entry, 'gitdir');
+      if (!fs.existsSync(gitdirFile)) continue;
+      const gitdirContent = fs.readFileSync(gitdirFile, 'utf8').trim();
+      const resolvedWtRoot = path.resolve(worktreesDir, entry, gitdirContent).replace(/[/\\]\.git$/, '');
+      if (canonicalPath(resolvedWtRoot) === canonical) {
+        return path.join(worktreesDir, entry);
+      }
+    }
+  }
+  throw new Error(`Cannot find .git/worktrees/<name> for worktree at ${wtDir}`);
+}
+
+function listedWorktreePaths(repoDir) {
+  const out = git(['worktree', 'list', '--porcelain'], repoDir);
+  return new Set(
+    out.split('\n').filter((l) => l.startsWith('worktree ')).map((l) => canonicalPath(l.slice('worktree '.length).trim()))
+  );
+}
+
+// ─── Suite 1: executeWorktreeWaveCleanupPlan — unlock-and-retry ───────────────
+
+describe('bug-3707: executeWorktreeWaveCleanupPlan unlocks and retries on locked worktree', () => {
+  let tmpBase;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(resolvedTmpDir(), 'gsd-3707-cleanup-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpBase);
+  });
+
+  // #4612 Minor (maintainer review): the #4415 rows are mock-based, so the factual
+  // claim the whole identity mechanism rests on — that git KEEPS the path -> branch
+  // binding after the checkout is deleted, and says `prunable` — was asserted in
+  // comments and measured out of band, but never proved executably by this suite.
+  // This proves it against the real git binary, and pins the end-to-end behavior the
+  // mocked rows model.
+  test('real git keeps the path -> branch binding after rm -rf, and says prunable (#4415)', () => {
+    const repoDir = path.join(tmpBase, 'repo');
+    const wtDir = path.join(tmpBase, 'wt-gone');
+    const branchName = 'worktree-agent-gone';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir);
+
+    // git reports porcelain paths with FORWARD slashes on every platform, while
+    // path.join gives backslashes on win32 — compare on a normalised form, or this
+    // asserts nothing but the separator style. (Caught by the Windows conformance
+    // shard on the first push of these rows.)
+    const asGitPath = (p) => p.replace(/\\/g, '/');
+    const before = git(['worktree', 'list', '--porcelain'], repoDir);
+    assert.ok(
+      asGitPath(before).includes(`worktree ${asGitPath(wtDir)}`),
+      'the worktree is registered before removal',
+    );
+
+    // The harness's own behaviour: the directory is deleted, the admin entry is not.
+    // `cleanup` rather than a raw rmSync — it carries the Windows-EBUSY retry budget,
+    // which matters here because the path being deleted is a live git worktree.
+    cleanup(wtDir);
+
+    const after = git(['worktree', 'list', '--porcelain'], repoDir);
+    const block = asGitPath(after).split('\n\n').find((b) => b.includes(`worktree ${asGitPath(wtDir)}`));
+    assert.ok(block, 'git must still list the removed worktree — this is what identity is sourced from');
+    assert.match(block, new RegExp(`^branch refs/heads/${branchName}$`, 'm'),
+      'the path -> branch binding must survive rm -rf; the fix depends on it');
+    assert.match(block, /^prunable /m,
+      'and git must mark the entry prunable, which is how "removed" is distinguished');
+  });
+
+  // The other half of the same claim, and the reason `prunable` alone is not the
+  // removal test: an UNREADABLE parent produces the same `prunable` line for a
+  // checkout that is still present. Skipped as root, where the mode bits do not bite.
+  test('real git also reports prunable for an UNREADABLE worktree, so prunable is not absence (#4415)', (t) => {
+    // The premise is "git cannot traverse the parent". Two environments cannot
+    // establish it, and in both the test would assert `prunable` against a perfectly
+    // readable worktree and fail for a reason unrelated to the behaviour under test:
+    //   - root, which bypasses the mode bits entirely
+    //   - win32, where POSIX mode bits do not govern directory traversal at all
+    if (process.platform === 'win32') {
+      t.skip('win32: POSIX mode bits do not deny traversal, so the premise cannot be set up');
+      return;
+    }
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      t.skip('runs as root: mode 000 does not deny traversal, so the premise cannot be set up');
+      return;
+    }
+    const repoDir = path.join(tmpBase, 'repo2');
+    const holder = path.join(tmpBase, 'holder');
+    const wtDir = path.join(holder, 'wt-unreadable');
+    const branchName = 'worktree-agent-unreadable';
+
+    initRepo(repoDir);
+    fs.mkdirSync(holder, { recursive: true });
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir);
+
+    fs.chmodSync(holder, 0o000);
+    try {
+      const toGitPath = (p) => p.replace(/\\/g, '/');
+      const out = git(['worktree', 'list', '--porcelain'], repoDir);
+      const block = toGitPath(out).split('\n\n').find((b) => b.includes(`worktree ${toGitPath(wtDir)}`));
+      assert.ok(block, 'the entry is still registered');
+      assert.match(block, /^prunable /m,
+        'git cannot traverse the parent, so it reports the entry prunable even though the '
+          + 'checkout is STILL THERE — which is why removal is confirmed by errno, not by prunable');
+    } finally {
+      fs.chmodSync(holder, 0o755);
+    }
+  });
+
+  test('removes a locked worktree after unlock-retry (real-fs)', () => {
+    const repoDir = path.join(tmpBase, 'repo');
+    const wtDir = path.join(tmpBase, 'wt-locked');
+    const branchName = 'worktree-agent-test1';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir);
+    mergeIntoMain(repoDir, branchName);
+
+    // Simulate Claude Code's lock: write a .git/worktrees/<name>/locked file
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, 'Locked by claude-code agent-test1');
+
+    assert.ok(fs.existsSync(lockedFile), 'lock file should exist before test');
+
+    const baseCommit = git(['merge-base', 'HEAD', branchName], repoDir).trim();
+
+    const plan = {
+      ok: true,
+      repoRoot: repoDir,
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'test1',
+        worktree_path: wtDir,
+        branch: branchName,
+        expected_base: baseCommit,
+      }],
+    };
+
+    const result = executeWorktreeWaveCleanupPlan(plan);
+
+    assert.equal(result.ok, true, `cleanup should succeed, got: ${JSON.stringify(result)}`);
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.ok(!fs.existsSync(wtDir), 'worktree directory should be gone after cleanup');
+    assert.ok(!listedWorktreePaths(repoDir).has(canonicalPath(wtDir)), 'git worktree list should not include removed worktree');
+  });
+
+  test('cleanup succeeds without a lock file present (no regression)', () => {
+    const repoDir = path.join(tmpBase, 'repo2');
+    const wtDir = path.join(tmpBase, 'wt-unlocked');
+    const branchName = 'worktree-agent-test2';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'unlocked.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const baseCommit = git(['merge-base', 'HEAD', branchName], repoDir).trim();
+
+    const plan = {
+      ok: true,
+      repoRoot: repoDir,
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [{
+        agent_id: 'test2',
+        worktree_path: wtDir,
+        branch: branchName,
+        expected_base: baseCommit,
+      }],
+    };
+
+    const result = executeWorktreeWaveCleanupPlan(plan);
+
+    assert.equal(result.ok, true, `unlocked cleanup should succeed: ${JSON.stringify(result)}`);
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.ok(!fs.existsSync(wtDir), 'worktree directory should be gone');
+  });
+});
+
+// ─── Suite 2: reapOrphanWorktrees ─────────────────────────────────────────────
+
+describe('bug-3707: reapOrphanWorktrees', () => {
+  let tmpBase;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(resolvedTmpDir(), 'gsd-3707-reap-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpBase);
+  });
+
+  // ── Dead PID + merged branch → reap ────────────────────────────────────────
+  test('reaps a worktree whose pid is dead and branch is merged into main', () => {
+    const repoDir = path.join(tmpBase, 'repo');
+    const wtDir = path.join(tmpBase, 'wt-dead-merged');
+    const branchName = 'worktree-agent-dead-merged';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir);
+    mergeIntoMain(repoDir, branchName);
+
+    // Write a lock file with a definitely-dead PID.  Use the deadPid() helper
+    // which spawns and reaps a real child process — avoids pid_max flakiness
+    // on Linux systems where 999999 could be a live PID.
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject a fixed stale mtime (STALE_MTIME = Unix epoch) so the staleness
+    // check is deterministic and does not depend on the real clock or utimesSync.
+    // STALE_MTIME is always older than REAP_MTIME_GUARD_MS (5 min) regardless
+    // of when this test runs.  No fs.utimesSync call is needed.
+
+    // Pre-compute canonical path BEFORE reaping — the directory will be gone
+    // afterward, so fs.realpathSync.native will fail and canonicalPath falls
+    // back to path.resolve (non-symlink-resolved).  On macOS CI, git internally
+    // resolves /var/folders → /private/var/folders when writing the gitdir file,
+    // so r.path uses the real path while wtDir uses the symlink form.  Computing
+    // canonical before removal ensures we compare the resolved forms.
+    const wtDirCanonical = canonicalPath(wtDir);
+
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => STALE_MTIME });
+
+    assert.ok(Array.isArray(result), 'reapOrphanWorktrees should return an array');
+    const reaped = result.find((r) => canonicalPath(r.path) === wtDirCanonical);
+    assert.ok(reaped, `worktree ${wtDir} should appear in reaped list`);
+    assert.equal(reaped.status, 'reaped');
+    assert.ok(!fs.existsSync(wtDir), 'worktree directory should be removed');
+    assert.ok(!listedWorktreePaths(repoDir).has(wtDirCanonical), 'git worktree list should not show reaped worktree');
+  });
+
+  // ── Live PID → skip ────────────────────────────────────────────────────────
+  test('skips a worktree whose pid is alive', () => {
+    const repoDir = path.join(tmpBase, 'repo2');
+    const wtDir = path.join(tmpBase, 'wt-live-pid');
+    const branchName = 'worktree-agent-live-pid';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir);
+    mergeIntoMain(repoDir, branchName);
+
+    // Write current process PID as the lock owner
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(process.pid));
+
+    // Inject STALE_MTIME so the staleness guard passes deterministically,
+    // ensuring the live-PID check is the only reason the entry is skipped.
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => STALE_MTIME });
+
+    // #3057: assert the SPECIFIC verdict unconditionally. The previous form
+    // guarded on `if (skipped)`, so it passed vacuously whenever the entry was
+    // absent from the results entirely — the exact failure this test exists to
+    // catch.
+    const skipped = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(skipped, 'live-pid worktree must appear in the results');
+    assert.equal(skipped.status, 'skipped', 'live-pid worktree must not be reaped');
+    assert.equal(skipped.reason, 'pid_alive', 'reason must be pid_alive');
+    assert.ok(fs.existsSync(wtDir), 'worktree directory must still exist for live-pid worktree');
+  });
+
+  // ── Dead PID + unmerged branch → skip (data loss guard) ────────────────────
+  test('skips a worktree whose branch has unmerged commits even with dead pid', () => {
+    const repoDir = path.join(tmpBase, 'repo3');
+    const wtDir = path.join(tmpBase, 'wt-unmerged');
+    const branchName = 'worktree-agent-unmerged';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'unmerged.txt');
+    // NOTE: intentionally NOT merging the branch into main
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject STALE_MTIME so the staleness guard passes deterministically,
+    // ensuring the unmerged-branch check is the only reason the entry is skipped.
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => STALE_MTIME });
+
+    // #3057: unconditional verdict assertion — the old `if (entry)` form passed
+    // vacuously when no row was produced at all.
+    const entry = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(entry, 'unmerged worktree must appear in the results');
+    assert.equal(entry.status, 'skipped', 'unmerged worktree must not be reaped (data loss guard)');
+    assert.equal(entry.reason, 'branch_not_merged', 'reason must be branch_not_merged');
+    assert.ok(fs.existsSync(wtDir), 'unmerged worktree directory must still exist');
+  });
+
+  // ── Dead PID + merged + fresh mtime → skip (race guard) ───────────────────
+  test('skips a locked worktree with fresh mtime even when pid is dead and branch is merged', () => {
+    const repoDir = path.join(tmpBase, 'repo4');
+    const wtDir = path.join(tmpBase, 'wt-fresh-lock');
+    const branchName = 'worktree-agent-fresh-lock';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'fresh.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject FRESH_MTIME (far future) so the staleness boundary is crossed
+    // deterministically: Date.now() - FRESH_MTIME.getTime() is always negative,
+    // which is always less than REAP_MTIME_GUARD_MS.  No utimesSync needed.
+    // Previously, this test relied on the file being just-created (real clock
+    // within 5 minutes) which is fragile on heavily-loaded CI hosts.
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => FRESH_MTIME });
+
+    // #3057: unconditional verdict assertion — the old `if (entry)` form passed
+    // vacuously when no row was produced at all.
+    const entry = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(entry, 'fresh-mtime worktree must appear in the results');
+    assert.equal(entry.status, 'skipped', 'fresh-mtime worktree must not be reaped (race guard)');
+    assert.equal(entry.reason, 'lock_too_fresh', 'reason must be lock_too_fresh');
+    assert.ok(fs.existsSync(wtDir), 'fresh-lock worktree directory must still exist');
+  });
+
+  // ── Double invocation → idempotent ─────────────────────────────────────────
+  test('is idempotent: second invocation is a no-op', () => {
+    const repoDir = path.join(tmpBase, 'repo5');
+    const wtDir = path.join(tmpBase, 'wt-idempotent');
+    const branchName = 'worktree-agent-idempotent';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'idempotent.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject STALE_MTIME so the staleness guard is deterministically satisfied.
+    const staleDeps = { mtimeSafe: () => STALE_MTIME };
+
+    const result1 = reapOrphanWorktrees(repoDir, staleDeps);
+    const reaped1 = result1.filter((r) => r.status === 'reaped');
+    assert.equal(reaped1.length, 1, 'first invocation should reap exactly one entry');
+
+    // Second invocation: nothing left to reap
+    const result2 = reapOrphanWorktrees(repoDir, staleDeps);
+    const reaped2 = result2.filter((r) => r.status === 'reaped');
+    assert.equal(reaped2.length, 0, 'second invocation should reap nothing (idempotent)');
+  });
+});
+
+// ─── Suite 3: Structural — startup sweep wiring ───────────────────────────────
+
+describe('bug-3707: startup orphan sweep is wired into workflow entry points', () => {
+  const QUICK_PATH = path.join(__dirname, '..', 'gsd-core', 'workflows', 'quick.md');
+  const EXECUTE_PHASE_PATH = path.join(__dirname, '..', 'gsd-core', 'workflows', 'execute-phase.md');
+
+  test('quick.md calls worktree.reap-orphans at startup when USE_WORKTREES is not false', () => {
+    const content = fs.readFileSync(QUICK_PATH, 'utf8');
+    assert.ok(
+      content.includes('worktree.reap-orphans'),
+      'quick.md must call gsd-sdk query worktree.reap-orphans at startup'
+    );
+    // Must be guarded by USE_WORKTREES check
+    assert.ok(
+      /USE_WORKTREES.*!=.*false[\s\S]{0,200}worktree\.reap-orphans/m.test(content) ||
+      /worktree\.reap-orphans[\s\S]{0,200}USE_WORKTREES.*!=.*false/m.test(content),
+      'quick.md startup sweep must be guarded by USE_WORKTREES != false'
+    );
+  });
+
+  test('execute-phase.md calls worktree.reap-orphans at startup, guarded by the isolation decision', () => {
+    // #2584 Phase 3 (#2627): the startup sweep moved into the isolation-dispatch
+    // fragment alongside the ISOLATION resolution it is guarded by (the host
+    // workflow keeps only a pointer, per the ADR-857 byte budget). The guard is
+    // now `ISOLATION != none`, which USE_WORKTREES=false forces — so the #3707
+    // protection is unchanged, just keyed one level up.
+    const ISOLATION_FRAGMENT_PATH = path.join(
+      __dirname, '..', 'gsd-core', 'workflows', 'execute-phase', 'steps', 'executor-isolation-dispatch.md',
+    );
+    const content = fs.readFileSync(EXECUTE_PHASE_PATH, 'utf8')
+      + fs.readFileSync(ISOLATION_FRAGMENT_PATH, 'utf8');
+    assert.ok(
+      content.includes('worktree.reap-orphans'),
+      'execute-phase must call gsd-sdk query worktree.reap-orphans at startup'
+    );
+    assert.ok(
+      /USE_WORKTREES.*!=.*false[\s\S]{0,200}worktree\.reap-orphans/m.test(content) ||
+      /worktree\.reap-orphans[\s\S]{0,200}USE_WORKTREES.*!=.*false/m.test(content) ||
+      /ISOLATION.*!=.*none[\s\S]{0,200}worktree\.reap-orphans/m.test(content) ||
+      /worktree\.reap-orphans[\s\S]{0,200}ISOLATION.*!=.*none/m.test(content),
+      'execute-phase startup sweep must be guarded by USE_WORKTREES != false or ISOLATION != none'
+    );
+  });
+
+  test('worktree-safety module exports reapOrphanWorktrees', () => {
+    const mod = require('../gsd-core/bin/lib/worktree-safety.cjs');
+    assert.strictEqual(typeof mod.reapOrphanWorktrees, 'function');
+  });
+
+  test('worktree-safety module exports cmdWorktreeReapOrphans', () => {
+    const mod = require('../gsd-core/bin/lib/worktree-safety.cjs');
+    assert.strictEqual(typeof mod.cmdWorktreeReapOrphans, 'function');
+  });
+});
+
+// ─── Suite 3b: nowMs clock-injection BOUNDARY tests (#1191) ──────────────────
+//
+// These tests inject both `nowMs` and `mtimeSafe` so no real clock is read.
+// The staleness guard is: nowMs - lockMtime.getTime() < reapMtimeGuardMs.
+//
+// REAP_MTIME_GUARD_MS = 5 * 60 * 1000 = 300000 ms.
+//
+// We use a fixed lockMtime of 1000 ms (epoch+1s) and compute nowMs values that
+// are exactly 1 ms inside (age = 299999 ms < 300000) vs exactly 1 ms outside
+// (age = 300000 ms, NOT < 300000) the guard boundary.
+
+const KNOWN_REAP_MTIME_GUARD_MS = 5 * 60 * 1000; // 300000 ms — mirrors SUT constant
+const FIXED_LOCK_MTIME_MS = 1000; // 1970-01-01T00:00:01.000Z
+const FIXED_LOCK_DATE = new Date(FIXED_LOCK_MTIME_MS);
+
+describe('bug-3707: reapOrphanWorktrees — nowMs clock-injection BOUNDARY tests (#1191)', () => {
+  let tmpBase;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(resolvedTmpDir(), 'gsd-3707-nowms-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpBase);
+  });
+
+  // ── Just-inside boundary: age = guard - 1 → skip (lock_too_fresh) ───────────
+  test('skips when injected nowMs places lock age just inside guard (age < guard)', () => {
+    // age = nowMs - FIXED_LOCK_MTIME_MS = (FIXED_LOCK_MTIME_MS + KNOWN_REAP_MTIME_GUARD_MS - 1) - FIXED_LOCK_MTIME_MS
+    //     = KNOWN_REAP_MTIME_GUARD_MS - 1 = 299999 ms  →  299999 < 300000 → SKIP
+    const nowMs = FIXED_LOCK_MTIME_MS + KNOWN_REAP_MTIME_GUARD_MS - 1;
+
+    const repoDir = path.join(tmpBase, 'repo-inside');
+    const wtDir = path.join(tmpBase, 'wt-inside-guard');
+    const branchName = 'worktree-boundary-inside';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'inside.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject both nowMs and mtimeSafe — no real clock is read
+    const result = reapOrphanWorktrees(repoDir, {
+      nowMs,
+      mtimeSafe: () => FIXED_LOCK_DATE,
+    });
+
+    assert.ok(Array.isArray(result), 'must return an array');
+    const entry = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(entry, 'worktree must appear in results');
+    assert.equal(entry.status, 'skipped', `status must be skipped when age=${nowMs - FIXED_LOCK_MTIME_MS}ms < guard=${KNOWN_REAP_MTIME_GUARD_MS}ms`);
+    assert.equal(entry.reason, 'lock_too_fresh', 'reason must be lock_too_fresh');
+    assert.ok(fs.existsSync(wtDir), 'worktree directory must still exist (not reaped)');
+  });
+
+  // ── Just-outside boundary: age = guard → reap (age NOT < guard) ─────────────
+  test('reaps when injected nowMs places lock age exactly at guard boundary (age === guard)', () => {
+    // age = nowMs - FIXED_LOCK_MTIME_MS = (FIXED_LOCK_MTIME_MS + KNOWN_REAP_MTIME_GUARD_MS) - FIXED_LOCK_MTIME_MS
+    //     = KNOWN_REAP_MTIME_GUARD_MS = 300000 ms  →  300000 NOT < 300000 → PROCEED TO REAP
+    const nowMs = FIXED_LOCK_MTIME_MS + KNOWN_REAP_MTIME_GUARD_MS;
+
+    const repoDir = path.join(tmpBase, 'repo-outside');
+    const wtDir = path.join(tmpBase, 'wt-outside-guard');
+    const branchName = 'worktree-boundary-outside';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'outside.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    // Use deadPid() — a truly dead process — so PID check passes and reap proceeds
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    const wtDirCanonical = canonicalPath(wtDir);
+
+    // Inject both nowMs and mtimeSafe — no real clock is read
+    const result = reapOrphanWorktrees(repoDir, {
+      nowMs,
+      mtimeSafe: () => FIXED_LOCK_DATE,
+    });
+
+    assert.ok(Array.isArray(result), 'must return an array');
+    const entry = result.find((r) => canonicalPath(r.path) === wtDirCanonical);
+    assert.ok(entry, 'worktree must appear in results');
+    assert.equal(entry.status, 'reaped', `status must be reaped when age=${nowMs - FIXED_LOCK_MTIME_MS}ms >= guard=${KNOWN_REAP_MTIME_GUARD_MS}ms`);
+    assert.ok(!fs.existsSync(wtDir), 'worktree directory must be removed after reaping');
+  });
+});
+
+// ─── Suite 4: Adversarial gap tests ──────────────────────────────────────────
+
+describe('bug-3707: reapOrphanWorktrees — adversarial edge cases', () => {
+  let tmpBase;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(resolvedTmpDir(), 'gsd-3707-adv-'));
+  });
+
+  afterEach(() => {
+    cleanup(tmpBase);
+  });
+
+  // ── Gap 1: Non-numeric lock content (real Claude Code format) → ALIVE (fail-closed) ──
+  test('does NOT reap a worktree whose lock contains non-numeric Claude Code content', () => {
+    // Claude Code writes "Locked by claude-code agent-<id>" as the lock content.
+    // This is non-numeric and MUST be treated as ALIVE (fail-closed) — we cannot
+    // confirm the owner is dead, so reaping would risk data loss.
+    const repoDir = path.join(tmpBase, 'repo');
+    const wtDir = path.join(tmpBase, 'wt-claude-lock');
+    const branchName = 'worktree-agent-claude-lock';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'claude-work.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    // Write the real Claude Code lock format (non-numeric)
+    fs.writeFileSync(lockedFile, 'Locked by claude-code agent-a1b2c3d4e5f6');
+
+    // Inject STALE_MTIME so the staleness guard passes deterministically,
+    // ensuring the non-numeric content check is the only reason the entry is skipped.
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => STALE_MTIME });
+
+    // #3057: unconditional verdict assertion — the old `if (entry)` form passed
+    // vacuously when no row was produced at all.
+    const entry = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(entry, 'Claude-Code-locked worktree must appear in the results');
+    assert.equal(entry.status, 'skipped', 'non-numeric lock entry should have status=skipped');
+    assert.equal(entry.reason, 'lock_owner_unknown', 'reason must be lock_owner_unknown');
+    assert.ok(fs.existsSync(wtDir), 'worktree with Claude Code lock must NOT be removed');
+  });
+
+  // ── Gap 2: EPERM in defaultIsPidAlive → ALIVE (fail-closed) ─────────────────
+  test('treats EPERM from isPidAlive as ALIVE (fail-closed)', () => {
+    // On Windows, signalling cross-user processes throws EPERM, not ESRCH.
+    // The reaper must treat EPERM as ALIVE to avoid false reaping.
+    const repoDir = path.join(tmpBase, 'repo2');
+    const wtDir = path.join(tmpBase, 'wt-eperm');
+    const branchName = 'worktree-agent-eperm';
+
+    initRepo(repoDir);
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'eperm-work.txt');
+    mergeIntoMain(repoDir, branchName);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject an isPidAlive that always throws EPERM — simulates Windows cross-user scenario.
+    // Also inject STALE_MTIME so the staleness guard is deterministically satisfied.
+    const epermIsPidAlive = (_pid) => {
+      const err = new Error('EPERM: operation not permitted');
+      err.code = 'EPERM';
+      throw err;
+    };
+
+    const result = reapOrphanWorktrees(repoDir, {
+      isPidAlive: epermIsPidAlive,
+      mtimeSafe: () => STALE_MTIME,
+    });
+
+    // #3057: unconditional verdict assertion. An undeterminable owner takes the
+    // same fail-closed exit as a genuinely live one, so the reason string is
+    // pid_alive in both cases — production deliberately conflates them.
+    const entry = result.find((r) => canonicalPath(r.path) === canonicalPath(wtDir));
+    assert.ok(entry, 'EPERM worktree must appear in the results');
+    assert.equal(entry.status, 'skipped', 'EPERM from isPidAlive must be treated as ALIVE — must not reap');
+    assert.equal(entry.reason, 'pid_alive', 'reason must be pid_alive');
+    assert.ok(fs.existsSync(wtDir), 'worktree must still exist when isPidAlive throws EPERM');
+  });
+
+  // ── Gap 3: Non-main/master default branch via init.defaultBranch ─────────────
+  test('uses init.defaultBranch config when default branch is not main or master', () => {
+    // Repos configured with init.defaultBranch=trunk (or dev, etc.) were
+    // previously unreachable by the main/master fallback, causing the reaper
+    // to bail out and silently skip all orphan detection.
+    const repoDir = path.join(tmpBase, 'repo3');
+    const wtDir = path.join(tmpBase, 'wt-trunk-default');
+    const branchName = 'worktree-agent-trunk-merged';
+
+    // Create a repo whose default branch is 'trunk'
+    fs.mkdirSync(repoDir, { recursive: true });
+    git(['init'], repoDir);
+    git(['config', 'user.email', 'test@test.com'], repoDir);
+    git(['config', 'user.name', 'Test'], repoDir);
+    git(['config', 'commit.gpgsign', 'false'], repoDir);
+    // Set init.defaultBranch to 'trunk' so the reaper discovers it
+    git(['config', 'init.defaultBranch', 'trunk'], repoDir);
+    fs.writeFileSync(path.join(repoDir, 'README.md'), '# Trunk Test\n');
+    git(['add', '-A'], repoDir);
+    git(['commit', '-m', 'initial commit'], repoDir);
+    // Rename to trunk (may fail if already trunk)
+    try { git(['branch', '-m', 'master', 'trunk'], repoDir); } catch { /* already trunk or main */ }
+    try { git(['branch', '-m', 'main', 'trunk'], repoDir); } catch { /* already trunk */ }
+
+    addWorktree(repoDir, wtDir, branchName);
+    commitInWorktree(wtDir, 'trunk-work.txt');
+    // Merge branch into trunk
+    git(['merge', branchName, '--no-ff', '-m', 'merge into trunk'], repoDir);
+
+    const metaDir = worktreeMeta(repoDir, wtDir);
+    const lockedFile = path.join(metaDir, 'locked');
+    fs.writeFileSync(lockedFile, String(deadPid()));
+
+    // Inject STALE_MTIME so the staleness guard is deterministically satisfied.
+    // Pre-compute canonical before reaping (symlink resolution may fail post-removal).
+    const wtDirCanonical = canonicalPath(wtDir);
+
+    const result = reapOrphanWorktrees(repoDir, { mtimeSafe: () => STALE_MTIME });
+
+    // The reaper must either reap the worktree (using trunk as the default branch)
+    // OR skip it for a safe reason — it must NOT return an empty result (which
+    // would mean it bailed out entirely, silently skipping all orphan detection).
+    assert.ok(Array.isArray(result), 'reapOrphanWorktrees must return an array');
+    assert.equal(result.length, 1, 'reaper must inspect exactly the one worktree in this trunk-default repo — not bail out entirely, and not report extras');
+    const entry = result.find((r) => canonicalPath(r.path) === wtDirCanonical);
+    assert.ok(entry, 'worktree must appear in results (reaped or skipped with reason)');
+    // The branch IS merged into trunk, and the PID is dead, so it should be reaped.
+    assert.equal(entry.status, 'reaped', 'worktree with dead pid merged into trunk must be reaped');
+    assert.equal(entry.reason, 'pid_dead_and_merged', 'reason must be pid_dead_and_merged (using trunk as the default branch)');
+  });
+});
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-3129-validate-commit-git-bypass.test.cjs — consolidation epic #1969 (B5 #1974)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-3129-validate-commit-git-bypass (consolidation epic #1969 B5 #1974)", () => {
+'use strict';
+// structural-regression-guard (see #3129)
+// Reads the gsd-validate-commit.sh hook source to verify it delegates to
+// git-cmd.js isGitSubcommand() rather than the old regex — a specific code
+// pattern that must (and must not) exist; behavioral tests of tokenize()/
+// isGitSubcommand() cannot observe which detection strategy the hook itself
+// calls.
+
+// Regression tests for bug #3129.
+//
+// gsd-validate-commit.sh used `[[ "$CMD" =~ ^git[[:space:]]+commit ]]` to
+// detect git commit invocations. This regex silently bypasses Conventional
+// Commits enforcement for three real git commit forms:
+//   1. git -C /some/path commit -m "..."   (working-directory prefix)
+//   2. GIT_AUTHOR_NAME=x git commit "..."  (env-var prefix)
+//   3. /usr/bin/git commit -m "..."        (full path)
+//
+// Fix: the hook delegates detection to hooks/lib/git-cmd.js isGitSubcommand(),
+// a token-walk classifier that correctly handles all four forms. The module
+// is the canonical single source of truth for all hooks that gate on git commits.
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+
+const ROOT = path.join(__dirname, '..');
+// Seeded fast-check convention: the shared setup helper, NOT 'fast-check'
+// directly, so numRuns/seed are configured globally before any fc.assert().
+// Required by RULESET.TESTS.property-based-testing for the parser added below.
+const fc = require('./helpers/fast-check-setup.cjs');
+const { isGitSubcommand, tokenize, extractBranchArgument, resolveCommitSubject } = require(path.join(ROOT, 'hooks', 'lib', 'git-cmd.js'));
+
+// ── tokenize ─────────────────────────────────────────────────────────────────
+
+describe('git-cmd.js tokenize', () => {
+  test('splits bare command', () => {
+    assert.deepEqual(tokenize('git commit -m "msg"'), ['git', 'commit', '-m', 'msg']);
+  });
+  test('handles single-quoted args', () => {
+    assert.deepEqual(tokenize("git commit -m 'my message'"), ['git', 'commit', '-m', 'my message']);
+  });
+  test('handles env-prefix assignment', () => {
+    assert.deepEqual(
+      tokenize('GIT_AUTHOR_NAME=Alice git commit -m "fix"'),
+      ['GIT_AUTHOR_NAME=Alice', 'git', 'commit', '-m', 'fix'],
+    );
+  });
+  test('handles -C path', () => {
+    assert.deepEqual(
+      tokenize('git -C /some/path commit -m "x"'),
+      ['git', '-C', '/some/path', 'commit', '-m', 'x'],
+    );
+  });
+});
+
+// ── isGitSubcommand: must-match cases ────────────────────────────────────────
+
+describe('git-cmd.js isGitSubcommand: should match commit', () => {
+  const cases = [
+    ['bare form',                    'git commit -m "feat: add thing"'],
+    ['single-quoted message',        "git commit -m 'fix: typo'"],
+    ['with --no-verify',             'git commit --no-verify -m "wip"'],
+    ['-C path form (bug #3129)',     'git -C /some/path commit -m "fix: x"'],
+    ['env-prefix form (bug #3129)',  'GIT_AUTHOR_NAME=Alice git commit -m "fix"'],
+    ['full-path form (bug #3129)',   '/usr/bin/git commit -m "feat: y"'],
+    ['multiple env vars',            'GIT_AUTHOR_NAME=A GIT_AUTHOR_EMAIL=b@c git commit -m "x"'],
+    ['--git-dir= flag',              'git --git-dir=.git commit -m "x"'],
+    ['--git-dir two-token',          'git --git-dir .git commit -m "x"'],
+    ['--no-pager before subcommand', 'git --no-pager commit -m "x"'],
+    ['-C + full path',               '/usr/bin/git -C /proj commit -m "x"'],
+    ['-p paginate flag',             'git -p commit -m "x"'],
+  ];
+  for (const [desc, cmd] of cases) {
+    test(desc, () => {
+      assert.ok(isGitSubcommand(cmd, 'commit'), `Expected match for: ${cmd}`);
+    });
+  }
+});
+
+// ── isGitSubcommand: must-not-match cases ────────────────────────────────────
+
+describe('git-cmd.js isGitSubcommand: should NOT match commit', () => {
+  const cases = [
+    ['git push',              'git push origin main'],
+    ['git status',            'git status'],
+    ['git add',               'git add .'],
+    ['git log',               'git log --oneline'],
+    ['not git at all',        'npm install'],
+    ['empty string',          ''],
+    ['git checkout (not commit)', 'git checkout main'],
+    ['git -C path push',      'git -C /path push'],
+  ];
+  for (const [desc, cmd] of cases) {
+    test(desc, () => {
+      assert.ok(!isGitSubcommand(cmd, 'commit'), `Expected NO match for: ${cmd}`);
+    });
+  }
+});
+
+// ── gsd-validate-commit.sh source check ──────────────────────────────────────
+
+describe('gsd-validate-commit.sh delegates to git-cmd.js', () => {
+  const hookSrc = fs.readFileSync(
+    path.join(ROOT, 'hooks', 'gsd-validate-commit.sh'), 'utf8',
+  );
+
+  test('hook no longer uses the stale ^git\\s+commit bash regex', () => {
+    assert.ok(
+      !hookSrc.includes('^git[[:space:]]+commit'),
+      'gsd-validate-commit.sh still uses the bypassed regex — fix not applied',
+    );
+  });
+
+  test('hook delegates to git-cmd.js isGitSubcommand', () => {
+    assert.ok(
+      hookSrc.includes('git-cmd.js') && hookSrc.includes('isGitSubcommand'),
+      'gsd-validate-commit.sh does not reference git-cmd.js or isGitSubcommand',
+    );
+  });
+
+  test('hooks/lib/git-cmd.js exists at the expected install path', () => {
+    assert.ok(
+      fs.existsSync(path.join(ROOT, 'hooks', 'lib', 'git-cmd.js')),
+      'hooks/lib/git-cmd.js does not exist — library file missing',
+    );
+  });
+});
+
+// ── resolveCommitSubject (#3802) ─────────────────────────────────────────────
+// A PURE STRING helper: it maps an already-selected `-m` argument to the subject
+// to validate. It deliberately does not tokenize — an earlier revision walked
+// tokens and regressed four cases that upstream allowed (`git commit -- -m WIP`,
+// `git commit --amend && echo -m WIP`, `-m "" --allow-empty-message`, and
+// unquoted `git commit -m WIP`). Reported in review of #3802.
+describe('git-cmd.js resolveCommitSubject', () => {
+  const sub = (open, body, close) => `$(cat ${open}\n${body}\n${close}\n)`;
+
+  test('resolves the heredoc body rather than the opener', () => {
+    assert.strictEqual(resolveCommitSubject(sub("<<'EOF'", 'feat(auth): add login flow', 'EOF')),
+      'feat(auth): add login flow');
+  });
+
+  test('accepts the QUOTED opener spellings, which bash does not expand', () => {
+    // Only the spellings that SUPPRESS expansion may be resolved. The two bare
+    // rows that used to live here — `<<EOF` and `<< EOF`, both asserted to
+    // resolve — are the round-4 BLOCKER and now assert the opposite, in the
+    // dedicated row below (review of #3816, round 4).
+    // no space before << is legal bash too (review of #3816, round 3)
+    assert.strictEqual(resolveCommitSubject("$(cat<<'EOF'\nfix: nospace\nEOF\n)"), 'fix: nospace');
+    // NOTE: resolvable HERE, but unreachable through gsd-validate-commit.sh —
+    // its DOUBLE-quoted `-m` capture stops at this spelling's own delimiter
+    // quote. Round 4 disproved the stronger form of this claim: the
+    // SINGLE-quoted capture delivers the spelling intact, so "unreachable"
+    // held only for one arm. It holds for both now because the hook gates the
+    // resolver on the double-quoted arm — a consequence of that gate, not a
+    // property of the capture alone. The hook-level rows in
+    // tests/hooks-opt-in.test.cjs pin both halves; all are correct together.
+    assert.strictEqual(resolveCommitSubject(sub('<<"EOF"', 'fix: dquoted', 'EOF')), 'fix: dquoted');
+    // A delimiter that is not identifier-shaped is still a valid bash word.
+    assert.strictEqual(resolveCommitSubject(sub("<<'END-MSG'", 'fix: hyphen tag', 'END-MSG')),
+      'fix: hyphen tag');
+  });
+
+  test('round 4: a RELATIVE path ending in cat is not recognised', () => {
+    // Codex review of #3816, round 4. The path class accepted `./cat` and
+    // `../evil/cat`, so any relative executable merely ENDING in `cat` was
+    // trusted to echo its stdin. With a planted one printing `WIP injected`,
+    // the resolver validated the heredoc body while git's real subject was
+    // `WIP injected` (measured base=2 -> head=0 against a real commit).
+    // Non-vacuous: each body below is conforming, so a resolver that still
+    // recognised these returns the body.
+    for (const prog of ['./cat', '../evil/cat', 'x/cat']) {
+      assert.strictEqual(resolveCommitSubject(`$(${prog} <<'EOF'\nfix: body\nEOF\n)`),
+        `$(${prog} <<'EOF'`, `${prog}: a relative path is not a known cat`);
+    }
+  });
+
+  test('a path-qualified cat is still the same form', () => {
+    assert.strictEqual(resolveCommitSubject("$(/bin/cat <<'EOF'\nfix: pathed cat\nEOF\n)"),
+      'fix: pathed cat');
+  });
+
+  test('<<- strips the leading tabs bash strips', () => {
+    // With `<<-`, bash removes leading TABS from body lines, so the subject the
+    // user sees has none. Returning the raw line blocked a conforming message.
+    // The delimiter is QUOTED here because `<<-` and quoting are independent:
+    // `<<-` controls tab stripping, the quote controls expansion. This row is
+    // about tab stripping, so it uses a spelling that is resolvable at all —
+    // a bare `<<-EOF` is refused by the round-4 expansion guard, which is that
+    // guard's row to assert, not this one's.
+    assert.strictEqual(resolveCommitSubject("$(cat <<-'EOF'\n\tfix(parser): strip heredoc tabs\n\tEOF\n)"),
+      'fix(parser): strip heredoc tabs');
+  });
+
+  test('an immediately-following terminator is an EMPTY message, not a subject', () => {
+    // `$(cat <<'EOF'` then straight to `EOF` — the message is empty, and the
+    // delimiter must not be mistaken for the subject.
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nEOF\n)"), '');
+    assert.strictEqual(resolveCommitSubject("$(cat <<-'EOF'\n\tEOF\n)"), '',
+      'the <<- form strips the tab first, so the terminator still matches');
+  });
+
+  // The security half. Recognition is anchored at BOTH ends and requires a
+  // command substitution, so a message that merely contains — or ENDS IN —
+  // `<<WORD` is not an opener.
+  test('a message ENDING in <<WORD is not a heredoc — this was an enforcement bypass', () => {
+    // Without the `^$(` anchor this resolved to line 2 and ALLOWED a
+    // non-conforming commit (review of #3802).
+    assert.strictEqual(resolveCommitSubject('WIP notes <<EOF\nfix: smuggled subject'),
+      'WIP notes <<EOF', 'the real subject is the non-conforming first line, and must be judged');
+  });
+
+  test('a message merely containing << is untouched', () => {
+    assert.strictEqual(resolveCommitSubject('fix(parser): preserve literal <<EOF'),
+      'fix(parser): preserve literal <<EOF');
+    assert.strictEqual(resolveCommitSubject('fix(parser): handle a << b shifts'),
+      'fix(parser): handle a << b shifts');
+  });
+
+  test('a COMMAND smuggled before the cat is not a path — recognition must fail closed', () => {
+    // Codex review of #3816: `\S*` as the path prefix accepted `id;/bin/cat`,
+    // so the resolver validated the heredoc BODY while bash runs `id` first and
+    // git's real subject is id's OUTPUT — an enforcement bypass. A prefix
+    // carrying any shell metacharacter now fails recognition and falls back to
+    // the opener line, which the format gate rejects.
+    assert.strictEqual(resolveCommitSubject("$(id;/bin/cat <<'EOF'\nfix: smuggled\nEOF\n)"),
+      "$(id;/bin/cat <<'EOF'");
+    assert.strictEqual(resolveCommitSubject("$(x&&/bin/cat <<'EOF'\nfix: smuggled\nEOF\n)"),
+      "$(x&&/bin/cat <<'EOF'");
+    assert.strictEqual(resolveCommitSubject("$(a|b/cat <<'EOF'\nfix: smuggled\nEOF\n)"),
+      "$(a|b/cat <<'EOF'");
+    // Round 2: Unicode whitespace after `$(` is NOT bash whitespace — bash
+    // reads `<NBSP>/bin/cat` as the executable NAME, so recognizing it here
+    // claimed a substitution that does not run cat. Recognition whitespace is
+    // ASCII space/tab only.
+    assert.strictEqual(resolveCommitSubject("$(\u00a0/bin/cat <<'EOF'\nfix: smuggled\nEOF\n)"),
+      "$(\u00a0/bin/cat <<'EOF'");
+    // the legitimate path-qualified form is unchanged
+    assert.strictEqual(resolveCommitSubject("$(/usr/bin/cat <<'EOF'\nfix: pathed\nEOF\n)"),
+      'fix: pathed');
+  });
+
+  test('a Unicode-blank first line is the SUBJECT — git keeps what trim() skips', () => {
+    // Codex review of #3816, verified against `git stripspace`: git's blank is
+    // ASCII space/tab, so a NBSP line is PRESERVED and is the real subject.
+    // JavaScript's trim() treated it as blank and resolved to the second line —
+    // validating a line git never uses, an enforcement bypass.
+    const nbsp = '\u00a0';
+    assert.strictEqual(resolveCommitSubject(`$(cat <<'EOF'\n${nbsp}\nfix: smuggled\nEOF\n)`), nbsp,
+      'the NBSP line must be returned (and fail the format gate), never skipped past');
+  });
+
+  test('MAJOR 3: a TRUNCATED capture is not resolved at all', () => {
+    // The `-m` capture stops at the first `"`, so a message containing one
+    // arrives here without its tail — and without its terminator. Resolving
+    // anyway hands the length gate a PREFIX of the real subject and lets an
+    // over-long message through: an enforcement hole that did not exist before
+    // this fix. Falling back to the opener fails the format gate, which is what
+    // this whole form did before the fix (review of #3802).
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: aaaa"), "$(cat <<'EOF'",
+      'the subject line runs to the end of a truncated capture, so it cannot be measured');
+    // Truncation is only fatal to the line it lands IN: a captured line is
+    // complete exactly when another line follows it. A quote further down the
+    // BODY leaves the subject intact and measurable, so blocking it would be a
+    // false positive the blunt version of this guard would have introduced.
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: short\nbody with a "), 'feat: short',
+      'a complete subject line stays measurable even when the capture truncates later');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'"), "$(cat <<'EOF'",
+      'an opener with no body at all is likewise unresolvable');
+  });
+
+  test('BLOCKER (round 3): text after the terminator is part of the real message', () => {
+    // `-m "$(cat <<'EOF'\nfeat: ok\nEOF\n) <200 a's>"` expands to ONE long
+    // subject; discarding the tail measured a PREFIX (8 chars vs 200+) and
+    // dodged COMMIT_SUBJECT_TOO_LONG — the truncation-guard class from the
+    // other side of the terminator (review of #3816, round 3). Only the
+    // canonical single closing-paren line may follow the terminator; anything
+    // else falls back to the opener and the format gate.
+    assert.strictEqual(resolveCommitSubject(`$(cat <<'EOF'\nfeat: ok\nEOF\n) ${'a'.repeat(200)}`),
+      "$(cat <<'EOF'", 'a substitution composed with more text cannot have its body trusted');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: ok\nEOF\n)$(printf x)"),
+      "$(cat <<'EOF'", 'a second substitution after the close is the same composition');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nEOF\n)feat: sneaky"),
+      "$(cat <<'EOF'", 'text glued straight onto the closing paren too');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: ok\nEOF"),
+      "$(cat <<'EOF'", 'a terminator with NO closing line at all is not the canonical shape either');
+    // the canonical tail still resolves — including an indented or space-padded close
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: ok\nEOF\n)"), 'feat: ok');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\nfeat: ok\nEOF\n\t) "), 'feat: ok');
+  });
+
+  test('MINOR 1: leading blank body lines are skipped, as git does', () => {
+    // git's default cleanup=whitespace strips leading blank lines, so the real
+    // subject is the first NON-empty line. Taking lines[1] blindly returned ''
+    // and falsely blocked a conforming commit — the defect class #3802 reports.
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\n\nfeat: after blank\nEOF\n)"),
+      'feat: after blank');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\n\n\n  \nfeat: after several\nEOF\n)"),
+      'feat: after several');
+  });
+
+  test('a backslash-escaped delimiter is the same delimiter', () => {
+    // `<<\\D` suppresses expansion exactly as `<<'D'` does, so it stays
+    // resolvable. This is the row that makes the bare-delimiter guard below a
+    // real distinction rather than a blanket refusal: the two spellings differ
+    // by one character and by whether bash expands the body.
+    assert.strictEqual(resolveCommitSubject('$(cat <<\\EOF\nfix: backslash tag\nEOF\n)'),
+      'fix: backslash tag');
+  });
+
+  test('BLOCKER (round 4): a BARE delimiter is not resolved — bash expands that body', () => {
+    // Review of #3816, round 4. Only `<<'D'`, `<<"D"` and `<<\\D` suppress
+    // expansion. With a bare `<<D` bash substitutes `$var`, `$(...)` and
+    // arithmetic into the body BEFORE git sees it, so the literal text here is
+    // not the subject git receives — resolving it dodged the format gate
+    // (`feat: $UNSET_VAR` -> git gets `feat:`) and the length gate
+    // (`feat: ${LONG}` -> git gets any length). Falling back to the opener line
+    // is the same fail-closed rule the metacharacter, truncation and
+    // post-terminator guards follow.
+    //
+    // Non-vacuous: every body below is conforming, so a resolver that still
+    // read the body returns the body and these fail.
+    assert.strictEqual(resolveCommitSubject(sub('<<EOF', 'fix: bare', 'EOF')),
+      '$(cat <<EOF', 'a bare delimiter must fall back to the opener line');
+    assert.strictEqual(resolveCommitSubject(sub('<< EOF', 'fix: spaced', 'EOF')),
+      '$(cat << EOF', 'a spaced bare delimiter is still bare');
+    assert.strictEqual(resolveCommitSubject(sub('<<-EOF', '\tfix: dashed bare', 'EOF')),
+      '$(cat <<-EOF', '<<- does not quote the delimiter; it only strips tabs');
+    // The expansion that makes this a bypass rather than a nicety.
+    assert.strictEqual(resolveCommitSubject(sub('<<EOF', 'feat: $UNSET_VAR', 'EOF')),
+      '$(cat <<EOF', "git's real subject here is `feat:` — never the unexpanded literal");
+  });
+
+  // RULESET.TESTS.property-based-testing — this is a parser/transformation on a
+  // hook path, so the invariants are asserted over generated input rather than
+  // examples alone. Seeded setup helper, not `fast-check` directly, so numRuns
+  // and seed are configured before any fc.assert (repo convention).
+  //
+  // Review of #3816, Major 1: the previous generator was a bare
+  // fc.string({maxLength: 400}), whose pinned-seed corpus contained NO newline
+  // and NO opener — 0 of 200 inputs reached the parser, so all three properties
+  // reduced to `f(s) === s`. The generator now CONSTRUCTS heredoc-shaped input
+  // (every opener spelling, <<- tabs, optional terminator, CRLF) alongside plain
+  // and multi-line strings, and each property PROVES its corpus took the heredoc
+  // arm: `resolved` counts inputs whose output is not the first line, which only
+  // the resolver's body-scanning branch can produce.
+  const delimiterArb = fc.stringMatching(/^[A-Za-z][A-Za-z0-9_-]{0,8}$/);
+  const bodyLineArb = fc.stringMatching(/^[^\n\r]{0,60}$/);
+  const heredocArb = fc.record({
+    delim: delimiterArb,
+    quote: fc.constantFrom("'", '"', '', '\\'),
+    dash: fc.boolean(),
+    spaced: fc.boolean(),
+    catPath: fc.constantFrom('cat', '/bin/cat'),
+    body: fc.array(bodyLineArb, { minLength: 0, maxLength: 5 }),
+    terminated: fc.boolean(),
+    eol: fc.constantFrom('\n', '\r\n'),
+  }).map(({ delim, quote, dash, spaced, catPath, body, terminated, eol }) => {
+    const word = quote === '\\' ? `\\${delim}` : quote ? `${quote}${delim}${quote}` : delim;
+    const opener = `$(${catPath} <<${dash ? '-' : ''}${spaced ? ' ' : ''}${word}`;
+    const emitted = [...body.map((l) => (dash ? `\t${l}` : l))];
+    if (terminated) emitted.push(dash ? `\t${delim}` : delim, ')');
+    // GENERATION-TIME oracle for the one result the derivation check cannot
+    // classify by membership: ''. Computed from what the generator KNOWS it
+    // built — never by re-running resolver logic — so a resolver degrading to
+    // '' anywhere it should not fails the property (Codex review of #3816,
+    // rounds 1+2). '' is legitimate exactly when the FIRST reachable
+    // terminator is followed by the one canonical closing-paren line (the
+    // round-3 post-terminator guard: any other tail must fall back to the
+    // opener, never to '') and every scanned line before that terminator is
+    // ASCII-blank. A body line that reads as the delimiter after <<- tab
+    // stripping terminates early, and whatever follows it is its tail.
+    const seen = emitted.map((l) => (dash ? l.replace(/^\t+/, '') : l));
+    const stop = seen.indexOf(delim);
+    const tail = stop === -1 ? null : seen.slice(stop + 1);
+    const canonicalTail = tail !== null && tail.length === 1 && /^[ \t]*\)[ \t]*$/.test(tail[0]);
+    const expectEmpty = canonicalTail
+      && seen.slice(0, stop).every((l) => /^[ \t]*$/.test(l));
+    return { text: [opener, ...emitted].join(eol), expectEmpty };
+  });
+  const messageArb = fc.oneof(
+    { weight: 3, arbitrary: heredocArb },
+    // plain single- and multi-line messages: the subject is the first line
+    // verbatim, so '' is legitimate only when the first line IS ''.
+    fc.string({ maxLength: 400 }).map((s) => ({ text: s, expectEmpty: s.split(/\r?\n/)[0] === '' })),
+    // multi-line plain messages — the old generator never produced a newline
+    fc.array(bodyLineArb, { minLength: 1, maxLength: 4 })
+      .map((ls) => ({ text: ls.join('\n'), expectEmpty: ls[0] === '' })),
+  );
+  const firstLineOf = (input) => String(input).split(/\r?\n/)[0];
+  // Floor for the resolved-input count across the seeded corpus. Deliberately
+  // far below the ~60% heredoc weighting so generator drift cannot flake it,
+  // while still failing loudly if the corpus stops reaching the parser — the
+  // exact vacuity Major 1 caught.
+  const MIN_RESOLVED = 20;
+
+  test('property: total — never throws, always returns a string', () => {
+    // Totality is a SECURITY property here, not tidiness: this runs inside a
+    // PreToolUse hook whose caller treats a failed extraction as "nothing to
+    // validate", so an exception fails OPEN. Backed by a corpus that reaches
+    // the parser, which is what makes the claim about the PARSER and not about
+    // fc.string pass-through.
+    let resolved = 0;
+    fc.assert(fc.property(messageArb, (m) => {
+      const out = resolveCommitSubject(m.text);
+      assert.strictEqual(typeof out, 'string');
+      if (out !== firstLineOf(m.text)) resolved += 1;
+    }));
+    assert.ok(resolved >= MIN_RESOLVED,
+      `only ${resolved} corpus inputs were actually resolved past the first line — the property is `
+      + 'running on inputs that never reach the parser again (review of #3816, Major 1)');
+    for (const odd of [null, undefined, '', '\n', '\n\n\n', '\r\n', '$(cat <<', '$(cat <<-']) {
+      assert.strictEqual(typeof resolveCommitSubject(odd), 'string', JSON.stringify(odd));
+    }
+  });
+
+  test('property: idempotent — resolving a resolved subject changes nothing', () => {
+    let resolved = 0;
+    fc.assert(fc.property(messageArb, (m) => {
+      const once = resolveCommitSubject(m.text);
+      assert.strictEqual(resolveCommitSubject(once), once);
+      if (once !== firstLineOf(m.text)) resolved += 1;
+    }));
+    assert.ok(resolved >= MIN_RESOLVED,
+      `only ${resolved} corpus inputs were actually resolved — vacuous corpus (review of #3816)`);
+  });
+
+  test('property: the result is a single line derived from an input line by git\'s own strips', () => {
+    // The subject is a LINE, never a synthesised string: whatever comes back
+    // must be one of the input's own lines, modulo exactly the transformations
+    // git itself performs — `<<-` leading-tab stripping and cleanup=whitespace
+    // trailing-whitespace stripping. A resolver that concatenated lines or
+    // trimmed anything MORE than that would fail this. The one result
+    // membership cannot classify — '' — is judged by the GENERATOR's own
+    // metadata (`expectEmpty`, computed from what it built, not from resolver
+    // logic), so a resolver conditionally degrading to '' fails loudly (Codex
+    // review of #3816, rounds 1+2).
+    let resolved = 0;
+    fc.assert(fc.property(messageArb, (m) => {
+      const out = resolveCommitSubject(m.text);
+      assert.ok(!/[\n\r]/.test(out), 'a subject is one line');
+      const lines = String(m.text).split(/\r?\n/);
+      const derivations = (l) => {
+        const untabbed = l.replace(/^\t+/, '');
+        return [l, untabbed, untabbed.replace(/[ \t]+$/, '')];
+      };
+      if (out === '') {
+        assert.ok(m.expectEmpty,
+          `resolved to '' for an input the generator did NOT build as an empty message: `
+          + JSON.stringify(m.text));
+      } else {
+        assert.ok(lines.some((l) => derivations(l).includes(out)),
+          `result ${JSON.stringify(out)} is not derived from any line of the input`);
+      }
+      if (out !== firstLineOf(m.text)) resolved += 1;
+    }));
+    assert.ok(resolved >= MIN_RESOLVED,
+      `only ${resolved} corpus inputs were actually resolved — vacuous corpus (review of #3816)`);
+  });
+
+  test('MAJOR 2: trailing whitespace is stripped, as git cleanup=whitespace does', () => {
+    // git strips whitespace at BOTH ends of the line, not just leading blank
+    // lines. Measuring the raw line rejected a body of `feat: ` + 66 x's + three
+    // spaces as 75 chars when git's actual subject is a conforming 72 — a
+    // still-blocked conforming commit, the defect #3802 reports (review of #3816).
+    const subject72 = `feat: ${'x'.repeat(66)}`;
+    assert.strictEqual(subject72.length, 72, 'fixture built wrong');
+    assert.strictEqual(resolveCommitSubject(sub("<<'EOF'", `${subject72}   `, 'EOF')), subject72);
+    assert.strictEqual(resolveCommitSubject(sub("<<'EOF'", 'feat: tab tail\t \t', 'EOF')),
+      'feat: tab tail', 'tabs are trailing whitespace too');
+  });
+
+  test('MINOR 3: CRLF bodies resolve identically to LF bodies', () => {
+    // split('\n') left \r on every body line, so the delimiter never matched on
+    // CRLF input: the truncation guard was inert, an empty CRLF message resolved
+    // to "EOF\r" instead of '', and a real 72-char subject measured 73
+    // (review of #3816).
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\r\nfeat: crlf subject\r\nEOF\r\n)"),
+      'feat: crlf subject');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\r\nEOF\r\n)"), '',
+      'an empty CRLF message is EMPTY — it used to resolve to the terminator plus \\r');
+    assert.strictEqual(resolveCommitSubject("$(cat <<'EOF'\r\nfeat: aaaa"), "$(cat <<'EOF'",
+      'the truncation guard must be live on CRLF input, not defeated by an unmatchable delimiter');
+  });
+
+  test('ordinary messages pass through as their first line', () => {
+    assert.strictEqual(resolveCommitSubject('feat(auth): add login flow'), 'feat(auth): add login flow');
+    assert.strictEqual(resolveCommitSubject('feat: subject\n\nBody paragraph.'), 'feat: subject');
+    assert.strictEqual(resolveCommitSubject(''), '');
+    assert.strictEqual(resolveCommitSubject(null), '');
+    assert.strictEqual(resolveCommitSubject(undefined), '');
+  });
+});
+
+// ── extractBranchArgument (#3212 Phase 3, #3414) ─────────────────────────────
+// New capability on the shared scanner (design doc §1.2) — not a migration of
+// existing duplicated logic; no existing consumer wired to it this phase.
+
+describe('git-cmd.js extractBranchArgument', () => {
+  test('row 11: git checkout -b', () => {
+    assert.strictEqual(extractBranchArgument('git checkout -b feat/123-slug'), 'feat/123-slug');
+  });
+
+  test('row 12: quoted branch name', () => {
+    assert.strictEqual(extractBranchArgument('git checkout -b "feat/with spaces"'), 'feat/with spaces');
+  });
+
+  test('row 13: git branch <name> form', () => {
+    assert.strictEqual(extractBranchArgument('git branch feat/123'), 'feat/123');
+  });
+
+  test('row 14: -C path prefix does not confuse the branch-name extraction', () => {
+    assert.strictEqual(extractBranchArgument('git -C /repo checkout -b feat/123'), 'feat/123');
+  });
+
+  test('row 15: unrelated command with checkout-shaped text inside a quoted message returns null', () => {
+    assert.strictEqual(extractBranchArgument('git commit -m "checkout -b fake"'), null);
+  });
+
+  test('row 16: plain checkout (no -b) is not a branch-creation command', () => {
+    assert.strictEqual(extractBranchArgument('git checkout main'), null);
+  });
+});
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-3384-secondary-defects.test.cjs — consolidation epic #1969 (B8 #1977)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-3384-secondary-defects (consolidation epic #1969 B8 #1977)", () => {
+// source-text-is-the-product (see #3384)
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const repoRoot = path.resolve(__dirname, '..');
+const WORKTREE_BRANCH_CHECK_FRAGMENT = path.join(repoRoot, 'gsd-core', 'references', 'worktree-branch-check.md');
+
+function read(relPath) {
+  return fs.readFileSync(path.join(repoRoot, relPath), 'utf8');
+}
+
+describe('bug #3384: adjacent worktree data-loss guards', () => {
+  test('worktree cleanup CLI preserves caller cwd instead of resolving project root', () => {
+    const source = read('gsd-core/bin/gsd-tools.cjs');
+    const skipSet = source.slice(
+      source.indexOf('const SKIP_ROOT_RESOLUTION = new Set(['),
+      source.indexOf('if (!SKIP_ROOT_RESOLUTION.has(command))'),
+    );
+
+    assert.match(skipSet, /'worktree'/);
+  });
+
+  test('diagnose-issues references canonical fragment; fragment is verify-only and fails closed (#48)', () => {
+    // diagnose-issues.md now references the canonical fragment rather than
+    // inlining the block. Verify (a) it references the fragment and (b) the
+    // fragment itself has the correct ordering: symbolic-ref/HEAD assertion and
+    // ^worktree-agent- allow-list appear before any work, and (c) the fragment
+    // is verify-only — no destructive self-recovery.
+    const diagnoseSource = read('gsd-core/workflows/diagnose-issues.md');
+    assert.ok(
+      diagnoseSource.includes('worktree-branch-check.md'),
+      'diagnose-issues.md must reference the canonical worktree-branch-check.md fragment'
+    );
+
+    const fragmentSource = fs.readFileSync(WORKTREE_BRANCH_CHECK_FRAGMENT, 'utf8');
+    const branchCheck = fragmentSource.indexOf('HEAD_REF=$(git symbolic-ref --quiet HEAD || echo');
+    const namespaceCheck = fragmentSource.indexOf('(worktree-)?agent-');
+
+    assert.ok(branchCheck > 0, 'canonical fragment must assert HEAD before any work');
+    assert.ok(namespaceCheck > branchCheck, 'canonical fragment must require disposable agent/worktree-agent branch');
+    // #48: verify-only — the destructive self-recovery is gone; the fragment fails closed instead.
+    assert.ok(!fragmentSource.includes('git reset --hard {EXPECTED_BASE}'), 'canonical fragment must not self-recover via reset --hard — orchestrator owns recovery (#48)');
+    assert.ok(fragmentSource.includes('exit 42'), 'canonical fragment must fail closed with exit 42 on base mismatch (#48)');
+  });
+
+  test('remove-workspace fails closed when git worktree remove fails', () => {
+    const source = read('gsd-core/workflows/remove-workspace.md');
+    const init = source.indexOf('REMOVE_FAILED=false');
+    const loop = source.indexOf('For each repo in the workspace');
+    const remove = source.indexOf('git worktree remove "$WORKSPACE_PATH/$REPO_NAME"');
+
+    assert.doesNotMatch(
+      source,
+      /git worktree remove "\$WORKSPACE_PATH\/\$REPO_NAME" 2>&1 \|\| true/,
+      'worktree removal failures must not be swallowed',
+    );
+    assert.ok(init > 0 && init < loop, 'REMOVE_FAILED must initialize once before the per-repo loop');
+    assert.ok(remove > loop, 'worktree removal should remain inside the per-repo loop');
+    assert.match(source, /Refusing to delete "\$WORKSPACE_PATH"/);
+  });
+
+  test('validate health warns when worktree inventory cannot be listed', () => {
+    // Phase 11 (#3309, ADR-3180): this branch moved out of verify.cts into
+    // the W020 rule (src/health-diagnostic-rules/worktree-health.cts),
+    // compiled to gsd-core/bin/lib/health-diagnostic-rules/worktree-health.cjs.
+    // Accept both hand-written dot access and the tsc-compiled bracket form:
+    //   hand-written: reason === 'git_list_failed'
+    //   tsc-compiled:  reason === 'git_list_failed' (unchanged shape either way)
+    const source = read('gsd-core/bin/lib/health-diagnostic-rules/worktree-health.cjs');
+    const failureBranch = source.search(/reason === 'git_list_failed'/);
+    const warning = source.indexOf("code: 'W020'", failureBranch);
+
+    assert.ok(failureBranch > 0, 'verify health should branch on git_list_failed');
+    assert.ok(warning > failureBranch, 'git_list_failed should emit W020 degraded-health warning');
+  });
+});
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-260-worktree-path-guard.test.cjs — consolidation epic #1969 (B6 #1975)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-260-worktree-path-guard (consolidation epic #1969 B6 #1975)", () => {
+/**
+ * Regression tests for bug #260 — gsd-worktree-path-guard.js
+ *
+ * Executor agents spawned with isolation="worktree" sometimes issue Edit/Write
+ * calls with absolute paths rooted at the MAIN repository instead of the
+ * worktree. The prose guard in gsd-executor.md step 0b is skipped under load,
+ * so we enforce the constraint at the tooling layer with a PreToolUse hook.
+ *
+ * This file verifies all guard behaviours:
+ *   1. No-op in the main repo (.git is a directory)
+ *   2. Relative path always passes
+ *   3. Non-Edit/Write tools always pass
+ *   4. Absolute path inside worktree root passes
+ *   5. Absolute path outside worktree root is BLOCKED (exit 2)
+ *   6. Sibling path that merely shares a prefix is BLOCKED (/ boundary check)
+ *   7. install.js has an fs.existsSync guard for gsd-worktree-path-guard.js
+ */
+
+'use strict';
+
+const { describe, test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { cleanup } = require('./helpers.cjs');
+const { runHook: seamRunHook } = require('./helpers/process-seam.cjs');
+const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+const { STAGED_HOOK_SCRIPT_TIMEOUT_MS } = require('./helpers/timeouts.cjs');
+
+const HOOK_PATH = path.join(__dirname, '..', 'hooks', 'gsd-worktree-path-guard.js');
+
+/**
+ * Resolve symlinks in a path so that we compare the same canonical form
+ * that `git rev-parse --show-toplevel` returns. On macOS /tmp is a symlink
+ * to /private/tmp, which causes path prefix checks to fail without this.
+ */
+function realp(p) {
+  try { return fs.realpathSync(p); } catch { return p; }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function git(cwd, args) {
+  return gitOrThrow(args, { cwd, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+}
+
+/**
+ * Create a plain git repo (main repo — .git is a directory).
+ */
+function makeMainRepo() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-260-main-'));
+  git(dir, ['init', '-q']);
+  git(dir, ['config', 'user.email', 'test@example.com']);
+  git(dir, ['config', 'user.name', 'Test User']);
+  git(dir, ['config', 'commit.gpgsign', 'false']);
+  fs.writeFileSync(path.join(dir, 'README.md'), '# test\n');
+  git(dir, ['add', 'README.md']);
+  git(dir, ['commit', '-q', '-m', 'chore: init']);
+  return dir;
+}
+
+/**
+ * Create a worktree off mainRepo and return its path.
+ * In the worktree, .git is a FILE (the gitdir pointer).
+ * @param {string} mainRepo - path to the main repo
+ * @param {string} [branchName] - branch name to use (default: 'worktree-agent-test')
+ */
+function makeWorktree(mainRepo, branchName) {
+  const branch = branchName || 'worktree-agent-test';
+  const wtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-260-wt-'));
+  fs.rmdirSync(wtDir); // git worktree add creates the dir itself
+  git(mainRepo, ['worktree', 'add', '-q', '-b', branch, wtDir]);
+  return wtDir;
+}
+
+/**
+ * Run the hook with a given payload, returning the spawnSync result.
+ */
+function runHook(cwd, payload) {
+  // STAGED_HOOK_SCRIPT_TIMEOUT_MS (20000ms): the hook spawns up to 3 sequential
+  // `git rev-parse` probes (BLOCKING_GUARD_PROBE_TIMEOUT_MS = 5000ms each,
+  // hooks/lib/git-probe.js), so its worst case is ~15.5s. A probe that times
+  // out FAILS OPEN (exit 0), so this bound must sit above N probes x the
+  // per-probe budget or a starved runner turns a deny case into a silent allow
+  // (#3911, #5180). tests/blocking-guard-budget-parity.test.cjs pins the
+  // arithmetic. See tests/helpers/timeouts.cjs for the class (#4514).
+  const r = seamRunHook(HOOK_PATH, [], {
+    cwd,
+    input: JSON.stringify(payload),
+    timeoutMs: STAGED_HOOK_SCRIPT_TIMEOUT_MS,
+  });
+  return { status: r.exitCode, stdout: r.stdout, stderr: r.stderr };
+}
+
+// ---------------------------------------------------------------------------
+// Fixture lifecycle
+// ---------------------------------------------------------------------------
+
+let mainRepo;
+let worktreeDir;
+
+before(() => {
+  mainRepo = realp(makeMainRepo());
+  worktreeDir = realp(makeWorktree(mainRepo));
+});
+
+after(() => {
+  // Remove worktree registration before deleting the directory
+  try { git(mainRepo, ['worktree', 'remove', '--force', worktreeDir]); } catch { /* ignore */ }
+  cleanup(mainRepo);
+  cleanup(worktreeDir);
+});
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('bug #260: gsd-worktree-path-guard.js', () => {
+
+  // 1. No-op in main repo
+  describe('no-op in main repo', () => {
+    test('Edit call in main repo (.git is a directory) exits 0', () => {
+      const payload = {
+        cwd: mainRepo,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(mainRepo, 'src', 'foo.ts') },
+      };
+      const result = runHook(mainRepo, payload);
+      assert.strictEqual(result.status, 0, `Expected exit 0 in main repo, got ${result.status}. stderr: ${result.stderr}`);
+      assert.strictEqual(result.stdout, '', 'Expected no stdout in main repo no-op');
+    });
+
+    test('Write call in main repo exits 0', () => {
+      const payload = {
+        cwd: mainRepo,
+        tool_name: 'Write',
+        tool_input: { file_path: path.join(mainRepo, 'out.txt') },
+      };
+      const result = runHook(mainRepo, payload);
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    });
+  });
+
+  // 2. Relative path always passes
+  describe('relative path', () => {
+    test('Edit with relative file_path exits 0 even in worktree', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: 'src/foo.ts' },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0, `Relative path should always pass. stderr: ${result.stderr}`);
+      assert.strictEqual(result.stdout, '');
+    });
+
+    test('Write with relative file_path exits 0 in worktree', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Write',
+        tool_input: { file_path: 'dist/bundle.js' },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    });
+  });
+
+  // 3. Non-Edit/Write tools always pass
+  describe('non-Edit/Write tools', () => {
+    test('Bash tool exits 0', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Bash',
+        tool_input: { command: 'ls' },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0);
+    });
+
+    test('Read tool exits 0', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Read',
+        tool_input: { file_path: path.join(mainRepo, 'README.md') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0);
+    });
+
+    test('Grep tool exits 0', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Grep',
+        tool_input: { pattern: 'foo', path: mainRepo },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0);
+    });
+  });
+
+  // 4. Absolute path inside worktree passes
+  describe('path inside worktree', () => {
+    test('Edit with absolute path inside worktree root exits 0', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(worktreeDir, 'src', 'foo.ts') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0, `Path inside worktree should pass. stderr: ${result.stderr}`);
+      assert.strictEqual(result.stdout, '');
+    });
+
+    test('Edit targeting exactly the worktree root exits 0', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: worktreeDir },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0);
+    });
+  });
+
+  // 5. Absolute path outside worktree is BLOCKED
+  describe('path outside worktree is blocked', () => {
+    test('Edit targeting main repo root exits 2 with block decision', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(mainRepo, 'src', 'index.ts') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 2, `Expected exit 2 (block), got ${result.status}. stderr: ${result.stderr}`);
+      const parsed = JSON.parse(result.stdout);
+      assert.strictEqual(parsed.decision, 'block', 'Expected decision:"block" in output');
+    });
+
+    test('Write targeting main repo root exits 2 with block decision', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Write',
+        tool_input: { file_path: path.join(mainRepo, 'out.txt') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 2, `Expected exit 2 (block), got ${result.status}. stderr: ${result.stderr}`);
+      const parsed = JSON.parse(result.stdout);
+      assert.strictEqual(parsed.decision, 'block');
+    });
+
+    test('block output includes the offending path in reason', () => {
+      const offendingPath = path.join(mainRepo, 'src', 'leak.ts');
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: offendingPath },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 2, `Expected exit 2 (block), got ${result.status}. stderr: ${result.stderr}`);
+      const parsed = JSON.parse(result.stdout);
+      assert.ok(
+        parsed.reason && parsed.reason.includes(offendingPath),
+        `block reason should include the offending path. Got: ${parsed.reason}`
+      );
+    });
+  });
+
+  // 5b. #2547 — a malformed Kimi edit list must not downgrade the block to an allow
+  describe('#2547: malformed Kimi edit list does not bypass the cross-root block', () => {
+    // normalizeKimiPayload rebuilt old_string/new_string with `String(e.old ?? '')`.
+    // `??` guards the value, not the dereference, so a NULLISH entry threw a
+    // TypeError before any tool dispatch — and the guard's outer
+    // `catch { process.exit(0) }` turned that crash into a silent ALLOW on the one
+    // path this guard exists to BLOCK (#260).
+    //
+    // The boundary is nullish specifically, not "non-object": `('x').old` and
+    // `(7).old` are legal property reads that yield undefined, so string/number
+    // entries never threw. They are kept below as controls proving `e?.old` did
+    // not change their behaviour; the nullish cases are the actual regression and
+    // are the ones that exit 0 (bypass) against pre-fix code.
+    const crossRootTarget = () => path.join(mainRepo, 'src', 'index.ts');
+
+    test('well-formed Kimi edit list blocks the cross-root write (positive control)', () => {
+      const result = runHook(worktreeDir, {
+        cwd: worktreeDir,
+        tool_name: 'StrReplaceFile',
+        tool_input: { path: crossRootTarget(), edit: [{ old: 'orig', new: 'pwned' }] },
+      });
+      assert.strictEqual(result.status, 2,
+        `expected exit 2 (block), got ${result.status}. stderr: ${result.stderr}`);
+      assert.strictEqual(JSON.parse(result.stdout).decision, 'block');
+    });
+
+    for (const [label, edit] of [
+      ['null entry (the #2547 bypass)', [null]],
+      ['null alongside a well-formed entry (the #2547 bypass)', [{ old: 'a', new: 'b' }, null]],
+      // `{"toString": null}` is valid JSON whose coercion throws "Cannot
+      // convert object to primitive value" — the same crash-to-allow reached
+      // through String() rather than through the property read.
+      ['non-coercible old (the #2547 String() bypass)', [{ old: { toString: null }, new: 'x' }]],
+      ['non-coercible new (the #2547 String() bypass)', [{ old: 'x', new: { toString: null } }]],
+      ['string entry (control — never threw)', ['nope']],
+      ['number entry (control — never threw)', [7]],
+    ]) {
+      test(`${label} in the edit list still blocks the cross-root write`, () => {
+        const result = runHook(worktreeDir, {
+          cwd: worktreeDir,
+          tool_name: 'StrReplaceFile',
+          tool_input: { path: crossRootTarget(), edit },
+        });
+        assert.strictEqual(result.status, 2,
+          `a malformed edit list (${label}) must not downgrade the #260 block to a silent ` +
+          `allow. Got exit ${result.status}. stderr: ${result.stderr}`);
+        assert.strictEqual(JSON.parse(result.stdout).decision, 'block');
+      });
+    }
+
+    test('malformed edit list inside the worktree still exits 0 (no over-block)', () => {
+      const result = runHook(worktreeDir, {
+        cwd: worktreeDir,
+        tool_name: 'StrReplaceFile',
+        tool_input: { path: path.join(worktreeDir, 'src', 'index.ts'), edit: [null] },
+      });
+      assert.strictEqual(result.status, 0,
+        `an in-worktree write must stay allowed. Got exit ${result.status}. stderr: ${result.stderr}`);
+      assert.strictEqual(result.stdout, '');
+    });
+  });
+
+  // 5c. #2547 (review BLOCKER) — a model-supplied `file_path` must not shadow
+  // Kimi's authoritative `path`. This vector needs NO crash: normalizeKimiPayload
+  // copied `path` into `file_path` only when `file_path === undefined`, so any
+  // `file_path` the model chose to include won, and this guard's block logic
+  // reads `file_path` alone. kimi-cli executes on `path`, so the guard inspected
+  // one file while the write landed on another.
+  //
+  // Reachability is not speculative: soul/toolset.py json-parses the model's raw
+  // tool arguments and passes that dict verbatim as tool_input to PreToolUse,
+  // performing typed validation only later inside tool.call() — so the model
+  // controls extra keys in tool_input at the moment the hook decides.
+  describe('#2547: a spurious file_path does not shadow Kimi\'s authoritative path', () => {
+    const crossRootTarget = () => path.join(mainRepo, 'src', 'index.ts');
+    const inWorktreeTarget = () => path.join(worktreeDir, 'src', 'index.ts');
+
+    // Each case pairs a cross-root `path` with a `file_path` the model supplied.
+    // All three exited 0 (bypass) before the fix.
+    for (const [label, filePath] of [
+      ['empty-string file_path (the #2547 review BLOCKER)', ''],
+      ['in-worktree decoy file_path', null], // resolved below — needs worktreeDir
+      // A NON-STRING file_path additionally threw inside path.isAbsolute() and
+      // reached the outer `catch { process.exit(0) }` — crash-to-allow through
+      // the guard's own read rather than through normalization.
+      ['non-string file_path (array)', []],
+      ['non-string file_path (object)', {}],
+    ]) {
+      test(`${label} still blocks the cross-root write`, () => {
+        const result = runHook(worktreeDir, {
+          cwd: worktreeDir,
+          tool_name: 'StrReplaceFile',
+          tool_input: {
+            path: crossRootTarget(),
+            file_path: filePath === null ? inWorktreeTarget() : filePath,
+            edit: [{ old: 'orig', new: 'pwned' }],
+          },
+        });
+        assert.strictEqual(result.status, 2,
+          `a model-supplied file_path (${label}) must not shadow Kimi's authoritative ` +
+          `path and downgrade the #260 block to a silent allow. Got exit ${result.status}. ` +
+          `stderr: ${result.stderr}`);
+        assert.strictEqual(JSON.parse(result.stdout).decision, 'block');
+      });
+    }
+
+    // Negative control: the same shadowing shape pointed INSIDE the worktree must
+    // still be allowed, so the fix narrows what the guard inspects without
+    // over-blocking.
+    test('a spurious file_path on an in-worktree write still exits 0 (no over-block)', () => {
+      const result = runHook(worktreeDir, {
+        cwd: worktreeDir,
+        tool_name: 'StrReplaceFile',
+        tool_input: {
+          path: inWorktreeTarget(),
+          file_path: crossRootTarget(),
+          edit: [{ old: 'orig', new: 'ok' }],
+        },
+      });
+      assert.strictEqual(result.status, 0,
+        `an in-worktree write must stay allowed even when a decoy file_path points ` +
+        `cross-root — the guard follows the path kimi-cli executes on. ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`);
+      assert.strictEqual(result.stdout, '');
+    });
+
+    // Control: a NATIVE Claude payload has no `path` field, so the overwrite must
+    // not fire and file_path must keep governing. Guards against a fix that
+    // silently changed the non-Kimi contract.
+    test('native Claude payload (no path field) still blocks on file_path alone', () => {
+      const result = runHook(worktreeDir, {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: crossRootTarget() },
+      });
+      assert.strictEqual(result.status, 2,
+        `a native Claude Edit must still block on file_path. Got exit ${result.status}. ` +
+        `stderr: ${result.stderr}`);
+      assert.strictEqual(JSON.parse(result.stdout).decision, 'block');
+    });
+  });
+
+  // 5d. #2595 (review Major 3) — the non-string `file_path` crash-to-allow, read
+  // WITHOUT a string `path` to mask it.
+  //
+  // The 5c cases above pair a non-string file_path with a valid cross-root
+  // `path`, so they pass because the authoritative-path overwrite replaces the
+  // bad value before the read. That is real coverage of the SHADOWING fix, but
+  // the review was right that it is not coverage of the crash: drop the `path`
+  // key and the identical payload took `data.tool_input?.file_path || ''` ->
+  // `[]` (truthy, survives the `!rawFilePath` early-out) -> `path.isAbsolute([])`
+  // -> TypeError -> outer `catch { process.exit(0) }`.
+  //
+  // READ THE ASSERTION HONESTLY: these expect exit 0, and pre-fix code ALSO
+  // exits 0 — via the catch instead of via the early-out. There is no black-box
+  // signature that separates them, so these cases document the fail-open and
+  // guard against a future change that makes a malformed payload BLOCK; they do
+  // not detect a revert. The gate that fails on a revert is the source-level
+  // invariant in tests/kimi-guard-typed-payload-reads.test.cjs. Asserting exit 0
+  // here and calling it regression coverage would repeat, one level up, exactly
+  // the false-green the review flagged in 5c.
+  describe('#2595: a non-string file_path with no path key fails open explicitly', () => {
+    for (const [label, filePath] of [
+      ['array', []],
+      ['object', {}],
+      ['number', 42],
+      ['boolean', true],
+    ]) {
+      test(`native Claude Edit with a ${label} file_path exits 0 without crashing`, () => {
+        const result = runHook(worktreeDir, {
+          cwd: worktreeDir,
+          tool_name: 'Edit',
+          tool_input: { file_path: filePath },
+        });
+        assert.strictEqual(result.status, 0,
+          `a malformed file_path has no path to check and must fail open quietly, ` +
+          `not block. Got exit ${result.status}. stderr: ${result.stderr}`);
+        assert.strictEqual(result.stdout, '');
+      });
+
+      test(`Kimi payload with a ${label} file_path and no path key exits 0`, () => {
+        const result = runHook(worktreeDir, {
+          cwd: worktreeDir,
+          tool_name: 'StrReplaceFile',
+          tool_input: { file_path: filePath, edit: [{ old: 'orig', new: 'pwned' }] },
+        });
+        assert.strictEqual(result.status, 0,
+          `with no string path to normalize from, there is nothing to check. ` +
+          `Got exit ${result.status}. stderr: ${result.stderr}`);
+        assert.strictEqual(result.stdout, '');
+      });
+    }
+
+    // Control: the SAME payload shape with a string cross-root file_path must
+    // still block, proving the typed read did not narrow the guard's reach.
+    test('control: a string cross-root file_path with no path key still blocks', () => {
+      const result = runHook(worktreeDir, {
+        cwd: worktreeDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(mainRepo, 'src', 'index.ts') },
+      });
+      assert.strictEqual(result.status, 2,
+        `typing the read must not stop the guard seeing legitimate string paths. ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`);
+      assert.strictEqual(JSON.parse(result.stdout).decision, 'block');
+    });
+  });
+
+  // 6. Sibling directory path is BLOCKED (validates the '/' boundary check AND prefix-overlap)
+  describe('sibling path is blocked', () => {
+    test('path that shares prefix with worktree root but is a sibling exits 2', () => {
+      // This test exercises BOTH the prefix-overlap boundary check AND the different-git-root block:
+      //   worktree  = <base>/wt
+      //   sibling   = <base>/wt-sibling   ← shares "wt" prefix with the worktree root
+      //   target    = <base>/wt-sibling/file.ts
+      //
+      // A naive startsWith(wtRoot) check would wrongly classify "<base>/wt-sibling/..." as inside
+      // the worktree (it doesn't include the '/' boundary). The hook resolves the sibling's git
+      // toplevel (a different repo) so the different-git-root block fires regardless.
+      // (#1342: paths outside all git repos now fail open; only different-git-root blocks.)
+      const base = realp(fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-260-sib-base-')));
+      const wtDir = path.join(base, 'wt');
+      const siblingRepoDir = path.join(base, 'wt-sibling');
+      // We need a genuine linked worktree at <base>/wt and a separate git repo at <base>/wt-sibling.
+      // Create a fresh main repo to host this worktree (the fixture worktree is already allocated).
+      const sibMainRepo = realp(makeMainRepo());
+      try {
+        fs.mkdirSync(base, { recursive: true });
+        // Create linked worktree at <base>/wt (using sibMainRepo as its host).
+        git(sibMainRepo, ['worktree', 'add', '-q', '-b', 'worktree-agent-sib-test', wtDir]);
+        // Create a separate git repo at <base>/wt-sibling (shares "wt" prefix).
+        fs.mkdirSync(siblingRepoDir, { recursive: true });
+        git(siblingRepoDir, ['init', '-q']);
+        git(siblingRepoDir, ['config', 'user.email', 'test@example.com']);
+        git(siblingRepoDir, ['config', 'user.name', 'Test User']);
+        git(siblingRepoDir, ['config', 'commit.gpgsign', 'false']);
+        fs.writeFileSync(path.join(siblingRepoDir, 'README.md'), '# sibling\n');
+        git(siblingRepoDir, ['add', 'README.md']);
+        git(siblingRepoDir, ['commit', '-q', '-m', 'chore: sibling init']);
+
+        // Confirm prefix-overlap: siblingRepoDir starts with wtDir (without trailing sep).
+        assert.ok(
+          siblingRepoDir.startsWith(wtDir),
+          `Sibling "${siblingRepoDir}" must share a string prefix with worktree "${wtDir}" for this test to be meaningful`
+        );
+        // Confirm they are genuinely distinct (different toplevel).
+        assert.notStrictEqual(
+          realp(siblingRepoDir), realp(wtDir),
+          'sibling and worktree must be different directories'
+        );
+
+        const siblingPath = path.join(realp(siblingRepoDir), 'file.ts');
+        const payload = {
+          cwd: realp(wtDir),
+          tool_name: 'Edit',
+          tool_input: { file_path: siblingPath },
+        };
+        const result = runHook(realp(wtDir), payload);
+        assert.strictEqual(result.status, 2,
+          `Path inside a prefix-sibling git repo "${siblingPath}" must be blocked (exit 2), got ${result.status}. ` +
+          `This validates both the prefix-overlap boundary and the different-git-root block. stderr: ${result.stderr}`
+        );
+        const parsed = JSON.parse(result.stdout);
+        assert.strictEqual(parsed.decision, 'block');
+      } finally {
+        try { git(sibMainRepo, ['worktree', 'remove', '--force', wtDir]); } catch { /* ignore */ }
+        cleanup(sibMainRepo);
+        cleanup(base);
+      }
+    });
+  });
+
+  // 7. Adversarial: subdirectory cwd still guards correctly (Codex finding #2)
+  describe('subdirectory cwd', () => {
+    test('hook fires when cwd is a subdirectory of the worktree, not just its root', () => {
+      // The orchestrator may set cwd to a subdirectory. The hook must still
+      // detect the worktree context via git rev-parse --git-dir and block.
+      const subDir = path.join(worktreeDir, 'src');
+      fs.mkdirSync(subDir, { recursive: true });
+      const payload = {
+        cwd: subDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(mainRepo, 'src', 'index.ts') },
+      };
+      const result = runHook(subDir, payload);
+      assert.strictEqual(result.status, 2,
+        `Hook must block even when cwd is a subdirectory of the worktree. ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`
+      );
+      const parsed = JSON.parse(result.stdout);
+      assert.strictEqual(parsed.decision, 'block');
+    });
+
+    test('path inside worktree passes even when cwd is a subdirectory', () => {
+      const subDir = path.join(worktreeDir, 'src');
+      fs.mkdirSync(subDir, { recursive: true });
+      const payload = {
+        cwd: subDir,
+        tool_name: 'Edit',
+        tool_input: { file_path: path.join(worktreeDir, 'src', 'foo.ts') },
+      };
+      const result = runHook(subDir, payload);
+      assert.strictEqual(result.status, 0,
+        `Absolute path inside worktree should pass regardless of cwd. ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`
+      );
+    });
+  });
+
+  // 8. Adversarial: `..` traversal is normalised before the containment check (Codex finding #1)
+  describe('dot-dot traversal is blocked', () => {
+    test('path with .. that escapes the worktree is blocked', () => {
+      // Construct the traversal target inside a SEPARATE git repo that is
+      // guaranteed to be outside the worktree on every platform (no symlink
+      // ambiguity).  The hook finds the external dir's git toplevel (a different
+      // repo → different-git-root block).
+      // (#1342: paths outside all git repos now fail open; only different-git-root blocks,
+      // so externalDir must be inside a real different git repo to exercise the block.)
+      const externalDir = realp(makeMainRepo());
+      try {
+        // Sanity: the external directory must not be inside the worktree.
+        assert.ok(
+          !externalDir.startsWith(worktreeDir + path.sep) && externalDir !== worktreeDir,
+          `externalDir "${externalDir}" must be outside worktreeDir "${worktreeDir}"`
+        );
+
+        // Build a traversal path that uses ../ segments to climb out of the
+        // worktree and into externalDir.  path.resolve() will normalise it to
+        // externalDir/file.ts, which is outside the worktree by construction.
+        // We compute the number of segments needed to reach the filesystem root
+        // from worktreeDir so the traversal always lands at the right level
+        // regardless of how deep the worktree path is.
+        // Build a file_path containing literal `..` segments that climb out of the
+        // worktree into externalDir. path.relative() yields a ..-laden relative path
+        // between two same-drive absolute paths (both live under os.tmpdir()); we
+        // re-anchor it at worktreeDir via STRING CONCAT (NOT path.join, which would
+        // normalise the `..` away) so the hook's path.resolve() must collapse it.
+        // Windows-safe: avoids the drive-letter doubling that
+        // path.join(worktreeDir, '..', absolutePath) produces on win32 (#1342).
+        const externalTarget = path.join(externalDir, 'file.ts');
+        const traversalPath = worktreeDir + path.sep + path.relative(worktreeDir, externalTarget);
+
+        // Confirm the resolved path is truly outside the worktree (test integrity guard).
+        const resolved = path.resolve(traversalPath);
+        assert.ok(
+          !resolved.startsWith(worktreeDir + path.sep) && resolved !== worktreeDir,
+          `Traversal resolved to "${resolved}" which is still inside worktreeDir "${worktreeDir}". ` +
+          `This means the test itself is broken, not a production bug.`
+        );
+
+        const payload = {
+          cwd: worktreeDir,
+          tool_name: 'Edit',
+          tool_input: { file_path: traversalPath },
+        };
+        const result = runHook(worktreeDir, payload);
+        assert.strictEqual(result.status, 2,
+          `Traversal path "${traversalPath}" resolves to "${resolved}" which is outside the worktree. ` +
+          `Must be blocked (exit 2). Got exit ${result.status}. stderr: ${result.stderr}`
+        );
+        const parsed = JSON.parse(result.stdout);
+        assert.strictEqual(parsed.decision, 'block',
+          `Expected decision:"block", got: ${JSON.stringify(parsed)}`
+        );
+      } finally {
+        cleanup(externalDir);
+      }
+    });
+  });
+
+  // 9. MultiEdit is also guarded (Codex finding #5)
+  describe('MultiEdit tool is guarded', () => {
+    test('MultiEdit with outside absolute path is blocked', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'MultiEdit',
+        tool_input: { file_path: path.join(mainRepo, 'src', 'index.ts') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 2,
+        `MultiEdit targeting outside path must be blocked. Got ${result.status}. stderr: ${result.stderr}`
+      );
+      const parsed = JSON.parse(result.stdout);
+      assert.strictEqual(parsed.decision, 'block');
+    });
+
+    test('MultiEdit with inside absolute path passes', () => {
+      const payload = {
+        cwd: worktreeDir,
+        tool_name: 'MultiEdit',
+        tool_input: { file_path: path.join(worktreeDir, 'src', 'foo.ts') },
+      };
+      const result = runHook(worktreeDir, payload);
+      assert.strictEqual(result.status, 0,
+        `MultiEdit inside worktree should pass. Got ${result.status}. stderr: ${result.stderr}`
+      );
+    });
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// #2304 — Kimi tool vocabulary engages the guard
+// ---------------------------------------------------------------------------
+
+describe('#2304 — Kimi tool vocabulary engages the guard', () => {
+  // Payload shapes mirror kimi-cli's actual tool schemas
+  // (src/kimi_cli/tools/file/{write,replace}.py): WriteFile takes
+  // `path`/`content`, StrReplaceFile takes `path` + `edit: Edit | list[Edit]`
+  // — NOT Claude's `file_path`/`old_string`/`new_string`.
+
+  test('WriteFile targeting the main repo from a worktree is blocked like Write', () => {
+    const offendingPath = path.join(mainRepo, 'out.txt');
+    const payload = {
+      cwd: worktreeDir,
+      tool_name: 'WriteFile',
+      tool_input: { path: offendingPath, content: 'leak' },
+    };
+    const result = runHook(worktreeDir, payload);
+    assert.strictEqual(result.status, 2,
+      `Kimi WriteFile targeting an outside path must be blocked. Got ${result.status}. stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.decision, 'block');
+    // Kimi feeds stderr (not stdout) back to the model on exit 2, so the
+    // reason must also reach stderr or the model gets a bare denial.
+    assert.ok(result.stderr.includes(offendingPath),
+      `block reason must reach stderr for Kimi's exit-2 protocol. Got stderr: ${result.stderr}`);
+  });
+
+  test('StrReplaceFile targeting the main repo from a worktree is blocked like Edit', () => {
+    const payload = {
+      cwd: worktreeDir,
+      tool_name: 'StrReplaceFile',
+      tool_input: { path: path.join(mainRepo, 'src', 'index.ts'), edit: { old: 'a', new: 'b' } },
+    };
+    const result = runHook(worktreeDir, payload);
+    assert.strictEqual(result.status, 2,
+      `Kimi StrReplaceFile targeting an outside path must be blocked. Got ${result.status}. stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.decision, 'block');
+  });
+
+  test('module-qualified kimi_cli.tools.file:WriteFile is also recognized', () => {
+    const payload = {
+      cwd: worktreeDir,
+      tool_name: 'kimi_cli.tools.file:WriteFile',
+      tool_input: { path: path.join(mainRepo, 'out.txt'), content: 'leak' },
+    };
+    const result = runHook(worktreeDir, payload);
+    assert.strictEqual(result.status, 2,
+      `Module-qualified Kimi WriteFile must be blocked. Got ${result.status}. stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.decision, 'block');
+  });
+
+  test('StrReplaceFile with a path inside the worktree still passes', () => {
+    const payload = {
+      cwd: worktreeDir,
+      tool_name: 'StrReplaceFile',
+      tool_input: { path: path.join(worktreeDir, 'src', 'foo.ts'), edit: { old: 'a', new: 'b' } },
+    };
+    const result = runHook(worktreeDir, payload);
+    assert.strictEqual(result.status, 0,
+      `Kimi StrReplaceFile inside the worktree should pass. Got ${result.status}. stderr: ${result.stderr}`);
+  });
+
+  test('non-file Kimi tools still pass through silently', () => {
+    const payload = {
+      cwd: worktreeDir,
+      tool_name: 'kimi_cli.tools.file:Grep',
+      tool_input: { path: path.join(mainRepo, 'src', 'index.ts') },
+    };
+    const result = runHook(worktreeDir, payload);
+    assert.strictEqual(result.status, 0);
+    assert.strictEqual(result.stdout, '');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #1342 — GSD-activity gate + fail-open for no-repo targets
+// ---------------------------------------------------------------------------
+
+describe('#1342 — GSD-activity gate + fail-open for no-repo targets', () => {
+  // Fixtures: one non-agent linked worktree (plain user branch) + one agent worktree
+  let mainRepo1342;
+  let nonAgentWorktree;   // on branch 'feature-x' — non-GSD
+  let agentWorktree;       // on branch 'worktree-agent-foo' — GSD-managed
+
+  before(() => {
+    mainRepo1342 = realp(makeMainRepo());
+    nonAgentWorktree = realp(makeWorktree(mainRepo1342, 'feature-x'));
+    agentWorktree    = realp(makeWorktree(mainRepo1342, 'worktree-agent-foo'));
+  });
+
+  after(() => {
+    try { git(mainRepo1342, ['worktree', 'remove', '--force', nonAgentWorktree]); } catch { /* ignore */ }
+    try { git(mainRepo1342, ['worktree', 'remove', '--force', agentWorktree]); } catch { /* ignore */ }
+    cleanup(mainRepo1342);
+    cleanup(nonAgentWorktree);
+    cleanup(agentWorktree);
+  });
+
+  // Test 1 — reporter repro: non-agent worktree writing outside all git repos → exit 0
+  test('(1) non-agent linked worktree: Write to a path outside all git repos exits 0 (no block)', () => {
+    // Simulates Claude Code plan-mode writing ~/.claude/plans/<slug>.md from a
+    // manually-created linked worktree that is NOT on a worktree-agent-* branch.
+    const plansDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-1342-plans-'));
+    try {
+      const targetPath = path.join(plansDir, 'my-plan.md');
+      const payload = {
+        cwd: nonAgentWorktree,
+        tool_name: 'Write',
+        tool_input: { file_path: targetPath },
+      };
+      const result = runHook(nonAgentWorktree, payload);
+      assert.strictEqual(result.status, 0,
+        `Non-agent linked worktree writing outside git repos must exit 0 (reporter repro). ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`
+      );
+      assert.strictEqual(result.stdout, '', 'Expected no block output');
+    } finally {
+      cleanup(plansDir);
+    }
+  });
+
+  // Test 2 — non-agent linked worktree: Edit targeting MAIN repo root → exit 0 (gate no-op)
+  test('(2) non-agent linked worktree: Edit targeting main repo root exits 0 (gate no-op, not #260 block)', () => {
+    const payload = {
+      cwd: nonAgentWorktree,
+      tool_name: 'Edit',
+      tool_input: { file_path: path.join(mainRepo1342, 'src', 'index.ts') },
+    };
+    const result = runHook(nonAgentWorktree, payload);
+    assert.strictEqual(result.status, 0,
+      `Non-agent linked worktree must exit 0 (GSD-activity gate fires before #260 check). ` +
+      `Got exit ${result.status}. stderr: ${result.stderr}`
+    );
+    assert.strictEqual(result.stdout, '', 'Expected no block output');
+  });
+
+  // Test 3 — GSD-managed worktree (worktree-agent-foo): Edit targeting main repo root → exit 2 (block)
+  test('(3) GSD-managed worktree: Edit targeting main repo root exits 2 with block decision', () => {
+    const payload = {
+      cwd: agentWorktree,
+      tool_name: 'Edit',
+      tool_input: { file_path: path.join(mainRepo1342, 'src', 'index.ts') },
+    };
+    const result = runHook(agentWorktree, payload);
+    assert.strictEqual(result.status, 2,
+      `GSD-managed worktree targeting main repo root must be blocked (exit 2). ` +
+      `Got exit ${result.status}. stderr: ${result.stderr}`
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.decision, 'block', 'Expected decision:"block" in output');
+  });
+
+  // Test 4 — GSD-managed worktree: absolute target INSIDE the active worktree → exit 0
+  test('(4) GSD-managed worktree: absolute target inside the active worktree exits 0', () => {
+    const payload = {
+      cwd: agentWorktree,
+      tool_name: 'Edit',
+      tool_input: { file_path: path.join(agentWorktree, 'src', 'foo.ts') },
+    };
+    const result = runHook(agentWorktree, payload);
+    assert.strictEqual(result.status, 0,
+      `GSD-managed worktree targeting its own subtree must pass. ` +
+      `Got exit ${result.status}. stderr: ${result.stderr}`
+    );
+    assert.strictEqual(result.stdout, '', 'Expected no block output');
+  });
+
+  // Test 5 — GSD-managed worktree: target OUTSIDE all git repos (tmpdir) → exit 0 (fail open)
+  test('(5) GSD-managed worktree: target outside all git repos exits 0 (fail open, not #260 vector)', () => {
+    // Create a temp dir that is NOT a git repository (no .git).
+    // This is the ~/.claude/plans/ scenario — a path that has a real ancestor
+    // directory but is outside every git repo.
+    // IMPORTANT: this dir must NOT be inside any .git directory — it must be a plain tempdir
+    // so the fail-open path (truly outside all repos) is exercised, not the .git-internals block.
+    const externalDir = realp(fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-1342-ext-')));
+    try {
+      const targetPath = path.join(externalDir, 'notes.md');
+      const payload = {
+        cwd: agentWorktree,
+        tool_name: 'Write',
+        tool_input: { file_path: targetPath },
+      };
+      const result = runHook(agentWorktree, payload);
+      assert.strictEqual(result.status, 0,
+        `GSD-managed worktree writing to a path outside all git repos must fail open (exit 0). ` +
+        `Only the different-git-root vector (#260) blocks; no-repo targets are not that vector. ` +
+        `Got exit ${result.status}. stderr: ${result.stderr}`
+      );
+      assert.strictEqual(result.stdout, '', 'Expected no block output');
+    } finally {
+      cleanup(externalDir);
+    }
+  });
+
+  // Test 6 — GSD-managed worktree: Write to .git/config of the MAIN repo → exit 2 (block)
+  test('(6) blocks absolute writes into the main repo .git internals from a GSD worktree (#1342)', () => {
+    // A target like /main-repo/.git/config or /main-repo/.git/hooks/pre-commit causes
+    // `git rev-parse --show-toplevel` to FAIL (a .git dir is not a work tree), so the
+    // "file not in any git repo" branch fires. Previously that branch failed open — but
+    // writing into repository internals via an absolute path is still a #260-class escape
+    // (and dangerous, e.g. injecting a git hook). The fix checks --is-inside-git-dir and
+    // blocks when true.
+    const gitConfigPath = path.join(mainRepo1342, '.git', 'config');
+    const payload = {
+      cwd: agentWorktree,
+      tool_name: 'Write',
+      tool_input: { file_path: gitConfigPath },
+    };
+    const result = runHook(agentWorktree, payload);
+    assert.strictEqual(result.status, 2,
+      `GSD-managed worktree targeting .git/config of another repo must be blocked (exit 2). ` +
+      `Got exit ${result.status}. stderr: ${result.stderr}`
+    );
+    const parsed = JSON.parse(result.stdout);
+    assert.strictEqual(parsed.decision, 'block', 'Expected decision:"block" in output');
+    assert.ok(
+      parsed.reason && parsed.reason.includes('.git'),
+      `Block reason should mention .git internals. Got: ${parsed.reason}`
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Behavioral: the settings-json registration table (#5207)
+// ---------------------------------------------------------------------------
+
+describe('install.js guard for gsd-worktree-path-guard.js', () => {
+  const { createTempDir: makeTarget, captureConsole } = require('./helpers.cjs');
+  const { applySettingsJsonHooks } = require('../gsd-core/bin/lib/runtime-hooks-surface.cjs');
+  const GUARD = 'gsd-worktree-path-guard.js';
+
+  function register(t, { present }) {
+    const targetDir = makeTarget('worktree-guard-reg-');
+    t.after(() => cleanup(targetDir));
+    fs.mkdirSync(path.join(targetDir, 'hooks'), { recursive: true });
+    if (present) fs.writeFileSync(path.join(targetDir, 'hooks', GUARD), '// stub\n');
+    const settings = {};
+    const localCmd = (f) => `node ${path.join(targetDir, 'hooks', f)}`;
+    const { stdout, stderr } = captureConsole(() => applySettingsJsonHooks(settings, {
+      runtime: 'claude',
+      isGlobal: false,
+      targetDir,
+      postToolEvent: 'PostToolUse',
+      hookEvents: 'claude',
+      extendedHookEvents: [],
+      hooksSurface: 'settings-json',
+      updateCheckCommand: null,
+      contextMonitorCommand: null,
+      promptGuardCommand: null,
+      readGuardCommand: null,
+      readInjectionScannerCommand: null,
+      configReloadCommand: null,
+      hookOpts: { portableHooks: false, runtime: 'claude' },
+      localCmd,
+      localShellCmd: localCmd,
+    }));
+    const entries = (settings.hooks.PreToolUse || []).filter(e => e.hooks.some(h => h.command.includes('gsd-worktree-path-guard')));
+    return { entries, stdout, stderr };
+  }
+
+  test('registers the guard for Write|Edit|MultiEdit when its file was installed', (t) => {
+    const { entries, stdout } = register(t, { present: true });
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].matcher, 'Write|Edit|MultiEdit');
+    assert.ok(stdout.includes('Configured worktree path guard hook'));
+  });
+
+  test('registers nothing and warns when the guard file was never copied (root cause of #1754)', (t) => {
+    const { entries, stderr } = register(t, { present: false });
+    assert.equal(entries.length, 0);
+    assert.ok(stderr.includes('Skipped worktree path guard hook'));
+    assert.ok(stderr.includes('gsd-worktree-path-guard.js'));
+  });
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-261-worktree-force-add-guard.test.cjs — consolidation epic #1969 (B6 #1975)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-261-worktree-force-add-guard (consolidation epic #1969 B6 #1975)", () => {
+'use strict';
+
+const { describe, test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { cleanup } = require('./helpers.cjs');
+const { runHook: seamRunHook } = require('./helpers/process-seam.cjs');
+const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+
+const HOOK_PATH = path.join(__dirname, '..', 'hooks', 'gsd-workflow-guard.js');
+
+function git(cwd, args) {
+  return gitOrThrow(args, { cwd, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+}
+
+function makeRepo(branch) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gsd-bug-261-'));
+  git(dir, ['init', '-q']);
+  git(dir, ['config', 'user.email', 'test@example.com']);
+  git(dir, ['config', 'user.name', 'Test User']);
+  git(dir, ['config', 'commit.gpgsign', 'false']);
+  fs.writeFileSync(path.join(dir, 'README.md'), '# test\n');
+  git(dir, ['add', 'README.md']);
+  git(dir, ['commit', '-q', '-m', 'chore: init']);
+  git(dir, ['checkout', '-q', '-b', branch]);
+  return dir;
+}
+
+function setWorkflowGuard(dir, enabled) {
+  const planningDir = path.join(dir, '.planning');
+  fs.mkdirSync(planningDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(planningDir, 'config.json'),
+    JSON.stringify({ hooks: { workflow_guard: enabled } }, null, 2)
+  );
+}
+
+function runHookInput(cwd, input) {
+  const r = seamRunHook(HOOK_PATH, [], {
+    cwd,
+    input: JSON.stringify({ cwd, ...input }),
+    timeoutMs: SUBPROCESS_TIMEOUT_MS,
+  });
+  return { status: r.exitCode, stdout: r.stdout, stderr: r.stderr };
+}
+
+function runBashHook(cwd, command) {
+  return runHookInput(cwd, {
+    tool_name: 'Bash',
+    tool_input: { command },
+  });
+}
+
+describe('bug #261: workflow guard blocks forced git add on worktree-agent branches', () => {
+  test('blocks git add -f on worktree-agent branch when workflow guard is enabled', () => {
+    const dir = makeRepo('worktree-agent-a1');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runBashHook(dir, 'git add -f .planning/phases/01/01-01-SUMMARY.md');
+      assert.strictEqual(result.status, 2);
+      const envelope = JSON.parse(result.stdout);
+      assert.strictEqual(envelope.decision, 'block');
+      assert.strictEqual(envelope.code, 'WORKTREE_AGENT_FORCE_ADD_FORBIDDEN');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('blocks git add --force with git global options on worktree-agent branch', () => {
+    const dir = makeRepo('worktree-agent-b2');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runBashHook(dir, `git -C "${dir}" add --force .planning/SUMMARY.md`);
+      assert.strictEqual(result.status, 2);
+      assert.strictEqual(JSON.parse(result.stdout).code, 'WORKTREE_AGENT_FORCE_ADD_FORBIDDEN');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('allows ordinary git add on worktree-agent branch', () => {
+    const dir = makeRepo('worktree-agent-c3');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runBashHook(dir, 'git add .planning/SUMMARY.md');
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('allows pathspecs named like force flags after git add -- terminator', () => {
+    const dir = makeRepo('worktree-agent-d4');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runBashHook(dir, 'git add -- -f');
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('allows git add -f outside worktree-agent branches', () => {
+    const dir = makeRepo('feature-docs');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runBashHook(dir, 'git add -f .planning/SUMMARY.md');
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('allows git add -f on worktree-agent branch when workflow guard is disabled', () => {
+    const dir = makeRepo('worktree-agent-e5');
+    try {
+      setWorkflowGuard(dir, false);
+      const result = runBashHook(dir, 'git add -f .planning/SUMMARY.md');
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('allows git add -f on worktree-agent branch when no GSD config exists', () => {
+    const dir = makeRepo('worktree-agent-f6');
+    try {
+      const result = runBashHook(dir, 'git add -f .planning/SUMMARY.md');
+      assert.strictEqual(result.status, 0);
+      assert.strictEqual(result.stdout, '');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  test('applies the advisory path to MultiEdit when workflow guard is enabled', () => {
+    const dir = makeRepo('feature-multiedit');
+    try {
+      setWorkflowGuard(dir, true);
+      const result = runHookInput(dir, {
+        tool_name: 'MultiEdit',
+        tool_input: {
+          file_path: path.join(dir, 'src.js'),
+          edits: [],
+        },
+      });
+      assert.strictEqual(result.status, 0);
+      const envelope = JSON.parse(result.stdout);
+      assert.match(
+        envelope.hookSpecificOutput.additionalContext,
+        /WORKFLOW ADVISORY/
+      );
+    } finally {
+      cleanup(dir);
+    }
+  });
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-2772-gitmodules-path-intersection.test.cjs — consolidation epic #1969 (B6 #1975)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-2772-gitmodules-path-intersection (consolidation epic #1969 B6 #1975)", () => {
+// source-text-is-the-product (see #2772)
+// Workflow .md / agent .md / command .md / reference .md files — their text
+// IS what the runtime loads. Testing text content tests the deployed contract.
+// Per CONTRIBUTING.md exception matrix.
+
+/**
+ * Regression test for #2772: worktree isolation is unconditionally disabled
+ * when `.gitmodules` exists in the repo, even when the plan does not touch
+ * any submodule path.
+ *
+ * Behavioral test: the bash decision pipeline from
+ * gsd-core/workflows/execute-phase.md is extracted verbatim into an
+ * executable snippet here, then run via execFileSync('bash', ...) against
+ * real fixture projects built with `createTempGitProject()`. We assert
+ * the resulting USE_WORKTREES_FOR_PLAN value (printed on the final line
+ * of stdout) and the presence/absence of the [worktree] log line for each
+ * scenario.
+ *
+ * If execute-phase.md's bash gate is ever rewritten so the extracted
+ * snippet stops matching real behavior, this test must be updated to
+ * track the new pipeline — never replaced with a source grep.
+ *
+ * In addition to the per-plan gate behavior, this file also asserts:
+ *   - The workflow markdown actually wires USE_WORKTREES_FOR_PLAN into
+ *     each of the four dispatch sites (worktree-mode gate, sequential-mode
+ *     gate, "worktrees disabled" prose, post-wave cleanup gate). Without
+ *     this, the per-plan computation would be dead code (the original
+ *     #2772 fix shipped in this state — CodeRabbit caught it).
+ *   - The quick.md executor prompt injects SUBMODULE_PATHS and a fail-loud
+ *     pre-commit guard, and the guard actually aborts when staged paths
+ *     fall inside a submodule.
+ */
+
+const { describe, test, beforeEach, afterEach } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
+const { createTempGitProject, cleanup } = require('./helpers.cjs');
+const { runHook: seamRunHookGate } = require('./helpers/process-seam.cjs');
+const { gitOrThrow, throwIfFailed } = require('./helpers/git-fixture.cjs');
+
+// Bash guard snippets in this block are exercised via `bash -c`, matching
+// the pre-migration execFileSync('bash', ...) throw-on-non-zero idiom the
+// tests below are written against (some catch and read err.status/
+// err.stderr explicitly). Uses the shared tests/helpers/git-fixture.cjs
+// throw mechanism, for a non-git (`bash`) target.
+function runBashOrThrow(script, opts) {
+  const r = seamRunHookGate('-c', [script], { interpreter: 'bash', ...opts });
+  throwIfFailed(r, 'bash -c <script>');
+  return r.stdout;
+}
+
+// Bash snippet extracted from execute-phase.md (the SUBMODULE_PATHS parse +
+// per-plan intersection logic with normalization + bidirectional matching).
+// Inputs come from env vars: PLAN_FILES (whitespace-separated) and plan_id.
+// Output: log lines on stdout, then a final line
+// `USE_WORKTREES_FOR_PLAN=<true|false>` for the test to parse.
+const GATE_SNIPPET = [
+  'set -e',
+  'USE_WORKTREES="${USE_WORKTREES:-true}"',
+  'if [ -f .gitmodules ]; then',
+  "  SUBMODULE_PATHS=$(git config --file .gitmodules --get-regexp '^submodule\\..*\\.path$' 2>/dev/null | awk '{print $2}')",
+  'else',
+  '  SUBMODULE_PATHS=""',
+  'fi',
+  'USE_WORKTREES_FOR_PLAN="$USE_WORKTREES"',
+  'if [ -n "$SUBMODULE_PATHS" ] && [ "$USE_WORKTREES_FOR_PLAN" != "false" ]; then',
+  '  if [ -z "$PLAN_FILES" ]; then',
+  '    echo "[worktree] Plan ${plan_id}: files_modified missing/unparseable — disabling worktree isolation as a safety fallback (submodule project)"',
+  '    USE_WORKTREES_FOR_PLAN=false',
+  '  else',
+  '    INTERSECT=""',
+  '    set -f',
+  '    for sm_raw in $SUBMODULE_PATHS; do',
+  '      sm="${sm_raw#./}"',
+  '      sm="${sm%/}"',
+  '      [ -z "$sm" ] && continue',
+  '      for pf_raw in $PLAN_FILES; do',
+  '        pf="${pf_raw#./}"',
+  '        pf="${pf%/}"',
+  '        [ -z "$pf" ] && continue',
+  '        matched=0',
+  '        case "$pf" in',
+  '          "$sm"|"$sm"/*) matched=1 ;;',
+  '        esac',
+  '        if [ "$matched" -eq 0 ]; then',
+  '          case "$sm" in',
+  '            "$pf"|"$pf"/*) matched=1 ;;',
+  '          esac',
+  '        fi',
+  '        if [ "$matched" -eq 0 ]; then',
+  '          case "$pf" in',
+  "            *'*'*|*'?'*|*'['*)",
+  '              prefix="${pf%%[*?[]*}"',
+  '              prefix="${prefix%/}"',
+  '              if [ -n "$prefix" ]; then',
+  '                case "$sm" in',
+  '                  "$prefix"|"$prefix"/*) matched=1 ;;',
+  '                esac',
+  '                if [ "$matched" -eq 0 ]; then',
+  '                  case "$prefix" in',
+  '                    "$sm"|"$sm"/*) matched=1 ;;',
+  '                  esac',
+  '                fi',
+  '              fi',
+  '              ;;',
+  '        esac',
+  '        fi',
+  '        if [ "$matched" -eq 1 ]; then',
+  '          INTERSECT="$INTERSECT $pf_raw"',
+  '        fi',
+  '      done',
+  '    done',
+  '    set +f',
+  '    if [ -n "$INTERSECT" ]; then',
+  '      echo "[worktree] Plan ${plan_id}: planned paths intersect submodule paths (${INTERSECT# }) — disabling worktree isolation for this plan"',
+  '      USE_WORKTREES_FOR_PLAN=false',
+  '    fi',
+  '  fi',
+  'fi',
+  'echo "USE_WORKTREES_FOR_PLAN=$USE_WORKTREES_FOR_PLAN"',
+].join('\n');
+
+function runGate(cwd, env) {
+  // This is a bash FAN-OUT: the `-c` snippet runs shell string/array parsing
+  // plus a `git config --file .gitmodules` subprocess under one bash
+  // interpreter, not a single plumbing call — 30000ms was the wrong CLASS,
+  // not a slow machine. It timed out on `next` itself, run 32608945654,
+  // `full test (windows-latest, 24, shard 1/3)`, test `plan touching only
+  // src/ in a submodule project keeps worktree isolation ENABLED`:
+  // `outcome=timed_out` exitCode null. See HOOK_FANOUT_TIMEOUT_MS in
+  // ./helpers/timeouts.cjs for the class rationale.
+  const r = seamRunHookGate('-c', [GATE_SNIPPET], {
+    interpreter: 'bash',
+    cwd,
+    timeoutMs: HOOK_FANOUT_TIMEOUT_MS,
+    env: { ...process.env, ...env },
+  });
+  if (r.exitCode !== 0) {
+    // execFileSync THREW on non-zero exit; the seam does not. Reproduce that
+    // failure signal explicitly so a real gate-snippet failure still surfaces
+    // loudly instead of silently falling through to the parse below.
+    throw new Error(
+      `runGate: bash -c GATE_SNIPPET exited ${r.exitCode} (outcome=${r.outcome}). ` +
+      `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`
+    );
+  }
+  const out = r.stdout;
+  const lines = out.trim().split('\n');
+  const last = lines[lines.length - 1];
+  const m = last.match(/^USE_WORKTREES_FOR_PLAN=(true|false)$/);
+  assert.ok(
+    m,
+    `expected final line to be USE_WORKTREES_FOR_PLAN=<bool>, got: ${last}\nfull stdout:\n${out}`
+  );
+  return { decision: m[1], stdout: out, logLines: lines.slice(0, -1) };
+}
+
+function writeGitmodulesWithSubmodule(repo, submodulePath) {
+  const content = [
+    `[submodule "${submodulePath}"]`,
+    `\tpath = ${submodulePath}`,
+    `\turl = https://example.invalid/${submodulePath}.git`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(repo, '.gitmodules'), content);
+}
+
+describe('Submodule worktree-isolation gate intersects planned paths (#2772)', () => {
+  let repo;
+
+  beforeEach(() => {
+    repo = createTempGitProject('gsd-test-2772-');
+  });
+
+  afterEach(() => {
+    cleanup(repo);
+  });
+
+  test('plan touching only src/ in a submodule project keeps worktree isolation ENABLED', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, logLines } = runGate(repo, {
+      PLAN_FILES: 'src/index.ts src/lib/util.ts',
+      plan_id: 'plan-001',
+    });
+
+    assert.equal(decision, 'true');
+    assert.equal(logLines.filter((l) => l.startsWith('[worktree]')).length, 0);
+  });
+
+  test('plan touching vendor/foo/bar.ts in a submodule project DISABLES worktree isolation', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: 'src/index.ts vendor/foo/bar.ts',
+      plan_id: 'plan-002',
+    });
+
+    assert.equal(decision, 'false');
+    assert.match(stdout, /\[worktree\] Plan plan-002: planned paths intersect submodule paths/);
+    assert.match(stdout, /vendor\/foo\/bar\.ts/);
+  });
+
+  test('plan whose path equals the submodule root (vendor/foo) DISABLES worktree isolation', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: 'vendor/foo',
+      plan_id: 'plan-003',
+    });
+
+    assert.equal(decision, 'false');
+    assert.match(stdout, /\[worktree\] Plan plan-003: planned paths intersect submodule paths/);
+  });
+
+  test('missing files_modified in a submodule project falls back to DISABLE with a logged reason', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: '',
+      plan_id: 'plan-004',
+    });
+
+    assert.equal(decision, 'false');
+    assert.match(stdout, /\[worktree\] Plan plan-004: files_modified missing\/unparseable/);
+    assert.match(stdout, /safety fallback/);
+  });
+
+  test('repo with no .gitmodules at all keeps worktree isolation ENABLED regardless of plan paths', () => {
+    const { decision, logLines } = runGate(repo, {
+      PLAN_FILES: 'vendor/foo/bar.ts src/index.ts',
+      plan_id: 'plan-005',
+    });
+
+    assert.equal(decision, 'true');
+    assert.equal(logLines.filter((l) => l.startsWith('[worktree]')).length, 0);
+  });
+
+  test('multiple submodules, plan touches only one of them — DISABLE with that path in the log', () => {
+    const gitmodules = [
+      '[submodule "vendor/foo"]',
+      '\tpath = vendor/foo',
+      '\turl = https://example.invalid/foo.git',
+      '[submodule "third_party/bar"]',
+      '\tpath = third_party/bar',
+      '\turl = https://example.invalid/bar.git',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(repo, '.gitmodules'), gitmodules);
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: 'src/a.ts third_party/bar/b.ts',
+      plan_id: 'plan-006',
+    });
+
+    assert.equal(decision, 'false');
+    assert.match(stdout, /third_party\/bar\/b\.ts/);
+  });
+
+  test('planned path that merely shares a prefix with a submodule (vendor/foobar) does NOT count as intersection', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, logLines } = runGate(repo, {
+      PLAN_FILES: 'vendor/foobar/x.ts',
+      plan_id: 'plan-007',
+    });
+
+    assert.equal(decision, 'true');
+    assert.equal(logLines.filter((l) => l.startsWith('[worktree]')).length, 0);
+  });
+
+  // ---- Path-normalization & glob coverage (CodeRabbit MAJOR finding) ----
+
+  test('planned path with leading "./" normalizes and DISABLES isolation when inside a submodule', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: './vendor/foo/bar.c',
+      plan_id: 'plan-norm-1',
+    });
+
+    assert.equal(decision, 'false', './vendor/foo/bar.c must normalize and intersect vendor/foo');
+    assert.match(stdout, /vendor\/foo\/bar\.c/);
+  });
+
+  test('planned path with trailing slash equal to submodule DISABLES isolation', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision } = runGate(repo, {
+      PLAN_FILES: 'vendor/foo/',
+      plan_id: 'plan-norm-2',
+    });
+
+    assert.equal(decision, 'false', 'trailing slash must not defeat the submodule-root match');
+  });
+
+  test('globby planned path "vendor/**/*.c" DISABLES isolation when submodule sits inside vendor/', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, stdout } = runGate(repo, {
+      PLAN_FILES: 'vendor/**/*.c',
+      plan_id: 'plan-norm-3',
+    });
+
+    assert.equal(
+      decision,
+      'false',
+      'glob whose literal prefix "vendor" contains submodule vendor/foo must intersect'
+    );
+    assert.match(stdout, /vendor\/\*\*\/\*\.c/);
+  });
+
+  test('plan declares a parent directory of the submodule (e.g. "vendor") — DISABLES isolation', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision } = runGate(repo, {
+      PLAN_FILES: 'vendor',
+      plan_id: 'plan-norm-4',
+    });
+
+    assert.equal(
+      decision,
+      'false',
+      'planned path that contains the submodule must intersect (bidirectional matching)'
+    );
+  });
+
+  test('submodule path declared with leading "./" in .gitmodules still matches a plain planned path', () => {
+    const gitmodules = [
+      '[submodule "vendor/foo"]',
+      '\tpath = ./vendor/foo',
+      '\turl = https://example.invalid/foo.git',
+      '',
+    ].join('\n');
+    fs.writeFileSync(path.join(repo, '.gitmodules'), gitmodules);
+
+    const { decision } = runGate(repo, {
+      PLAN_FILES: 'vendor/foo/bar.ts',
+      plan_id: 'plan-norm-5',
+    });
+
+    assert.equal(
+      decision,
+      'false',
+      'submodule "./vendor/foo" must normalize and match plain planned path vendor/foo/bar.ts'
+    );
+  });
+
+  test('globby planned path that does NOT overlap the submodule keeps isolation ENABLED', () => {
+    writeGitmodulesWithSubmodule(repo, 'vendor/foo');
+
+    const { decision, logLines } = runGate(repo, {
+      PLAN_FILES: 'src/**/*.ts',
+      plan_id: 'plan-norm-6',
+    });
+
+    assert.equal(decision, 'true');
+    assert.equal(logLines.filter((l) => l.startsWith('[worktree]')).length, 0);
+  });
+});
+
+// ---- Workflow-markdown wiring assertions (CodeRabbit CRITICAL finding) ----
+//
+// The original PR computed USE_WORKTREES_FOR_PLAN but never read it at the
+// dispatch sites — the dispatch still branched on the project-level
+// USE_WORKTREES, so the per-plan decision was dead code. Assert the markdown
+// actually wires the variable into the four dispatch sites.
+
+describe('execute-phase.md dispatch wires USE_WORKTREES_FOR_PLAN (#2772)', () => {
+  const workflowPath = path.join(
+    __dirname,
+    '..',
+    'gsd-core',
+    'workflows',
+    'execute-phase.md'
+  );
+  const gatePath = path.join(
+    __dirname,
+    '..',
+    'gsd-core',
+    'workflows',
+    'execute-phase',
+    'steps',
+    'per-plan-worktree-gate.md'
+  );
+
+  test('workflow file exists and is readable', () => {
+    assert.ok(fs.existsSync(workflowPath), `expected ${workflowPath} to exist`);
+  });
+
+  test('per-plan worktree gate steps file exists and is readable', () => {
+    assert.ok(fs.existsSync(gatePath), `expected ${gatePath} to exist`);
+  });
+
+  test('Worktree-mode dispatch gate reads both USE_WORKTREES and USE_WORKTREES_FOR_PLAN (#2474)', () => {
+    const md = fs.readFileSync(workflowPath, 'utf-8');
+    assert.match(
+      md,
+      /\*\*Worktree mode\*\*.*`USE_WORKTREES`.*`USE_WORKTREES_FOR_PLAN`/,
+      'Worktree-mode header must gate on both USE_WORKTREES and USE_WORKTREES_FOR_PLAN (#2474)'
+    );
+  });
+
+  test('Sequential-mode dispatch gate reads USE_WORKTREES_FOR_PLAN', () => {
+    const md = fs.readFileSync(workflowPath, 'utf-8');
+    assert.match(
+      md,
+      /\*\*Sequential mode\*\*\s*\(`USE_WORKTREES_FOR_PLAN`/,
+      'Sequential-mode header must gate on USE_WORKTREES_FOR_PLAN per-plan'
+    );
+  });
+
+  test('"Worktrees disabled" sequential rule is documented per-plan, not project-level', () => {
+    // #4254 moved the wave-serialization rules into the sequential-root-pin step
+    // fragment (ADR-857 Phase 6 frozen ceiling — the host step cannot grow), so the
+    // rule is asserted where it now lives AND that the host step still wires the
+    // fragment in at the Sequential mode branch.
+    const pinFragmentPath = path.join(
+      __dirname,
+      '..',
+      'gsd-core',
+      'workflows',
+      'execute-phase',
+      'steps',
+      'sequential-root-pin.md'
+    );
+    const frag = fs.readFileSync(pinFragmentPath, 'utf-8');
+    assert.match(
+      frag,
+      /worktrees are disabled for a plan/i,
+      'sequential-execution rule must be expressed per-plan (in the sequential-root-pin fragment)'
+    );
+    const md = fs.readFileSync(workflowPath, 'utf-8');
+    assert.match(
+      md,
+      /execute-phase\/steps\/sequential-root-pin\.md/,
+      'execute-phase.md must wire the sequential-root-pin fragment at the Sequential mode branch'
+    );
+  });
+
+  test('execute-phase.md hooks the per-plan gate steps file at sub-step 2.5', () => {
+    const md = fs.readFileSync(workflowPath, 'utf-8');
+    assert.match(md, /Per-plan worktree decision/, 'sub-step header must exist in execute_waves');
+    assert.match(
+      md,
+      /execute-phase\/steps\/per-plan-worktree-gate\.md/,
+      'execute-phase.md must reference the extracted gate file'
+    );
+  });
+
+  test('per-plan gate file documents PLAN_FILES extraction from plan_json', () => {
+    const md = fs.readFileSync(gatePath, 'utf-8');
+    assert.match(
+      md,
+      /jq -r '\.files_modified \/\/ \[\] \| join\(" "\)' <<<"\$plan_json"/,
+      'PLAN_FILES extraction from plan_json must be documented in the gate file'
+    );
+  });
+
+  test('per-plan gate file uses bidirectional case + glob-prefix handling + set -f discipline', () => {
+    const md = fs.readFileSync(gatePath, 'utf-8');
+    assert.match(md, /set -f/, 'matcher must disable globbing while iterating');
+    assert.match(md, /set \+f/, 'matcher must re-enable globbing after iteration');
+    const pfFirst = md.match(/case "\$pf" in\s+"\$sm"\|"\$sm"\/\*\)/);
+    const smFirst = md.match(/case "\$sm" in\s+"\$pf"\|"\$pf"\/\*\)/);
+    assert.ok(pfFirst, 'matcher must check pf inside sm');
+    assert.ok(smFirst, 'matcher must check sm inside pf (bidirectional)');
+    assert.match(md, /sm="\$\{sm_raw#\.\/\}"/, 'submodule path must strip leading ./');
+    assert.match(md, /pf="\$\{pf_raw#\.\/\}"/, 'planned path must strip leading ./');
+    assert.match(md, /sm="\$\{sm%\/\}"/, 'submodule path must strip trailing /');
+    assert.match(md, /pf="\$\{pf%\/\}"/, 'planned path must strip trailing /');
+  });
+
+  test('Post-wave worktree-cleanup gate is per-plan, not blanket project-level', () => {
+    const md = fs.readFileSync(workflowPath, 'utf-8');
+    assert.match(
+      md,
+      /WAVE_WORKTREE_PLANS/,
+      'post-wave cleanup must track which plans actually used worktrees'
+    );
+  });
+});
+
+// ---- quick.md SUBMODULE_PATHS executor guard (CodeRabbit CRITICAL #3) ----
+//
+// Quick mode does NOT have a pre-declared files_modified list. The fail-loud
+// guard must (a) be present in the markdown of the executor prompt, and
+// (b) actually abort when run against a fixture that stages a submodule path.
+
+describe('quick.md executor pre-commit submodule guard (#2772)', () => {
+  const quickPath = path.join(__dirname, '..', 'gsd-core', 'workflows', 'quick.md');
+
+  test('quick.md executor prompt injects SUBMODULE_PATHS', () => {
+    const md = fs.readFileSync(quickPath, 'utf-8');
+    assert.match(
+      md,
+      /SUBMODULE_PATHS for this project: \$\{SUBMODULE_PATHS\}/,
+      'executor prompt must inline SUBMODULE_PATHS so the agent can run the guard'
+    );
+  });
+
+  test('quick.md executor prompt contains a fail-loud pre-commit guard with ABORT message', () => {
+    const md = fs.readFileSync(quickPath, 'utf-8');
+    assert.match(md, /<submodule_commit_guard>/, 'guard block must exist');
+    assert.match(
+      md,
+      /git diff --cached --name-only/,
+      'guard must inspect staged paths before commit'
+    );
+    assert.match(
+      md,
+      /ABORT: staged path/,
+      'guard must surface a fail-loud ABORT message on intersection'
+    );
+    assert.match(
+      md,
+      /workflow\.use_worktrees=false/,
+      'guard must tell the user how to recover (re-run without worktrees)'
+    );
+  });
+
+  // Behavioral: extract the guard logic and run it against a fixture repo.
+  // We simulate the executor's commit-time guard and assert it aborts when a
+  // staged path falls inside a SUBMODULE_PATHS entry, and passes otherwise.
+  const QUICK_GUARD_SNIPPET = [
+    'set +e',
+    'STAGED=$(git diff --cached --name-only)',
+    'if [ -n "$SUBMODULE_PATHS" ]; then',
+    '  for sm_raw in $SUBMODULE_PATHS; do',
+    '    sm="${sm_raw#./}"',
+    '    sm="${sm%/}"',
+    '    [ -z "$sm" ] && continue',
+    '    for f_raw in $STAGED; do',
+    '      f="${f_raw#./}"',
+    '      f="${f%/}"',
+    '      case "$f" in',
+    '        "$sm"|"$sm"/*)',
+    '          echo "ABORT: staged path $f_raw falls inside submodule $sm — re-run with workflow.use_worktrees=false" >&2',
+    '          exit 1 ;;',
+    '      esac',
+    '    done',
+    '  done',
+    'fi',
+    'echo "OK"',
+  ].join('\n');
+
+  test('guard ABORTs when a staged path falls inside a submodule', () => {
+    const repo = createTempGitProject('gsd-test-2772-quick-abort-');
+    try {
+      // Create a file inside the submodule path and stage it.
+      fs.mkdirSync(path.join(repo, 'vendor', 'foo'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'vendor', 'foo', 'bar.ts'), 'export {};\n');
+      gitOrThrow(['add', 'vendor/foo/bar.ts'], { cwd: repo, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+
+      let err;
+      try {
+        runBashOrThrow(QUICK_GUARD_SNIPPET, {
+          cwd: repo,
+          timeoutMs: SUBPROCESS_TIMEOUT_MS,
+          env: { ...process.env, SUBMODULE_PATHS: 'vendor/foo' },
+        });
+      } catch (e) {
+        err = e;
+      }
+      assert.ok(err, 'guard must exit non-zero when staged path is inside submodule');
+      assert.equal(err.status, 1, 'guard must exit with status 1');
+      const stderr = err.stderr ? err.stderr.toString() : '';
+      assert.match(stderr, /ABORT: staged path vendor\/foo\/bar\.ts/);
+      assert.match(stderr, /vendor\/foo/);
+    } finally {
+      cleanup(repo);
+    }
+  });
+
+  test('guard passes when no staged path falls inside a submodule', () => {
+    const repo = createTempGitProject('gsd-test-2772-quick-pass-');
+    try {
+      fs.mkdirSync(path.join(repo, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'src', 'index.ts'), 'export {};\n');
+      gitOrThrow(['add', 'src/index.ts'], { cwd: repo, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+
+      const out = runBashOrThrow(QUICK_GUARD_SNIPPET, {
+        cwd: repo,
+        timeoutMs: SUBPROCESS_TIMEOUT_MS,
+        env: { ...process.env, SUBMODULE_PATHS: 'vendor/foo' },
+      });
+      assert.match(out, /OK/);
+    } finally {
+      cleanup(repo);
+    }
+  });
+
+  test('guard normalizes leading "./" on staged paths and still ABORTs', () => {
+    const repo = createTempGitProject('gsd-test-2772-quick-norm-');
+    try {
+      fs.mkdirSync(path.join(repo, 'vendor', 'foo'), { recursive: true });
+      fs.writeFileSync(path.join(repo, 'vendor', 'foo', 'bar.ts'), 'export {};\n');
+      gitOrThrow(['add', 'vendor/foo/bar.ts'], { cwd: repo, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+
+      let err;
+      try {
+        // Submodule path declared with ./ prefix — must still match.
+        runBashOrThrow(QUICK_GUARD_SNIPPET, {
+          cwd: repo,
+          timeoutMs: SUBPROCESS_TIMEOUT_MS,
+          env: { ...process.env, SUBMODULE_PATHS: './vendor/foo' },
+        });
+      } catch (e) {
+        err = e;
+      }
+      assert.ok(err, 'guard must abort even when SUBMODULE_PATHS uses ./ prefix');
+      assert.equal(err.status, 1);
+    } finally {
+      cleanup(repo);
+    }
+  });
+});
+  });
+}
+
+
+// ────────────────────────────────────────────────────────────────────────
+// Folded from tests/bug-3542-executor-git-stash-prohibition.test.cjs — consolidation epic #1969 (B6 #1975)
+// ────────────────────────────────────────────────────────────────────────
+{
+  const { describe: __foldDescribe } = require('node:test');
+  __foldDescribe("folded:bug-3542-executor-git-stash-prohibition (consolidation epic #1969 B6 #1975)", () => {
+// source-text-is-the-product (see #3542)
+// Bug #3542 — Worktree stash storage is shared across agent worktrees;
+// `git stash pop` from an executor agent contaminates its isolation.
+//
+// Git stores stashes at `refs/stash` (plus the stash reflog) inside the
+// PARENT `.git/` directory. Every linked worktree shares that ref, so a
+// `git stash push` in any worktree (or in the main checkout) is visible —
+// and poppable — from every other worktree. From inside a worktree,
+// `git stash list` shows the shared list with no indication that an entry
+// originated elsewhere.
+//
+// Incident: an executor agent ran `git stash` (printed "No local changes
+// to save" — nothing pushed), then `git stash pop`, which yanked a stash
+// from a prior worktree-agent session. Result: 21 files in UU/UD state,
+// 16 phantom untracked files, ~12 minutes of recovery work. This breaks
+// the `isolation="worktree"` invariant documented in the executor agent.
+//
+// Two test cases:
+//
+//   A. The agent prompt content asserts the `git stash` family is
+//      prohibited and documents an alternative. The prompt content IS
+//      the runtime contract for the agent — source-text-is-the-product
+//      (per CONTEXT.md `RULESET.TESTS.no-source-grep.exemption`).
+//
+//   B. A behavioural test that pins the git invariant the prohibition
+//      defends against: a stash pushed in the main checkout is visible in
+//      a linked worktree's `git stash list`, proving stash storage is
+//      shared and cannot be relied on for worktree-scoped isolation.
+
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { cleanup } = require('./helpers.cjs');
+const { gitOrThrow } = require('./helpers/git-fixture.cjs');
+
+const EXECUTOR_PATH = path.join(__dirname, '..', 'agents', 'gsd-executor.md');
+
+// ─── Test A — prompt content asserts the prohibition ───────────────────────
+
+test('bug-3542: gsd-executor.md prohibits `git stash` family inside worktrees', () => {
+  const content = fs.readFileSync(EXECUTOR_PATH, 'utf-8');
+
+  // The prohibition must call out `git stash` explicitly. Just listing
+  // "stash" isn't enough — the existing post-wave-hook helper script
+  // legitimately mentions stash, so we look for the specific forbidden
+  // commands the agent must never run on its own.
+  assert.match(
+    content,
+    /`git stash`/,
+    'gsd-executor.md must explicitly forbid `git stash` (bare push) — see #3542',
+  );
+  assert.match(
+    content,
+    /`git stash pop`/,
+    'gsd-executor.md must explicitly forbid `git stash pop` — the load-bearing footgun (#3542)',
+  );
+  assert.match(
+    content,
+    /`git stash apply`/,
+    'gsd-executor.md must explicitly forbid `git stash apply` — same shared-stack hazard as pop (#3542)',
+  );
+  assert.match(
+    content,
+    /`git stash drop`/,
+    'gsd-executor.md must explicitly forbid `git stash drop` — mutates the shared stack (#3542)',
+  );
+
+  // The prohibition must explain WHY (shared storage across worktrees) so
+  // the agent understands the failure mode rather than treating it as an
+  // arbitrary rule.
+  assert.match(
+    content,
+    /shared|share[d]?\s+(across|between)/i,
+    'gsd-executor.md must document that stash storage is shared across worktrees (#3542)',
+  );
+
+  // The prohibition must document at least one alternative the agent CAN
+  // use to inspect or move work between refs without touching `refs/stash`.
+  // The triage brief proposes commit-to-throwaway-branch OR read-only
+  // `git show <ref>:<path>` / `git diff <ref> -- <path>`.
+  const hasThrowawayBranch = /throwaway[- ]branch|temp(?:orary)?[- ]?branch|scratch[- ]branch/i.test(
+    content,
+  );
+  const hasGitShow = /`git show /i.test(content);
+  // eslint-disable-next-line local/no-unbounded-quantifier -- parses maintainer-authored gsd-executor.md agent markdown, bounded prose, not adversarial input
+  const hasGitDiffRef = /`git diff [^`]*\$?\{?ref\}?|`git diff [A-Z]+:/i.test(content);
+  assert.ok(
+    hasThrowawayBranch || hasGitShow || hasGitDiffRef,
+    'gsd-executor.md must document an alternative to `git stash` ' +
+      '(commit-to-throwaway-branch, or read-only `git show <ref>:<path>` / ' +
+      '`git diff <ref> -- <path>`) so the agent has a sanctioned escape path (#3542)',
+  );
+
+  // The issue number must appear so future readers can trace the rule to
+  // its incident.
+  assert.match(
+    content,
+    /#3542/,
+    'gsd-executor.md must reference issue #3542 next to the stash prohibition for traceability',
+  );
+});
+
+// ─── Test B — behavioural pin of the git invariant ─────────────────────────
+
+test('bug-3542: stash pushed in main checkout is visible inside a linked worktree', () => {
+  const tmpRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'bug-3542-stash-')));
+  const mainRepo = path.join(tmpRoot, 'main');
+  const linkedWorktree = path.join(tmpRoot, 'wt');
+
+  try {
+    // Set up a normal repo with one commit.
+    fs.mkdirSync(mainRepo);
+    const gitOpts = { cwd: mainRepo, timeoutMs: SUBPROCESS_TIMEOUT_MS };
+    gitOrThrow(['init', '-q'], gitOpts);
+    gitOrThrow(['config', 'user.email', 'test@test.com'], gitOpts);
+    gitOrThrow(['config', 'user.name', 'Test'], gitOpts);
+    gitOrThrow(['config', 'commit.gpgsign', 'false'], gitOpts);
+    fs.writeFileSync(path.join(mainRepo, 'a.txt'), 'initial\n');
+    gitOrThrow(['add', 'a.txt'], gitOpts);
+    gitOrThrow(['commit', '-q', '-m', 'initial'], gitOpts);
+
+    // Create a linked worktree on a separate branch — this is what the
+    // executor agent runs inside.
+    gitOrThrow(['worktree', 'add', '-q', linkedWorktree, '-b', 'wt-branch'], gitOpts);
+
+    // Push a stash from the MAIN checkout (simulating a prior session).
+    fs.writeFileSync(path.join(mainRepo, 'a.txt'), 'wip in main\n');
+    gitOrThrow(['stash', 'push', '-q', '-u', '-m', 'from-main-checkout'], gitOpts);
+
+    // Sanity check: the stash exists in the main checkout's view.
+    const mainList = gitOrThrow(['stash', 'list'], { cwd: mainRepo, timeoutMs: SUBPROCESS_TIMEOUT_MS }).toString();
+    assert.match(
+      mainList,
+      /from-main-checkout/,
+      'pre-condition: main checkout must see its own stash entry',
+    );
+
+    // The load-bearing assertion: the linked worktree sees the same
+    // stash entry, even though it was pushed from a different working
+    // tree. This is the invariant that makes `git stash pop` inside an
+    // executor agent's worktree an isolation violation.
+    const worktreeList = gitOrThrow(['stash', 'list'], {
+      cwd: linkedWorktree,
+      timeoutMs: SUBPROCESS_TIMEOUT_MS,
+    }).toString();
+    assert.match(
+      worktreeList,
+      /from-main-checkout/,
+      'bug #3542 invariant: stash entries pushed from any worktree (or the ' +
+        'main checkout) are visible in every linked worktree, because ' +
+        '`refs/stash` lives in the shared parent .git directory. If this ' +
+        'assertion ever stops holding (e.g. git introduces per-worktree ' +
+        'stash storage in a future release), the executor agent prohibition ' +
+        'in agents/gsd-executor.md can be relaxed.',
+    );
+
+    // Stronger pin: a `git stash pop` inside the worktree must actually
+    // pop the stash pushed from main — proving cross-worktree mutation,
+    // not just visibility. We pop into a clean working tree on a
+    // different branch, so any applied content is the contamination.
+    gitOrThrow(['stash', 'pop', '-q'], { cwd: linkedWorktree, timeoutMs: SUBPROCESS_TIMEOUT_MS });
+    // On Windows autocrlf=true, git rewrites stashed content with CRLF on
+    // checkout. Strip \r before content compare — the test pins git's
+    // shared-stash behavior, not line endings.
+    const popped = fs.readFileSync(path.join(linkedWorktree, 'a.txt'), 'utf-8').replace(/\r\n/g, '\n');
+    assert.strictEqual(
+      popped,
+      'wip in main\n',
+      'bug #3542 invariant: `git stash pop` inside a linked worktree applies ' +
+        'a stash pushed in the main checkout — proving the shared-stack ' +
+        'contamination the executor prohibition exists to prevent.',
+    );
+  } finally {
+    cleanup(tmpRoot);
+  }
+});
+  });
+}
+
+// ─── #2596: advisory diff-vs-declared-scope conformance at worktree-wave merge ─
+//
+// The wave-cleanup gauntlet validated branch, base, deletions, SUMMARY rescue and
+// a clean worktree — but never compared the branch's ACTUAL committed diff against
+// the scope the plan declared in `files_modified`. An executor that committed
+// outside its brief merged silently. This is the advisory-first check: it warns,
+// it does not block (promotion to a gate is a separate, disclosed change).
+
+const {
+  WAVE_CLEANUP_WARNING,
+  planWaveScopeConformance,
+  isSummaryArtifactRelPath,
+  normalizeCleanupManifest,
+} = require(WORKTREE_SAFETY_PATH);
+
+describe('#2596 scope conformance — planWaveScopeConformance (pure)', () => {
+  const BR = 'worktree-agent-a1';
+  const codesOf = (warnings) => warnings.map((w) => w.code);
+  const pathsOf = (warnings) => warnings.map((w) => w.path);
+
+  test('exact path match is in scope', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/a.ts'], ['src/a.ts'], BR), []);
+  });
+
+  test('declared directory covers a file beneath it', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/foo/bar.ts'], ['src/foo'], BR), []);
+  });
+
+  test('prefix sibling is out of scope (the boundary is /, not startsWith)', () => {
+    const warnings = planWaveScopeConformance(['src/foobar.ts'], ['src/foo'], BR);
+    assert.deepEqual(codesOf(warnings), [WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED]);
+    assert.deepEqual(pathsOf(warnings), ['src/foobar.ts']);
+    assert.equal(warnings[0].branch, BR);
+  });
+
+  test('trailing slash on a declared directory is normalized', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/foo/bar.ts'], ['src/foo/'], BR), []);
+  });
+
+  test('leading ./ is normalized on both sides', () => {
+    assert.deepEqual(planWaveScopeConformance(['./src/a.ts'], ['./src/a.ts'], BR), []);
+  });
+
+  test('backslash separators normalize unconditionally (not only on win32)', () => {
+    assert.deepEqual(planWaveScopeConformance(['src\\a.ts'], ['src/a.ts'], BR), []);
+    assert.deepEqual(planWaveScopeConformance(['src/a.ts'], ['src\\a.ts'], BR), []);
+  });
+
+  test('glob literal prefix covers paths beneath it', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/a/b.ts'], ['src/**/*.ts'], BR), []);
+  });
+
+  test('glob matching is literal-prefix only — the documented over-accept', () => {
+    // `src/**/*.ts` also covers `src/a/b.json`. Deliberate: for an advisory a false
+    // alarm costs more than a miss, and this mirrors the submodule-intersection
+    // gate's own glob-prefix handling rather than inventing a second matcher.
+    assert.deepEqual(planWaveScopeConformance(['src/a/b.json'], ['src/**/*.ts'], BR), []);
+  });
+
+  test('a pattern with no literal prefix suppresses warnings rather than crying wolf', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/a.ts'], ['*.md'], BR), []);
+  });
+
+  test('an undeclared sibling file is out of scope', () => {
+    const warnings = planWaveScopeConformance(['src/b.ts'], ['src/a.ts'], BR);
+    assert.deepEqual(pathsOf(warnings), ['src/b.ts']);
+  });
+
+  test('an all-blank declared list is unknown, not empty — no warnings', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/b.ts'], ['', '   ', './', '/'], BR), []);
+  });
+
+  test('an absent, empty or non-array declared list yields no warnings', () => {
+    assert.deepEqual(planWaveScopeConformance(['src/b.ts'], undefined, BR), []);
+    assert.deepEqual(planWaveScopeConformance(['src/b.ts'], [], BR), []);
+    assert.deepEqual(planWaveScopeConformance(['src/b.ts'], 'src/b.ts', BR), []);
+  });
+
+  test('a committed SUMMARY artifact is never a scope violation', () => {
+    assert.deepEqual(
+      planWaveScopeConformance(['.planning/q1-SUMMARY.md'], ['src/a.ts'], BR),
+      [],
+    );
+  });
+
+  test('every out-of-scope path gets its own warning, in diff order', () => {
+    const warnings = planWaveScopeConformance(
+      ['src/a.ts', 'z/second.ts', 'a/first.ts'],
+      ['src/a.ts'],
+      BR,
+    );
+    assert.deepEqual(pathsOf(warnings), ['z/second.ts', 'a/first.ts']);
+    assert.deepEqual(codesOf(warnings), [
+      WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED,
+      WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED,
+    ]);
+  });
+
+  // CLAUDE.md → TEST RULES: a parser needs at least one property test.
+  // Both are deterministic — seed pinned, run count bounded — per the repo's
+  // "property tests must be reproducible" rule. The two segment alphabets are
+  // disjoint so the negative property can never accidentally build a path that
+  // IS covered, and neither alphabet contains `.planning`, so the SUMMARY
+  // exemption cannot mask a result.
+  test('property: any path beneath a declared literal directory is always in scope', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom('src', 'lib', 'core', 'deep'), { minLength: 1, maxLength: 4 }),
+        fc.array(fc.constantFrom('a', 'b', 'c', 'd.ts'), { minLength: 1, maxLength: 3 }),
+        (declaredSegments, tailSegments) => {
+          const declared = declaredSegments.join('/');
+          const changed = `${declared}/${tailSegments.join('/')}`;
+          return planWaveScopeConformance([changed], [declared], BR).length === 0;
+        },
+      ),
+      { numRuns: 250, seed: 2596 },
+    );
+  });
+
+  test('property: a path sharing no prefix with any declared path always warns exactly once', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom('src', 'lib', 'core'), { minLength: 1, maxLength: 3 }),
+        fc.array(fc.constantFrom('zeta', 'yankee', 'xray.ts'), { minLength: 1, maxLength: 3 }),
+        (declaredSegments, changedSegments) => {
+          const declared = declaredSegments.join('/');
+          const changed = changedSegments.join('/');
+          const warnings = planWaveScopeConformance([changed], [declared], BR);
+          return warnings.length === 1
+            && warnings[0].path === changed
+            && warnings[0].code === WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED;
+        },
+      ),
+      { numRuns: 250, seed: 2596 },
+    );
+  });
+});
+
+describe('#2596 SUMMARY-artifact predicate and its parity with the walker', () => {
+  const nodeFs = require('node:fs');
+
+  test('a .planning SUMMARY is recognized', () => {
+    assert.equal(isSummaryArtifactRelPath('.planning/q1-SUMMARY.md'), true);
+  });
+
+  test('a nested .planning SUMMARY is recognized', () => {
+    assert.equal(isSummaryArtifactRelPath('.planning/phases/3/x-SUMMARY.md'), true);
+  });
+
+  test('SUMMARY.md outside .planning is not exempt', () => {
+    assert.equal(isSummaryArtifactRelPath('docs/SUMMARY.md'), false);
+  });
+
+  test('the SUMMARY suffix must terminate the name', () => {
+    assert.equal(isSummaryArtifactRelPath('.planning/SUMMARY.md.bak'), false);
+  });
+
+  test('the .planning boundary is a whole path segment', () => {
+    assert.equal(isSummaryArtifactRelPath('.planningx/q-SUMMARY.md'), false);
+  });
+
+  test('parity: the SUMMARY walker and the scope-exemption predicate agree', (t) => {
+    // The rescue walker roots at <worktree>/.planning and accepts *SUMMARY.md.
+    // The scope advisory must exempt exactly that set, or it would warn on the
+    // very artifacts the rescue path exists to carry. Drive the PRODUCTION
+    // walker (no findSummaryFiles override) over a real temp tree and
+    // cross-check every collected path against the predicate.
+    const tmp = createTempDir('wt-2596-summary-parity');
+    t.after(() => cleanup(tmp));
+
+    const planning = path.join(tmp, '.planning', 'phases', '3');
+    nodeFs.mkdirSync(planning, { recursive: true });
+    nodeFs.writeFileSync(path.join(planning, 'p3-SUMMARY.md'), 'x');
+    nodeFs.writeFileSync(path.join(tmp, '.planning', 'SUMMARY.md'), 'x');
+    // Decoys the walker must skip and the predicate must reject.
+    nodeFs.writeFileSync(path.join(planning, 'notes.md'), 'x');
+    nodeFs.mkdirSync(path.join(tmp, 'docs'), { recursive: true });
+    nodeFs.writeFileSync(path.join(tmp, 'docs', 'SUMMARY.md'), 'x');
+
+    const copiedFrom = [];
+    executeWorktreeWaveCleanupPlan(
+      {
+        ok: true,
+        repoRoot: '/repo/main',
+        action: 'cleanup_wave',
+        discovery: 'manifest',
+        entries: [{
+          agent_id: 'a1',
+          worktree_path: tmp,
+          branch: 'worktree-agent-a1',
+          expected_base: 'abc123',
+        }],
+      },
+      {
+        // No findSummaryFiles override: this exercises the production walker.
+        execGit: (args) => {
+          const key = args.join(' ');
+          if (key === `-C ${tmp} rev-parse --abbrev-ref HEAD`) {
+            return { exitCode: 0, stdout: 'worktree-agent-a1', stderr: '', timedOut: false };
+          }
+          if (key === 'merge-base HEAD worktree-agent-a1') {
+            return { exitCode: 0, stdout: 'abc123', stderr: '', timedOut: false };
+          }
+          // cat-file -e → non-zero, so every found SUMMARY is rescued (copied).
+          if (args.includes('cat-file')) {
+            return { exitCode: 128, stdout: '', stderr: '', timedOut: false };
+          }
+          return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+        },
+        existsSync: () => false,
+        readFileSync: () => 'x',
+        mkdirSync: () => {},
+        copyFileSync: (src) => { copiedFrom.push(src); },
+      },
+    );
+
+    assert.equal(copiedFrom.length, 2,
+      'the walker must find exactly the two .planning SUMMARY artifacts, not the docs/ decoy');
+    for (const abs of copiedFrom) {
+      const rel = abs.slice(tmp.length).replace(/^[/\\]/, '').replace(/\\/g, '/');
+      assert.equal(
+        isSummaryArtifactRelPath(rel), true,
+        `a path the SUMMARY walker collects must be exempt from the scope advisory: ${rel}`,
+      );
+    }
+    // Negative direction: paths the walker skips must also fail the predicate.
+    assert.equal(isSummaryArtifactRelPath('docs/SUMMARY.md'), false);
+    assert.equal(isSummaryArtifactRelPath('.planning/phases/3/notes.md'), false);
+  });
+});
+
+describe('#2596 scope conformance — executeWorktreeWaveCleanupPlan integration', () => {
+  const WT = '/repo/.claude/worktrees/agent-a1';
+  const BR = 'worktree-agent-a1';
+  const SCOPE_DIFF = `diff --name-only HEAD...${BR}`;
+  const noSummaries = { findSummaryFiles: () => [] };
+
+  function makeGit(overrides = {}) {
+    const calls = [];
+    const git = (args) => {
+      const key = args.join(' ');
+      calls.push(key);
+      if (Object.prototype.hasOwnProperty.call(overrides, key)) return overrides[key];
+      if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) {
+        return { exitCode: 0, stdout: BR, stderr: '', timedOut: false };
+      }
+      if (key === `merge-base HEAD ${BR}`) {
+        return { exitCode: 0, stdout: 'abc123', stderr: '', timedOut: false };
+      }
+      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+    };
+    return { git, calls };
+  }
+
+  const planWith = (entry) => ({
+    ok: true,
+    repoRoot: '/repo/main',
+    action: 'cleanup_wave',
+    discovery: 'manifest',
+    entries: [{ agent_id: 'a1', worktree_path: WT, branch: BR, expected_base: 'abc123', ...entry }],
+  });
+
+  test('no declared scope issues no scope git call at all', () => {
+    const { git, calls } = makeGit();
+    const result = executeWorktreeWaveCleanupPlan(planWith({}), { execGit: git, ...noSummaries });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(result.entries[0].warnings, []);
+    assert.equal(
+      calls.includes(SCOPE_DIFF), false,
+      'an entry with no declared files_modified must not spend a git subprocess',
+    );
+  });
+
+  test('an in-scope branch produces no advisory', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'src/a.ts\nsrc/b.ts\n', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts', 'src/b.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.entries[0].warnings, []);
+    assert.deepEqual(result.warnings, []);
+  });
+
+  test('an out-of-scope path warns without blocking the merge', () => {
+    const { git, calls } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'src/a.ts\nsecrets/creds.json\n', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.equal(result.ok, true, 'the advisory must NOT flip ok — it is not a gate');
+    assert.equal(result.reason, 'ok');
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.deepEqual(result.entries[0].warnings, [
+      { code: WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED, branch: BR, path: 'secrets/creds.json' },
+    ]);
+    assert.deepEqual(result.warnings, result.entries[0].warnings);
+    // Negative proof: the merge/remove/delete sequence still ran.
+    assert.ok(calls.some((c) => c.startsWith(`merge ${BR}`)), 'merge must still run');
+    assert.ok(calls.includes(`worktree remove ${WT} --force`), 'remove must still run');
+    assert.ok(calls.includes(`branch -D ${BR}`), 'branch delete must still run');
+  });
+
+  test('every out-of-scope path gets its own warning, in diff order', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'z/two.ts\nsrc/a.ts\na/one.ts\n', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.deepEqual(result.entries[0].warnings.map((w) => w.path), ['z/two.ts', 'a/one.ts']);
+  });
+
+  test('a committed SUMMARY artifact in the diff is not a scope violation', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'src/a.ts\n.planning/q1-SUMMARY.md\n', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.deepEqual(result.entries[0].warnings, []);
+  });
+
+  test('a failed scope diff degrades to an advisory, never a block', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 128, stdout: '', stderr: 'fatal: bad revision', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.equal(result.ok, true, 'a broken advisory check must never become a gate');
+    assert.equal(result.entries[0].status, 'merged_removed');
+    assert.deepEqual(result.entries[0].warnings, [
+      { code: WAVE_CLEANUP_WARNING.SCOPE_CHECK_UNAVAILABLE, branch: BR, path: null },
+    ]);
+  });
+
+  test('a timed-out scope diff degrades to an advisory', () => {
+    const execGit = makeFaultyGit({
+      faults: [{
+        kind: 'timeout',
+        when: (args) => args[0] === 'diff' && !args.includes('--diff-filter=D'),
+      }],
+      passthrough: makeGit().git,
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit, ...noSummaries },
+    );
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.entries[0].warnings.map((w) => w.code), [
+      WAVE_CLEANUP_WARNING.SCOPE_CHECK_UNAVAILABLE,
+    ]);
+  });
+
+  test('CRLF diff output yields clean paths and no phantom warning', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'src/a.ts\r\nsecrets/x.json\r\n\r\n', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.deepEqual(result.entries[0].warnings.map((w) => w.path), ['secrets/x.json']);
+  });
+
+  test('scope warnings survive a later block', () => {
+    const { git } = makeGit({
+      [SCOPE_DIFF]: { exitCode: 0, stdout: 'secrets/x.json\n', stderr: '', timedOut: false },
+      [`-C ${WT} status --porcelain --untracked-files=all`]: { exitCode: 0, stdout: '?? scratch.txt', stderr: '', timedOut: false },
+    });
+    const result = executeWorktreeWaveCleanupPlan(
+      planWith({ files_modified: ['src/a.ts'] }),
+      { execGit: git, ...noSummaries },
+    );
+    assert.equal(result.ok, false, 'the dirty-worktree block still blocks');
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.equal(result.entries[0].reason, 'worktree_dirty');
+    assert.deepEqual(
+      result.entries[0].warnings.map((w) => w.path), ['secrets/x.json'],
+      'an advisory recorded before the block is still true and must survive it',
+    );
+  });
+
+  test('warnings are attributed per entry and aggregated at the top level', () => {
+    const WT2 = '/repo/.claude/worktrees/agent-a2';
+    const BR2 = 'worktree-agent-a2';
+    const execGit = (args) => {
+      const key = args.join(' ');
+      if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) return { exitCode: 0, stdout: BR, stderr: '', timedOut: false };
+      if (key === `-C ${WT2} rev-parse --abbrev-ref HEAD`) return { exitCode: 0, stdout: BR2, stderr: '', timedOut: false };
+      if (key.startsWith('merge-base HEAD ')) return { exitCode: 0, stdout: 'abc123', stderr: '', timedOut: false };
+      if (key === `diff --name-only HEAD...${BR}`) return { exitCode: 0, stdout: 'src/a.ts\n', stderr: '', timedOut: false };
+      if (key === `diff --name-only HEAD...${BR2}`) return { exitCode: 0, stdout: 'src/rogue.ts\n', stderr: '', timedOut: false };
+      return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+    };
+    const result = executeWorktreeWaveCleanupPlan({
+      ok: true,
+      repoRoot: '/repo/main',
+      action: 'cleanup_wave',
+      discovery: 'manifest',
+      entries: [
+        { agent_id: 'a1', worktree_path: WT, branch: BR, expected_base: 'abc123', files_modified: ['src/a.ts'] },
+        { agent_id: 'a2', worktree_path: WT2, branch: BR2, expected_base: 'abc123', files_modified: ['src/b.ts'] },
+      ],
+    }, { execGit, ...noSummaries });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.entries[0].warnings, []);
+    assert.deepEqual(result.entries[1].warnings, [
+      { code: WAVE_CLEANUP_WARNING.SCOPE_OUT_OF_DECLARED, branch: BR2, path: 'src/rogue.ts' },
+    ]);
+    assert.deepEqual(
+      result.warnings, result.entries[1].warnings,
+      'the top-level aggregate carries every entry warning, tagged with its branch',
+    );
+  });
+
+  test('WAVE_CLEANUP_WARNING is a frozen, locked code set', () => {
+    // The lock is the point: a new advisory code is a deliberate addition to a
+    // published contract, not something that appears because a branch needed one.
+    // ACCEPTED_ABSENT_WORKTREE is added here consciously (#4415, maintainer review
+    // round 3) — an entry merged on the evidence that its checkout was already gone
+    // reported `merged_removed`/`ok` indistinguishably from an ordinary merge, which
+    // removed the operator's only signal for the case where something OTHER than the
+    // harness removed the path.
+    assert.deepEqual(
+      Object.keys(WAVE_CLEANUP_WARNING).sort(),
+      [
+        'ACCEPTED_ABSENT_WORKTREE',
+        'MERGE_AUTOSTASH_UNRESTORED',
+        'MERGE_RESIDUE_LEFT_STAGED',
+        'MERGE_RESIDUE_RESTORED',
+        'SCOPE_CHECK_UNAVAILABLE',
+        'SCOPE_OUT_OF_DECLARED',
+      ],
+    );
+    assert.equal(Object.isFrozen(WAVE_CLEANUP_WARNING), true);
+  });
+});
+
+describe('#2596 files_modified on the cleanup manifest', () => {
+  const base = {
+    agent_id: 'a1',
+    worktree_path: '/repo/.claude/worktrees/agent-a1',
+    branch: 'worktree-agent-a1',
+    expected_base: 'abc123',
+  };
+  const only = (manifest) => normalizeCleanupManifest(manifest).entries[0];
+  const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+  test('a files_modified array is carried through', () => {
+    assert.deepEqual(
+      only({ worktrees: [{ ...base, files_modified: ['src/a.ts'] }] }).files_modified,
+      ['src/a.ts'],
+    );
+  });
+
+  test('a scalar files_modified is dropped, not coerced', () => {
+    assert.equal(has(only({ worktrees: [{ ...base, files_modified: 'src/a.ts' }] }), 'files_modified'), false);
+  });
+
+  test('non-string files_modified elements are dropped', () => {
+    assert.deepEqual(
+      only({ worktrees: [{ ...base, files_modified: [1, null, {}, 'src/a.ts'] }] }).files_modified,
+      ['src/a.ts'],
+    );
+  });
+
+  test('an empty files_modified is treated as unknown (field omitted)', () => {
+    assert.equal(has(only({ worktrees: [{ ...base, files_modified: [] }] }), 'files_modified'), false);
+  });
+
+  test('an absent files_modified leaves the entry shape unchanged', () => {
+    assert.deepEqual(
+      Object.keys(only({ worktrees: [base] })).sort(),
+      ['agent_id', 'allowed_bases', 'branch', 'expected_base', 'worktree_path'],
+    );
+  });
+});
+
+describe('#2596 --files on the record-agent and create verbs', () => {
+  // process.exitCode is global; restore it so a failure-path exit code does not
+  // leak into the runner's own exit status.
+  function withExitCode2596(fn) {
+    const saved = process.exitCode;
+    try { return fn(); } finally { process.exitCode = saved; }
+  }
+
+  const baseArgs = [
+    '--manifest', 'manifest.json',
+    '--agent-id', 'a1',
+    '--path', '/repo/.claude/worktrees/agent-a1',
+    '--branch', 'worktree-agent-a1',
+    '--base', 'abc123',
+  ];
+  const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+
+  function recordAgent(extraArgs = []) {
+    let written = null;
+    const result = withExitCode2596(() => cmdWorktreeRecordAgent('/repo/main', [...baseArgs, ...extraArgs], {
+      readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+      writeFile: (_p, c) => { written = c; },
+      write: () => {},
+      writeErr: () => {},
+    }));
+    return { result, entry: written ? JSON.parse(written).worktrees[0] : null };
+  }
+
+  test('--files records the declared scope', () => {
+    const { result, entry } = recordAgent(['--files', 'src/a.ts src/b.ts']);
+    assert.equal(result.ok, true);
+    assert.deepEqual(entry.files_modified, ['src/a.ts', 'src/b.ts']);
+  });
+
+  test('omitting --files leaves the manifest shape unchanged', () => {
+    const { result, entry } = recordAgent();
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      Object.keys(entry).sort(),
+      ['agent_id', 'branch', 'expected_base', 'worktree_path'],
+    );
+  });
+
+  test('an empty --files writes no field', () => {
+    const { result, entry } = recordAgent(['--files', '']);
+    assert.equal(result.ok, true);
+    assert.equal(has(entry, 'files_modified'), false);
+  });
+
+  test('a whitespace-only --files writes no field', () => {
+    const { result, entry } = recordAgent(['--files', '   \t  ']);
+    assert.equal(result.ok, true);
+    assert.equal(has(entry, 'files_modified'), false);
+  });
+
+  test('--files splits on any whitespace run', () => {
+    const { entry } = recordAgent(['--files', 'a.ts   b.ts\tc.ts\nd.ts']);
+    assert.deepEqual(entry.files_modified, ['a.ts', 'b.ts', 'c.ts', 'd.ts']);
+  });
+
+  test('a trailing --files with no value is treated as absent', () => {
+    const { result, entry } = recordAgent(['--files']);
+    assert.equal(result.ok, true, 'a valueless flag must not crash the verb');
+    assert.equal(has(entry, 'files_modified'), false);
+  });
+
+  test('a flag-shaped --files value is not re-parsed as a flag', () => {
+    const { entry } = recordAgent(['--files', '--branch']);
+    assert.deepEqual(entry.files_modified, ['--branch']);
+    assert.equal(entry.branch, 'worktree-agent-a1', 'the real --branch value must be untouched');
+  });
+
+  test('shell metacharacters in --files are inert data', () => {
+    const hostile = 'a.ts; rm -rf / && $(whoami) `id` "q" \'p\'';
+    const { entry } = recordAgent(['--files', hostile]);
+    assert.deepEqual(entry.files_modified, [
+      'a.ts;', 'rm', '-rf', '/', '&&', '$(whoami)', '`id`', '"q"', "'p'",
+    ]);
+  });
+
+  test('a traversal-shaped --files value is inert data, never dereferenced', () => {
+    const readPaths = [];
+    const result = withExitCode2596(() => cmdWorktreeRecordAgent('/repo/main', [...baseArgs, '--files', '../../etc/passwd'], {
+      readFile: (p) => { readPaths.push(p); return '{"orchestrator_root":"/repo/main","worktrees":[]}'; },
+      writeFile: () => {},
+      write: () => {},
+      writeErr: () => {},
+    }));
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      readPaths, [path.resolve('/repo/main', 'manifest.json')],
+      'the only path opened is the manifest — a declared-scope value is compared, never read',
+    );
+  });
+
+  test('a duplicate --files takes the first occurrence, like every other flag', () => {
+    const { entry } = recordAgent(['--files', 'a.ts', '--files', 'b.ts']);
+    assert.deepEqual(entry.files_modified, ['a.ts']);
+  });
+
+  test('worktree create records the declared scope too', () => {
+    let written = null;
+    const result = withExitCode2596(() => cmdWorktreeCreate('/repo/main', [
+      ...baseArgs, '--root', '/repo', '--files', 'src/a.ts',
+    ], {
+      readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+      writeFile: (_p, c) => { written = c; },
+      write: () => {},
+      writeErr: () => {},
+      execGit: () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+    }));
+    assert.equal(result.ok, true);
+    assert.deepEqual(JSON.parse(written).worktrees[0].files_modified, ['src/a.ts']);
+  });
+
+  // #2596 parity (CLAUDE.md → Generative Fix Divergence): `record-agent` and
+  // `create` each decide independently whether to write `files_modified`.
+  // Assert the two surfaces agree on every input class — including the blank
+  // cases where BOTH must omit the field — so a change to one that is not
+  // mirrored in the other fails here instead of shipping a backend-dependent
+  // advisory.
+  test('parity: record-agent and create agree on files_modified for every --files input', () => {
+    const createEntry = (extraArgs) => {
+      let written = null;
+      withExitCode2596(() => cmdWorktreeCreate('/repo/main', [...baseArgs, '--root', '/repo', ...extraArgs], {
+        readFile: () => '{"orchestrator_root":"/repo/main","worktrees":[]}',
+        writeFile: (_p, c) => { written = c; },
+        write: () => {},
+        writeErr: () => {},
+        execGit: () => ({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      }));
+      return written ? JSON.parse(written).worktrees[0] : null;
+    };
+
+    for (const extraArgs of [
+      ['--files', 'src/a.ts src/b.ts'],
+      ['--files', 'src/a.ts'],
+      ['--files', ''],
+      ['--files', '   \t  '],
+      ['--files'],
+      [],
+    ]) {
+      const fromRecord = recordAgent(extraArgs).entry;
+      const fromCreate = createEntry(extraArgs);
+      assert.equal(
+        has(fromRecord, 'files_modified'), has(fromCreate, 'files_modified'),
+        `record-agent and create disagree on WHETHER to write files_modified for ${JSON.stringify(extraArgs)}`,
+      );
+      assert.deepEqual(
+        fromRecord.files_modified, fromCreate.files_modified,
+        `record-agent and create disagree on the files_modified VALUE for ${JSON.stringify(extraArgs)}`,
+      );
+    }
+  });
+});
+
+
+// ══ #3003 — declared deletions for the cleanup-wave guard ═══════════════════════════════
+//
+// The deletions guard blocked ANY deletion in an executor branch, unconditionally. A plan
+// whose stated scope includes removing a file (folding a test into a sibling suite) could
+// not be merged by the tool meant to merge it, forcing a manual --no-ff outside the tool —
+// strictly less safe than what the guard protects against.
+//
+// #3003's pinned decision: an optional `declared_deletions` PATH LIST on the manifest entry.
+// A path list, not a boolean, precisely so an unexpected deletion riding along with a
+// declared one still blocks. These tests exist mostly to hold that line — the rows that
+// matter are the OVER-AUTHORIZATION set, because every way of loosening the matcher
+// (prefix, glob, startsWith) silently rebuilds the boolean opt-in that was rejected.
+//
+// Matching is EXACT after normalization. No globs, no prefixes. That is deliberate
+// Greenspun-avoidance: `declaredScopePrefix` already exists for the ADVISORY and returns
+// null ("matches everything") for a glob-leading pattern — correct there, because a false
+// alarm costs more than a miss for an advisory. For a GATE that same rule would let
+// `["*.ts"]` disarm the guard completely.
+//
+// See https://github.com/open-gsd/gsd-core/issues/3003
+
+describe('#3003 — declared deletions: authorization is exact set membership', () => {
+  const REPO = '/repo/main';
+  const WT = '/repo/.claude/worktrees/agent-a1';
+  const BR = 'worktree-agent-a1';
+
+  /** A wave-cleanup git double whose deletion list and per-key overrides are injectable. */
+  function makeDeletionGit({ deletions = '', deletionExit = 0, changed = null } = {}) {
+    return (args) => {
+      const key = args.join(' ');
+      const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '', signal: null, error: null, timedOut: false });
+      if (key === `-C ${WT} rev-parse --abbrev-ref HEAD`) return ok(BR);
+      if (key === `merge-base HEAD ${BR}`) return ok('abc123');
+      if (key === `diff --diff-filter=D --name-only HEAD...${BR}`) {
+        return deletionExit === 0
+          ? ok(deletions)
+          : { exitCode: deletionExit, stdout: '', stderr: 'fatal: bad revision', signal: null, error: null, timedOut: false };
+      }
+      if (key === `diff --name-only HEAD...${BR}`) return ok(changed === null ? deletions : changed);
+      if (key === `-C ${WT} status --porcelain --untracked-files=all`) return ok('');
+      return ok();
+    };
+  }
+
+  function runWave(entry, gitOpts) {
+    return executeWorktreeWaveCleanupPlan(
+      {
+        ok: true,
+        repoRoot: REPO,
+        action: 'cleanup_wave',
+        discovery: 'manifest',
+        entries: [{ agent_id: 'a1', worktree_path: WT, branch: BR, expected_base: 'abc123', ...entry }],
+      },
+      { execGit: makeDeletionGit(gitOpts) },
+    );
+  }
+
+  const firstEntry = (result) => result.entries[0];
+  const blockedOnDeletions = (result) => firstEntry(result).reason === 'branch_contains_deletions';
+
+  // ── backward compatibility: these must pass BEFORE the change too ──────────────────────
+
+  test('no deletions proceeds', () => {
+    const result = runWave({}, { deletions: '' });
+    assert.notEqual(firstEntry(result).reason, 'branch_contains_deletions');
+  });
+
+  test('absent declaration keeps the unconditional block', () => {
+    const result = runWave({}, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(blockedOnDeletions(result), 'an entry with no declaration must block exactly as before');
+  });
+
+  // ── the feature ────────────────────────────────────────────────────────────────────────
+
+  test('a fully declared deletion merges', () => {
+    const result = runWave(
+      { declared_deletions: ['tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+  });
+
+  test('an undeclared deletion still blocks, and names only the residue', () => {
+    const result = runWave(
+      { declared_deletions: ['tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\nsrc/billing.ts\n' },
+    );
+    assert.ok(blockedOnDeletions(result));
+    const detail = firstEntry(result).stderr;
+    assert.match(detail, /src\/billing\.ts/, 'the undeclared path must be named');
+    assert.doesNotMatch(detail, /tests\/a\.test\.ts/,
+      'a declared path must NOT appear in the block detail — it would misdirect the operator');
+  });
+
+  test('an over-declaration is inert', () => {
+    const result = runWave(
+      { declared_deletions: ['tests/a.test.ts', 'never/deleted.ts'] },
+      { deletions: 'tests/a.test.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result));
+  });
+
+  test('an empty declaration is not an authorization', () => {
+    const result = runWave({ declared_deletions: [] }, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(blockedOnDeletions(result));
+  });
+
+  test('a broken deletion check is never an authorization', () => {
+    const result = runWave(
+      { declared_deletions: ['tests/a.test.ts'] },
+      { deletions: '', deletionExit: 128 },
+    );
+    assert.equal(firstEntry(result).reason, 'deletion_check_failed',
+      'a failed check must block on its own reason, never be filtered into a pass');
+  });
+
+  // ── the over-authorization set: each of these BLOCKS, and each would PASS under a
+  //    prefix / glob / startsWith matcher. This is the line the design exists to hold. ────
+
+  test('a directory declaration does not authorize its children', () => {
+    const result = runWave({ declared_deletions: ['tests'] }, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(blockedOnDeletions(result),
+      'prefix matching would authorize a mass deletion — the exact accident the guard catches');
+  });
+
+  test('a glob declaration authorizes nothing', () => {
+    const result = runWave({ declared_deletions: ['*.ts'] }, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(blockedOnDeletions(result),
+      'a glob-leading declaration must not disarm the guard (declaredScopePrefix returns null here)');
+  });
+
+  test('a declaration is not a string prefix of another path', () => {
+    const result = runWave({ declared_deletions: ['tests/a.ts'] }, { deletions: 'tests/ab.ts\n' });
+    assert.ok(blockedOnDeletions(result), 'startsWith would leak tests/a.ts -> tests/ab.ts');
+  });
+
+  // ── normalization: both sides meet in the same shape ───────────────────────────────────
+
+  test('a backslash declaration normalizes on any OS', () => {
+    const result = runWave({ declared_deletions: ['tests\\a.test.ts'] }, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(!blockedOnDeletions(result));
+  });
+
+  test('leading ./ and trailing slash normalize', () => {
+    const result = runWave({ declared_deletions: ['./tests/a.test.ts'] }, { deletions: 'tests/a.test.ts\n' });
+    assert.ok(!blockedOnDeletions(result));
+  });
+
+  test('a duplicated declaration is inert', () => {
+    const result = runWave(
+      { declared_deletions: ['tests/a.test.ts', 'tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result));
+  });
+
+  test('non-string and blank declarations are dropped', () => {
+    const result = runWave(
+      { declared_deletions: [null, 0, '', '   ', [], 'tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), 'junk elements drop; the one real path still authorizes');
+  });
+
+  test('a non-array declaration is treated as absent', () => {
+    for (const bogus of ['tests/a.test.ts', {}, 0, true]) {
+      const result = runWave({ declared_deletions: bogus }, { deletions: 'tests/a.test.ts\n' });
+      assert.ok(blockedOnDeletions(result), `non-array ${JSON.stringify(bogus)} must not authorize`);
+    }
+  });
+
+  // ── the advisory interaction the design nearly missed ──────────────────────────────────
+
+  test('a declared deletion is in scope for the advisory', () => {
+    // `git diff --name-only` includes deleted paths, and the #2596 advisory compares that
+    // against files_modified ALONE. Without subtracting the declaration out, authorizing a
+    // deletion produces a SCOPE_OUT_OF_DECLARED warning for the very path just authorized.
+    const result = runWave(
+      { files_modified: ['src/keep.ts'], declared_deletions: ['tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\n', changed: 'src/keep.ts\ntests/a.test.ts\n' },
+    );
+    // The merge assertion is load-bearing: without it a revert blocks the entry, warnings
+    // come back empty, and the path-absence assertion below passes for the wrong reason.
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+    const paths = firstEntry(result).warnings.map((w) => w.path);
+    assert.ok(!paths.includes('tests/a.test.ts'),
+      'a declared deletion must not be reported out-of-scope');
+  });
+
+  test('the advisory does not activate on declarations alone', () => {
+    // Before this fix, gating unioned files_modified + declared_deletions into the scope
+    // list, so a plan that declared ONLY a deletion (no files_modified) still produced a
+    // non-empty scope list, and every modified path warned as out-of-declared-scope on a
+    // plan that had declared no modification scope at all. Gating on files_modified alone
+    // keeps the advisory as silent as it was pre-#2596 when nothing was declared modified.
+    const result = runWave(
+      { declared_deletions: ['src/gone.ts'] },
+      { deletions: 'src/gone.ts\n', changed: 'src/gone.ts\nsrc/other.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+    assert.deepEqual(firstEntry(result).warnings, [], 'no files_modified means no advisory scope at all');
+  });
+
+  test('a glob in declared_deletions does not mute the advisory', () => {
+    // `declaredScopePrefix` returns null for a glob-leading pattern, meaning "matches
+    // everything" — correct for the advisory's OWN matcher, but under the old UNION this
+    // silenced the advisory entirely for a modified path that has nothing to do with the
+    // glob. Exact-match subtraction gives declared_deletions one rule on every surface.
+    const result = runWave(
+      { files_modified: ['src/kept.ts'], declared_deletions: ['*.md'] },
+      { deletions: '', changed: 'src/kept.ts\nsrc/stray.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+    const paths = firstEntry(result).warnings.map((w) => w.path);
+    assert.ok(paths.includes('src/stray.ts'), 'a glob declaration must not disarm the advisory');
+  });
+
+  test('a bare directory in declared_deletions does not mute the advisory for its children', () => {
+    // Same trap as the glob case: a directory-shaped declared_deletions entry authorizes
+    // nothing at the gate (exact match only), but under the old UNION it would have widened
+    // the advisory's own prefix matching to cover everything under that directory.
+    const result = runWave(
+      { files_modified: ['src/kept.ts'], declared_deletions: ['src'] },
+      { deletions: '', changed: 'src/kept.ts\nsrc/stray.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+    const paths = firstEntry(result).warnings.map((w) => w.path);
+    assert.ok(paths.includes('src/stray.ts'), 'a bare directory declaration must not mute the advisory for its children');
+  });
+
+  test('the advisory still fires for a genuinely out-of-scope path', () => {
+    const result = runWave(
+      { files_modified: ['src/keep.ts'], declared_deletions: ['tests/a.test.ts'] },
+      { deletions: 'tests/a.test.ts\n', changed: 'src/keep.ts\ntests/a.test.ts\nsrc/rogue.ts\n' },
+    );
+    const paths = firstEntry(result).warnings.map((w) => w.path);
+    assert.ok(paths.includes('src/rogue.ts'), 'the advisory must not be blunted by this change');
+  });
+
+  // ── git C-quoting decode: both sides meet in the same shape ────────────────────────────
+
+  test('a declared non-ASCII deletion merges even though git C-quotes the path', () => {
+    // With core.quotepath at its git default, a non-ASCII deleted path comes back from
+    // `git diff --diff-filter=D --name-only` wrapped in double quotes and C-escaped:
+    // `tests/é.ts` is reported as the literal string built here with String.raw so the
+    // runtime value actually contains backslash-3-0-3 / backslash-2-5-1 sequences, not a
+    // JS-interpreted escape. Confirmed via `raw.length === 19` and `raw.includes('\\303')`.
+    // Without decodeGitQuotedPath this quoted form can never equal the plainly-declared
+    // path below, so the entry would block forever.
+    const quoted = String.raw`"tests/\303\251.ts"`;
+    const result = runWave(
+      { declared_deletions: ['tests/é.ts'] },
+      { deletions: `${quoted}\n` },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+  });
+
+  test('a declaration written in git-quoted form also matches a plainly reported path', () => {
+    // The reverse direction: normalizeScopePath runs on BOTH sides, so a declaration
+    // authored in the quoted-and-escaped form must still match a plain git report. This
+    // pins the symmetry so a future one-sided decode (only on the git side) is caught.
+    const quoted = String.raw`"tests/\303\251.ts"`;
+    const result = runWave(
+      { declared_deletions: [quoted] },
+      { deletions: 'tests/é.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+  });
+
+  test('an undeclared non-ASCII deletion still blocks, and the residue names the decoded path', () => {
+    // The path must not be declared, so the guard blocks — and the operator-facing detail
+    // must show the DECODED path (the one they can actually act on), not the raw escaped
+    // quoted form git emitted.
+    const quoted = String.raw`"tests/\303\251.ts"`;
+    const result = runWave(
+      { declared_deletions: ['src/keep.ts'] },
+      { deletions: `${quoted}\n` },
+    );
+    assert.ok(blockedOnDeletions(result));
+    const detail = firstEntry(result).stderr;
+    assert.match(detail, /tests\/é\.ts/, 'the block detail must name the decoded path, not the raw escaped form');
+    assert.doesNotMatch(detail, /\\303\\251/, 'the raw C-escaped bytes must not leak into the operator-facing detail');
+  });
+
+  test('a path merely containing a quote is not decoded', () => {
+    // `tests/a"b.ts` is not wrapped in a leading-and-trailing quote pair, so the
+    // startsWith('"') && endsWith('"') guard must leave it completely untouched — declaring
+    // that exact literal string must still merge.
+    const result = runWave(
+      { declared_deletions: ['tests/a"b.ts'] },
+      { deletions: 'tests/a"b.ts\n' },
+    );
+    assert.ok(!blockedOnDeletions(result), `expected merge, got ${firstEntry(result).reason}`);
+  });
+
+  // NOTE: "a fully declared deletion merges" (above) already covers a plain ASCII declared
+  // deletion merging — no additional plain-ASCII regression test added here to avoid
+  // duplicating it.
+
+  // ── #2852 regression: a block isolates, it does not abort the wave ─────────────────────
+
+  test('a blocked entry does not abort the rest of the wave', () => {
+    const second = { agent_id: 'a2', worktree_path: '/repo/.claude/worktrees/agent-a2', branch: 'worktree-agent-a2', expected_base: 'abc123' };
+    const result = executeWorktreeWaveCleanupPlan(
+      {
+        ok: true,
+        repoRoot: REPO,
+        action: 'cleanup_wave',
+        discovery: 'manifest',
+        entries: [
+          { agent_id: 'a1', worktree_path: WT, branch: BR, expected_base: 'abc123', declared_deletions: ['tests/a.test.ts'] },
+          second,
+        ],
+      },
+      { execGit: makeDeletionGit({ deletions: 'tests/a.test.ts\nsrc/billing.ts\n' }) },
+    );
+    assert.equal(result.entries[0].reason, 'branch_contains_deletions');
+    assert.equal(result.entries.length, 2, 'the second entry must still have been processed');
+    assert.deepEqual(result.pending, [], 'nothing may be left pending — that would be an aborted wave');
+  });
+
+  // ── property: authorization is exactly set membership ──────────────────────────────────
+
+  test('property: a deletion merges iff its normalized path is in the declared set', () => {
+    const PATHS = ['a.ts', 'src/b.ts', 'tests/c.test.ts', 'deep/nested/d.ts', 'e.md'];
+    fc.assert(
+      fc.property(
+        fc.subarray(PATHS, { minLength: 1 }),
+        fc.subarray(PATHS, { minLength: 1 }),
+        (deleted, declared) => {
+          const result = runWave(
+            { declared_deletions: declared },
+            { deletions: `${deleted.join('\n')}\n` },
+          );
+          const everyDeletionDeclared = deleted.every((p) => declared.includes(p));
+          assert.equal(
+            !blockedOnDeletions(result),
+            everyDeletionDeclared,
+            `deleted=${JSON.stringify(deleted)} declared=${JSON.stringify(declared)}`,
+          );
+        },
+      ),
+      { seed: 3003, numRuns: 200 },
+    );
+  });
+});

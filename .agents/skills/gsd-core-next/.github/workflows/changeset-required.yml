@@ -1,0 +1,71 @@
+name: Changeset Required
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  # #5600: `changeset-lint` is a required status check on `next`; a merge
+  # queue requires every required context to also report on `merge_group`, or
+  # the queue deadlocks waiting on a check nothing ever produces.
+  #
+  # #5600: on a `merge_group` event GitHub Actions loads this workflow FILE from
+  # the queue's temporary merge commit (base plus the queued PRs), so a queued
+  # PR that edits this file runs its own version. Safety does not come from the
+  # file's origin: every job or step below is skipped on that event, so nothing
+  # in this file executes there (tests/ci-merge-group-wiring.test.cjs pins it).
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # #3833: no lane runs while the PR has a merge conflict.
+  #
+  # #5600: `merge_group` carries no `pull_request` payload — the changeset was
+  # already validated on the `pull_request` event that queued this run, so
+  # skip rather than reading fields the event doesn't carry. A job skipped by
+  # `if:` still reports Success for required-status-check purposes.
+  preflight:
+    if: github.event_name != 'merge_group'
+    name: PR mergeability
+    uses: ./.github/workflows/pr-mergeable-preflight.yml
+    permissions:
+      contents: read
+      pull-requests: read
+
+  changeset-lint:
+    # #5600: same reasoning as `preflight` above — `github.event.pull_request`
+    # and `github.base_ref` are undefined on `merge_group`, and the changeset
+    # was already validated on the `pull_request` event.
+    if: github.event_name != 'merge_group'
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # Intentionally shallow — see tests/policy-lint-shallow-checkout.test.cjs.
+          # Depth 50 covers >99% of PRs; a deeper merge base fails CLOSED with a
+          # loud lint error, which is the accepted trade.
+          fetch-depth: 50
+      - name: Fetch base ref for diff
+        # The BASE REF itself must not be shallow (#2452): scripts/changeset/lint.cjs
+        # diffs with the three-dot form `origin/<base>...HEAD`, which needs a merge
+        # base. Truncating the base's ancestry makes git abort with
+        # `fatal: ...: no merge base` instead of reporting a real verdict.
+        # The shallow *checkout* above is the deliberate cost control; the shallow
+        # *base fetch* was not — it only shrank the window further.
+        run: git fetch origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
+        with:
+          node-version: '24'
+      - name: Run changeset lint
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/changeset/lint.cjs

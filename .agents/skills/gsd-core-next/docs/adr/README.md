@@ -1,0 +1,338 @@
+# Architecture Decision Records
+
+This directory contains Architecture Decision Records (ADRs) for GSD.
+
+Each ADR documents one architectural decision: what was decided, why, and what consequences follow. ADRs are append-only. Amendments extend existing ADRs with a dated section rather than replacing them.
+
+## Reading this corpus
+
+**Start with the [index](#index) below, and respect the status.** The index is grouped so that the first table — *Active decisions* — is the set that governs the system as it stands. An ADR in *Superseded, Retired, and Legacy* is historical: it records what was once decided and names what replaced it. Do not cite it as current architecture.
+
+Two things the index makes explicit, because getting them wrong has actually misled readers here:
+
+- **"Read first"** on an active ADR points at a *broader* ADR that now frames it. A decision can be entirely correct and still not be the whole picture. The runtime capability descriptor ([ADR-1016](1016-runtime-capability-descriptor.md)) is live and load-bearing, but [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) (**EoS** — GSD as an Embeddable Orchestration Engine) subsumes it as the *declarative adapter* and inverts its direction: GSD is the engine a host embeds, not an installer that projects onto a host. For **how GSD meets a host, EoS is the current frame.**
+- **`Proposed` means not ratified — and it is kept honest.** On 2026-07-17 the corpus was audited against the shipped tree and nine ADRs whose decisions had demonstrably shipped were ratified to `Accepted`, each carrying a dated **Ratification** section with the evidence (see [ADR-857](857-capability-system.md) for the fullest example). The ADRs that remain `Proposed` are `Proposed` **for a reason recorded in the file** — an unmet acceptance criterion, an outstanding phase, or a successor ADR already planned — not through neglect. Trust the label; if you think it is wrong, prove it in a dated section and see [Ratifying a stale `Proposed`](#ratifying-a-stale-proposed).
+
+## Naming Convention
+
+New ADRs use **issue#-prefix slug** naming:
+
+```text
+docs/adr/<issue#>-<kebab-slug>.md
+```
+
+Examples: `2264-golden-parity-redesign.md`, `1239-gsd-embeddable-orchestration-engine.md`.
+
+### Why
+
+Two developers computing "next ADR number" locally against `main` will independently pick the same integer and both ship. The collision is already on disk — `0010-*` exists twice and `0011-*` exists three times. GitHub issue numbers are server-assigned and atomic: the moment you open an issue, that number is reserved globally. Two PRs that both edit the `### Fixed` block of `CHANGELOG.md` always conflict on merge — two PRs that each use a distinct issue# as their ADR prefix never collide. Same shape, same solution.
+
+### Legacy *naming* is not `Legacy` *status*
+
+Files `0001-*` through `0012-*` are preserved as immutable historical record of the old local-compute numbering. The duplicate `0010-*` and the three-way `0011-*` are documented residue of that convention — not patterns to imitate. **Do not renumber them.**
+
+> **This is the single authoritative statement of the legacy range.** `docs/contributor-standards.md` references it rather than restating it, so the two cannot drift.
+
+Two other zero-padded files look legacy but are not: `0174-retire-gsd-sdk-package-boundary.md` (issue #174) and `0656-research-module-seam.md` (issue #656) are **mis-padded modern ADRs** — modern, issue-numbered files whose four-digit padding is a mistake. They are NOT part of the legacy sequential set above and are not "old local-compute numbering" residue.
+
+This is a statement about **filenames only**. Many of those ADRs are `Accepted` and load-bearing today ([ADR-0002](0002-command-contract-validation-module.md), [ADR-0004](0004-worktree-workstream-seam-module.md), [ADR-0008](0008-installer-migration-module.md), [ADR-0009](0009-shell-command-projection-module.md)). An old filename says nothing about whether a decision still holds. The `Legacy` **status** in the table below is a separate claim — see the vocabulary.
+
+Because `0010-*` and `0011-*` each resolve to more than one file, a bare cross-reference like "ADR-0011" is genuinely ambiguous. Link the file (see [Lifecycle rules](#lifecycle-rules)).
+
+### Full process
+
+See **[CONTRIBUTING.md — "Proposing an ADR or PRD"](../../CONTRIBUTING.md#proposing-an-adr-or-prd)** for the end-to-end workflow: opening the issue, waiting for approval, naming the file, and submitting the PR.
+
+PRDs live in [`docs/prd/`](../prd/), not here. ([`0011-review-default-reviewers-prd.md`](0011-review-default-reviewers-prd.md) predates that directory and is kept in place as frozen historical record.)
+
+## Lifecycle rules
+
+These are enforced by `scripts/gen-adr-index.cjs`, which runs in CI via `npm run lint:generated-sync`. A violation fails the build with the exact file and fix.
+
+### 1. Every ADR declares one status from the canonical vocabulary
+
+The first word of the `Status` field must be one of:
+
+| Status | Means | Obligation |
+|--------|-------|------------|
+| `Accepted` | Decided and in force. Cite it. | — |
+| `Proposed` | Decided in principle, not ratified. Do not cite as settled. | If the work has demonstrably shipped, ratify it (below) — do not leave the label lying. |
+| `Superseded` | A specific newer ADR replaced this decision. | **Must name the successor as a file link.** |
+| `Retired` | What this ADR decided no longer exists at all, and no single ADR replaced it. | Say what was removed and when. |
+| `Legacy` | Frozen historical record, kept for provenance; not a pattern to follow. | Say why it is frozen. |
+
+Prose may follow the token (`Superseded by [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) (2026-05-23); originally Accepted (2026-05-09)`). Both the bullet form (`- **Status:** Accepted`) and the table form (`| **Status** | Accepted |`) are accepted.
+
+### 2. Cross-references to other ADRs are file links, never bare ids
+
+Write `[ADR-0011](0011-skill-surface-budget-module.md)`, not `ADR-0011`. Bare ids are ambiguous for `0010`/`0011`, and unlinked references cannot be checked.
+
+If you mean an **issue**, write `#857` — not `ADR-857`. (An ADR and its owning issue often share a number; that is intentional and not a conflict.)
+
+### 3. Supersession and subsumption are symmetric
+
+These are different relations. Do not conflate them:
+
+- **`Supersedes` / `Superseded by`** — the target is *replaced*. Its status becomes `Superseded`.
+- **`Subsumes` / `Subsumed by`** — the target *still holds*, but a broader ADR now frames it. Its status is **unchanged**; it becomes a component of the larger decision.
+
+If A declares either relation toward B, **B must record the reciprocal.** A one-way pointer is the failure this corpus actually suffered: [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) declared it subsumed four ADRs, none of which said so, and none of which pointed back — so a reader landing on any of them concluded the superseded frame was the way forward.
+
+Only an `Accepted` ADR is owed the back-link. A `Proposed` ADR's claim is **prospective**: it has not taken effect, so its target is not marked. On ratification, the check begins demanding the back-links.
+
+### 3a. Amendment is symmetric too — but not yet gated
+
+A same-file `## Amendment (YYYY-MM-DD): <topic>` section (see `docs/contributor-standards.md`'s "Amending an accepted ADR") needs no back-link — there is only one file. A **separate** ADR that amends another is the same relation as Supersedes/Subsumes and follows the same rule: if A declares `**Amends:** [ADR-B]`, B **must** carry the reciprocal `**Amended by:** [ADR-A]` in the same PR. [ADR-2782](2782-reviewer-lane-capability-surface.md)'s single `Amends` field names four targets — [ADR-857](857-capability-system.md), [ADR-894](894-capability-declaration-format.md), [ADR-1016](1016-runtime-capability-descriptor.md), [ADR-1244](1244-capability-ecosystem.md) — and all four carry the reciprocal `Amended by` back-link.
+
+Unlike `Supersedes`/`Subsumes`, this is not yet enforced by `scripts/gen-adr-index.cjs` — `relationSections()` only recognizes `## Supersedes` / `## Subsumes` headings, and the header-field parity check does not walk `Amends`. Get the back-link right by review until that gap closes.
+
+### 4. The declared id matches the filename
+
+An H1 of `# ADR-0175: …` in a file named `218-*.md` is a rename that never finished. The id in the title must match the filename's prefix.
+
+### 5. A trailing H1 status bracket must agree with the `Status` field
+
+Many ADRs restate their status in the H1 — `# ADR-1610: … [Accepted]`. That bracket is the first thing a reader sees, and the index strips it when rendering the title, so a stale one used to be invisible to everyone but the reader it misled.
+
+If the H1 ends in a bracket holding a status token, it must name the **same** status as the `Status` field. Comparison is case-insensitive and against the parsed *token*, so `[Superseded]` agrees with `Status: Superseded by [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) (2026-05-23)`.
+
+A trailing bracket that is **not** a status token — `[Draft]`, `[WIP]` — is treated as part of the title and left alone. If you want a bracket the gate ignores, do not spell it like a status.
+
+### 6. Every relative link resolves
+
+A link whose target does not exist on disk fails the check, naming the file, the line, and the unresolved target. This covers every markdown file in this directory, including this README and any file whose name breaks the convention above.
+
+| Written as | Treated as |
+|---|---|
+| `[t](900-beta.md)`, `[t](../prd/)` | resolved — a directory counts |
+| `[t](900-beta.md#section)` | the **file** is resolved; the `#fragment` is not checked |
+| `[t](https://…)`, `[t](mailto:…)`, `[t](//host/x)` | out of scope — absolute destinations are never fetched |
+| `[t](#lifecycle-rules)` | out of scope — a same-document anchor is not a file reference |
+| `[t](/docs/adr/x.md)` | resolved against the repository root, as GitHub does |
+| a link inside a ``` fence or `` `backticks` `` | **not a link** — markdown does not render one there, so it is never resolved |
+| `[text][ref]` reference-style, `<a href>`, bare autolinks | not supported; write an inline link |
+
+Two consequences worth stating outright:
+
+- **Case matters, on every platform.** `[t](0001-Alpha.md)` pointing at `0001-alpha.md` fails even on macOS and Windows, because it 404s on github.com and reds the Linux CI lane. The failure names the entry it found so the fix is obvious.
+- **A link to a generated or ignored path fails.** Nothing here consults `.gitignore`; the question is only whether a reader following the link lands somewhere. Cite the hand-authored source rather than the build artifact.
+
+### If the gate rejects something you wrote
+
+Reproduce it locally first — it is the same command CI runs, and it names the file, the line, and the target:
+
+```bash
+node scripts/gen-adr-index.cjs --check
+```
+
+Then work from the `reason`:
+
+| What it says | What to do |
+|---|---|
+| `does not resolve — no such file or directory at …` | Fix the path. It is relative to `docs/adr/`, so a sibling ADR is just `900-slug.md`. If the target genuinely does not exist yet, drop the link rather than leaving it pointing nowhere. |
+| `…Did you mean X? — link targets are case-sensitive on github.com` | Match the on-disk name exactly. Your machine may open the file regardless; github.com and the Linux CI lane will not. |
+| `escapes the repository` | The path resolves outside the repo. Link something inside it, or use an absolute URL — those are out of scope and never checked. |
+| `is a symlink that escapes the repository` | An ADR file itself is a symlink pointing outside the repo. Commit a real file. |
+| `H1 status bracket […] contradicts the Status field (…)` | Update whichever of the two is stale so they agree. The `Status` field is authoritative; the bracket is a restatement for the reader. |
+
+**A link that is an example, not a destination, belongs in backticks.** The gate skips fenced blocks and inline code entirely, because markdown does not render a link there. That is the escape hatch for illustrative syntax — the table above is written that way, which is why it does not fail this check. An indented code block (four spaces) is *not* skipped; use backticks.
+
+To consume the result from a script rather than by eye, use `--json` (below) and branch on each violation's stable `reason` code.
+
+### Ratifying a stale `Proposed`
+
+A stale `Proposed` is not cosmetic: it tells contributors and agents that live architecture is an unbuilt idea. Fix it — but on evidence, not vibes.
+
+**The bar.** All four must hold before flipping to `Accepted`:
+
+1. The decided mechanism demonstrably **exists** in the tree — name the files, symbols, and tests.
+2. The owning issue is closed **as completed**. A closed issue is not proof: `stateReason` of *not planned* / duplicate means the decision was **dropped** (that is `Legacy` or `Retired`, not `Accepted`).
+3. **No material part is unshipped.** If the ADR defines phases and one is outstanding, or states its own bar for acceptance and that bar is unmet, it stays `Proposed`.
+4. No later ADR supersedes it, and no approved issue already plans its graduation as separate work.
+
+**The procedure.** Set the status to `Accepted — ratified <date> (originally Proposed <date>)`, add a dated `## Ratification` section holding the evidence, then run `node scripts/gen-adr-index.cjs --write`. If the ADR claims to supersede or subsume others, the gate will now demand their back-links — that is the point. Ratify deliberately.
+
+**Two traps worth knowing**, both hit during the 2026-07-17 audit:
+
+- **Shipped code is necessary, not sufficient.** Eight ADRs had every named module, symbol, and test present and their epics closed — and still failed the bar: [ADR-2264](2264-golden-parity-redesign.md)'s own headline acceptance criterion is unmet in the tree, [ADR-230](230-introduce-next-integration-branch.md)'s decided branch protection does not match the live API, [ADR-660](660-release-from-next-head.md)'s namesake mechanism is performed by hand, and [ADR-959](959-capability-command-contribution.md) has an approved issue planning its graduation as its own ADR. Verify the *decision*, not just the code.
+- **"Supersedes" is often "subsumes".** Read what the ADR means before the gate makes you act on what it says. [ADR-857](857-capability-system.md) said "Supersedes (generalizes)"; taken literally, ratifying it would have stamped two live seams ([ADR-0011](0011-skill-surface-budget-module.md), [ADR-58](58-runtime-install-policy-module.md)) as dead. The parenthetical was the truth; the field name was wrong.
+
+## Maintaining the index
+
+**The index is generated. Do not hand-edit it.** Everything between the `ADR-INDEX:START` / `ADR-INDEX:END` markers is derived from the ADR files themselves:
+
+```bash
+node scripts/gen-adr-index.cjs            # print the index
+node scripts/gen-adr-index.cjs --write    # regenerate it into this file
+node scripts/gen-adr-index.cjs --check    # CI: fail if stale or invalid
+node scripts/gen-adr-index.cjs --json     # same checks, machine-readable report
+```
+
+After adding an ADR, or changing any ADR's status or relations, run `--write` and commit the result. `npm run lint:generated-sync` runs `--check` in CI, so a missing or stale row fails the build rather than rotting silently.
+
+`--json` runs the same validation as `--check` and writes a report to stdout instead of prose to stderr, with the same exit code. Each violation carries a stable `reason` code, so a tool consuming this never has to pattern-match an error message:
+
+```json
+{
+  "ok": false,
+  "adrCount": 76,
+  "indexStale": false,
+  "violations": [
+    { "file": "2704-example.md", "line": 41, "reason": "link_unresolved",
+      "target": "reference/x.md", "resolved": "docs/adr/reference/x.md" }
+  ]
+}
+```
+
+An unrecognized flag is rejected rather than ignored.
+
+This replaces a hand-maintained table that had drifted to **40 of 65 ADRs** — the entire capability family and EoS itself were missing from it, which is precisely why the ADRs a reader most needed were the ones they could not find.
+
+## Index
+
+<!-- ADR-INDEX:START — generated by scripts/gen-adr-index.cjs; do not edit by hand -->
+
+### Active decisions
+
+These govern the system as it stands. Cite these.
+
+| ADR | Title | Status | Read first |
+|-----|-------|--------|------------|
+| [ADR-0001](0001-dispatch-policy-module.md) | Dispatch policy module as single seam for query execution outcomes | Accepted | — |
+| [ADR-0002](0002-command-contract-validation-module.md) | Command Contract Validation Module | Accepted | — |
+| [ADR-0003](0003-model-catalog-module.md) | Model Catalog Module as single source of truth for agent profiles and runtime tier defaults | Accepted | — |
+| [ADR-0004](0004-worktree-workstream-seam-module.md) | Planning Workspace Module as single seam for worktree and workstream state | Accepted | — |
+| [ADR-0006](0006-planning-path-projection-module.md) | Planning Path Projection Module for SDK query handlers | Accepted | — |
+| [ADR-0008](0008-installer-migration-module.md) | Installer Migration Module owns install-time upgrade safety | Accepted | — |
+| [ADR-0009](0009-shell-command-projection-module.md) | Shell Command Projection Module owns runtime-aware OS command rendering | Accepted | — |
+| [ADR-0011](0011-review-default-reviewers.md) | `review.default_reviewers` config key scopes the no-flag `/gsd-review` fan-out | Accepted | — |
+| [ADR-0011](0011-skill-surface-budget-module.md) | Skill Surface Budget Module owns install-time profile staging and runtime surface control | Accepted | [ADR-857](857-capability-system.md) |
+| [ADR-15](15-autonomous-cross-ai-convergence.md) | Cross-AI Plan Convergence via Existing Orchestration Commands | Accepted | — |
+| [ADR-22](22-plan-drift-guard.md) | Plan-vs-codebase drift guard: defaults and symbol-resolver seam | Accepted | — |
+| [ADR-58](58-runtime-install-policy-module.md) | Runtime Install Policy Module owns the typed install-plan projection | Accepted | [ADR-1239](1239-gsd-embeddable-orchestration-engine.md), [ADR-857](857-capability-system.md) |
+| [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) | Retire @opengsd/gsd-sdk package boundary — single-runtime collapse | Accepted | — |
+| [ADR-218](218-release-version-validation.md) | Harden release-workflow version validation — reject leading zeros and pre-check npm | Accepted | — |
+| [ADR-227](227-input-validation-shape-not-just-type.md) | Input validation must check semantic shape, not just type | Accepted | — |
+| [ADR-415](415-prevent-stale-base-token-reintroduction.md) | Prevent stale-base reintroduction of retired runtime tokens | Accepted | — |
+| [ADR-443](443-opus48-unified-effort-and-fast-mode-routing.md) | Unified cross-provider effort controls and fast-mode-aware routing | Accepted | — |
+| [ADR-452](452-eslint-lint-harness.md) | Adopt standard ESLint flat-config lint harness | Accepted | — |
+| [ADR-456](456-test-rigor-architecture.md) | Test-rigor architecture — deterministic scheduling, antagonistic tier, typed-surface mandate, and delete-bad-tests policy | Accepted | — |
+| [ADR-457](457-generated-cjs-single-source.md) | Generation model for `bin/lib/*.cjs` type safety | Accepted | — |
+| [ADR-550](550-spec-phase-probe-contract.md) | spec-phase probe pattern and prohibition contract | Accepted | — |
+| [ADR-0656](0656-research-module-seam.md) | Research Module — L2-hybrid seam for cached, curated-first research | Accepted | — |
+| [ADR-766](766-claude-code-plugin-manifest-module.md) | Claude Code Plugin Manifest Module owns the projection of gsd-core surfaces onto the Claude Code plugin contract | Accepted | — |
+| [ADR-857](857-capability-system.md) | Capability system — five-step loop as core, features as plug-ins behind Loop Extension Points | Accepted | — |
+| [ADR-894](894-capability-declaration-format.md) | Capability declaration format + registry generation | Accepted | [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) |
+| [ADR-959](959-capability-command-contribution.md) | Capability Command Contribution | Accepted | — |
+| [ADR-1016](1016-runtime-capability-descriptor.md) | Runtime Capability Descriptor | Accepted | [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) |
+| [ADR-1235](1235-descriptor-driven-agent-conversion-migration.md) | Migrate agent conversion to the descriptor-driven install path | Accepted | — |
+| [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) | GSD as an Embeddable Orchestration Engine | Accepted | — |
+| [ADR-1244](1244-capability-ecosystem.md) | Capability Ecosystem: third-party authoring, versioned manifests, and URL import/upgrade/remove | Accepted | — |
+| [ADR-1372](1372-markdown-sectionizer-seam.md) | Canonical markdown-structure parsing — the `markdown-sectionizer` seam | Accepted | [ADR-4910](4910-planning-document-seam.md) |
+| [ADR-1411](1411-resolution-provenance.md) | Resolution must report provenance, not fall open silently | Accepted | — |
+| [ADR-1508](1508-runtime-artifact-conversion-module.md) | Runtime Artifact Conversion Module owns per-runtime content rewriting | Accepted | — |
+| [ADR-1517](1517-reviewer-instances-config-surface.md) | Reviewer instances — bounded config surface for same-adapter multi-model review | Accepted | — |
+| [ADR-1577](1577-untrusted-input-boundary-and-injection-blocking.md) | Untrusted-input boundary + opt-in injection blocking | Accepted | — |
+| [ADR-1593](1593-skill-mapping-converter-methodology.md) | Skill mapping & converter methodology across runtimes | Accepted | — |
+| [ADR-1610](1610-workflow-agent-size-budget-ratchet.md) | workflow & agent size-budget ratchet (per-file byte baseline + tier hard caps) | Accepted | — |
+| [ADR-1703](1703-portability-enforcement-architecture.md) | Cross-platform portability enforcement as AST ESLint rules | Accepted | — |
+| [ADR-1769](1769-state-md-transition-module.md) | STATE.md Transition Module — intent-based transitions over scattered RMW callbacks | Accepted | — |
+| [ADR-1787](1787-gsd-next-smart-entry.md) | `/gsd:next` smart-entry front door delegates advancement to `/gsd:progress --next` | Accepted | — |
+| [ADR-1817](1817-state-md-rebuild-derivability-contract.md) | STATE.md rebuild — derivability contract (capstone transition) | Accepted | — |
+| [ADR-1820](1820-spec-optional-predicate-rail.md) | Spec-Optional Predicate Rail — the Spec-Section Detection Module, the fallback toggle, and the SPEC↔probe precedence contract | Accepted | — |
+| [ADR-1866](1866-agent-skills-dual-injection-contract.md) | agent_skills dual injection — orchestrator-side + agent-side self-load | Accepted | — |
+| [ADR-1990](1990-existing-code-onboarding.md) | Existing Code Onboarding Module owns deterministic repo-state detection and onboarding route selection | Accepted | — |
+| [ADR-2008](2008-command-exit-zero-gate.md) | Generic gate-predicate evaluator | Accepted | — |
+| [ADR-2121](2121-phase-identifier-parsing-consolidation.md) | Phase-Identifier Parsing Consolidation | Accepted | — |
+| [ADR-2143](2143-markdown-table-and-mutation-consolidation.md) | Markdown Table Model, Bounded Mutation, and Fail-Loud Consolidation (#1372 part 2) | Accepted | [ADR-4910](4910-planning-document-seam.md) |
+| [ADR-2164](2164-statusline-scope-boundary.md) | Statusline draws its data boundary at local, read-only sources | Accepted | — |
+| [ADR-2207](2207-status-field-lifecycle-ownership.md) | STATE.md `Status` lifecycle — phase-completion writes an intermediate state; milestone-close owns termination | Accepted | — |
+| [ADR-2313](2313-codex-passive-model-posture.md) | Codex Adopts the Passive / Session-Only Model Posture | Accepted | — |
+| [ADR-2346](2346-command-dispatch-completion.md) | Command Dispatch Completion | Accepted | — |
+| [ADR-2363](2363-capability-instruction-surface-trust.md) | A capability's skill body is an instruction surface — trusted, unscanned, and disclosed | Accepted | — |
+| [ADR-2619](2619-observability-shareable-diagnostics.md) | Observability and shareable diagnostics — wire the dispatch seam, add the outbound trust boundary | Accepted | — |
+| [ADR-2629](2629-phase-effort-estimation-calibration.md) | Phase effort is estimated against a calibrated smart-zone budget, not a static heuristic | Accepted | — |
+| [ADR-2719](2719-emitted-artifact-attribution.md) | Emitted-artifact attribution — replace the committed parity fixtures with a computed conservation law | Accepted | — |
+| [ADR-2782](2782-reviewer-lane-capability-surface.md) | Reviewer Lane — the cross-AI reviewer handoff becomes a declared capability surface | Accepted | — |
+| [ADR-2866](2866-install-surface-resolution.md) | Install-surface resolution — the install pipeline resolves `(runtime × scope × trigger)` as a value | Accepted | — |
+| [ADR-2966](2966-loop-qa-walk.md) | Test the five-step loop as a continuous walk, not isolated points | Accepted | — |
+| [ADR-2980](2980-payload-carried-error-is-a-degraded-result.md) | A payload-carried `error` key is a degraded result, not a fault | Accepted | — |
+| [ADR-3180](3180-planning-semantic-model-single-owner.md) | Planning Semantic Model — Single Owner per Derivation | Accepted | — |
+| [ADR-3212](3212-lexical-seam-consolidation.md) | The Lexical Seam — Safe Pattern Construction, Line-Terminator Normalization, and Tokenizer-First Stateful Grammars | Accepted | — |
+| [ADR-3408](3408-state-write-path-preservation.md) | STATE.md Write Path — One Declared Policy, One Write Seam | Accepted | — |
+| [ADR-3409](3409-unreachable-shell-guard-arms.md) | Shell Guards Must Observe Their Own Failure Arm | Accepted | — |
+| [ADR-3473](3473-enforcement-by-construction.md) | Enforcement by Construction — One Owner per Invariant | Accepted | — |
+| [ADR-3574](3574-install-materialization-primitives.md) | Install materialization shares primitives, not one writer | Accepted | — |
+| [ADR-3625](3625-vetted-spawn-library-evaluation.md) | The platform seam keeps its own Windows binary resolution rather than adopting a spawn library | Accepted | — |
+| [ADR-3626](3626-context-md-seam-claim-gate.md) | CONTEXT.md seam claims carry a checkable enforcement pointer | Accepted | — |
+| [ADR-3628](3628-milestone-release-mapping.md) | Milestone release mapping — a GSD milestone version is not a repository release version | Accepted | — |
+| [ADR-3660](3660-runtime-artifact-layout-module.md) | Runtime Artifact Layout Module owns per-runtime artifact placement | Accepted | [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) |
+| [ADR-3806](3806-review-dispositions-ledger.md) | Review Dispositions Ledger canonizes where and how reviews-mode records incorporate/defer decisions in PLAN.md | Accepted | — |
+| [ADR-4139](4139-compact-content-seam.md) | The compact-content seam — shrink the eager window, never the guarantee | Accepted | — |
+| [ADR-4593](4593-macos-conformance-tier-architecture.md) | A macOS-specific conformance-tier classifier, separate from the Windows-oriented one | Accepted | — |
+| [ADR-4630](4630-dispatch-identity-and-isolation-decision-seam.md) | One Canonical Dispatch-Identity Owner and a Recorded Isolation Decision | Accepted | — |
+| [ADR-4641](4641-windows-selector-consolidation.md) | One Windows test selector, and a proportional ceiling on the conformance tier | Accepted | — |
+| [ADR-4780](4780-labeled-arguments-block.md) | Command templates label the user's arguments in a standing `&lt;arguments&gt;` block | Accepted | — |
+| [ADR-4910](4910-planning-document-seam.md) | Planning documents are read and written through one parse → mutate → serialize seam | Accepted | — |
+| [ADR-5057](5057-one-owner-per-workflow-verdict.md) | One owner per workflow verdict — phase status, verification, gates, runtime activation, planning writes | Accepted | — |
+| [ADR-5559](5559-pi-agent-role-dispatch.md) | Agent-role dispatch on Pi — a GSD-owned `gsd_dispatch` tool that runs each role in an isolated `pi` child process | Accepted | — |
+
+### Proposed
+
+Decided in principle, not yet ratified. Do not cite as settled architecture.
+
+| ADR | Title | Status | Read first |
+|-----|-------|--------|------------|
+| [ADR-230](230-introduce-next-integration-branch.md) | Introduce `next` as a long-lived integration branch | Proposed | — |
+| [ADR-612](612-bracket-phase-id-convention.md) | Bracket Phase-ID Convention | Proposed | — |
+| [ADR-660](660-release-from-next-head.md) | Release from the head of `next`; immutable release tags; `@next` dist-tag as the RC surface | Proposed | — |
+| [ADR-1143](1143-claude-orchestration-capability.md) | Claude orchestration capability — Workflow tool (ultracode) as a runtime-gated loop execution backend | Proposed | — |
+| [ADR-1213](1213-capability-state-writer.md) | Capability write side — the Capability State Writer | Proposed | — |
+| [ADR-1606](1606-prohibition-enforcement-verify-seam.md) | prohibition-enforcement verify-time seam | Proposed | — |
+| [ADR-1671](1671-dynamic-context-management-platform.md) | Dynamic context management platform | Proposed | — |
+| [ADR-1953](1953-complexity-triggered-refactor.md) | Complexity-triggered refactor — the loop measures the entropy it just added | Proposed | — |
+| [ADR-3128](3128-adaptive-runtime-evidence.md) | Adaptive runtime evidence for GSD Debug | Proposed | — |
+| [ADR-3646](3646-per-task-content-resolution-seam.md) | Per-task external-tracker content-resolution seam | Proposed | — |
+| [ADR-3889](3889-process-exit-contract.md) | One exit-code registry — 0 and 1 are free, everything else is allocated | Proposed | — |
+| [ADR-3942](3942-emitted-drift-ack-commit-trailer.md) | The emitted-drift acknowledgment is PR-lifetime data — it belongs in a commit trailer, not the working tree | Proposed | — |
+| [ADR-4629](4629-state-write-intent-beyond-frontmatter.md) | STATE.md write intent beyond frontmatter — bounded, verified writes | Proposed | — |
+| [ADR-4650](4650-path-containment-and-filename-classification-seam.md) | One path-containment predicate and one filename-classification helper | Proposed | — |
+| [ADR-5331](5331-opencode-v2-support-and-v1-sunset.md) | OpenCode 2.x support as a version-gated target of the `opencode` runtime, and sunset of OpenCode 1.x support | Proposed | — |
+| [ADR-5812](5812-worktree-residue-removal-guards.md) | Residue-removal guard standard for `worktree.reap-orphans` | Proposed | — |
+
+### Superseded, Retired, and Legacy
+
+Historical record. **Do not follow these** — each names what replaced it, or why it was retired.
+
+| ADR | Title | Status | Replaced by |
+|-----|-------|--------|-------------|
+| [ADR-0005](0005-sdk-architecture-seam-map.md) | SDK Architecture seam map for query/runtime surfaces | Superseded | [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) |
+| [ADR-0007](0007-sdk-package-seam-module.md) | SDK Package Seam Module owns SDK-to-get-shit-done-redux compatibility | Superseded | [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) |
+| [ADR-0010](0010-file-operation-engine-module.md) | File Operation Engine Module owns safe runtime/config file mutations | Superseded | [ADR-0009](0009-shell-command-projection-module.md) |
+| [ADR-0010](0010-skill-surface-budget-module.md) | Skill Surface Budget Module owns install-time skill listing curation | Superseded | [ADR-0011](0011-skill-surface-budget-module.md) |
+| [ADR-0011](0011-review-default-reviewers-prd.md) | PRD — `review.default_reviewers` config key for `/gsd-review` reviewer selection | Legacy | — |
+| [ADR-0012](0012-command-routing-hub.md) | CommandRoutingHub as single dispatch seam for CJS command families | Superseded | [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) |
+| [ADR-2264](2264-golden-parity-redesign.md) | Redesign golden-install-parity — single-source manifest builder + split invariant | Superseded | [ADR-2719](2719-emitted-artifact-attribution.md) |
+| [ADR-3524](3524-cjs-sdk-hard-seam.md) | CJS↔SDK hard seam — one source of truth per Shared Module | Superseded | [ADR-0174](0174-retire-gsd-sdk-package-boundary.md) |
+
+_Generated by `scripts/gen-adr-index.cjs` — run `--write` after adding or restatusing an ADR._
+
+<!-- ADR-INDEX:END -->
+
+## Seam map
+
+Orientation for the module-ownership ADRs. This section is prose and hand-maintained; the index above is the authority on status.
+
+**How GSD meets a host — start at [ADR-1239](1239-gsd-embeddable-orchestration-engine.md) (EoS).** It is the current frame and subsumes the descriptor/projection ADRs ([ADR-1016](1016-runtime-capability-descriptor.md), [ADR-58](58-runtime-install-policy-module.md), [ADR-3660](3660-runtime-artifact-layout-module.md), [ADR-894](894-capability-declaration-format.md)) as adapters beneath it.
+
+**The SDK seam map is gone.** [ADR-0005](0005-sdk-architecture-seam-map.md) was once the entry point for SDK module ownership; it is **superseded by [ADR-0174](0174-retire-gsd-sdk-package-boundary.md)**, which retired the `@opengsd/gsd-sdk` package boundary entirely. There is no `sdk/` tree. Read ADR-0174 for the single-runtime collapse; the seam-Module vocabulary survives under one `src/`.
+
+[ADR-0006](0006-planning-path-projection-module.md) documents how query handlers project planning paths (`cwd → effectiveRoot → .planning/<project>/...`). Cross-reference the Planning Workspace Module ([ADR-0004](0004-worktree-workstream-seam-module.md)) for workstream pointer policy.
+
+[ADR-0008](0008-installer-migration-module.md) documents the Installer Migration Module for safe install-time moves, removals, config rewrites, and user-data preservation.
+
+[ADR-0009](0009-shell-command-projection-module.md) documents the Shell Command Projection Module seam for runtime-aware projection of installer-owned command text and projection IR. Its Phases 3–4 absorbed the File Operation Engine Module ([ADR-0010](0010-file-operation-engine-module.md)).
+
+[ADR-0011](0011-skill-surface-budget-module.md) documents the Skill Surface Budget Module for install-time skill/agent profile staging (`--profile=<name>`, `.gsd-profile` marker, `requires:` closure) and the Phase 2 runtime `/gsd:surface` command.
+
+[ADR-1411](1411-resolution-provenance.md) establishes the Resolution Provenance principle: context resolution (config loading, project-root anchoring, workstream resolution) must report its provenance rather than fall open silently to defaults. It is the resolution-side analog of [ADR-227](227-input-validation-shape-not-just-type.md) (input-validation shape).

@@ -1,0 +1,2396 @@
+"""Tests for graphify/dedup.py entity deduplication pipeline."""
+from __future__ import annotations
+import pytest
+from graphify.dedup import (
+    deduplicate_entities,
+    _collision_rank,
+    _defines_id,
+    _entropy,
+    _lifecycle_penalty,
+    _shingles,
+)
+
+
+# ── entropy gate ─────────────────────────────────────────────────────────────
+
+def test_entropy_short_label_low():
+    assert _entropy("AI") < 2.5
+
+def test_entropy_normal_label_high():
+    assert _entropy("AuthenticationManager") >= 2.5
+
+def test_entropy_empty_string():
+    assert _entropy("") == 0.0
+
+
+# ── shingles ─────────────────────────────────────────────────────────────────
+
+def test_shingles_produces_trigrams():
+    s = _shingles("hello")
+    assert "hel" in s
+    assert "ell" in s
+    assert "llo" in s
+
+def test_shingles_short_string():
+    # strings shorter than 3 chars return single shingle of the string itself
+    assert _shingles("ab") == {"ab"}
+
+
+# ── full pipeline ─────────────────────────────────────────────────────────────
+
+def _make_nodes(*labels):
+    return [{"id": label.lower().replace(" ", "_"), "label": label, "source_file": "test.md"} for label in labels]
+
+def _make_edges(src, tgt, relation="relates_to"):
+    return [{"source": src, "target": tgt, "relation": relation}]
+
+
+def test_exact_duplicates_merged():
+    nodes = _make_nodes("UserService", "userservice", "User Service")
+    edges = []
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+    # All three are the same concept — only one survives
+    assert len(result_nodes) == 1
+
+
+def test_typo_merged():
+    # "GraphExtractor" vs "Graph Extractor" — Jaro-Winkler >= 0.92
+    nodes = _make_nodes("GraphExtractor", "Graph Extractor")
+    edges = []
+    result_nodes, _ = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_nodes) == 1
+
+
+def test_unrelated_not_merged():
+    nodes = _make_nodes("UserService", "OrderService")
+    edges = []
+    result_nodes, _ = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_nodes) == 2
+
+
+def test_short_low_entropy_not_merged():
+    # "AI" and "ML" are low-entropy — entropy gate skips them
+    nodes = _make_nodes("AI", "ML")
+    edges = []
+    result_nodes, _ = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_nodes) == 2
+
+
+def test_edges_rewired_after_merge():
+    nodes = _make_nodes("GraphExtractor", "Graph Extractor", "Parser")
+    # edge from loser to Parser should be rewired to winner
+    edges = [{"source": "graph_extractor", "target": "parser", "relation": "uses"}]
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_nodes) == 2  # merged + Parser
+    # edge should still exist (rewired to winner)
+    assert len(result_edges) == 1
+
+
+def test_self_loops_dropped_after_merge():
+    # If both endpoints of an edge get merged into same node, drop the edge
+    nodes = _make_nodes("GraphExtractor", "Graph Extractor")
+    edges = [{"source": "graphextractor", "target": "graph_extractor", "relation": "same"}]
+    _, result_edges = deduplicate_entities(nodes, edges, communities={})
+    assert result_edges == []
+
+
+def test_preexisting_self_loops_preserved_after_unrelated_merge():
+    # #3809: Pre-existing self-loops (e.g. recursive calls, self-referencing FKs)
+    # must survive entity deduplication even when an unrelated merge occurs.
+    # Only self-loops created by the merge itself should be dropped.
+    nodes = [
+        {"id": "walk", "label": "walk()", "source_file": "src/tree.py", "file_type": "code"},
+        {"id": "categories", "label": "categories", "source_file": "schema.sql", "file_type": "code"},
+        {"id": "cache", "label": "Cache", "source_file": "docs/guide.md", "file_type": "concept"},
+        {"id": "cache_2", "label": "cache", "source_file": "docs/guide.md", "file_type": "concept"},
+    ]
+    edges = [
+        {"source": "walk", "target": "walk", "relation": "calls"},
+        {"source": "categories", "target": "categories", "relation": "references"},
+        # An edge between the duplicate concepts that collapses upon merge
+        {"source": "cache_2", "target": "cache", "relation": "references"},
+    ]
+    _, result_edges = deduplicate_entities(nodes, edges, communities={})
+
+    loops = [(e["source"], e["target"], e.get("relation")) for e in result_edges if e["source"] == e["target"]]
+    assert ("walk", "walk", "calls") in loops
+    assert ("categories", "categories", "references") in loops
+    # The collapsed edge cache_2 -> cache must NOT produce a self-loop
+    assert len(loops) == 2
+
+
+def test_preexisting_self_loop_on_merged_node_rewires_to_winner():
+    # If a merged node itself had a pre-existing self-loop, the self-loop
+    # is rewired to the winner, not dropped.
+    nodes = [
+        {"id": "cache", "label": "Cache", "source_file": "docs/guide.md", "file_type": "concept"},
+        {"id": "cache_2", "label": "cache", "source_file": "docs/guide.md", "file_type": "concept"},
+    ]
+    edges = [
+        {"source": "cache_2", "target": "cache_2", "relation": "references"},
+    ]
+    _, result_edges = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_edges) == 1
+    assert result_edges[0]["source"] == "cache"
+    assert result_edges[0]["target"] == "cache"
+
+
+
+def test_community_boost_aids_merge():
+    # Two nodes in same community with score in 0.75-0.85 zone get boosted
+    nodes = _make_nodes("AuthManager", "Auth Manager")
+    edges = []
+    # Same community → boost → merge
+    communities = {"authmanager": 1, "auth_manager": 1}
+    result_with, _ = deduplicate_entities(nodes, edges, communities=communities)
+    # Different community → no boost
+    communities_diff = {"authmanager": 1, "auth_manager": 2}
+    result_without, _ = deduplicate_entities(nodes, edges, communities=communities_diff)
+    assert len(result_with) <= len(result_without)
+
+
+def test_empty_inputs():
+    result_nodes, result_edges = deduplicate_entities([], [], communities={})
+    assert result_nodes == []
+    assert result_edges == []
+
+
+def test_single_node_no_crash():
+    nodes = _make_nodes("UserService")
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_llm_flag_accepted():
+    """deduplicate_entities accepts dedup_llm_backend without crashing when no ambiguous pairs exist."""
+    nodes = _make_nodes("UserService", "OrderService")
+    edges = []
+    result_nodes, _ = deduplicate_entities(nodes, edges, communities={}, dedup_llm_backend=None)
+    assert len(result_nodes) == 2
+
+
+# ── build integration ─────────────────────────────────────────────────────────
+
+def test_build_calls_dedup():
+    """build() should deduplicate near-identical nodes across extractions."""
+    from graphify.build import build
+    chunk1 = {
+        "nodes": [{"id": "graphextractor", "label": "GraphExtractor", "source_file": "a.py"}],
+        "edges": [],
+    }
+    chunk2 = {
+        "nodes": [{"id": "graph_extractor", "label": "Graph Extractor", "source_file": "b.py"}],
+        "edges": [],
+    }
+    G = build([chunk1, chunk2])
+    assert G.number_of_nodes() == 1
+
+
+def test_build_dedup_preserves_semantic_attributes():
+    """The default build path must not discard semantic enrichment (#2091)."""
+    from graphify.build import build
+    ast = {
+        "nodes": [{"id": "src_auth_login", "label": "login", "file_type": "code",
+                   "source_file": "src/auth.py", "_origin": "ast",
+                   "source_location": "L42"}],
+        "edges": [],
+    }
+    semantic = {
+        "nodes": [{"id": "src_auth_login", "label": "User login handler",
+                   "file_type": "code", "source_file": "src/auth.py",
+                   "summary": "Authenticates a user.", "confidence_score": 0.9}],
+        "edges": [],
+    }
+
+    node = dict(build([ast, semantic], directed=True, dedup=True).nodes["src_auth_login"])
+
+    assert node["label"] == "login"
+    assert node["source_location"] == "L42"
+    assert node["summary"] == "Authenticates a user."
+    assert node["confidence_score"] == 0.9
+
+
+# --- #878: fuzzy dedup false merges on short/variant labels ---
+
+def test_dedup_does_not_merge_numeric_variants(tmp_path):
+    """Chip SKU variants (ASR1603 vs ASR1605) must not be merged (#878)."""
+    nodes = _make_nodes("ASR1603", "ASR1605")
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2, "ASR1603 and ASR1605 are distinct chip models, not duplicates"
+
+
+def test_dedup_does_not_merge_short_insertion_variants(tmp_path):
+    """Short labels differing by an insertion (cranel vs cranelr) must not merge (#878)."""
+    nodes = _make_nodes("cranel", "cranelr")
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2, "cranel and cranelr are distinct, not a typo"
+
+
+def test_dedup_does_not_merge_model_with_suffix(tmp_path):
+    """M1 vs M1 Pro must not merge (#878)."""
+    nodes = _make_nodes("M1", "M1 Pro")
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2, "M1 and M1 Pro are distinct Apple chip variants"
+
+
+def test_dedup_still_merges_real_typos():
+    """Genuine same-length single-char typos should still merge (#878 non-regression)."""
+    from graphify.dedup import _is_variant_pair, _short_label_blocked
+    from rapidfuzz.distance import JaroWinkler
+    a, b = "graphextractor", "graphextractar"
+    score = JaroWinkler.normalized_similarity(a, b) * 100
+    assert not _is_variant_pair(a, b), "not a variant pair"
+    assert not _short_label_blocked(a, b, score), "long-enough label, should not be blocked"
+
+
+def test_variant_pair_helper():
+    """_is_variant_pair correctly identifies chip-model variant pairs (#878)."""
+    from graphify.dedup import _is_variant_pair
+    assert _is_variant_pair("asr1603", "asr1605")
+    assert _is_variant_pair("cortex a55", "cortex a55x")
+    assert not _is_variant_pair("graphextractor", "graphextracter")
+    assert not _is_variant_pair("foo", "foo")
+
+
+def test_prefix_extension_symbols_not_merged():
+    """Distinct symbols whose name is a strict prefix-extension of another must not
+    be merged (#1201). getActiveSession / getActiveSessions score ~98.82 JW but are
+    different functions; parseConfig / parseConfigFile likewise."""
+    import networkx as nx
+    from graphify.dedup import deduplicate_entities
+
+    pairs = [
+        ("getActiveSession", "getActiveSessions"),
+        ("parseConfig", "parseConfigFile"),
+        ("load", "loadAll"),
+        ("handleRequest", "handleRequestTimeout"),
+    ]
+    for a, b in pairs:
+        nodes = [
+            {"id": f"{a}_id", "label": a, "type": "CODE", "src_file": "api.py"},
+            {"id": f"{b}_id", "label": b, "type": "CODE", "src_file": "api.py"},
+        ]
+        edges = [{"src": f"{a}_id", "tgt": f"{b}_id", "relation": "calls",
+                  "c": 1.0, "weight": 1.0}]
+        out_nodes, _ = deduplicate_entities(
+            nodes, edges, communities={f"{a}_id": 0, f"{b}_id": 0}
+        )
+        labels = {n["label"] for n in out_nodes}
+        assert a in labels and b in labels, (
+            f"#1201 regression: '{a}' and '{b}' were merged — they are distinct symbols"
+        )
+
+
+def test_pass2_winner_union_does_not_pull_in_uncompared_same_label_nodes():
+    """Pass 2's winner selection must consider only the verified pair (#1247).
+
+    Picking the winner from the union of both normalized-label groups pulls
+    never-compared nodes into the merge: here A ("Session Manager", auth.md)
+    and B ("Session Manager", billing.md) are deliberately kept distinct by
+    the cross-file identical-label guards (#1046, #1178), yet when the
+    A-C fuzzy match ("Session Managr" typo) fires, _pick_winner over
+    [A, B, C] selects B (shortest id) and unions B with both A and C —
+    merging B although it was never compared against anything.
+    """
+    nodes = [
+        {"id": "session_manager_auth", "label": "Session Manager",
+         "source_file": "auth.md"},
+        {"id": "sm", "label": "Session Manager",
+         "source_file": "billing.md"},
+        {"id": "session_managr_notes", "label": "Session Managr",
+         "source_file": "notes.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    ids = {n["id"] for n in result_nodes}
+    # B must survive as a distinct node: identical label across different
+    # source files is exactly what the #1046/#1178 guards keep separate.
+    assert "sm" in ids, (
+        "uncompared cross-file node 'sm' was absorbed via pass-2 winner-union"
+    )
+    # The verified fuzzy pair (A, C) still merges — only one of them survives.
+    assert len(result_nodes) == 2
+
+
+def test_prefix_guard_does_not_block_same_length_typos():
+    """The prefix-extension guard must not fire for same-length pairs — only strict
+    prefix-extensions (one is a substring of the other) should be blocked (#1201).
+    graphextractor / graphextractar have the same length, so neither starts-with the
+    other, and the guard must not fire."""
+    from graphify.dedup import _norm
+    a = _norm("GraphExtractor")   # "graphextractor" — 14 chars
+    b = _norm("GraphExtractar")   # "graphextractar" — 14 chars
+    lo, hi = sorted((a, b), key=len)
+    # Same-length pair: startswith only holds when strings are identical
+    assert not (hi.startswith(lo) and hi != lo), (
+        f"Prefix guard fires on same-length pair ({a!r}, {b!r}) — should not"
+    )
+
+
+def test_prefix_guard_fires_for_extension_pairs():
+    """The prefix-extension guard must fire for pairs where one is a strict prefix
+    of the other, preventing false merges (#1201)."""
+    from graphify.dedup import _norm
+    pairs = [
+        ("getActiveSession", "getActiveSessions"),
+        ("parseConfig", "parseConfigFile"),
+        ("load", "loadAll"),
+    ]
+    for a_raw, b_raw in pairs:
+        a, b = _norm(a_raw), _norm(b_raw)
+        lo, hi = sorted((a, b), key=len)
+        assert hi.startswith(lo) and hi != lo, (
+            f"Prefix guard should fire for ({a!r}, {b!r}) but did not"
+        )
+
+
+# ── #1284: numbered siblings + cross-file file-anchored boilerplate ──────────
+
+def test_numeric_tokens_differ_helper():
+    """_numeric_tokens_differ compares digit runs as zero-padding-insensitive
+    multisets (#1284)."""
+    from graphify.dedup import _numeric_tokens_differ
+    assert _numeric_tokens_differ("adr 0011 d5 pipeline placement", "adr 0013 d4 pipeline placement")
+    assert _numeric_tokens_differ("3 1 product goals", "1 1 product goals")
+    assert _numeric_tokens_differ("code block3", "code block13")
+    assert not _numeric_tokens_differ("phase 09 overview", "phase 9 overview")  # zero-padding
+    assert not _numeric_tokens_differ("module layout wave 3", "module layouts wave 3")
+    assert not _numeric_tokens_differ("graph extractor", "graph extractar")  # digitless
+
+
+def test_dedup_does_not_merge_numbered_siblings():
+    """Long labels differing only in embedded numbers (ADR/section/issue ids)
+    must not merge — numbered siblings, not duplicates (#1284)."""
+    nodes = [
+        {"id": "n1", "label": "Pipeline placement — 4 call sites (ADR 0013 D4)",
+         "file_type": "document", "source_file": "docs/index-activity.md"},
+        {"id": "n2", "label": "Pipeline placement — 4 call sites (ADR 0011 §D5)",
+         "file_type": "document", "source_file": "docs/schema-matcher.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_does_not_merge_crossfile_rationale_boilerplate():
+    """Rationale nodes are file-anchored like code (#1205): parallel modules'
+    boilerplate docstrings differing by one word must not merge (#1284)."""
+    boiler = ("Django app config for {}. No business logic here. "
+              "Domain services live in services.py and adapters in providers.")
+    nodes = [
+        {"id": "r1", "label": boiler.format("apps.platform.cards"),
+         "file_type": "rationale", "source_file": "apps/platform/cards/apps.py"},
+        {"id": "r2", "label": boiler.format("apps.platform.cores"),
+         "file_type": "rationale", "source_file": "apps/platform/cores/apps.py"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_does_not_merge_crossfile_document_headings():
+    """Document nodes are file-anchored too: near-identical headings in different
+    files are distinct sections, not duplicates (#1284, extends the rationale guard)."""
+    nodes = [
+        {"id": "d1", "label": "Getting Started Installation Guide",
+         "file_type": "document", "source_file": "docs/a.md"},
+        {"id": "d2", "label": "Getting Started Installation Setup",
+         "file_type": "document", "source_file": "docs/b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_still_merges_samefile_rationale_duplicates():
+    """The file-anchored guard only blocks cross-file pairs — near-identical
+    rationale duplicates within one file still merge (#1284 non-regression)."""
+    nodes = [
+        {"id": "r1", "label": "Counts-only metrics export, a read-only aggregation service.",
+         "file_type": "rationale", "source_file": "apps/schemas/metrics.py"},
+        {"id": "r2", "label": "Counts-only metrics export, the read-only aggregation service.",
+         "file_type": "rationale", "source_file": "apps/schemas/metrics.py"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+# ── #1243: JaroWinkler prefix-bonus over-merge (cross-file) ──────────────────
+
+def test_dedup_does_not_merge_crossfile_shared_prefix_divergence():
+    """Cross-file labels sharing a long prefix but diverging in a distinguishing
+    token ("…jest native" vs "…react native") get JaroWinkler's prefix bonus past
+    threshold but are distinct entities; scoring them on plain Jaro blocks the
+    merge (#1243)."""
+    nodes = [
+        {"id": "p1", "label": "testing library jest native",
+         "file_type": "concept", "source_file": "pkg-a/package.json"},
+        {"id": "p2", "label": "testing library react native",
+         "file_type": "concept", "source_file": "pkg-b/package.json"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_still_merges_crossfile_true_duplicates():
+    """The #1243 guard only drops the prefix bonus — a genuine cross-file
+    duplicate (high similarity on Jaro alone) must still merge."""
+    nodes = [
+        {"id": "g1", "label": "GraphExtractor", "file_type": "concept", "source_file": "a.md"},
+        {"id": "g2", "label": "Graph Extractor", "file_type": "concept", "source_file": "b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+# ── #1504: cross-chunk node ID collision warning ──────────────────────────────
+
+def test_cross_chunk_id_collision_emits_warning(capsys):
+    """When two nodes share the same ID but come from different source files
+    (a cross-chunk LLM ID collision), a WARNING must be printed to stderr
+    and only the first node survives (#1504). The id is not a shorter-stem mint
+    of either path, so this covers a collision the path-qualify pass cannot
+    attribute (#4281)."""
+    nodes = [
+        {"id": "booking_service", "label": "Booking Service",
+         "file_type": "concept", "source_file": "module-a/README.md"},
+        {"id": "booking_service", "label": "Booking Service",
+         "file_type": "concept", "source_file": "module-b/README.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0]["source_file"] == "module-a/README.md"
+
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+    assert "booking_service" in captured.err
+    assert "module-b/README.md" in captured.err
+    assert "module-a/README.md" in captured.err
+
+
+def test_same_id_same_source_file_no_warning(capsys):
+    """When two nodes share both ID and source_file (same-file dedup),
+    no collision warning should be emitted."""
+    nodes = [
+        {"id": "readme_booking_service", "label": "Booking Service",
+         "file_type": "concept", "source_file": "module-a/README.md"},
+        {"id": "readme_booking_service", "label": "Booking Service (dupe)",
+         "file_type": "concept", "source_file": "module-a/README.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert len(result_nodes) == 1
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+
+
+# ── #1857: dedup summary log breakdown ────────────────────────────────────────
+
+def test_dedup_summary_prints_fuzzy_count_when_no_exact_merges(capsys):
+    """A fuzzy-only run must still report the fuzzy count (#1857).
+
+    Two long, high-entropy, non-code labels on different files. Pass 1 (exact,
+    same-file) finds nothing; Pass 2 (Jaro-Winkler cross-file) merges them.
+    Previously the fuzzy count was nested inside `if exact_merges`, so this
+    line printed as `Deduplicated 1 node(s).` with no breakdown.
+    """
+    nodes = [
+        {"id": "g1", "label": "GraphExtractor", "file_type": "concept", "source_file": "a.md"},
+        {"id": "g2", "label": "Graph Extractor", "file_type": "concept", "source_file": "b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+    captured = capsys.readouterr()
+    assert "Deduplicated" in captured.out
+    assert "fuzzy" in captured.out
+    assert "exact" not in captured.out
+
+
+def test_dedup_summary_still_reports_exact_only(capsys):
+    """Non-regression: an exact-only run still prints `(N exact)` and no fuzzy."""
+    # Same file + same normalized label → Pass 1 exact merge.
+    nodes = [
+        {"id": "u1", "label": "User Service", "file_type": "concept", "source_file": "svc.md"},
+        {"id": "u2", "label": "user service", "file_type": "concept", "source_file": "svc.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+    captured = capsys.readouterr()
+    assert "exact" in captured.out
+    assert "fuzzy" not in captured.out
+
+
+# ── ID collisions: definition vs cross-reference ──────────────────────────────
+
+# The defining node and a doc that merely mentions the entity. Both mint the ID
+# encoded from the *defining* file's path, so they collide by construction.
+_DEFINING = {"id": "agents_make_batch_fixtures_make_batch_fixtures",
+             "label": "make-batch-fixtures agent", "file_type": "concept",
+             "source_file": "agents/make-batch-fixtures.md"}
+_REFERENCING = {"id": "agents_make_batch_fixtures_make_batch_fixtures",
+                "label": "make-batch-fixtures", "file_type": "concept",
+                "source_file": "available/diagnose-issue/SKILL.md"}
+
+
+@pytest.mark.parametrize("nodes", [
+    [_DEFINING, _REFERENCING],
+    [_REFERENCING, _DEFINING],
+], ids=["definition-first", "reference-first"])
+def test_defining_file_wins_over_referencing_file(nodes, capsys):
+    """The node whose source_file is the file its ID encodes survives, whichever
+    chunk order the nodes arrive in — the survivor must not depend on it."""
+    result_nodes, _ = deduplicate_entities(list(nodes), [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0]["source_file"] == "agents/make-batch-fixtures.md"
+    assert result_nodes[0]["label"] == "make-batch-fixtures agent"
+
+
+def test_reference_collision_is_silent(capsys):
+    """A cross-reference rewires silently without importing foreign-file metadata."""
+    edges = _make_edges("agents_make_batch_fixtures_make_batch_fixtures", "other")
+    referencing = dict(_REFERENCING, summary="Reference-local description.")
+    result_nodes, result_edges = deduplicate_entities(
+        [_DEFINING, referencing], edges, communities={})
+
+    assert len(result_nodes) == 1
+    assert len(result_edges) == 1
+    assert "summary" not in result_nodes[0]
+    captured = capsys.readouterr()
+    assert "WARNING" not in captured.err
+    assert "note:" not in captured.err
+
+
+def test_absolute_source_path_still_defines_id(capsys):
+    """source_file is absolute in some pipelines and repo-relative in others; the
+    defining file is recognised either way."""
+    absolute = dict(_DEFINING, source_file="/home/u/proj/agents/make-batch-fixtures.md")
+    result_nodes, _ = deduplicate_entities([_REFERENCING, absolute], [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0]["label"] == "make-batch-fixtures agent"
+    assert "WARNING" not in capsys.readouterr().err
+
+
+# ── #3352: non-Latin source paths must still define their own id ─────────────
+# _id_prefixes reimplemented id slugification with an ASCII-only regex instead
+# of the canonical normalize_id every real extractor mints an id with, so a
+# path segment made of Korean, CJK, or Cyrillic characters collapsed to
+# nothing instead of being preserved. The reconstructed prefix then never
+# matched the id actually minted for that file, so the defining page lost the
+# definer-wins tiebreak to a page that merely references the same entity.
+
+def test_id_prefixes_preserves_non_latin_segments():
+    from graphify.dedup import _id_prefixes
+    prefixes = _id_prefixes("concepts/작업 단위 폴더 + README 진입점 컨벤션.md")
+    assert "concepts_작업_단위_폴더_readme_진입점_컨벤션" in prefixes
+    assert "작업_단위_폴더_readme_진입점_컨벤션" in prefixes
+
+
+_KOREAN_DEFINING = {
+    "id": "concepts_작업_단위_폴더_readme_진입점_컨벤션",
+    "label": "README 진입점 컨벤션", "file_type": "concept",
+    "source_file": "concepts/작업 단위 폴더 + README 진입점 컨벤션.md",
+}
+_KOREAN_REFERENCING = {
+    "id": "concepts_작업_단위_폴더_readme_진입점_컨벤션",
+    "label": "README 진입점 컨벤션", "file_type": "concept",
+    "source_file": "concepts/LLM Schema - CLAUDE.md를 가이드로 활용하기.md",
+}
+
+
+def test_defines_id_recognizes_a_non_latin_path():
+    assert _defines_id(_KOREAN_DEFINING)
+    assert not _defines_id(_KOREAN_REFERENCING)
+
+
+@pytest.mark.parametrize("nodes", [
+    [_KOREAN_DEFINING, _KOREAN_REFERENCING],
+    [_KOREAN_REFERENCING, _KOREAN_DEFINING],
+], ids=["definition-first", "reference-first"])
+def test_korean_defining_file_wins_over_referencing_file(nodes):
+    """The issue's own repro shape: the page that defines a concept must keep
+    its own node instead of losing it to a page that merely mentions it."""
+    result_nodes, _ = deduplicate_entities(list(nodes), [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0]["source_file"] == (
+        "concepts/작업 단위 폴더 + README 진입점 컨벤션.md"
+    )
+
+
+def test_id_prefixes_ascii_path_unchanged():
+    """Negative control: an ordinary ASCII path's reconstructed prefixes must
+    be identical to what the old ASCII only regex produced."""
+    from graphify.dedup import _id_prefixes
+    assert _id_prefixes("docs/v1/api/README.md") == {
+        "readme", "api_readme", "v1_api_readme", "docs_v1_api_readme",
+    }
+
+
+def test_same_file_relabel_is_noted(capsys):
+    """Two labels for one ID from one file: the loser's label is discarded, which is
+    the one drop that used to be silent. It is a note, not a collision warning."""
+    nodes = [
+        {"id": "agents_make_batch_fixtures_make_batch_fixtures",
+         "label": "make-batch-fixtures agent", "file_type": "concept",
+         "source_file": "agents/make-batch-fixtures.md"},
+        {"id": "agents_make_batch_fixtures_make_batch_fixtures",
+         "label": "make-batch-fixtures helper agent", "file_type": "concept",
+         "source_file": "agents/make-batch-fixtures.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert len(result_nodes) == 1
+    captured = capsys.readouterr()
+    assert "note:" in captured.err
+    assert "make-batch-fixtures helper agent" in captured.err
+    assert "WARNING" not in captured.err
+
+
+@pytest.mark.parametrize("nodes", [
+    [
+        {"id": "src_auth_login", "label": "login", "file_type": "code",
+         "source_file": "src/auth.py", "_origin": "ast", "source_location": "L42"},
+        {"id": "src_auth_login", "label": "User login handler", "file_type": "code",
+         "source_file": "src/auth.py", "summary": "Authenticates a user.",
+         "confidence_score": 0.9},
+    ],
+    [
+        {"id": "src_auth_login", "label": "User login handler", "file_type": "code",
+         "source_file": "src/auth.py", "summary": "Authenticates a user.",
+         "confidence_score": 0.9},
+        {"id": "src_auth_login", "label": "login", "file_type": "code",
+         "source_file": "src/auth.py", "_origin": "ast", "source_location": "L42"},
+    ],
+], ids=["ast-first", "semantic-first"])
+def test_same_id_same_entity_retains_complementary_attributes(nodes):
+    """Exact-ID dedup combines AST precision with semantic enrichment (#2091)."""
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0] == {
+        "id": "src_auth_login",
+        "label": "login",
+        "file_type": "code",
+        "source_file": "src/auth.py",
+        "_origin": "ast",
+        "source_location": "L42",
+        "summary": "Authenticates a user.",
+        "confidence_score": 0.9,
+    }
+
+
+def test_cross_file_id_collision_does_not_mix_attributes(capsys):
+    """Two files that both mint one ID remain isolated despite exact-ID dedup."""
+    nodes = [
+        {"id": "pkg_service_run", "label": "run", "file_type": "code",
+         "source_file": "pkg/service.py", "source_location": "L10"},
+        {"id": "pkg_service_run", "label": "run helper", "file_type": "code",
+         "source_file": "pkg_service.py", "summary": "Different function."},
+    ]
+
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert len(result_nodes) == 1
+    assert result_nodes[0]["source_file"] == "pkg/service.py"
+    assert "summary" not in result_nodes[0]
+    assert "WARNING" in capsys.readouterr().err
+
+
+def test_semantic_reference_stubs_from_issue_4738_are_namespaced():
+    """#4738: two citing documents can mint an ID derived from a third document.
+
+    The first two reported collisions have no defining node, so both records
+    must survive. The third includes a defining path and must retain the normal
+    definer-wins behavior.
+    """
+    logging_id = "specifications_20_architecture_operational_logging_document"
+    runtime_id = "functional_agent_runtime_doc"
+    license_id = "company_license_schedule_c"
+    nodes = [
+        {"id": logging_id, "label": "Logging", "file_type": "document",
+         "source_file": "specifications/20-architecture/delivery/change-policy.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": logging_id, "label": "Logging specification", "file_type": "document",
+         "source_file": ".github/instructions/rust.instructions.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": runtime_id, "label": "Agent runtime", "file_type": "document",
+         "source_file": "functional/agents/agent-operator.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": runtime_id, "label": "Agent Runtime and Subagent Contract (referenced)",
+         "file_type": "document", "source_file": "delivery/developer-interaction.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": license_id, "label": "Schedule C - Support", "file_type": "document",
+         "source_file": "company/license.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": license_id, "label": "Schedule C - Support", "file_type": "document",
+         "source_file": "company/license-schedule-c.md"},
+    ]
+
+    kept, _ = deduplicate_entities(nodes, [], communities={})
+
+    assert {(node["id"], node["source_file"]) for node in kept} == {
+        ("specifications_20_architecture_delivery_change_policy__ref__" + logging_id,
+         "specifications/20-architecture/delivery/change-policy.md"),
+        ("github_instructions_rust_instructions__ref__" + logging_id,
+         ".github/instructions/rust.instructions.md"),
+        ("functional_agents_agent_operator__ref__" + runtime_id,
+         "functional/agents/agent-operator.md"),
+        ("delivery_developer_interaction__ref__" + runtime_id,
+         "delivery/developer-interaction.md"),
+        ("company_license__ref__" + license_id, "company/license.md"),
+        (license_id, "company/license-schedule-c.md"),
+    }
+
+
+def test_semantic_reference_stub_rewires_its_own_file_edges():
+    """The citing file's edge must follow its retained reference stub (#4738)."""
+    nid = "functional_agent_runtime_doc"
+    a_ref = "functional_agents_agent_operator__ref__" + nid
+    b_ref = "delivery_developer_interaction__ref__" + nid
+    nodes = [
+        {"id": "functional_agents_agent_operator", "label": "Agent operator",
+         "file_type": "document", "source_file": "functional/agents/agent-operator.md",
+         "_origin": "semantic"},
+        {"id": nid, "label": "Agent runtime", "file_type": "document",
+         "source_file": "functional/agents/agent-operator.md",
+         "metadata": {"graphify_reference_stub": True}},
+        {"id": "delivery_developer_interaction", "label": "Developer interaction",
+         "file_type": "document", "source_file": "delivery/developer-interaction.md",
+         "_origin": "semantic"},
+        {"id": nid, "label": "Agent Runtime and Subagent Contract (referenced)",
+         "file_type": "document", "source_file": "delivery/developer-interaction.md",
+         "metadata": {"graphify_reference_stub": True}},
+    ]
+    edges = [
+        {"source": "functional_agents_agent_operator", "target": nid,
+         "relation": "references", "source_file": "functional/agents/agent-operator.md"},
+        {"source": "delivery_developer_interaction", "target": nid,
+         "relation": "references", "source_file": "delivery/developer-interaction.md"},
+    ]
+
+    _, rewired = deduplicate_entities(nodes, edges, communities={})
+
+    assert {(edge["source_file"], edge["target"]) for edge in rewired} == {
+        ("functional/agents/agent-operator.md", a_ref),
+        ("delivery/developer-interaction.md", b_ref),
+    }
+
+
+def test_unmarked_nested_document_collision_keeps_existing_survivor():
+    """Path depth alone must not mark a record as a cross-document stub."""
+    nid = "docs_protocol_firmware_protocol"
+    canonical = {"id": nid, "label": "Firmware Protocol", "file_type": "document",
+                 "source_file": "docs/protocol.md"}
+    deeper = {"id": nid, "label": "Firmware protocol notes", "file_type": "document",
+              "source_file": "docs/protocol/firmware.md"}
+
+    kept, _ = deduplicate_entities([canonical, deeper], [], communities={})
+
+    assert [(node["id"], node["source_file"]) for node in kept] == [
+        (nid, "docs/protocol.md"),
+    ]
+
+
+def test_collision_survivor_is_order_independent():
+    """#1851: definer + same-file relabel + cross-file reference. Across every
+    insertion order the SAME node (source_file AND label) must survive — the
+    definer heuristic alone left the label order-dependent among co-definers."""
+    import itertools
+    nid = "agents_make_batch_fixtures_make_batch_fixtures"
+    definer = {"id": nid, "label": "make-batch-fixtures agent",
+               "file_type": "concept", "source_file": "agents/make-batch-fixtures.md"}
+    relabel = {"id": nid, "label": "make-batch-fixtures helper agent",
+               "file_type": "concept", "source_file": "agents/make-batch-fixtures.md"}
+    xref = {"id": nid, "label": "make-batch-fixtures", "file_type": "concept",
+            "source_file": "available/diagnose-issue/SKILL.md"}
+    survivors = set()
+    for perm in itertools.permutations([definer, relabel, xref]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        survivors.add((out[0]["source_file"], out[0]["label"]))
+    assert survivors == {("agents/make-batch-fixtures.md", "make-batch-fixtures agent")}, (
+        f"non-deterministic collision survivor: {survivors}"
+    )
+
+
+def test_bare_file_node_defines_its_own_id():
+    """A file-level semantic node whose id is exactly the slugified path (no
+    `_entity` suffix) must be recognised as defining its id (#1851 tweak)."""
+    assert _defines_id({"id": "agents_make_batch_fixtures",
+                        "source_file": "agents/make-batch-fixtures.md"})
+
+
+def test_defines_id_helper():
+    assert _defines_id(_DEFINING)
+    assert not _defines_id(_REFERENCING)
+    # Pre-#1504 IDs keyed off the bare filename stem.
+    assert _defines_id({"id": "readme_booking_service",
+                        "source_file": "module-a/README.md"})
+    # A path that is merely a string-prefix of the ID's path does not define it.
+    assert not _defines_id({"id": "agents_foo", "source_file": "agent/foo.md"})
+    assert not _defines_id({"id": "docs_intro_foo", "source_file": ""})
+
+
+# ── #2532: lifecycle-aware, environment-stable collision ranking ──────────────
+# Active-vs-archived path markers adapted from @michaelxer's PR #2540, judged on
+# root-relative segments with a reversed-segment final tiebreak so the survivor
+# cannot flip with path form or checkout location.
+
+_DONE_PLAN = {"id": "plans_binding_doctrine", "label": "binding doctrine",
+              "file_type": "concept",
+              "source_file": "plans/_done/binding-doctrine.md"}
+_ACTIVE_PLAN = {"id": "plans_binding_doctrine", "label": "binding doctrine",
+                "file_type": "concept",
+                "source_file": "plans/in-progress/binding-doctrine.md"}
+
+
+def test_lifecycle_penalty_on_relative_segments():
+    assert _lifecycle_penalty("plans/_done/x.md") == 2
+    assert _lifecycle_penalty("plans/in-progress/x.md") == 0
+    assert _lifecycle_penalty("docs/x.md") == 1
+    # A FILE named after a marker is not a marker — only directory segments count.
+    assert _lifecycle_penalty("done.md") == 1
+    assert _lifecycle_penalty("plans/done.md") == 1
+    # Mixed markers: the best (most active) marked segment wins.
+    assert _lifecycle_penalty("archive/in-progress/x.md") == 0
+
+
+def test_archived_path_ranks_below_active_despite_ascii_order():
+    """#2532: `plans/_done` sorts before `plans/in-progress` lexically ('_' < 'i'),
+    so a raw-string tiebreak picks the archived copy — assert the ASCII trap is
+    real, then that the rank inverts it."""
+    assert _DONE_PLAN["source_file"] < _ACTIVE_PLAN["source_file"]  # the trap
+    assert _collision_rank(_ACTIVE_PLAN) < _collision_rank(_DONE_PLAN)
+
+
+def test_active_plan_survives_archived_copy_order_independent():
+    """#2532 reported case: the in-progress copy survives, whichever order the
+    colliding nodes arrive in."""
+    import itertools
+    for perm in itertools.permutations([_DONE_PLAN, _ACTIVE_PLAN]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "plans/in-progress/binding-doctrine.md"
+
+
+def test_sourced_node_survives_a_source_less_namesake_order_independent():
+    """#4492: when neither colliding node's own file encodes the id, both read
+    as mere references and tie on the first `_collision_rank` key too. A node
+    with no `source_file` at all used to win that tie anyway, since an empty
+    reversed path sorts before any real one — the located node told us where
+    the entity actually lives, and it was the one getting dropped. A node
+    with a `source_file` must beat one without, whichever order they arrive
+    in, mirroring the same rule `_pick_winner` already applies one level up
+    (#3775/#3786)."""
+    import itertools
+    sourced = {"id": "x", "label": "X", "source_file": "a.md"}
+    blank = {"id": "x", "label": "X"}
+    for perm in itertools.permutations([sourced, blank]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0] == sourced
+
+
+# #4859: pkg.md sits beside pkg/test_x.py. The AST id for the file is
+# `pkg_test_x`, and `pkg_` is also a slice of pkg.md's own path, so a doc node
+# reusing that id defines it too and both pass the first `_collision_rank` key.
+_AST_FILE = {"id": "pkg_test_x", "label": "test_x.py", "file_type": "code",
+             "source_file": "pkg/test_x.py", "source_location": "L1",
+             "_origin": "ast"}
+# Fresh semantic chunks arrive without `_origin`; a loaded graph backfills it.
+_DOC_COPY = {"id": "pkg_test_x", "label": "Tests", "file_type": "code",
+             "source_file": "pkg.md"}
+
+
+@pytest.mark.parametrize("origin", [None, "semantic"], ids=["unstamped", "stamped"])
+@pytest.mark.parametrize("doc_label", ["Tests", "test_x.py (tests)"])
+def test_ast_definer_beats_semantic_definer_order_independent(doc_label, origin):
+    """#4859: when both colliding nodes define the id, the AST node keeps it.
+    A doc label shorter than the code label used to win on label length; the
+    longer label is the control that already passed."""
+    import itertools
+    doc = dict(_DOC_COPY, label=doc_label)
+    if origin:
+        doc["_origin"] = origin
+    assert _defines_id(_AST_FILE) and _defines_id(doc)
+    for perm in itertools.permutations([_AST_FILE, doc]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "pkg/test_x.py"
+        assert out[0]["label"] == "test_x.py"
+
+
+def test_semantic_definer_still_beats_ast_reference():
+    """#4859 boundary: the AST preference only separates two definers. A semantic
+    node that defines the id still outranks an AST node that merely references it."""
+    definer = {"id": "pkg_overview", "label": "Overview", "file_type": "document",
+               "source_file": "pkg.md", "_origin": "semantic"}
+    reference = {"id": "pkg_overview", "label": "overview", "file_type": "code",
+                 "source_file": "other/mod.py", "source_location": "L4",
+                 "_origin": "ast"}
+    import itertools
+    for perm in itertools.permutations([definer, reference]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "pkg.md"
+
+
+def test_doc_reextract_keeps_ast_node_with_shared_id(tmp_path):
+    """#4859 end to end: an --update that re-extracts only pkg.md, whose node reuses
+    the AST id of pkg/test_x.py, must not take the code node over, and a later
+    re-extract of pkg.md without that node must not delete it."""
+    import json
+    from networkx.readwrite import json_graph
+    from graphify.build import build_merge
+
+    other = {"id": "pkg_test_x_run", "label": "run()", "file_type": "code",
+             "source_file": "pkg/test_x.py", "source_location": "L3",
+             "_origin": "ast"}
+    graph = {"directed": False, "multigraph": False, "graph": {},
+             "hyperedges": [], "nodes": [dict(_AST_FILE), other],
+             "links": [{"source": "pkg_test_x", "target": "pkg_test_x_run",
+                        "relation": "contains", "confidence": "EXTRACTED",
+                        "source_file": "pkg/test_x.py", "_origin": "ast"}]}
+    (tmp_path / "graph.json").write_text(json.dumps(graph))
+    overview = {"id": "pkg_overview", "label": "Overview", "file_type": "document",
+                "source_file": "pkg.md"}
+    doc = {"nodes": [dict(_DOC_COPY), dict(overview)],
+           "edges": [{"source": "pkg_overview", "target": "pkg_test_x",
+                      "relation": "describes", "confidence": "EXTRACTED",
+                      "source_file": "pkg.md"}],
+           "hyperedges": []}
+    G = build_merge([doc], graph_path=tmp_path / "graph.json")
+    assert G.nodes["pkg_test_x"]["source_file"] == "pkg/test_x.py"
+    assert G.has_edge("pkg_overview", "pkg_test_x")
+
+    (tmp_path / "graph2.json").write_text(
+        json.dumps(json_graph.node_link_data(G, edges="links")))
+    doc2 = {"nodes": [dict(overview)], "edges": [], "hyperedges": []}
+    G2 = build_merge([doc2], graph_path=tmp_path / "graph2.json")
+    assert "pkg_test_x" in G2
+    assert G2.nodes["pkg_test_x"]["source_file"] == "pkg/test_x.py"
+
+
+def test_extension_twin_ids_ignore_the_ast_preference():
+    """#4859 boundary: x.py and x.html are distinct entities, so which twin keeps
+    the bare id must not change because one is AST. A shorter html label keeps it,
+    as before."""
+    import itertools
+    py = {"id": "firmware_lib_portal", "label": "portal.py helper module",
+          "file_type": "code", "source_file": "firmware/lib/portal.py",
+          "source_location": "L1", "_origin": "ast"}
+    html = {"id": "firmware_lib_portal", "label": "portal", "file_type": "document",
+            "source_file": "firmware/lib/portal.html"}
+    for perm in itertools.permutations([py, html]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        ids = {n["source_file"]: n["id"] for n in out}
+        assert ids == {"firmware/lib/portal.html": "firmware_lib_portal",
+                       "firmware/lib/portal.py": "firmware_lib_portal_py"}
+
+
+def test_same_file_ast_and_semantic_definers_rank_as_before():
+    """#4859 boundary: the AST preference is only for ids defined from two or more
+    files. An AST node and its semantic enrichment from the same file (#2091) keep
+    the shorter label as before."""
+    import itertools
+    ast = {"id": "m_run", "label": "run()", "file_type": "code",
+           "source_file": "m.py", "source_location": "L3", "_origin": "ast"}
+    sem = {"id": "m_run", "label": "run", "file_type": "code", "source_file": "m.py",
+           "summary": "Runs the job."}
+    for perm in itertools.permutations([ast, sem]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["label"] == "run"
+
+
+def test_cross_file_doc_loses_but_same_file_pair_keeps_its_label():
+    """#4859: a doc from another file loses to the AST node (it won on v8 with an
+    equally short label), while the AST node and its same-file semantic
+    enrichment (#2091) still rank on label length between themselves."""
+    import itertools
+    ast = {"id": "m_run", "label": "run()", "file_type": "code",
+           "source_file": "m.py", "source_location": "L3", "_origin": "ast"}
+    sem = {"id": "m_run", "label": "run", "file_type": "code", "source_file": "m.py"}
+    doc = {"id": "m_run", "label": "Run", "file_type": "document",
+           "source_file": "docs/m.md"}
+    for perm in itertools.permutations([ast, sem, doc]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "m.py"
+        assert out[0]["label"] == "run"
+
+
+def test_unsplit_extension_twins_rank_as_before():
+    """#4859 boundary: when x.py cannot take its extension-qualified id because
+    another node already holds it, the twins collapse onto one id, and the
+    survivor is chosen exactly as on v8 (here the shorter html label)."""
+    import itertools
+    py = {"id": "firmware_lib_portal", "label": "portal.py helper module",
+          "file_type": "code", "source_file": "firmware/lib/portal.py",
+          "source_location": "L1", "_origin": "ast"}
+    html = {"id": "firmware_lib_portal", "label": "portal", "file_type": "document",
+            "source_file": "firmware/lib/portal.html"}
+    taken = {"id": "firmware_lib_portal_py", "label": "portal_py notes",
+             "file_type": "document", "source_file": "notes.md"}
+    for perm in itertools.permutations([py, html, taken]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        bare = [n for n in out if n["id"] == "firmware_lib_portal"]
+        assert len(bare) == 1
+        assert bare[0]["source_file"] == "firmware/lib/portal.html"
+
+
+def test_slug_twin_semantic_definer_ranks_as_before():
+    """#4859 boundary: pkg/service.py and pkg_service.py share a full stem, so an
+    AST node from one does not outrank a semantic definer from the other."""
+    import itertools
+    ast = {"id": "pkg_service_run", "label": "run()", "file_type": "code",
+           "source_file": "pkg/service.py", "source_location": "L2", "_origin": "ast"}
+    sem = {"id": "pkg_service_run", "label": "run", "file_type": "code",
+           "source_file": "pkg_service.py"}
+    for perm in itertools.permutations([ast, sem]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "pkg_service.py"
+
+
+def test_semantic_enrichment_is_not_outranked_by_another_files_ast():
+    """#4859 boundary: a file with its own AST definer keeps its #2091 pairing even
+    when a slug twin from another file also has an AST definer for the id."""
+    import itertools
+    a = {"id": "pkg_service_run", "label": "run()", "file_type": "code",
+         "source_file": "pkg/service.py", "source_location": "L2", "_origin": "ast"}
+    b = {"id": "pkg_service_run", "label": "run()", "file_type": "code",
+         "source_file": "pkg_service.py", "source_location": "L2", "_origin": "ast"}
+    sem = {"id": "pkg_service_run", "label": "run", "file_type": "code",
+           "source_file": "pkg/service.py"}
+    survivors = set()
+    for perm in itertools.permutations([a, b, sem]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        survivors.add((out[0]["source_file"], out[0]["label"]))
+    assert survivors == {("pkg/service.py", "run")}
+
+
+def test_checkout_dir_lifecycle_name_does_not_mark_paths(tmp_path):
+    """Gap in #2540: markers must be matched on ROOT-RELATIVE segments only. An
+    absolute source_file stored under a checkout directory named `wip` must not
+    be scored active by the checkout location — the archived copy still loses."""
+    import itertools
+    root = tmp_path / "wip" / "repo"
+    archived = {"id": "plans_doc", "label": "doc", "file_type": "concept",
+                "source_file": str(root / "plans" / "_done" / "doc.md")}
+    active = {"id": "plans_doc", "label": "doc", "file_type": "concept",
+              "source_file": "plans/roadmap/doc.md"}
+    for perm in itertools.permutations([archived, active]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [],
+                                      communities={}, root=root)
+        assert len(out) == 1
+        assert out[0]["source_file"] == "plans/roadmap/doc.md"
+
+
+def test_neutral_collision_survivor_is_stable_across_path_forms(tmp_path):
+    """#2532: with no lifecycle markers, the tiebreak must not depend on whether
+    either path is stored absolute or repo-relative — one root-relative file
+    identity survives across all four form combinations and both insertion
+    orders (8 runs)."""
+    import itertools
+    root = tmp_path / "repo"
+    rel_a, rel_b = "plans/q3/doc.md", "plans/roadmap/doc.md"
+    survivors = set()
+    for form_a in (rel_a, str(root / rel_a)):
+        for form_b in (rel_b, str(root / rel_b)):
+            a = {"id": "plans_doc", "label": "doc", "file_type": "concept",
+                 "source_file": form_a}
+            b = {"id": "plans_doc", "label": "doc", "file_type": "concept",
+                 "source_file": form_b}
+            for perm in itertools.permutations([a, b]):
+                out, _ = deduplicate_entities([dict(n) for n in perm], [],
+                                              communities={}, root=root)
+                assert len(out) == 1
+                sf = out[0]["source_file"].replace("\\", "/")
+                prefix = str(root).replace("\\", "/") + "/"
+                survivors.add(sf.removeprefix(prefix))
+    assert survivors == {"plans/q3/doc.md"}, (
+        f"survivor depends on path form or order: {survivors}"
+    )
+
+
+def test_archived_definer_beats_active_reference():
+    """The definer flag outranks the lifecycle penalty: a node that owns its ID
+    survives even from an archived folder against a live cross-reference."""
+    import itertools
+    nid = "plans_done_spec_spec"
+    definer = {"id": nid, "label": "spec doc", "file_type": "concept",
+               "source_file": "plans/_done/spec.md"}
+    reference = {"id": nid, "label": "spec", "file_type": "concept",
+                 "source_file": "plans/in-progress/roadmap.md"}
+    assert _defines_id(definer) and not _defines_id(reference)
+    for perm in itertools.permutations([definer, reference]):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        assert out[0]["source_file"] == "plans/_done/spec.md"
+
+
+# ── #2091 review: attribute-merge correctness (fixes A-D) ─────────────────────
+
+def test_dedup_gapfill_is_order_independent_with_multiple_losers():
+    """(fix A) With 3+ same-ID same-source records, the merged attributes must not
+    depend on arrival order — the best loser by collision rank supplies each
+    missing key deterministically, preserving the #1851 order-independence."""
+    import itertools
+    base = [
+        {"id": "f", "label": "f", "file_type": "code", "source_file": "m.py",
+         "source_location": "L1"},                                  # shortest label -> survivor
+        {"id": "f", "label": "f helper beta", "file_type": "code",
+         "source_file": "m.py", "summary": "BETA"},
+        {"id": "f", "label": "f helper alpha", "file_type": "code",
+         "source_file": "m.py", "summary": "ALPHA"},
+    ]
+    seen = set()
+    for perm in itertools.permutations(base):
+        nodes, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(nodes) == 1
+        seen.add(nodes[0].get("summary"))
+    assert len(seen) == 1, f"merged summary depends on arrival order: {seen}"
+
+
+def test_dedup_no_attribute_merge_when_source_file_missing():
+    """(fix B) Two provenance-less records sharing an ID must NOT cross-pollinate
+    attributes — '' == '' is not proof of the same symbol (#1178)."""
+    nodes = [
+        {"id": "c", "label": "c", "file_type": "concept", "summary": "A"},
+        {"id": "c", "label": "c", "file_type": "concept", "notes": "B"},
+    ]
+    result, _ = deduplicate_entities([dict(n) for n in nodes], [], communities={})
+    assert len(result) == 1
+    surv = result[0]
+    assert not ("summary" in surv and "notes" in surv), (
+        "provenance-less same-id records must not merge attributes"
+    )
+
+
+def test_dedup_survivor_does_not_inherit_false_origin_ast():
+    """(fix C) An LLM survivor must not inherit _origin='ast' from a dropped
+    same-source AST record — a false authority tag is read by ghost-merge/watch."""
+    nodes = [
+        {"id": "x", "label": "run", "file_type": "code", "source_file": "m.py",
+         "source_location": "L9"},                                   # shorter label -> survivor (LLM)
+        {"id": "x", "label": "run() [ast]", "file_type": "code", "source_file": "m.py",
+         "source_location": "L2", "_origin": "ast"},                 # loser carries _origin=ast
+    ]
+    result, _ = deduplicate_entities([dict(n) for n in nodes], [], communities={})
+    assert len(result) == 1
+    assert result[0].get("_origin") != "ast", "survivor must not inherit a false _origin=ast"
+
+
+def test_dedup_fills_explicit_none_attribute():
+    """(fix D) An explicit source_location=None on the survivor is treated as
+    absent and filled from a same-source record that has a real line (#2091)."""
+    nodes = [
+        {"id": "y", "label": "y", "file_type": "code", "source_file": "m.py",
+         "source_location": None},                                   # survivor, explicit None
+        {"id": "y", "label": "y helper", "file_type": "code", "source_file": "m.py",
+         "source_location": "L7"},
+    ]
+    result, _ = deduplicate_entities([dict(n) for n in nodes], [], communities={})
+    assert len(result) == 1
+    assert result[0].get("source_location") == "L7", "explicit-None must be filled from the loser"
+
+
+# ── #2182: cross-file exact-duplicate concepts must merge ─────────────────────
+
+def test_crossfile_identical_concepts_merge_and_rewire():
+    """Two `concept` nodes whose labels are byte-identical after _norm() but
+    live in different files must merge (#2182). Pass 1 used to defer them to
+    Pass 2, whose norm-unique candidate filter (`seen_norms`) structurally
+    cannot form an equal-norm pair — so exact cross-file duplicates were the
+    one class of duplicate that never merged, while a one-char-different
+    fuzzy pair did."""
+    nodes = [
+        {"id": "sz_intl", "label": "SHENZHEN INTERNATIONAL",
+         "file_type": "concept", "source_file": "doc1.md"},
+        {"id": "shenzhen_international_holdings", "label": "Shenzhen international",
+         "file_type": "concept", "source_file": "doc2.md"},
+        {"id": "port_ops", "label": "Port Operations",
+         "file_type": "concept", "source_file": "doc2.md"},
+    ]
+    edges = [{"source": "shenzhen_international_holdings", "target": "port_ops",
+              "relation": "operates"}]
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+    ids = {n["id"] for n in result_nodes}
+    assert len(result_nodes) == 2
+    # _pick_winner prefers the shorter, non-chunk-suffixed id.
+    assert "sz_intl" in ids
+    assert "shenzhen_international_holdings" not in ids
+    # The loser's edge is rewired to the winner.
+    assert result_edges == [
+        {"source": "sz_intl", "target": "port_ops", "relation": "operates"}]
+
+
+def test_crossfile_one_char_typo_concepts_still_merge():
+    """Non-regression: the near-identical (one-char-different) cross-file pair
+    that already merged via Pass 2 fuzzy matching must keep merging (#2182)."""
+    nodes = [
+        {"id": "g1", "label": "Authentication Manager",
+         "file_type": "concept", "source_file": "a.md"},
+        {"id": "g2", "label": "Authentication Managr",
+         "file_type": "concept", "source_file": "b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+_RATIONALE_BOILER = ("Django app config for apps.platform.cards. No business "
+                     "logic here. Domain services live in services.py.")
+
+
+@pytest.mark.parametrize("a,b", [
+    # #296 narrowed the document/rationale rows here to their boundary case: an
+    # identical label on two nodes that are provably NOT their files' own nodes
+    # now merges (that is the bug the concept-only gate was causing). What must
+    # still never merge is a file's OWN node, so these two rows now carry the
+    # ids the file nodes themselves would be minted with.
+    ({"id": "docs_a", "label": "Getting Started Installation Guide",
+      "file_type": "document", "source_file": "docs/a.md"},
+     {"id": "docs_b", "label": "Getting Started Installation Guide",
+      "file_type": "document", "source_file": "docs/b.md"}),
+    ({"id": "apps_platform_cards_apps", "label": _RATIONALE_BOILER,
+      "file_type": "rationale", "source_file": "apps/platform/cards/apps.py"},
+     {"id": "apps_platform_cores_apps", "label": _RATIONALE_BOILER,
+      "file_type": "rationale", "source_file": "apps/platform/cores/apps.py"}),
+    ({"id": "backend_a_render_frame", "label": "render_frame",
+      "file_type": "code", "source_file": "backend_a.py"},
+     {"id": "backend_b_render_frame", "label": "render_frame",
+      "file_type": "code", "source_file": "backend_b.py"}),
+    ({"id": "web_logo", "label": "logo.png",
+      "file_type": "image", "source_file": "web/assets/logo.png"},
+     {"id": "docs_logo", "label": "logo.png",
+      "file_type": "image", "source_file": "docs/img/logo.png"}),
+    ({"id": "logo_concept", "label": "logo.png",
+      "file_type": "concept", "source_file": "doc1.md"},
+     {"id": "logo_image", "label": "logo.png",
+      "file_type": "image", "source_file": "assets/logo.png"}),
+    ({"id": "shenzhen_a", "label": "Shenzhen International",
+      "file_type": "concept", "source_file": ""},
+     {"id": "shenzhen_b", "label": "Shenzhen International",
+      "file_type": "concept", "source_file": ""}),
+    ({"id": "api_a", "label": "API",
+      "file_type": "concept", "source_file": "doc1.md"},
+     {"id": "api_b", "label": "API",
+      "file_type": "concept", "source_file": "doc2.md"}),
+], ids=["document-own-file-node", "rationale-own-file-node", "code",
+        "image-basename", "concept-image-mixed", "empty-source-file",
+        "low-entropy-concept"])
+def test_crossfile_identical_labels_stay_distinct_for_guarded_types(a, b):
+    """The #2182 cross-file merge requires provenance and high entropy on BOTH
+    sides, and #296 widened its type gate only as far as nodes provably not
+    their file's own node. Identical labels must still NOT merge for: a
+    document/rationale node that IS its file's own node (#296, the boundary of
+    #1284's file-anchored guard), code (#1205), images sharing a basename in
+    different dirs, mixed concept+image pairs, provenance-less nodes (#1178),
+    and low-entropy generic labels."""
+    result_nodes, _ = deduplicate_entities([dict(a), dict(b)], [], communities={})
+    assert len(result_nodes) == 2, (
+        f"guarded pair ({a['id']}, {b['id']}) was merged — #2182 fix leaked "
+        f"past its concept-only gate"
+    )
+
+
+def test_cross_repo_guard_still_raises():
+    """The cross-repo guard is untouched by #2182: identical concepts from
+    different repos must still raise, never merge."""
+    nodes = [
+        {"id": "c1", "label": "Shenzhen International", "file_type": "concept",
+         "source_file": "doc1.md", "repo": "repo-a"},
+        {"id": "c2", "label": "Shenzhen International", "file_type": "concept",
+         "source_file": "doc2.md", "repo": "repo-b"},
+    ]
+    with pytest.raises(ValueError, match="multiple repos"):
+        deduplicate_entities(nodes, [], communities={})
+
+
+def test_crossfile_concept_merge_is_order_independent():
+    """Three identical-norm concepts across three files: every input order must
+    yield the same single survivor (#2182). Winner ids differ in length so
+    _pick_winner has a unique minimum."""
+    import itertools
+    base = [
+        {"id": "shenzhen", "label": "SHENZHEN INTERNATIONAL",
+         "file_type": "concept", "source_file": "doc1.md"},
+        {"id": "shenzhen_intl", "label": "Shenzhen international",
+         "file_type": "concept", "source_file": "doc2.md"},
+        {"id": "shenzhen_international", "label": "shenzhen-international",
+         "file_type": "concept", "source_file": "doc3.md"},
+    ]
+    survivors = set()
+    for perm in itertools.permutations(base):
+        out, _ = deduplicate_entities([dict(n) for n in perm], [], communities={})
+        assert len(out) == 1
+        survivors.add(out[0]["id"])
+    assert survivors == {"shenzhen"}, f"non-deterministic survivor: {survivors}"
+
+
+def test_crossfile_concept_merge_deterministic_across_hash_seeds():
+    """#2182 determinism, #1753/#2074 precedent: the survivor must not depend on
+    PYTHONHASHSEED. pytest fixes the seed per process, so run out-of-process
+    with shuffled input."""
+    import os
+    import subprocess
+    import sys
+    script = (
+        "import random, sys\n"
+        "from graphify.dedup import deduplicate_entities\n"
+        "nodes = [\n"
+        "    {'id': 'shenzhen', 'label': 'SHENZHEN INTERNATIONAL',\n"
+        "     'file_type': 'concept', 'source_file': 'doc1.md'},\n"
+        "    {'id': 'shenzhen_intl', 'label': 'Shenzhen international',\n"
+        "     'file_type': 'concept', 'source_file': 'doc2.md'},\n"
+        "    {'id': 'shenzhen_international', 'label': 'shenzhen-international',\n"
+        "     'file_type': 'concept', 'source_file': 'doc3.md'},\n"
+        "]\n"
+        "random.Random(int(sys.argv[1])).shuffle(nodes)\n"
+        "out, _ = deduplicate_entities(nodes, [], communities={})\n"
+        "print(len(out), sorted(n['id'] for n in out)[0])\n"
+    )
+    results = set()
+    for seed in ("0", "1", "2", "3"):
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        r = subprocess.run(
+            [sys.executable, "-c", script, seed],
+            capture_output=True, text=True, env=env,
+        )
+        assert r.returncode == 0, r.stderr
+        results.add(r.stdout.strip().splitlines()[-1])
+    assert results == {"1 shenzhen"}, (
+        f"non-deterministic dedup across hash seeds: {results}"
+    )
+
+
+def test_crossfile_concept_merge_is_transitive():
+    """Exact cross-file matches and a punctuation variant collapse to one
+    survivor: {'Acme Corp' doc1, 'Acme Corp' doc2, 'Acme Corp.' doc3} all
+    normalize to 'acme corp' and must transitively union (#2182)."""
+    nodes = [
+        {"id": "acme_corp_one", "label": "Acme Corp",
+         "file_type": "concept", "source_file": "doc1.md"},
+        {"id": "acme_corp_two", "label": "Acme Corp",
+         "file_type": "concept", "source_file": "doc2.md"},
+        {"id": "acme_corp_three", "label": "Acme Corp.",
+         "file_type": "concept", "source_file": "doc3.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+# ── #2576: same-file labels differing by a content-word swap ──────────────────
+# Guard adopted from @wilyan09007's PR #2587, hardened: any same-position
+# distinct-content-word pair blocks (not just exactly one), and the differing
+# tokens are judged by _same_word_variant instead of bare token-level JW.
+
+def test_dedup_does_not_merge_samefile_sibling_pipeline_stages():
+    """Sibling sections of one document, named from a template, share both
+    affixes and differ in a single content word, so Jaro-Winkler's prefix bonus
+    clears the threshold on the same-file path (92.74 with the bonus, 87.90 on
+    plain Jaro). The absorbed node's edges are re-pointed at the survivor, so
+    the graph asserts relationships the document never states (#2576)."""
+    src = "docs/pipeline.md"
+    nodes = [
+        {"id": "pipeline_asset_contribution_flow", "label": "Asset Contribution Flow",
+         "file_type": "concept", "source_file": src},
+        {"id": "pipeline_asset_consumption_flow", "label": "Asset Consumption Flow",
+         "file_type": "concept", "source_file": src},
+        {"id": "pipeline_producer_personas", "label": "Producer Personas",
+         "file_type": "concept", "source_file": src},
+        {"id": "pipeline_asset_review_flow", "label": "Asset Review & Approval Flow",
+         "file_type": "concept", "source_file": src},
+    ]
+    edges = [
+        {"source": "pipeline_producer_personas",
+         "target": "pipeline_asset_contribution_flow", "relation": "references"},
+        {"source": "pipeline_asset_contribution_flow",
+         "target": "pipeline_asset_review_flow", "relation": "references"},
+    ]
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+    assert len(result_nodes) == 4, (
+        "contribution and consumption are distinct pipeline stages"
+    )
+    assert {(e["source"], e["target"]) for e in result_edges} == {
+        ("pipeline_producer_personas", "pipeline_asset_contribution_flow"),
+        ("pipeline_asset_contribution_flow", "pipeline_asset_review_flow"),
+    }, "edges must stay on the nodes the document actually connects"
+
+
+def test_dedup_still_merges_samefile_stopword_insertion():
+    """The pair #1243 was scoped around: swapping a function word is how a
+    restatement of the same entity differs, so a stopword in either differing
+    position exempts the pair and the merge still happens (#2576)."""
+    nodes = [
+        {"id": "m1", "file_type": "concept", "source_file": "docs/metrics.md",
+         "label": "Counts-only metrics export, a read-only aggregation service"},
+        {"id": "m2", "file_type": "concept", "source_file": "docs/metrics.md",
+         "label": "Counts-only metrics export, the read-only aggregation service"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_still_merges_samefile_normalization_variants():
+    """Punct/case variants norm-equal in one file (pass 1), and a fused
+    camelCase symbol vs its spaced spelling (token counts differ, so the
+    #2576 guard defers to whole-label scoring), both still merge."""
+    nodes = [
+        {"id": "am1", "label": "Authentication Manager",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+        {"id": "am2", "label": "authentication-manager",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+    nodes = [
+        {"id": "g1", "label": "getUserById",
+         "file_type": "concept", "source_file": "docs/api.md"},
+        {"id": "g2", "label": "get user by id",
+         "file_type": "concept", "source_file": "docs/api.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_still_merges_samefile_typo_in_one_token():
+    """A typo inside the differing token leaves it the same word: manager and
+    managr score 97.14 against each other, so the pair is not a content-word
+    swap and still merges (#2576)."""
+    nodes = [
+        {"id": "a1", "label": "Authentication Manager",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+        {"id": "a2", "label": "Authentication Managr",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_still_merges_single_token_transposition_at_length_boundary():
+    """A single-token label at the 12-char _short_label_blocked boundary with a
+    trailing transposition is a typo: same length, Damerau-Levenshtein 1, so
+    _same_word_variant exempts it and the merge survives (#2576)."""
+    nodes = [
+        {"id": "gb1", "label": "GraphBuilder",
+         "file_type": "concept", "source_file": "docs/build.md"},
+        {"id": "gb2", "label": "GraphBuildre",
+         "file_type": "concept", "source_file": "docs/build.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_recovers_samefile_first_letter_typo():
+    """DELTA over #2587: token-level JW scores manager/nanager at 84.92 (the
+    prefix bonus is zero at position 0), so the PR's bare-JW token test would
+    have blocked a genuine typo. The same-length Damerau-Levenshtein<=1 branch
+    of _same_word_variant reads it as one word and the merge happens (#2576).
+    The label carries a third token so the pair clears MinHash/LSH candidacy
+    (the two-token pair's shingle Jaccard sits at 0.727, on the 0.7 blocking
+    threshold, and never reaches the comparator either way)."""
+    nodes = [
+        {"id": "a1", "label": "Authentication Session Manager",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+        {"id": "a2", "label": "Authentication Session Nanager",
+         "file_type": "concept", "source_file": "docs/auth.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_dedup_does_not_merge_samefile_short_content_word_swap():
+    """DELTA over #2587: pane/plane scores 94.0 on token-level JW, above the
+    merge threshold, so the PR's bare-JW token test read two distinct short
+    words as a typo. Tokens under 6 chars never pass the JW fallback (#2576)."""
+    nodes = [
+        {"id": "p1", "label": "User Profile Pane",
+         "file_type": "concept", "source_file": "docs/ui.md"},
+        {"id": "p2", "label": "User Profile Plane",
+         "file_type": "concept", "source_file": "docs/ui.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_does_not_merge_two_position_content_swap():
+    """DELTA over #2587: the PR guard required exactly one differing token, so
+    a sibling pair that also drifts in a second position (Flow vs Flows) slid
+    back to whole-label JW (95.44) and merged. Any same-position distinct
+    content-word pair now blocks (#2576)."""
+    nodes = [
+        {"id": "h1", "label": "Customer Asset Contribution Flow Handler",
+         "file_type": "concept", "source_file": "docs/handlers.md"},
+        {"id": "h2", "label": "Customer Asset Consumption Flows Handler",
+         "file_type": "concept", "source_file": "docs/handlers.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_does_not_merge_samefile_sibling_packages():
+    """#1243's own first example, with the source file its repro used: two
+    dependencies both come from one package.json, so the cross-file scoring
+    change never applied to them and they still merged (#2576)."""
+    nodes = [
+        {"id": "jest_native", "label": "@testing-library/jest-native",
+         "file_type": "concept", "source_file": "package.json"},
+        {"id": "react_native", "label": "@testing-library/react-native",
+         "file_type": "concept", "source_file": "package.json"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_does_not_merge_same_community_dated_doc_slugs():
+    """#1243's fourth example, with the communities its repro used: the pair is
+    cross-file and scores 87.68 on plain Jaro, but both nodes sit in one
+    community and the +5 boost lifts it back to 92.68. Comparing the differing
+    tokens (fe/mob) blocks it before the boost applies (#2576)."""
+    nodes = [
+        {"id": "fe_doc", "label": "2026-05-17-phase4-fe-api-integration.md",
+         "file_type": "concept", "source_file": "a.md"},
+        {"id": "mob_doc", "label": "2026-05-17-phase4-mob-api-integration.md",
+         "file_type": "concept", "source_file": "b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(
+        nodes, [], communities={"fe_doc": 1, "mob_doc": 1}
+    )
+    assert len(result_nodes) == 2
+
+
+def test_content_token_swap_helper():
+    """_content_token_swap fires when any same-position pair is a swap of two
+    distinct content words (#2576)."""
+    from graphify.dedup import _content_token_swap
+    assert _content_token_swap("asset contribution flow", "asset consumption flow")
+    assert _content_token_swap("testing library jest native",
+                               "testing library react native")
+    # A function word is what a restatement swaps, so either side exempts.
+    assert not _content_token_swap("export a read only", "export the read only")
+    # A typo leaves the differing token the same word.
+    assert not _content_token_swap("graph extractor", "graph extractar")
+    # DELTA over #2587: two differing content-word positions block too (the PR
+    # exempted anything but exactly one).
+    assert _content_token_swap("alpha beta gamma", "alpha delta epsilon")
+    assert _content_token_swap("customer asset contribution flow handler",
+                               "customer asset consumption flows handler")
+    # Differing token counts belong to the prefix-extension guard.
+    assert not _content_token_swap("graph extractor", "graph extractor service")
+    assert not _content_token_swap("asset flow", "asset flow")
+
+
+def test_same_word_variant_helper():
+    """_same_word_variant separates one-word misspellings from two words
+    (#2576 DELTA over #2587's bare token-JW test)."""
+    from graphify.dedup import _same_word_variant
+    assert _same_word_variant("manager", "managr")     # JW 97.14, min len 6
+    assert _same_word_variant("manager", "nanager")    # JW 84.92 but same-len DL 1
+    assert _same_word_variant("builder", "buildre")    # trailing transposition
+    assert not _same_word_variant("pane", "plane")     # JW 94.0 but short
+    assert not _same_word_variant("flow", "flows")     # short inflection: under-merge
+    assert not _same_word_variant("contribution", "consumption")
+    assert not _same_word_variant("jest", "react")
+    # Accepted trade: a length-differing 5-char spelling variant reads as two
+    # words and stays unmerged, per the never-merge-distinct-entities bar.
+    assert not _same_word_variant("colour", "color")
+
+
+# -- #296: cross-file merge for entity nodes typed by their file's extension --
+#
+# Reported shape: per-file extraction over a note vault mints one node per
+# mention of the same person/project, and they never merge. Normalization was
+# never the problem -- `_norm` already buckets the variants together -- the
+# Pass 1 cross-file union was gated to `file_type == "concept"`, and an entity
+# pulled out of a `.md` note inherits `document` from the file's extension, not
+# from anything about the entity. The @cyrilXBT variant family below is the
+# reported corpus's shape, reduced to the spellings that occur in it.
+
+_CYRIL_VARIANTS = ["@cyrilXBT", "@cyrilxbt", "cyrilXBT"]
+
+
+def test_reads_as_file_entity_helper():
+    """A file's own node, a stamped `page`/`heading` node, and any node missing
+    an id or provenance all stay treated as file-anchored (#296). The own-node
+    half is a reconstruction and holds for every stored-path spelling; the
+    structural half rests on the producer stamping `node_kind`."""
+    from graphify.dedup import _reads_as_file_entity
+    # An entity extracted from a note: `<path>_<entity>` never equals the path.
+    assert _reads_as_file_entity(
+        {"id": "journal_2024_03_01_cyrilxbt", "label": "@cyrilXBT",
+         "source_file": "journal/2024-03-01.md"})
+    # The file's own node, in each spelling a stored source_file may take.
+    assert not _reads_as_file_entity(
+        {"id": "journal_2024_03_01", "source_file": "journal/2024-03-01.md"})
+    assert not _reads_as_file_entity(
+        {"id": "2024_03_01", "source_file": "journal/2024-03-01.md"})  # pre-#1504 bare stem
+    assert not _reads_as_file_entity(
+        {"id": "vault_journal_2024_03_01", "source_file": 'C:\\vault\\journal\\2024-03-01.md'})
+    # The markdown extractor states it outright, for the file and its sections.
+    assert not _reads_as_file_entity(
+        {"id": "anything", "node_kind": "page", "source_file": "docs/a.md"})
+    assert not _reads_as_file_entity(
+        {"id": "docs_a_decisions", "node_kind": "heading",
+         "label": "Decisions", "source_file": "docs/a.md"})
+    # Unprovable -- no id, or no provenance.
+    assert not _reads_as_file_entity({"id": "", "source_file": "docs/a.md"})
+    assert not _reads_as_file_entity({"id": "docs_a_thing", "source_file": ""})
+
+
+def test_dedup_merges_crossfile_document_entity_variants():
+    """Unstamped document nodes that share a label stay one node per file.
+
+    The exact pass calls the same cross-file block as the fuzzy pass (#3094).
+    Three notes no longer collapse to one node.
+    """
+    nodes = [
+        {"id": "journal_2024_03_0%d_cyrilxbt" % i, "label": variant,
+         "file_type": "document", "source_file": "journal/2024-03-0%d.md" % i}
+        for i, variant in enumerate(_CYRIL_VARIANTS, start=1)
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 3
+
+
+def test_dedup_merges_crossfile_rationale_entity_variants():
+    """Unstamped rationale nodes that share a label stay one node per file (#3094)."""
+    nodes = [
+        {"id": "svc_alpha_py_retention_window", "label": "Retention Window",
+         "file_type": "rationale", "source_file": "svc/alpha.py"},
+        {"id": "svc_beta_py_retention_window", "label": "retention window",
+         "file_type": "rationale", "source_file": "svc/beta.py"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_never_merges_a_files_own_node_away():
+    """The boundary the widened gate is defined against (#296): a curated note
+    whose OWN node carries the entity's label must survive as its own node, even
+    when a same-label entity node exists in another file."""
+    nodes = [
+        # The curated page: its id is exactly the slugified source path.
+        {"id": "people_cyrilxbt", "label": "@cyrilXBT",
+         "file_type": "document", "source_file": "people/@cyrilXBT.md"},
+        # A mention of the same entity, extracted from a journal note.
+        {"id": "journal_2024_03_01_cyrilxbt", "label": "cyrilXBT",
+         "file_type": "document", "source_file": "journal/2024-03-01.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2, (
+        "a file's own node merged away -- the #296 widening must never reach it"
+    )
+    assert {n["id"] for n in result_nodes} == {
+        "people_cyrilxbt", "journal_2024_03_01_cyrilxbt"}
+
+
+def test_dedup_never_merges_two_files_own_nodes():
+    """Two README.md in different folders are genuinely two documents (#1284's
+    original reasoning), and stay two under #296."""
+    nodes = [
+        {"id": "web_readme", "label": "README.md", "file_type": "document",
+         "node_kind": "page", "source_file": "web/README.md"},
+        {"id": "api_readme", "label": "README.md", "file_type": "document",
+         "node_kind": "page", "source_file": "api/README.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_crossfile_entity_merge_keeps_the_entropy_gate():
+    """Entropy guard untouched (#296): a short generic label stays distinct for
+    `document` entity nodes exactly as it does for `concept`."""
+    nodes = [
+        {"id": "docs_a_api", "label": "API", "file_type": "document",
+         "source_file": "docs/a.md"},
+        {"id": "docs_b_api", "label": "API", "file_type": "document",
+         "source_file": "docs/b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_crossfile_entity_merge_keeps_the_provenance_gate():
+    """Provenance guard untouched (#296, #1178): without a source_file the node
+    cannot be proven to be an entity, so it stays out of the merge."""
+    nodes = [
+        {"id": "orphan_cyrilxbt", "label": "@cyrilXBT",
+         "file_type": "document", "source_file": ""},
+        {"id": "journal_2024_03_01_cyrilxbt", "label": "cyrilXBT",
+         "file_type": "document", "source_file": "journal/2024-03-01.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def test_dedup_crossfile_fuzzy_fileanchored_block_is_untouched():
+    """Pass 2 still refuses near-identical document labels in different files.
+
+    The exact pass now calls the same block (#3094). This pair is not an exact
+    label match, so only the fuzzy pass can see it, and the block keeps both nodes.
+    """
+    nodes = [
+        {"id": "docs_a_guide", "label": "Getting Started Installation Guide",
+         "file_type": "document", "source_file": "docs/a.md"},
+        {"id": "docs_b_setup", "label": "Getting Started Installation Setup",
+         "file_type": "document", "source_file": "docs/b.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 2
+
+
+def _doc(node_id, label, source_file, file_type="document"):
+    return {
+        "id": node_id,
+        "label": label,
+        "file_type": file_type,
+        "source_file": source_file,
+        "source_location": None,
+    }
+
+
+def test_exact_pass_keeps_unstamped_documents_across_files(tmp_path, capsys):
+    """The 0.9.66 script: five unstamped document nodes, three source files."""
+    from graphify.build import build_merge
+
+    extraction = {"nodes": [
+        _doc("a_decisions", "Decisions", "Sessions/session-A.md"),
+        _doc("b_decisions", "Decisions", "Sessions/session-B.md"),
+        _doc("c_decisions", "Decisions", "Sessions/session-C.md"),
+        _doc("a_open_items", "Open items", "Sessions/session-A.md"),
+        _doc("b_open_items", "Open items", "Sessions/session-B.md"),
+    ], "edges": [], "hyperedges": [], "input_tokens": 0, "output_tokens": 0}
+    graph = build_merge(
+        [extraction],
+        graph_path=tmp_path / "missing.json",
+        dedup=True,
+    )
+    files = {data.get("source_file") for _, data in graph.nodes(data=True)}
+    assert graph.number_of_nodes() == 5
+    assert files == {
+        "Sessions/session-A.md",
+        "Sessions/session-B.md",
+        "Sessions/session-C.md",
+    }
+    assert "Deduplicated" not in capsys.readouterr().out
+
+
+def test_exact_pass_still_merges_same_file_document_duplicate():
+    nodes = [
+        _doc("a1", "Decisions", "Sessions/session-A.md"),
+        _doc("a2", "Decisions", "Sessions/session-A.md"),
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_exact_pass_still_merges_crossfile_concepts():
+    nodes = [
+        _doc("c1", "Decisions", "Sessions/session-A.md", file_type="concept"),
+        _doc("c2", "Decisions", "Sessions/session-B.md", file_type="concept"),
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 1
+
+
+def test_exact_pass_merges_concepts_beside_a_blocked_document():
+    """A document winner must not leave the two concept nodes unjoined."""
+    nodes = [
+        _doc("a", "Decisions", "Sessions/session-A.md"),
+        _doc("c1", "Decisions", "Sessions/session-B.md", file_type="concept"),
+        _doc("c2", "Decisions", "Sessions/session-C.md", file_type="concept"),
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    kinds = sorted(node["file_type"] for node in result_nodes)
+    ids = {node["id"] for node in result_nodes}
+    assert len(result_nodes) == 2
+    assert kinds == ["concept", "document"]
+    assert "a" in ids
+
+
+def test_dedup_never_merges_repeated_headings_across_files():
+    """#3094's verification case must keep holding under #296: sibling documents
+    that each carry the same `## Decisions` / `## Next steps` sections keep one
+    heading node per file, attributed to that file."""
+    nodes = [
+        {"id": "docs_%s_%s" % (doc, slug), "label": heading,
+         "file_type": "document", "node_kind": "heading",
+         "source_file": "docs/%s.md" % doc}
+        for doc in ("a", "b", "c")
+        for slug, heading in (("decisions", "Decisions"),
+                              ("next_steps", "Next steps"))
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(result_nodes) == 6, (
+        "repeated headings merged across files -- #296 must not reach section "
+        "nodes (#1284, #3094)"
+    )
+    assert {n["source_file"] for n in result_nodes} == {
+        "docs/a.md", "docs/b.md", "docs/c.md"}
+
+
+def test_reads_as_file_entity_trusts_the_node_kind_stamp_only():
+    """The documented limit of the structural half (#296): `node_kind` is what
+    marks a sub-file node, so an UNSTAMPED structural node reads as an entity.
+    Pinned deliberately — the fix for such a producer is to stamp `node_kind`,
+    and this test is what fails if the predicate is ever quietly changed to
+    guess instead."""
+    from graphify.dedup import _reads_as_file_entity
+    stamped = {"id": "book_xlsx_summary", "label": "Summary (sheet)",
+               "node_kind": "heading", "source_file": "book.xlsx"}
+    unstamped = dict(stamped)
+    del unstamped["node_kind"]
+    assert not _reads_as_file_entity(stamped)
+    assert _reads_as_file_entity(unstamped)
+
+
+# ── #4281: same stem, different extension keeps both nodes ────────────────────
+
+def test_same_stem_different_extension_keeps_both_nodes(capsys):
+    """x.py and x.html share an extension-stripped stem; neither may be dropped."""
+    nodes = [
+        {"id": "firmware_lib_portal", "label": "portal.py",
+         "file_type": "code", "source_file": "firmware/lib/portal.py"},
+        {"id": "firmware_lib_portal", "label": "Brick provisioning portal (portal.html)",
+         "file_type": "document", "source_file": "firmware/lib/portal.html"},
+    ]
+    edges = [{"source": "firmware_lib_portal", "target": "firmware_lib_portal",
+              "relation": "serves", "source_file": "firmware/lib/portal.html"}]
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+
+    ids = {n["source_file"]: n["id"] for n in result_nodes}
+    assert len(result_nodes) == 2
+    assert ids["firmware/lib/portal.py"] == "firmware_lib_portal"
+    assert ids["firmware/lib/portal.html"] == "firmware_lib_portal_html"
+    assert result_edges[0]["source"] == result_edges[0]["target"] == "firmware_lib_portal_html"
+    assert "WARNING" not in capsys.readouterr().err
+
+
+def test_extension_rename_is_order_independent():
+    a = {"id": "x", "label": "x", "file_type": "code", "source_file": "x.py"}
+    b = {"id": "x", "label": "x page", "file_type": "document", "source_file": "x.html"}
+    n1, _ = deduplicate_entities([dict(a), dict(b)], [], communities={})
+    n2, _ = deduplicate_entities([dict(b), dict(a)], [], communities={})
+    assert {(n["source_file"], n["id"]) for n in n1} == {(n["source_file"], n["id"]) for n in n2}
+
+
+def test_bare_id_across_different_paths_is_path_qualified(capsys):
+    """A bare `protocol` shared by docs/protocol.md and docs/firmware/protocol.md,
+    with no protocol.md anywhere: neither file is named by the bare id, so both are
+    definers and each gets its own path-qualified id (#4281 remaining case).
+
+    No own-file `references` edge points at either copy here, so there is no
+    evidence that one of them is a mention of the other file, and both are renamed.
+    With that edge the same ids stay one node (a mention is not a second document):
+    see test_reference_to_another_file_does_not_become_a_second_document."""
+    nodes = [
+        {"id": "protocol", "label": "protocol", "file_type": "document",
+         "source_file": "docs/protocol.md"},
+        {"id": "protocol", "label": "protocol (top-level)", "file_type": "document",
+         "source_file": "docs/firmware/protocol.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert {n["id"] for n in result_nodes} == {"docs_protocol", "docs_firmware_protocol"}
+    assert "minted by two different files" not in capsys.readouterr().err
+
+
+def _three_bare_protocols():
+    return [
+        {"id": "protocol", "label": "protocol", "file_type": "document",
+         "source_file": "protocol.md"},
+        {"id": "protocol", "label": "protocol (docs)", "file_type": "document",
+         "source_file": "docs/protocol.md"},
+        {"id": "protocol", "label": "protocol (firmware)", "file_type": "document",
+         "source_file": "docs/firmware/protocol.md"},
+    ]
+
+
+def test_bare_ids_in_three_files_keep_one_node_per_file(capsys):
+    """protocol.md exists and the other two files each have only a bare `protocol`.
+    Neither has a page of its own, so the bare id is their page: protocol.md keeps
+    `protocol` and the others are path-qualified. Nothing is dropped (#4281)."""
+    result_nodes, _ = deduplicate_entities(_three_bare_protocols(), [], communities={})
+    assert {(n["id"], n["source_file"]) for n in result_nodes} == {
+        ("protocol", "protocol.md"),
+        ("docs_protocol", "docs/protocol.md"),
+        ("docs_firmware_protocol", "docs/firmware/protocol.md"),
+    }
+    assert "minted by two different files" not in capsys.readouterr().err
+
+
+def test_build_with_absolute_edge_paths_moves_edges_to_renamed_node(tmp_path):
+    """Semantic edges reach dedup with an ABSOLUTE source_file while nodes are already
+    root-relative; the renamed node must still receive its edges (#4281)."""
+    from graphify.build import build
+
+    root = tmp_path
+    py = str(root / "firmware" / "lib" / "portal.py")
+    html = str(root / "firmware" / "lib" / "portal.html")
+    ext = {
+        "nodes": [
+            {"id": "firmware_lib_portal", "label": "portal.py", "file_type": "code",
+             "source_file": py},
+            {"id": "firmware_lib_portal", "label": "Portal page", "file_type": "document",
+             "source_file": html},
+            {"id": "card_a", "label": "Card A", "file_type": "document", "source_file": html},
+        ],
+        "edges": [
+            {"source": "firmware_lib_portal", "target": "card_a", "relation": "references",
+             "confidence": "EXTRACTED", "source_file": html},
+        ],
+    }
+    G = build([ext], root=str(root))
+
+    assert "firmware_lib_portal" in G and "firmware_lib_portal_html" in G
+    assert G.has_edge("firmware_lib_portal_html", "card_a")
+    assert not G.has_edge("firmware_lib_portal", "card_a")
+
+
+# ── combining marks in normalization ─────────────────────────────────────────
+# `_norm` used `[\W_]+` as its separator class. Combining marks (Mn/Mc: vowel
+# signs, viramas) are not `\w`, so they were deleted as if they were
+# punctuation, and distinct Indic-script words collapsed to one key.
+
+def test_norm_keeps_combining_marks():
+    from graphify.dedup import _norm
+    assert _norm("हिंदी") == "हिंदी"
+    assert _norm("தமிழ்") == "தமிழ்"
+    # Marks are kept, separators still collapse.
+    assert _norm("हिंदी - भाषा_नोट") == "हिंदी भाषा नोट"
+
+
+def test_norm_still_separates_punctuation_for_latin():
+    from graphify.dedup import _norm
+    assert _norm("  Graph--Extractor__v2! ") == "graph extractor v2"
+    # NFKC still composes a decomposed accent into the letter, mark included.
+    assert _norm("Cafe\u0301 Menu") == "caf\u00e9 menu"
+
+
+def test_distinct_indic_words_are_not_exact_merged():
+    """कि / की / के differ only by vowel sign; they used to share the key 'क'."""
+    nodes = [
+        {"id": "h1", "label": "कि", "source_file": "a.md", "file_type": "concept"},
+        {"id": "h2", "label": "की", "source_file": "a.md", "file_type": "concept"},
+        {"id": "h3", "label": "के", "source_file": "a.md", "file_type": "concept"},
+    ]
+    out, _ = deduplicate_entities(nodes, [], communities={})
+    assert sorted(n["id"] for n in out) == ["h1", "h2", "h3"]
+
+
+def test_identical_indic_labels_still_exact_merge():
+    nodes = [
+        {"id": "h1", "label": "हिंदी भाषा", "source_file": "a.md", "file_type": "concept"},
+        {"id": "h2", "label": "हिंदी  भाषा", "source_file": "a.md", "file_type": "concept"},
+    ]
+    out, _ = deduplicate_entities(nodes, [], communities={})
+    assert len(out) == 1
+
+
+def test_build_from_subdirectory_moves_edges_to_renamed_node(tmp_path, monkeypatch):
+    """Nodes are root-relative by dedup time; run from a subdirectory of the root, a
+    relative path must not be resolved against the CWD, or the renamed node's key
+    stops matching its edges' and they stay on the survivor (#4281)."""
+    from graphify.build import build
+
+    root = tmp_path
+    (root / "firmware").mkdir()
+    monkeypatch.chdir(root / "firmware")
+    py = str(root / "firmware" / "lib" / "portal.py")
+    html = str(root / "firmware" / "lib" / "portal.html")
+    ext = {
+        "nodes": [
+            {"id": "firmware_lib_portal", "label": "portal.py", "file_type": "code",
+             "source_file": py},
+            {"id": "firmware_lib_portal", "label": "Portal page", "file_type": "document",
+             "source_file": html},
+            {"id": "card_a", "label": "Card A", "file_type": "document", "source_file": html},
+        ],
+        "edges": [
+            {"source": "firmware_lib_portal", "target": "card_a", "relation": "references",
+             "confidence": "EXTRACTED", "source_file": html},
+        ],
+    }
+    G = build([ext], root=str(root))
+
+    assert "firmware_lib_portal" in G and "firmware_lib_portal_html" in G
+    assert G.has_edge("firmware_lib_portal_html", "card_a")
+    assert not G.has_edge("firmware_lib_portal", "card_a")
+
+
+# ── #4281: path-dropped doc ids (a/x.md vs b/x.md both mint `x`) ──────────────
+
+def _path_dropped_input():
+    """Two docs whose semantic ids dropped the directory: both mint `x`/`x_intro`."""
+    nodes = [
+        {"id": "x", "label": "X A", "file_type": "document", "source_file": "a/x.md"},
+        {"id": "x_intro", "label": "Intro A", "file_type": "document",
+         "source_file": "a/x.md"},
+        {"id": "x", "label": "X B", "file_type": "document", "source_file": "b/x.md"},
+        {"id": "x_intro", "label": "Intro B", "file_type": "document",
+         "source_file": "b/x.md"},
+    ]
+    edges = [
+        {"source": "x", "target": "x_intro", "relation": "references",
+         "confidence": "EXTRACTED", "source_file": "a/x.md"},
+        {"source": "x", "target": "x_intro", "relation": "references",
+         "confidence": "EXTRACTED", "source_file": "b/x.md"},
+    ]
+    return nodes, edges
+
+
+def test_path_dropped_doc_id_keeps_both_files(capsys):
+    """a/x.md and b/x.md both mint `x`; neither may be dropped, and each file's
+    edge stays inside its own file (#4281)."""
+    nodes, edges = _path_dropped_input()
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+
+    assert len(result_nodes) == 4
+    assert {n["id"] for n in result_nodes} == {"a_x", "a_x_intro", "b_x", "b_x_intro"}
+    by_file = {e["source_file"]: (e["source"], e["target"]) for e in result_edges}
+    assert by_file == {"a/x.md": ("a_x", "a_x_intro"), "b/x.md": ("b_x", "b_x_intro")}
+    assert "minted by two different files" not in capsys.readouterr().err
+
+
+def test_path_dropped_rename_is_order_independent():
+    """Guards determinism of the new pass: reversed input must give the same result.
+    Expected to pass pre-fix too, since the old collapse is deterministic as well."""
+    nodes, edges = _path_dropped_input()
+    n1, e1 = deduplicate_entities([dict(n) for n in nodes], [dict(e) for e in edges],
+                                  communities={})
+    n2, e2 = deduplicate_entities([dict(n) for n in reversed(nodes)],
+                                  [dict(e) for e in reversed(edges)], communities={})
+    assert {(n["source_file"], n["id"]) for n in n1} == {(n["source_file"], n["id"]) for n in n2}
+    assert {(e["source_file"], e["source"], e["target"]) for e in e1} == \
+           {(e["source_file"], e["source"], e["target"]) for e in e2}
+
+
+def test_path_dropped_foreign_reference_is_not_guessed(capsys):
+    """c.md points at the bare `x`. It cannot be attributed to a/x.md or b/x.md, so
+    it is left unresolved with one warning rather than guessed (#4281)."""
+    nodes, edges = _path_dropped_input()
+    nodes.append({"id": "c_note", "label": "Note C", "file_type": "document",
+                  "source_file": "c.md"})
+    edges.append({"source": "c_note", "target": "x", "relation": "references",
+                  "confidence": "INFERRED", "source_file": "c.md"})
+    result_nodes, result_edges = deduplicate_entities(nodes, edges, communities={})
+
+    assert {n["id"] for n in result_nodes} == {
+        "a_x", "a_x_intro", "b_x", "b_x_intro", "c_note"}
+    foreign = next(e for e in result_edges if e["source_file"] == "c.md")
+    assert foreign["target"] == "x"
+    warning = ("[graphify] WARNING: node 'x' was minted by several files and renamed "
+               "per file; 1 reference(s) from other files could not be attributed "
+               "and were left unresolved.")
+    assert capsys.readouterr().err.count(warning) == 1
+
+
+@pytest.mark.parametrize("a, b, leaked", [
+    ("/home/u/a/x.md", "/home/u/b/x.md", "home_u"),
+    ("C:\\r\\a\\x.md", "C:\\r\\b\\x.md", "c_r"),
+])
+def test_path_dropped_absolute_paths_are_not_qualified(a, b, leaked, capsys):
+    """With no root to relativize against, a stored absolute path (POSIX or
+    Windows) must not be baked into an id: the checkout location would leak into
+    persisted ids. Such files stay on the collapse-and-warn path (#4281)."""
+    nodes = [
+        {"id": "x", "label": "X A", "file_type": "document", "source_file": a},
+        {"id": "x", "label": "X B", "file_type": "document", "source_file": b},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert not any(leaked in n["id"] for n in result_nodes)
+    assert "minted by two different files" in capsys.readouterr().err
+
+
+def test_single_path_dropped_id_left_alone():
+    """A lone path-dropped id has no collision; build_from_json's remap handles it."""
+    nodes = [
+        {"id": "x", "label": "X A", "file_type": "document", "source_file": "a/x.md"},
+        {"id": "other", "label": "Other", "file_type": "document", "source_file": "a/y.md"},
+    ]
+    result_nodes, _ = deduplicate_entities(nodes, [], communities={})
+    assert {n["id"] for n in result_nodes} == {"x", "other"}
+
+
+def test_path_dropped_through_build(tmp_path):
+    """The full build path (dedup runs before build_from_json) keeps both files'
+    nodes and edges, with absolute semantic paths as real extractions carry (#4281)."""
+    from graphify.build import build
+
+    root = tmp_path
+    a = str(root / "a" / "x.md")
+    b = str(root / "b" / "x.md")
+    ext = {
+        "nodes": [
+            {"id": "x", "label": "X A", "file_type": "document", "source_file": a},
+            {"id": "x_intro", "label": "Intro A", "file_type": "document", "source_file": a},
+            {"id": "x", "label": "X B", "file_type": "document", "source_file": b},
+            {"id": "x_intro", "label": "Intro B", "file_type": "document", "source_file": b},
+        ],
+        "edges": [
+            {"source": "x", "target": "x_intro", "relation": "references",
+             "confidence": "EXTRACTED", "source_file": a},
+            {"source": "x", "target": "x_intro", "relation": "references",
+             "confidence": "EXTRACTED", "source_file": b},
+        ],
+    }
+    G = build([ext], root=str(root))
+
+    assert set(G.nodes) == {"a_x", "a_x_intro", "b_x", "b_x_intro"}
+    assert G.has_edge("a_x", "a_x_intro")
+    assert G.has_edge("b_x", "b_x_intro")
+    assert not G.has_edge("a_x", "b_x_intro")
+    assert not G.has_edge("b_x", "a_x_intro")
+
+
+def test_path_dropped_rebuild_is_idempotent():
+    """Round-tripping a built graph through build() again must not keep renaming
+    the fix's own output (#4281)."""
+    import copy
+    from networkx.readwrite import json_graph
+    from graphify.build import build
+
+    nodes, edges = _path_dropped_input()
+    G1 = build([copy.deepcopy({"nodes": nodes, "edges": edges})])
+    G2 = build([json_graph.node_link_data(G1, edges="edges")])
+
+    expected = ["a_x", "a_x_intro", "b_x", "b_x_intro"]
+    assert sorted(G1.nodes) == sorted(G2.nodes) == expected
+    assert {frozenset(e) for e in G2.edges} == {
+        frozenset(("a_x", "a_x_intro")), frozenset(("b_x", "b_x_intro"))}
+
+
+def test_path_dropped_id_stays_qualified_after_collision_disappears():
+    """Once b/x.md leaves the corpus there is no collision, but a/x.md must keep
+    `a_x` rather than flip back to the bare `x` (#4281)."""
+    from graphify.build import build
+
+    nodes, edges = _path_dropped_input()
+    only_a = {"nodes": [n for n in nodes if n["source_file"] == "a/x.md"],
+              "edges": [e for e in edges if e["source_file"] == "a/x.md"]}
+    G = build([only_a])
+
+    assert sorted(G.nodes) == ["a_x", "a_x_intro"]
+    assert G.has_edge("a_x", "a_x_intro")
+
+
+def test_path_dropped_foreign_reference_edge_is_dropped_by_build(capsys):
+    """c.md's reference to the bare `x` cannot be attributed, so build() ends up
+    with no node `x` and drops the edge, and the warning says so (#4281)."""
+    from graphify.build import build
+
+    nodes, edges = _path_dropped_input()
+    nodes.append({"id": "c_note", "label": "Note C", "file_type": "document",
+                  "source_file": "c.md"})
+    edges.append({"source": "c_note", "target": "x", "relation": "references",
+                  "confidence": "INFERRED", "source_file": "c.md"})
+    G = build([{"nodes": nodes, "edges": edges}])
+
+    assert sorted(G.nodes) == ["a_x", "a_x_intro", "b_x", "b_x_intro", "c_note"]
+    assert G.degree("c_note") == 0
+    assert not G.has_edge("c_note", "a_x")
+    assert not G.has_edge("c_note", "b_x")
+    assert ("node 'x' was minted by several files and renamed per file; "
+            "1 reference(s)") in capsys.readouterr().err
+
+
+# ── #4281: a same-file reference is a mention, not a second document ──────────
+# Repro cases (notes 03-repro): D -> test_path_dropped_through_build,
+# F -> test_path_dropped_foreign_reference_edge_is_dropped_by_build,
+# R, R_labelswap, R_noedge, R_toplevel, G -> the tests below.
+
+def _mention_node(nid, label, source_file):
+    return {"id": nid, "label": label, "file_type": "document", "source_file": source_file}
+
+
+def _mention_edge(source, target, source_file):
+    return {"source": source, "target": target, "relation": "references",
+            "confidence": "EXTRACTED", "source_file": source_file}
+
+
+def _protocol_reference_input(*, edge=True, docs_label="Protocol",
+                              mention_label="protocol (top-level)", top_level=False):
+    """docs/firmware/protocol.md mints its own `docs_firmware_protocol` plus a bare
+    `protocol` that stands for another file; docs/protocol.md mints `protocol`."""
+    fw = "docs/firmware/protocol.md"
+    nodes = [_mention_node("protocol", docs_label, "docs/protocol.md"),
+             _mention_node("docs_firmware_protocol", "Firmware protocol", fw),
+             _mention_node("protocol", mention_label, fw)]
+    if top_level:
+        nodes.append(_mention_node("protocol", "Protocol (top-level)", "protocol.md"))
+    edges = [_mention_edge("docs_firmware_protocol", "protocol", fw)] if edge else []
+    return {"nodes": nodes, "edges": edges}
+
+
+def _assert_reference_lands_on_the_other_file(G):
+    assert sorted(G.nodes) == ["docs_firmware_protocol", "docs_protocol"]
+    # one edge, from the firmware doc to docs/protocol.md; a self-loop would collapse
+    # to a one-element frozenset and fail this comparison.
+    assert {frozenset(e) for e in G.edges} == {
+        frozenset(("docs_firmware_protocol", "docs_protocol"))}
+
+
+def test_reference_to_another_file_does_not_become_a_second_document():
+    """Case R. A bare id that another node of its own file `references`, and that is
+    itself a path slice (`protocol`), is a mention of a document: it is not renamed
+    into the mentioning file's own page, so the reference ends on docs/protocol.md.
+    Renaming it made `docs_firmware_protocol` reference itself (#4281)."""
+    from graphify.build import build
+
+    _assert_reference_lands_on_the_other_file(build([_protocol_reference_input()]))
+
+
+def test_reference_outcome_does_not_depend_on_label_length():
+    """Case R_labelswap. Same graph as above with the labels swapped, so the mention
+    has the shorter one. v8 kept the shorter label and dropped docs/protocol.md here."""
+    from graphify.build import build
+
+    G = build([_protocol_reference_input(docs_label="Protocol overview", mention_label="protocol")])
+    _assert_reference_lands_on_the_other_file(G)
+
+
+def test_mention_without_an_edge_gives_the_same_two_documents():
+    """Case R_noedge. With no `references` edge there is no evidence the bare id is a
+    mention, so both files are renamed per file; the result is still the two real
+    documents and no edge. The evidence only ever withholds a rename."""
+    from graphify.build import build
+
+    G = build([_protocol_reference_input(edge=False)])
+    assert sorted(G.nodes) == ["docs_firmware_protocol", "docs_protocol"]
+    assert list(G.edges) == []
+
+
+def test_top_level_file_keeps_its_own_node_next_to_dropped_folder_docs():
+    """Case R_toplevel. protocol.md, docs/protocol.md and docs/firmware/protocol.md
+    all mint `protocol`. Each file keeps its own node, and the firmware reference
+    lands on the top-level `protocol` node (#4281)."""
+    from graphify.build import build
+
+    G = build([_protocol_reference_input(top_level=True)])
+    assert sorted(G.nodes) == ["docs_firmware_protocol", "docs_protocol", "protocol"]
+    assert {frozenset(e) for e in G.edges} == {
+        frozenset(("docs_firmware_protocol", "protocol"))}
+
+
+def _reference_to_top_level(*, edge=True, docs_label="protocol", top_label="Protocol"):
+    docs = "docs/protocol.md"
+    nodes = [_mention_node("docs_protocol", "Docs protocol", docs),
+             _mention_node("protocol", docs_label, docs),
+             _mention_node("protocol", top_label, "protocol.md")]
+    edges = [_mention_edge("docs_protocol", "protocol", docs)] if edge else []
+    return nodes, edges
+
+
+def test_genuine_reference_to_top_level_file_still_collapses():
+    """docs/protocol.md has its own `docs_protocol` page and a `protocol` it
+    references. That bare id is the top-level file, not a second page of docs/:
+    it collapses onto protocol.md's node and the edge ends there (#4281)."""
+    nodes, edges = _reference_to_top_level()
+    kept, kept_edges = deduplicate_entities(nodes, edges, communities={})
+    assert {(n["id"], n["source_file"]) for n in kept} == {
+        ("docs_protocol", "docs/protocol.md"), ("protocol", "protocol.md")}
+    assert [(e["source"], e["target"]) for e in kept_edges] == [("docs_protocol", "protocol")]
+
+
+def test_reference_to_top_level_file_without_an_edge_still_collapses():
+    """Same input with no `references` edge: the docs `protocol` still collapses
+    into protocol.md's node, because docs/protocol.md has its own page (#4281)."""
+    nodes, edges = _reference_to_top_level(edge=False)
+    kept, kept_edges = deduplicate_entities(nodes, edges, communities={})
+    assert {(n["id"], n["source_file"]) for n in kept} == {
+        ("docs_protocol", "docs/protocol.md"), ("protocol", "protocol.md")}
+    assert kept_edges == []
+
+
+def test_top_level_file_survives_whatever_the_labels_are():
+    """Case R_toplevel, label-swap. The bare `protocol` from docs/protocol.md has the
+    SHORTER label. docs/protocol.md has its own page, so that node is a reference and
+    protocol.md's node survives; the docs_protocol edge ends on it (#4281)."""
+    nodes, edges = _reference_to_top_level(docs_label="Protocol", top_label="Protocol (top-level)")
+    kept, kept_edges = deduplicate_entities(nodes, edges, communities={})
+    assert {(n["id"], n["label"], n["source_file"]) for n in kept} == {
+        ("docs_protocol", "Docs protocol", "docs/protocol.md"),
+        ("protocol", "Protocol (top-level)", "protocol.md")}
+    assert [(e["source"], e["target"]) for e in kept_edges] == [("docs_protocol", "protocol")]
+
+
+def test_top_level_file_survives_without_a_references_edge():
+    """Same label-swap input with no `references` edge, so `_mentions` has no
+    evidence. The ranking alone must keep protocol.md's node: a bare slice from a
+    file that has its own page is a reference, whatever the labels (#4281)."""
+    nodes, _ = _reference_to_top_level(edge=False, docs_label="Protocol",
+                                       top_label="Protocol (top-level)")
+    for order in (nodes, list(reversed(nodes))):
+        kept, _ = deduplicate_entities([dict(n) for n in order], [], communities={})
+        survivor = next(n for n in kept if n["id"] == "protocol")
+        assert (survivor["label"], survivor["source_file"]) == ("Protocol (top-level)", "protocol.md")
+
+
+def test_top_level_collision_result_does_not_depend_on_input_order():
+    """The three-file case fed in reverse order keeps the same nodes (#4281)."""
+    nodes = _three_bare_protocols()
+    fwd, _ = deduplicate_entities([dict(n) for n in nodes], [], communities={})
+    rev, _ = deduplicate_entities([dict(n) for n in reversed(nodes)], [], communities={})
+    assert {(n["id"], n["source_file"]) for n in fwd} == {
+        (n["id"], n["source_file"]) for n in rev}
+
+
+def test_dropped_folder_doc_with_own_stem_entity_falls_back_to_collapse():
+    """KNOWN BOUNDARY, pinned so a change is noticed. docs/protocol.md emits `protocol`
+    AND `docs_protocol_header` (an entity spelled with its full stem), so the file
+    counts as having its own page and the bare id may be a reference. It collapses
+    into protocol.md's node, as before this change (#4281)."""
+    nodes = [_mention_node("protocol", "protocol", "docs/protocol.md"),
+             _mention_node("docs_protocol_header", "Header", "docs/protocol.md"),
+             _mention_node("protocol", "Protocol", "protocol.md")]
+    kept, _ = deduplicate_entities(nodes, [], communities={})
+    assert {(n["id"], n["source_file"]) for n in kept} == {
+        ("docs_protocol_header", "docs/protocol.md"), ("protocol", "protocol.md")}
+
+
+def test_lone_bare_id_without_a_top_level_file_is_left_to_build():
+    """A single `protocol` from docs/protocol.md and no protocol.md anywhere: this
+    pass does not act, the id stays `protocol` for build's remap (#4281)."""
+    nodes = [_mention_node("protocol", "Protocol", "docs/protocol.md")]
+    kept, _ = deduplicate_entities(nodes, [], communities={})
+    assert [n["id"] for n in kept] == ["protocol"]
+
+
+def test_entity_described_in_two_documents_collapses_to_one_node(capsys):
+    """Unmarked document records retain the existing shared-entity behavior."""
+    from graphify.build import build
+
+    ext = {
+        "nodes": [_mention_node("docs_a_doc", "Doc A", "docs/a.md"),
+                  _mention_node("sender", "Sender service", "docs/a.md"),
+                  _mention_node("docs_b_doc", "Doc B", "docs/b.md"),
+                  _mention_node("sender", "Sender", "docs/b.md")],
+        "edges": [_mention_edge("docs_a_doc", "sender", "docs/a.md"),
+                  _mention_edge("docs_b_doc", "sender", "docs/b.md")],
+    }
+    G = build([ext])
+    assert sorted(G.nodes) == ["docs_a_doc", "docs_b_doc", "sender"]
+    assert {frozenset(e) for e in G.edges} == {
+        frozenset(("docs_a_doc", "sender")),
+        frozenset(("docs_b_doc", "sender")),
+    }
+    assert "node 'sender' is minted by two different files" in capsys.readouterr().err
+
+
+def test_reference_evidence_does_not_change_survivors_of_other_collisions():
+    """The mention evidence is gated to ids that are themselves a path slice. `x_intro`
+    is derived from a/x.md (so a/x.md defines it and wins the collision) but is not a
+    slice. Both copies are the target of an own-file `references` edge. Applied to every
+    id, that evidence would demote a/x.md's copy and let the shorter label from c.md
+    win. The survivor must be what v8 picks: a/x.md's node (#4281)."""
+    nodes = [_mention_node("x", "X", "a/x.md"),
+             _mention_node("x_intro", "Introduction to X", "a/x.md"),
+             _mention_node("c_doc", "Doc C", "c.md"),
+             _mention_node("x_intro", "Intro", "c.md")]
+    edges = [_mention_edge("x", "x_intro", "a/x.md"),
+             _mention_edge("c_doc", "x_intro", "c.md")]
+    kept, _ = deduplicate_entities(nodes, edges, communities={})
+    survivor = next(n for n in kept if n["id"] == "x_intro")
+    assert (survivor["label"], survivor["source_file"]) == ("Introduction to X", "a/x.md")

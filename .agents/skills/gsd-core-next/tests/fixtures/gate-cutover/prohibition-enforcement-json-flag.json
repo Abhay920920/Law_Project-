@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.prohibition-enforcement",
+    "--json",
+    "{\"prohibition\":{\"verification\":\"test\",\"text\":\"never log secrets\"},\"check\":null}"
+  ],
+  "fixture": "prohibition",
+  "stdout": "{\n  \"status\": \"unverified\",\n  \"flagged\": true,\n  \"tier\": \"test\",\n  \"reason\": \"test-tier prohibition has no passing wired enforcement check — flagged unverified (fail-closed; never a silent pass, ADR-550 D5d)\",\n  \"located\": false,\n  \"kind\": null,\n  \"evidence\": []\n}",
+  "stderr": "",
+  "exitCode": 0
+}

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.decision-coverage-plan",
+    ".planning/phases/01-decisions",
+    ".planning/phases/01-decisions/ctxdir"
+  ],
+  "fixture": "dc",
+  "stdout": "{\n  \"passed\": false,\n  \"skipped\": false,\n  \"reason\": \"context path is not a file\",\n  \"total\": null,\n  \"covered\": null,\n  \"message\": \"Decision coverage gate: the context path \\\".planning/phases/01-decisions/ctxdir\\\" is not a readable file (directory). Swap the adjacent positionals or pass --context <path-to-CONTEXT.md>.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

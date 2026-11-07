@@ -1,0 +1,10 @@
+{
+  "argv": [
+    "query",
+    "check.no-such-gate"
+  ],
+  "fixture": "bare",
+  "stdout": "",
+  "stderr": "Error: Unknown check subcommand. Available: api-coverage-verify-pre, auto-mode, decision-coverage-plan, decision-coverage-verify, evaluation-scope, gap-analysis-plan-post, predicate, prohibition-enforcement, tdd-red-evidence, tdd-review-checkpoint, ui-plan-gate, ui-safety-gate, verify-command-paths, verify-failure-directions, verify-schema-drift, verify-codebase-drift, verify-context-drift\n",
+  "exitCode": 1
+}

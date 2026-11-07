@@ -1,0 +1,308 @@
+{
+  "_doc": "Baseline of modules currently exceeding the 2-test-file limit. Each entry locks in TODAY's exact test filenames as the allowlisted set (identity ratchet). Adding a NEW test file to a capped module fails (novel). Removing one requires pruning this list (stale, ratchet-down). When a cluster drops to ≤ 2, remove its entry entirely. New entries require justification in PR description.",
+  "modules": {
+    "ui-consideration-probe": {
+      "files": [
+        "ui-consideration-probe-docs-fixtures.test.cjs",
+        "ui-consideration-probe-ui-phase-contract.test.cjs",
+        "ui-consideration-probe.test.cjs"
+      ],
+      "issue": "4657",
+      "justification": "The ui-consideration-probe cluster gains its workflow-prose contract file (tests/ui-consideration-probe-ui-phase-contract.test.cjs, #4657), mirroring the edge probe's split (edge-probe.test.cjs / edge-probe-docs-fixtures.test.cjs / edge-probe-spec-phase-contract.test.cjs). The contract file reads shipped gsd-core/workflows/ui-phase.md under the source-text-is-the-product exception, which the unit file deliberately does not carry (it asserts typed returns only)."
+    },
+    "adr-parser": {
+      "files": [
+        "adr-parser.property.test.cjs",
+        "adr-parser.test.cjs",
+        "adr-parser.unit.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "config": {
+      "files": [
+        "config-defaults-runtime-exclusion.test.cjs",
+        "config-field-docs.test.cjs",
+        "config-get-default.test.cjs",
+        "config-get-raw-guard.test.cjs",
+        "config-validation.test.cjs",
+        "config.test.cjs"
+      ],
+      "issue": "TBD"
+    },
+    "context-predicates": {
+      "files": [
+        "context-predicates-query.test.cjs",
+        "context-predicates.property.test.cjs",
+        "context-predicates.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "frontmatter": {
+      "files": [
+        "frontmatter-cli.test.cjs",
+        "frontmatter-golden-parity.test.cjs",
+        "frontmatter-roundtrip.property.test.cjs",
+        "frontmatter.property.test.cjs",
+        "frontmatter.test.cjs",
+        "frontmatter.unit.test.cjs"
+      ],
+      "issue": "3881",
+      "justification": "Grandfathered by #3227 for the original 4-file cluster (pre-existing over-cap, not new sprawl). #3881 (ADR-3473 §8.1, the js-yaml parser migration) adds two more: frontmatter-golden-parity.test.cjs (D-series golden-corpus diff against the legacy parser, ~900 real documents — cannot be folded into an existing file without losing its independent-of-current-parser provenance) and frontmatter-roundtrip.property.test.cjs (fast-check property coverage the migration's bijective-contract rule requires). Both are migration-specific, not incidental sprawl."
+    },
+    "graphify": {
+      "files": [
+        "graphify-auto-update.slow.test.cjs",
+        "graphify-command-cutover.test.cjs",
+        "graphify-graph-path.test.cjs",
+        "graphify-query.test.cjs",
+        "graphify-visualization.test.cjs",
+        "graphify.test.cjs"
+      ],
+      "issue": "622"
+    },
+    "init": {
+      "files": [
+        "init-debug-workflow-contract.test.cjs",
+        "init-debug.test.cjs",
+        "init-manager.test.cjs",
+        "init.test.cjs"
+      ],
+      "issue": "3149"
+    },
+    "milestone": {
+      "files": [
+        "milestone-archive-hygiene.test.cjs",
+        "milestone-archive.test.cjs",
+        "milestone-helper.test.cjs",
+        "milestone-prefixed-convention.test.cjs",
+        "milestone-summary.test.cjs",
+        "milestone-window-drift-guard.test.cjs",
+        "milestone-window-single-owner.test.cjs",
+        "milestone.test.cjs"
+      ],
+      "issue": "3216"
+    },
+    "phase": {
+      "files": [
+        "phase-completion-single-owner.test.cjs",
+        "phase-dependency-levels.test.cjs",
+        "phase-resolution-parity.test.cjs",
+        "phase-structure.test.cjs",
+        "phase-tdd-applicable.test.cjs",
+        "phase.test.cjs"
+      ],
+      "issue": "3186"
+    },
+    "roadmap": {
+      "files": [
+        "roadmap-disk-consistency.test.cjs",
+        "roadmap-mode-field.test.cjs",
+        "roadmap-phase-fallback.test.cjs",
+        "roadmap.test.cjs"
+      ],
+      "issue": "TBD"
+    },
+    "runtime-artifact-layout": {
+      "files": [
+        "runtime-artifact-layout-descriptor-drive.test.cjs",
+        "runtime-artifact-layout-install-profiles.test.cjs",
+        "runtime-artifact-layout-surface.test.cjs",
+        "runtime-artifact-layout-trigger-surface.test.cjs",
+        "runtime-artifact-layout.test.cjs"
+      ],
+      "issue": "2871"
+    },
+    "security": {
+      "files": [
+        "security-dead-exports.regression.test.cjs",
+        "security-prompt-injection.security.test.cjs",
+        "security-scan.security.test.cjs",
+        "security.test.cjs"
+      ],
+      "issue": "2198"
+    },
+    "state": {
+      "files": [
+        "state-acquirestatelock-non-eexist.test.cjs",
+        "state-command-cutover.test.cjs",
+        "state-consistency.test.cjs",
+        "state-field-drift.test.cjs",
+        "state-prune.test.cjs",
+        "state-rebuild-cli.test.cjs",
+        "state-rebuild.test.cjs",
+        "state-todos-render.test.cjs",
+        "state-write-path-drift-guard.test.cjs",
+        "state.test.cjs"
+      ],
+      "issue": "180"
+    },
+    "verify": {
+      "files": [
+        "verify-archive-dirs-live-path.test.cjs",
+        "verify-health.test.cjs",
+        "verify-lifecycle-writes-e2e.test.cjs",
+        "verify-mvp-uat.test.cjs",
+        "verify-npm-publish.test.cjs",
+        "verify-test-quality.test.cjs",
+        "verify-work-auto-transition.test.cjs",
+        "verify-work-deferred-promotion.test.cjs",
+        "verify.test.cjs"
+      ],
+      "issue": "#3813 — the live-path #1883 suite drives buildPlanningSnapshot in-process with an fs fault; the verify module suites are CLI-driving and cannot host an fs monkeypatch",
+      "justification": "verify-command-grounding added by #2401/#3678; allowlist follow-up landed with #3606 (base was red on this lane). #4546 adds verify-work-deferred-promotion (deferred-follow-up promotion writer contract + parity). #5105 adds verify-lifecycle-writes-e2e.test.cjs (Phase 3 of #5056: end-to-end fixture proving the fixed post-fingerprint verbs leave an unchanged re-run fresh, plus its own pre-fix CONTROL — a distinct end-to-end concern from the existing per-verb unit suites)."
+    },
+    "install": {
+      "files": [
+        "install-minimal-hooks.test.cjs",
+        "install-nested-layout.test.cjs",
+        "install-path-detection.test.cjs",
+        "install-profile-workflow-spawns.test.cjs",
+        "install-regressions.test.cjs",
+        "install-runtime-artifacts.test.cjs",
+        "install-update-marker.test.cjs",
+        "install-write-confinement.test.cjs",
+        "install.test.cjs"
+      ],
+      "issue": "#3798 — the profile-closure spawn test reads the real repo surface (commands+workflows+agents); consolidating it into install.test.cjs would put a whole-repo scan behind the suite's heaviest file"
+    },
+    "edge-probe": {
+      "files": [
+        "edge-probe-docs-fixtures.test.cjs",
+        "edge-probe-planner-contract.test.cjs",
+        "edge-probe-spec-phase-contract.test.cjs",
+        "edge-probe.test.cjs"
+      ],
+      "issue": "550"
+    },
+    "federated-config": {
+      "files": [
+        "federated-config.test.cjs",
+        "federated-config-loadconfig.test.cjs",
+        "federated-config-key-removal.test.cjs"
+      ],
+      "issue": "TBD"
+    },
+    "host-integration": {
+      "files": [
+        "host-integration.test.cjs",
+        "host-integration-validator-parity.test.cjs",
+        "host-integration-descriptors.test.cjs"
+      ],
+      "issue": "1684"
+    },
+    "prompt-budget": {
+      "files": [
+        "prompt-budget-cli.test.cjs",
+        "prompt-budget-parity.test.cjs",
+        "prompt-budget.property.test.cjs",
+        "prompt-budget.test.cjs",
+        "prompt-budget.unit.test.cjs"
+      ],
+      "issue": "2929"
+    },
+    "mcp-catalog": {
+      "files": [
+        "mcp-catalog-parity.install.test.cjs",
+        "mcp-catalog.property.test.cjs",
+        "mcp-catalog.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "model-catalog": {
+      "files": [
+        "model-catalog-runtime-defaults.test.cjs",
+        "model-catalog-valid-tiers.test.cjs",
+        "model-catalog.unit.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "package-legitimacy": {
+      "files": [
+        "package-legitimacy-gate.test.cjs",
+        "package-legitimacy.property.test.cjs",
+        "package-legitimacy.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "runtime-homes": {
+      "files": [
+        "runtime-homes-descriptor-drive.test.cjs",
+        "runtime-homes-legacy-ids-drift-guard.test.cjs",
+        "runtime-homes.property.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "section-manifest": {
+      "files": [
+        "section-manifest-init-facts.test.cjs",
+        "section-manifest.property.test.cjs",
+        "section-manifest.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "workflow-fragments": {
+      "files": [
+        "workflow-fragments-emission.install.test.cjs",
+        "workflow-fragments.property.test.cjs",
+        "workflow-fragments.test.cjs"
+      ],
+      "issue": "3227",
+      "justification": "Grandfathered by #3227 when the testEffectivePrefix() dot/hyphen bucketing fix first made this pre-existing over-cap cluster visible to the gate; not new test sprawl."
+    },
+    "docs": {
+      "files": [
+        "docs-hooks-table-parity.test.cjs",
+        "docs-parity-live-registry.test.cjs",
+        "docs-state-md-locale-parity.test.cjs",
+        "docs-update.test.cjs"
+      ],
+      "issue": "3873 | #3839 — the hook-event parity suite cross-checks the four docs hook tables against src/runtime-hooks-surface.cts registrations; a generated-docs concern distinct from content freshness and registry parity",
+      "justification": "ADR-3473 §8.8 makes docs/reference/state-md.md and its four locale siblings generated-and-committed and adds the repo's first locale-parity check (verified: no locale-parity lint precedent exists here). That check is a distinct concern from docs-update (content freshness) and docs-parity-live-registry (registry parity); folding it into either would place an unrelated subject inside them purely to satisfy a count. The section it guards is absent from all four translations today and documents the status enum behind #3853."
+    },
+    "audit": {
+      "files": [
+        "audit-command-cutover.test.cjs",
+        "audit-fix-command.test.cjs",
+        "audit-milestone-filename-guard.test.cjs",
+        "audit-open-remainder-count.test.cjs",
+        "audit-uat-acknowledged.test.cjs",
+        "audit-uat-summary-segmentation.test.cjs",
+        "audit-workstream-layouts.test.cjs"
+      ],
+      "issue": "#3804/#3805 — audit-layout and acknowledged-marker suites drive the real audit-uat CLI against on-disk fixtures | #3817 — regression suite proving countReal counts the truncation remainder marker instead of treating it as one phantom item | #3783 — dedicated suite for the summary.current_milestone/archived segmentation, matching this module's one-file-per-feature-slice precedent (e.g. audit-uat-acknowledged.test.cjs) rather than growing the unrelated 6900+ line tests/uat.test.cjs (a different module, keyed off uat.cjs)"
+    },
+    "shell-command-projection": {
+      "files": [
+        "shell-command-projection-dispatch.test.cjs",
+        "shell-command-projection-md-normalize.test.cjs",
+        "shell-command-projection-path-sep.test.cjs"
+      ],
+      "issue": "#3854 — the tight-list suite pins the markdown write-normalizer's blank-line policy through the exported normalizeContent/platformWriteSync seam; a distinct concern from dispatch routing and path separation"
+    },
+    "ui-consideration-probe": {
+      "files": [
+        "ui-consideration-probe-docs-fixtures.test.cjs",
+        "ui-consideration-probe-ui-phase-contract.test.cjs",
+        "ui-consideration-probe.test.cjs"
+      ],
+      "issue": "4657",
+      "justification": "The ui-consideration-probe cluster gains its workflow-prose contract file (tests/ui-consideration-probe-ui-phase-contract.test.cjs, #4657), mirroring the edge probe's split (edge-probe.test.cjs / edge-probe-docs-fixtures.test.cjs / edge-probe-spec-phase-contract.test.cjs). The contract file reads shipped gsd-core/workflows/ui-phase.md under the source-text-is-the-product exception, which the unit file deliberately does not carry (it asserts typed returns only)."
+    },
+    "verification": {
+      "files": [
+        "verification-append-audit.test.cjs",
+        "verification-overrides.test.cjs",
+        "verification-status.test.cjs"
+      ],
+      "issue": "5105",
+      "justification": "#5105 (Phase 3 of #5056) adds verification-append-audit.test.cjs for the new `verification.append-audit` verb (deny-by-default audit-block append/no-op, #4887) — a distinct concern from verification-status.test.cjs's status/fingerprint suite and verification-overrides.test.cjs's override handling."
+    }
+  }
+}

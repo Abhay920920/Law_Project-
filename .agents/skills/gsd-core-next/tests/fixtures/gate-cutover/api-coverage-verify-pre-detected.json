@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.api-coverage-verify-pre",
+    ".planning/phases/01-detected"
+  ],
+  "fixture": "api",
+  "stdout": "{\n  \"block\": true,\n  \"passed\": false,\n  \"coverage_present\": false,\n  \"detected\": true,\n  \"signals\": [\n    {\n      \"verb\": \"integrate\",\n      \"noun\": \"api\"\n    },\n    {\n      \"verb\": \"(surface)\",\n      \"noun\": \"api\"\n    }\n  ],\n  \"message\": \"api-coverage: external-API integration detected without a coverage matrix. Produce COVERAGE.md enumerating the API surface (every capability INTEGRATE or OPT-OUT with a reason) before sealing. Full coverage is the default.\"\n}",
+  "stderr": "",
+  "exitCode": 0
+}

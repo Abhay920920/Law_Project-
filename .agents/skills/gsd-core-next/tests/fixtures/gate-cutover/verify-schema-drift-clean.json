@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "2"
+  ],
+  "fixture": "schema-drift",
+  "stdout": "{\n  \"block\": false,\n  \"drift_detected\": false,\n  \"blocking\": false,\n  \"schema_files\": [],\n  \"orms\": [],\n  \"unpushed_orms\": [],\n  \"message\": \"\",\n  \"skipped\": false\n}",
+  "stderr": "",
+  "exitCode": 0
+}

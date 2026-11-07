@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "query",
+    "check.predicate",
+    "--predicate",
+    "{\"kind\":\"no-such-kind\"}"
+  ],
+  "fixture": "pred",
+  "stdout": "",
+  "stderr": "Error: gate predicate evaluation failed: Unknown predicate kind: \"no-such-kind\". Known kinds: command-exit-zero, artifact-frontmatter-equals\n",
+  "exitCode": 1
+}

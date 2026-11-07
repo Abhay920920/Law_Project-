@@ -1,0 +1,1019 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        type: choice
+        options:
+          - create
+          - rc
+          - finalize
+      version:
+        description: 'Version: X.Y.0 (minor/major) or X.Y.Z with Z>0 (hotfix/patch)'
+        required: true
+        type: string
+      auto_cherry_pick:
+        description: 'Hotfix create only: auto-cherry-pick fix:/chore: commits from origin/next (fallback origin/main) since base tag'
+        required: false
+        type: boolean
+        default: true
+      dry_run:
+        description: 'Dry run (skip npm publish, tagging, and push)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      branch: ${{ steps.validate.outputs.branch }}
+      is_major: ${{ steps.validate.outputs.is_major }}
+      is_hotfix: ${{ steps.validate.outputs.is_hotfix }}
+      base_tag: ${{ steps.validate.outputs.base_tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        id: validate
+        env:
+          VERSION: ${{ inputs.version }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          set -euo pipefail
+          IS_HOTFIX="false"
+          IS_MAJOR="false"
+          BASE_TAG=""
+          if echo "$VERSION" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.0$'; then
+            # Minor or major release (X.Y.0)
+            BRANCH="release/${VERSION}"
+            if echo "$VERSION" | grep -qE '^(0|[1-9][0-9]*)\.0\.0$'; then
+              IS_MAJOR="true"
+            fi
+          elif echo "$VERSION" | grep -qE '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.[1-9][0-9]*$'; then
+            # Patch / hotfix release (X.Y.Z, Z>0)
+            IS_HOTFIX="true"
+            if [ "$ACTION" = "rc" ]; then
+              echo "::error::Hotfix (patch) releases skip the rc action — run create, then finalize."
+              exit 1
+            fi
+            BRANCH="hotfix/${VERSION}"
+            MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1-2)
+            TARGET_TAG="v${VERSION}"
+            # semver-correct base tag: highest vMAJOR_MINOR.* strictly below TARGET_TAG
+            BASE_TAG=$( ( git tag -l "v${MAJOR_MINOR}.*" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$"; echo "$TARGET_TAG" ) \
+              | sort -V \
+              | awk -v target="$TARGET_TAG" '$1 == target { print prev; exit } { prev = $1 }')
+            if [ -z "$BASE_TAG" ]; then
+              echo "::error::No prior stable tag found for ${MAJOR_MINOR}.x before $TARGET_TAG"
+              exit 1
+            fi
+          else
+            echo "::error::Version '$VERSION' is invalid. Use X.Y.0 (minor/major) or X.Y.Z with Z>0 (hotfix), no leading zeros."
+            exit 1
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "is_major=$IS_MAJOR" >> "$GITHUB_OUTPUT"
+          echo "is_hotfix=$IS_HOTFIX" >> "$GITHUB_OUTPUT"
+          echo "base_tag=$BASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Reject already-published versions
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          for pkg in @opengsd/gsd-core; do
+            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "::error::$pkg@$VERSION is already published on npm — bump to a new version"
+              exit 1
+            fi
+          done
+
+      # #5894: a squashed back-merge leaves main outside next's history, and the
+      # release → main merge then conflicts in every version field. Refuse to
+      # cut or finalize until main is an ancestor of next again. rc never touches
+      # main, and a hotfix is cut from a tag on main and merges back cleanly either
+      # way, so only a non-hotfix create or finalize is gated.
+      - name: Require main to be an ancestor of next
+        if: inputs.action != 'rc' && steps.validate.outputs.is_hotfix != 'true'
+        run: |
+          git fetch --no-tags origin main next
+          node scripts/release-ancestry.cjs --ancestor origin/main --descendant origin/next
+
+  create:
+    needs: validate-version
+    if: inputs.action == 'create'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies and build
+        run: npm ci --silent && npm run build:lib
+
+      - name: Check branch doesn't already exist
+        env:
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+        run: |
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "::error::Branch $BRANCH already exists. Delete it first or use rc/finalize."
+            exit 1
+          fi
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create release branch
+        if: needs.validate-version.outputs.is_hotfix != 'true'
+        env:
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          VERSION: ${{ inputs.version }}
+          IS_MAJOR: ${{ needs.validate-version.outputs.is_major }}
+        run: |
+          git checkout -b "$BRANCH"
+          npm version "$VERSION" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to ${VERSION} for release"
+          git push origin "$BRANCH"
+          echo "## Release branch created" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: \`$BRANCH\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`$VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$IS_MAJOR" = "true" ]; then
+            echo "- Type: **Major** (will start with beta pre-releases)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Type: **Minor** (will start with RC pre-releases)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Next: run this workflow with \`rc\` action to publish a pre-release to \`next\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create hotfix branch from base tag (skeleton)
+        if: needs.validate-version.outputs.is_hotfix == 'true'
+        env:
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          BASE_TAG: ${{ needs.validate-version.outputs.base_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          git checkout -b "$BRANCH" "$BASE_TAG"
+          # Push the skeleton up-front so a later cherry-pick conflict leaves a
+          # remote artefact the operator can fetch, resolve, and re-push.
+          if [ "$DRY_RUN" != "true" ]; then
+            git push -u origin "$BRANCH"
+          fi
+
+      - name: Cherry-pick fix/chore commits from origin/next since base tag
+        if: ${{ needs.validate-version.outputs.is_hotfix == 'true' && inputs.auto_cherry_pick }}
+        env:
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          BASE_TAG: ${{ needs.validate-version.outputs.base_tag }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # Under the next-branch model, day-to-day fixes land on `next` first
+          # and only reach `main` via release back-merge. So `next` is the
+          # canonical cherry-pick source. Fall back to `main` if `next` doesn't
+          # exist yet (legacy single-branch repos) or as a transition guard.
+          if git ls-remote --exit-code origin next >/dev/null 2>&1; then
+            git fetch origin next:refs/remotes/origin/next
+            SOURCE="origin/next"
+          else
+            git fetch origin main:refs/remotes/origin/main
+            SOURCE="origin/main"
+          fi
+          echo "Cherry-pick source: $SOURCE"
+
+          # `git cherry $BASE_TAG $SOURCE` lists every commit on the source not
+          # patch-equivalent in BASE_TAG. + means needs picking, - means
+          # already applied (skipped silently).
+          CANDIDATES=$(git cherry "$BASE_TAG" "$SOURCE" | awk '/^\+ / {print $2}')
+
+          if [ -z "$CANDIDATES" ]; then
+            echo "No commits on $SOURCE beyond $BASE_TAG."
+            echo "## Cherry-pick summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Base: \`$BASE_TAG\` (source: \`$SOURCE\`) — no commits to consider." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Re-order chronologically (oldest first) for predictable application.
+          ORDERED=$(git log --reverse --format='%H' "$BASE_TAG..$SOURCE" \
+            | grep -F -f <(echo "$CANDIDATES") || true)
+
+          INCLUDED=""
+          SKIPPED=""
+          SKIPPED_EMPTY=""
+          while IFS= read -r SHA; do
+            [ -z "$SHA" ] && continue
+            SUBJECT=$(git log -1 --format='%s' "$SHA")
+            # fix: or chore:, optional scope, optional ! breaking marker
+            if echo "$SUBJECT" | grep -qE '^(fix|chore)(\([^)]+\))?!?: '; then
+              echo "→ cherry-picking $SHA  $SUBJECT"
+              if ! git cherry-pick -x "$SHA"; then
+                # #2913: git cherry-pick exits non-zero for BOTH genuine conflicts
+                # AND empty picks (the change is already present by content).
+                # Distinguish them: a genuine conflict has unmerged paths; an
+                # empty pick has none. `git cherry` compares patch-ids against a
+                # different base, so a commit already present by content can still
+                # be marked `+` — and applying it produces an empty diff.
+                UNMERGED=$(git diff --name-only --diff-filter=U)
+                if [ -z "$UNMERGED" ]; then
+                  # Already applied by content — skip and continue the loop.
+                  # This is the structural case: every release finalize produces
+                  # a `chore: sync next package version` commit that is a no-op
+                  # against the tag the next hotfix branches from.
+                  git cherry-pick --skip || true
+                  echo "  skip $SHA  $SUBJECT  (already applied by content — empty pick)"
+                  SKIPPED_EMPTY="${SKIPPED_EMPTY}- \`${SHA}\` ${SUBJECT}"$'\n'
+                  continue
+                fi
+                # Genuine conflict — abort restores HEAD to the last successful
+                # pick. On real runs, push that state so the operator can fetch,
+                # resolve $SHA manually, and finalize with auto_cherry_pick=false.
+                git cherry-pick --abort || true
+                if [ "$DRY_RUN" != "true" ]; then
+                  git push --force-with-lease origin "$BRANCH" || git push origin "$BRANCH" || true
+                fi
+                {
+                  echo "## Cherry-pick conflict"
+                  echo ""
+                  echo "Failed at: \`${SHA}\` — \`${SUBJECT}\`"
+                  echo ""
+                  if [ -n "$SKIPPED_EMPTY" ]; then
+                    echo "### Skipped before this conflict (already applied by content — empty pick)"
+                    echo ""
+                    echo "$SKIPPED_EMPTY"
+                    echo ""
+                  fi
+                  if [ "$DRY_RUN" = "true" ]; then
+                    echo "**Dry run:** branch was not pushed, so the picks below were discarded with the runner."
+                    if [ -n "$INCLUDED" ]; then
+                      echo ""
+                      echo "Already-applied picks (lost — must be re-applied before resolving \`${SHA}\`):"
+                      echo ""
+                      echo "$INCLUDED"
+                    fi
+                    echo ""
+                    echo "**To resolve:** re-run \`create\` with \`auto_cherry_pick=true\` (real, not dry-run) to materialize the partial branch on origin, then resolve \`${SHA}\` manually. Re-running with \`auto_cherry_pick=false\` would recreate the branch from \`${BASE_TAG}\` and lose every pick listed above."
+                  else
+                    echo "Branch \`${BRANCH}\` was pushed with picks applied up to (but not including) the conflicting commit."
+                    echo ""
+                    echo "**To resolve:** \`git fetch origin && git checkout ${BRANCH} && git cherry-pick -x ${SHA}\`, fix the conflict, push, then re-run \`finalize\` with \`auto_cherry_pick=false\`."
+                  fi
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "::error::Cherry-pick of $SHA failed. See summary."
+                exit 1
+              fi
+              INCLUDED="${INCLUDED}- \`${SHA}\` ${SUBJECT}"$'\n'
+            else
+              echo "  skip $SHA  $SUBJECT  (not fix/chore)"
+              SKIPPED="${SKIPPED}- \`${SHA}\` ${SUBJECT}"$'\n'
+            fi
+          done <<< "$ORDERED"
+
+          {
+            echo "## Cherry-pick summary"
+            echo ""
+            echo "Base: \`$BASE_TAG\`"
+            echo ""
+            if [ -n "$INCLUDED" ]; then
+              echo "### Included (fix/chore)"
+              echo ""
+              echo "$INCLUDED"
+            else
+              echo "_No fix/chore commits to include._"
+              echo ""
+            fi
+            if [ -n "$SKIPPED_EMPTY" ]; then
+              echo "### Skipped (already applied by content — empty pick)"
+              echo ""
+              echo "$SKIPPED_EMPTY"
+            fi
+            if [ -n "$SKIPPED" ]; then
+              echo "### Skipped (feat/refactor/etc — not auto-included)"
+              echo ""
+              echo "$SKIPPED"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bump hotfix version and push
+        if: needs.validate-version.outputs.is_hotfix == 'true'
+        env:
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          BASE_TAG: ${{ needs.validate-version.outputs.base_tag }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          npm version "$VERSION" --no-git-tag-version
+          git add package.json package-lock.json
+          git commit -m "chore: bump version to $VERSION for hotfix"
+          if [ "$DRY_RUN" != "true" ]; then
+            git push origin "$BRANCH"
+          else
+            echo "DRY RUN — branch not pushed."
+          fi
+          {
+            echo "## Hotfix branch created"
+            echo ""
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Based on: \`$BASE_TAG\`"
+            echo "- Apply additional manual fixes if needed, then run \`finalize\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  install-smoke-rc:
+    needs: validate-version
+    if: inputs.action == 'rc'
+    permissions:
+      contents: read
+      # #3833: install-smoke.yml now calls the mergeability preflight, which
+      # requests pull-requests: read. A nested reusable workflow may only
+      # DOWNGRADE its caller's token, so without this the whole release run
+      # fails to start on a permissions escalation. On a release the preflight
+      # itself no-ops (the event is not pull_request) and never uses the scope.
+      pull-requests: read
+    uses: ./.github/workflows/install-smoke.yml
+    with:
+      ref: ${{ needs.validate-version.outputs.branch }}
+
+  rc-test:
+    name: rc test (shard ${{ matrix.shard }})
+    needs: [validate-version, install-smoke-rc]
+    if: inputs.action == 'rc'
+    runs-on: ubuntu-latest
+    # #4335 (recurrence of #2280/#2281): npm ci + the unit-coverage script ran
+    # unsharded on one runner and outgrew even the 30m cap raised for this
+    # exact failure once already (run 33988966357 — all tests passed, 0
+    # failures, cancelled ~80s into the post-test coverage merge). Per #869's
+    # stated lesson ("a timeout bump only moves that cliff; sharding removes
+    # it"), this mirrors test.yml's `scope: full` lane fix (#2952): each shard
+    # runs its slice under c8 with NO report/gate (raw V8 dumps only);
+    # rc-coverage-gate merges all three before enforcing the threshold. 20m
+    # gives each shard generous headroom over its ~1/3 share of the unsharded
+    # run's measured cost. #5421: shard 1/3 later measured ~18.5m of tests
+    # plus the coverage upload, so a 20m cap cancelled it mid-upload twice
+    # (run 38609859394); 30m restores headroom.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies and build
+        run: npm ci --silent && npm run build:lib
+
+      # Same pre-release version derivation as the `rc` job's "Determine
+      # pre-release version" step, applied to the WORKING TREE ONLY (no
+      # commit, no push) — this job never publishes anything, it only needs
+      # package.json to read the same version the real rc job will test
+      # under. Every shard (and the real rc job) computes this independently
+      # and deterministically from the same tags, the same way each of
+      # test.yml's shard jobs redoes its own setup rather than sharing git
+      # state across jobs.
+      - name: Bump to pre-release version (working tree only)
+        env:
+          VERSION: ${{ inputs.version }}
+          IS_MAJOR: ${{ needs.validate-version.outputs.is_major }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_MAJOR" = "true" ]; then
+            PREFIX="beta"
+          else
+            PREFIX="rc"
+          fi
+          N=1
+          while git tag -l "v${VERSION}-${PREFIX}.${N}" | grep -q .; do
+            N=$((N + 1))
+          done
+          npm version "${VERSION}-${PREFIX}.${N}" --no-git-tag-version
+
+      # #2952-style split: raw V8 coverage only, no report/gate — a per-shard
+      # percentage is meaningless (shard 2 never runs shard 1's files). The
+      # rc-coverage-gate job below merges all three shards' dumps and
+      # enforces the same floor package.json already defines once.
+      - name: Run unit tests (shard ${{ matrix.shard }}, raw coverage only)
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          # Pin the #3588/#4196 npm-audit gate's baseline to the commit this
+          # run was dispatched from. Unset, resolveBaselineRef() falls back to
+          # the LIVE origin/next tip, which can move mid-run (run 38549271057:
+          # an advisory fixed on next after the run began was reported as
+          # "newly introduced" by this branch). Same pinning test.yml does.
+          AUDIT_BASELINE_REF: ${{ github.sha }}
+        run: |
+          npm ci
+          node scripts/check-npm-integrity.cjs
+          npm run test:coverage:unit:raw -- --shard ${{ matrix.shard }}
+
+      - name: Upload raw coverage for merge
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: coverage-tmp-rc-shard-${{ strategy.job-index }}
+          path: coverage/tmp
+          if-no-files-found: error
+          retention-days: 1
+
+  rc-coverage-gate:
+    name: rc coverage gate (merged shards)
+    needs: [validate-version, rc-test]
+    if: inputs.action == 'rc'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # merge-multiple flattens every shard's dumps into ONE coverage/tmp,
+      # exactly the layout c8 expects from a single run (test.yml's
+      # coverage-gate job does the identical merge for the same reason).
+      - name: Download every shard's raw coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: coverage-tmp-rc-shard-*
+          path: coverage/tmp
+          merge-multiple: true
+
+      - name: Report merged coverage + gate gsd-core/bin/lib (≥70% lines, ≥60% branches)
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run test:coverage:report
+
+  rc:
+    needs: [validate-version, install-smoke-rc, rc-coverage-gate]
+    if: inputs.action == 'rc'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Determine pre-release version
+        id: prerelease
+        env:
+          VERSION: ${{ inputs.version }}
+          IS_MAJOR: ${{ needs.validate-version.outputs.is_major }}
+        run: |
+          # Determine pre-release type: major → beta, minor → rc
+          if [ "$IS_MAJOR" = "true" ]; then
+            PREFIX="beta"
+          else
+            PREFIX="rc"
+          fi
+          # Find next pre-release number by checking existing tags
+          N=1
+          while git tag -l "v${VERSION}-${PREFIX}.${N}" | grep -q .; do
+            N=$((N + 1))
+          done
+          PRE_VERSION="${VERSION}-${PREFIX}.${N}"
+          echo "pre_version=$PRE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "prefix=$PREFIX" >> "$GITHUB_OUTPUT"
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies and build
+        run: npm ci --silent && npm run build:lib
+
+      - name: Bump to pre-release version
+        env:
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: |
+          npm version "$PRE_VERSION" --no-git-tag-version
+
+      - name: Dependency integrity gate
+        run: |
+          npm ci
+          node scripts/check-npm-integrity.cjs
+
+      - name: Preview CHANGELOG (non-destructive)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Non-destructive CHANGELOG preview for the version under test (#759):
+          # renders the curated section finalize will promote, without writing
+          # CHANGELOG.md or consuming .changeset fragments. Surfaced in the job
+          # summary so RC testers see the upcoming release notes.
+          #
+          # Render to a file as a standalone command so a non-zero exit (e.g. a
+          # malformed fragment) fails the step. The default GitHub Linux shell
+          # is `bash -e` without pipefail, so a `node | tee` pipeline would mask
+          # a node failure behind tee's exit 0.
+          PREVIEW_FILE="${RUNNER_TEMP:-/tmp}/changelog-preview.md"
+          node scripts/changeset/cli.cjs render \
+            --version "$VERSION" --date "$(date -u +%F)" --preview > "$PREVIEW_FILE"
+          {
+            echo "### CHANGELOG preview for v${VERSION} (not yet promoted)"
+            echo ''
+            cat "$PREVIEW_FILE"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          cat "$PREVIEW_FILE"
+
+      - name: Commit pre-release version bump
+        env:
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: |
+          git add package.json package-lock.json
+          git commit -m "chore: bump to ${PRE_VERSION}"
+
+      # npm bundled with Node 24 (pinned via setup-node) already supports trusted publishing (#318)
+
+      - name: Dry-run publish validation
+        run: npm publish --dry-run --tag next
+
+      - name: Tag and push
+        if: ${{ !inputs.dry_run }}
+        env:
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v${PRE_VERSION}" >/dev/null; then
+            EXISTING_SHA=$(git rev-parse "refs/tags/v${PRE_VERSION}")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$EXISTING_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::Tag v${PRE_VERSION} already exists pointing to different commit"
+              exit 1
+            fi
+            echo "Tag v${PRE_VERSION} already exists on current commit; skipping tag"
+          else
+            git tag "v${PRE_VERSION}"
+          fi
+          git push origin "$BRANCH" --tags
+
+      - name: Publish to npm (next)
+        if: ${{ !inputs.dry_run }}
+        # --provenance is automatic under OIDC trusted publishing
+        run: npm publish --provenance --access public --tag next
+
+      - name: Create GitHub pre-release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: |
+          gh release create "v${PRE_VERSION}" \
+            --title "v${PRE_VERSION}" \
+            --generate-notes \
+            --prerelease
+          # Reformat the auto-generated notes into the curated
+          # Install + Feature/Enhancement/Fix format.
+          node scripts/release-notes/format-github-release-notes.cjs \
+            --tag "v${PRE_VERSION}" --prerelease --apply
+
+      - name: Post Discord pre-release announcement
+        if: ${{ !inputs.dry_run }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: |
+          node scripts/release-notes/discord-release-summary.cjs \
+            --tag "v${PRE_VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --post \
+            --allow-missing-webhook
+
+      - name: Verify publish
+        if: ${{ !inputs.dry_run }}
+        timeout-minutes: 15
+        env:
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: node scripts/verify-npm-publish.cjs --package @opengsd/gsd-core --version "$PRE_VERSION" --dist-tag next
+
+      - name: Sync next branch to the published pre-release
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+        run: node scripts/sync-next-version.cjs "$PRE_VERSION"
+
+      - name: Summary
+        env:
+          PRE_VERSION: ${{ steps.prerelease.outputs.pre_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          echo "## Pre-release v${PRE_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "**DRY RUN** — npm publish, tagging, and push skipped" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Published to npm as \`next\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Install: \`npx @opengsd/gsd-core@next\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "To publish another pre-release: run \`rc\` again" >> "$GITHUB_STEP_SUMMARY"
+          echo "To finalize: run \`finalize\` action" >> "$GITHUB_STEP_SUMMARY"
+
+  install-smoke-finalize:
+    needs: validate-version
+    if: inputs.action == 'finalize'
+    permissions:
+      contents: read
+      # #3833: see install-smoke-rc — the nested preflight requests this scope,
+      # and a nested reusable workflow can only downgrade, never elevate.
+      pull-requests: read
+    uses: ./.github/workflows/install-smoke.yml
+    with:
+      ref: ${{ needs.validate-version.outputs.branch }}
+
+  finalize-test:
+    name: finalize test (shard ${{ matrix.shard }})
+    needs: [validate-version, install-smoke-finalize]
+    if: inputs.action == 'finalize'
+    runs-on: ubuntu-latest
+    # See rc-test's comment (#4335, recurrence of #2280/#2281) — identical
+    # fix, identical rationale, applied to finalize's own unsharded
+    # unit-coverage step, which is the one that actually hit the 30m cap
+    # (run 33988966357: all tests passed, 0 failures, cancelled ~80s into the
+    # post-test coverage merge).
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies and build
+        run: npm ci --silent && npm run build:lib
+
+      # Same version bump as the `finalize` job's "Set final version" step,
+      # applied to the WORKING TREE ONLY (no commit) — this job never
+      # publishes, it only needs package.json at the version finalize will
+      # test under.
+      - name: Set final version (working tree only)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Run unit tests (shard ${{ matrix.shard }}, raw coverage only)
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          # Pin the #3588/#4196 npm-audit gate's baseline to the commit this
+          # run was dispatched from. Unset, resolveBaselineRef() falls back to
+          # the LIVE origin/next tip, which can move mid-run (run 38549271057:
+          # an advisory fixed on next after the run began was reported as
+          # "newly introduced" by this branch). Same pinning test.yml does.
+          AUDIT_BASELINE_REF: ${{ github.sha }}
+        run: |
+          npm ci
+          node scripts/check-npm-integrity.cjs
+          npm run test:coverage:unit:raw -- --shard ${{ matrix.shard }}
+
+      - name: Upload raw coverage for merge
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: coverage-tmp-finalize-shard-${{ strategy.job-index }}
+          path: coverage/tmp
+          if-no-files-found: error
+          retention-days: 1
+
+  finalize-coverage-gate:
+    name: finalize coverage gate (merged shards)
+    needs: [validate-version, finalize-test]
+    if: inputs.action == 'finalize'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download every shard's raw coverage
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: coverage-tmp-finalize-shard-*
+          path: coverage/tmp
+          merge-multiple: true
+
+      - name: Report merged coverage + gate gsd-core/bin/lib (≥70% lines, ≥60% branches)
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run test:coverage:report
+
+  finalize:
+    needs: [validate-version, install-smoke-finalize, finalize-coverage-gate]
+    if: inputs.action == 'finalize'
+    runs-on: ubuntu-latest
+    # >= 30 required by tests/release-backmerge-invariants.test.cjs (#2281) —
+    # kept even though this job no longer runs the unit suite itself (moved
+    # to finalize-test/finalize-coverage-gate, #4335): the changelog/tag/
+    # publish/verify/backmerge tail below still deserves real headroom
+    # against transient npm-registry/GitHub-API slowness.
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ needs.validate-version.outputs.branch }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies and build
+        run: npm ci --silent && npm run build:lib
+
+      - name: Set final version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          git add package.json package-lock.json
+          git diff --cached --quiet || git commit -m "chore: finalize v${VERSION}"
+
+      - name: Dependency integrity gate
+        run: |
+          npm ci
+          node scripts/check-npm-integrity.cjs
+
+      - name: Promote CHANGELOG (render fragments)
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/changeset/cli.cjs render \
+            --version "$VERSION" --date "$(date -u +%F)" --allow-empty
+          git add -A .changeset CHANGELOG.md
+          # Diff-preview guard: surface exactly what was promoted, in the log and
+          # the job summary, before the commit lands.
+          {
+            echo "### CHANGELOG promotion for v${VERSION}"
+            echo '```diff'
+            git diff --cached -- CHANGELOG.md
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          git --no-pager diff --cached -- CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore: promote CHANGELOG for v${VERSION}"
+
+      - name: Verify CHANGELOG promoted
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/changeset/cli.cjs verify --version "$VERSION" --changelog CHANGELOG.md
+
+      # #5922: build the Release body from the promoted CHANGELOG.md section,
+      # not GitHub's merged-PR list (empty for a hotfix of cherry-picks). Runs
+      # before the irreversible tag/publish steps so a builder failure cannot
+      # strand a published version without a Release; no dry_run guard so a
+      # dry run validates it too.
+      - name: Build GitHub Release notes
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/release-notes/changelog-release-notes.cjs \
+            --version "${VERSION}" \
+            --changelog CHANGELOG.md \
+            --output "${RUNNER_TEMP}/release-notes.md"
+
+      # npm bundled with Node 24 (pinned via setup-node) already supports trusted publishing (#318)
+
+      - name: Dry-run publish validation
+        run: npm publish --dry-run
+
+      - name: Create PR to merge release back to main
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Non-fatal: repos that disable "Allow GitHub Actions to create and
+          # approve pull requests" cause this step to fail with GraphQL 403.
+          # The release itself (tag + npm publish + GitHub Release) must still
+          # proceed. Open the merge-back PR manually afterwards with:
+          #   gh pr create --base main --head release/${VERSION} \
+          #     --title "chore: merge release v${VERSION} to main"
+          EXISTING_PR=$(gh pr list --base main --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists; updating"
+            gh pr edit "$EXISTING_PR" \
+              --title "chore: merge release v${VERSION} to main" \
+              --body "Merge release branch back to main after v${VERSION} stable release. Merge it as a merge commit, never squash, so v${VERSION} stays in main's history (#5894): node scripts/merge-commit-pr.cjs <this PR's number>." \
+              || echo "::warning::Could not update merge-back PR (likely PR-creation policy disabled). Open it manually after release."
+          else
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "chore: merge release v${VERSION} to main" \
+              --body "Merge release branch back to main after v${VERSION} stable release. Merge it as a merge commit, never squash, so v${VERSION} stays in main's history (#5894): node scripts/merge-commit-pr.cjs <this PR's number>." \
+              || echo "::warning::Could not create merge-back PR (likely PR-creation policy disabled). Open it manually after release."
+          fi
+
+      - name: Tag and push
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            EXISTING_SHA=$(git rev-parse "refs/tags/v${VERSION}")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$EXISTING_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::Tag v${VERSION} already exists pointing to different commit"
+              exit 1
+            fi
+            echo "Tag v${VERSION} already exists on current commit; skipping tag"
+          else
+            git tag "v${VERSION}"
+          fi
+          git push origin "$BRANCH" --tags
+
+      - name: Publish to npm (latest)
+        if: ${{ !inputs.dry_run }}
+        # --provenance is automatic under OIDC trusted publishing
+        run: npm publish --provenance --access public
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md" \
+            --latest
+
+      - name: Post Discord release announcement
+        if: ${{ !inputs.dry_run }}
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/release-notes/discord-release-summary.cjs \
+            --tag "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --post \
+            --allow-missing-webhook
+
+      - name: Verify publish
+        if: ${{ !inputs.dry_run }}
+        timeout-minutes: 15
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/verify-npm-publish.cjs --package @opengsd/gsd-core --version "$VERSION" --dist-tag latest
+
+      # Auto-merge the release/hotfix → main PR when it is cleanly mergeable, so
+      # the release's own branch lands on `main` without a manual merge click
+      # every release (#2515). Symmetric with auto-backmerge.yml's merge-commit
+      # merge of the main → next PR (scripts/merge-commit-pr.cjs, #5894); the `main`-is-ancestor-of-`next` invariant restored
+      # by #2504 makes this merge clean every release. Runs only after the tag +
+      # npm publish are verified, so `main` never absorbs an unpublished release.
+      # A non-clean PR (a genuine divergence) is left OPEN for manual resolution
+      # rather than force-merged. Non-fatal: a published release must stand even
+      # if the merge-back can't auto-complete (org PR-policy, token, etc.).
+      - name: Auto-merge the release → main PR when clean
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.validate-version.outputs.branch }}
+          HAS_ADMIN_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN != '' }}
+        run: |
+          set -uo pipefail
+          if [ "$HAS_ADMIN_TOKEN" != "true" ]; then
+            echo "::warning::GSD_BOT_PR_TOKEN is not set, so the release → main PR is left open: a merge made with GITHUB_TOKEN would not trigger auto-backmerge.yml, so main would never be merged back into next. Merge it as a repo admin: node scripts/merge-commit-pr.cjs <PR> (#5894)."
+            exit 0
+          fi
+          PR=$(gh pr list --base main --head "$BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || echo "")
+          if [ -z "$PR" ]; then
+            echo "No open release→main PR for $BRANCH (creation may be blocked by org policy); nothing to auto-merge."
+            exit 0
+          fi
+          # GitHub computes mergeability asynchronously; poll until it settles to
+          # a terminal state before deciding.
+          STATE="UNKNOWN"
+          for _ in 1 2 3 4 5 6 7 8; do
+            STATE=$(gh pr view "$PR" --json mergeable --jq '.mergeable' 2>/dev/null || echo "UNKNOWN")
+            if [ "$STATE" = "MERGEABLE" ] || [ "$STATE" = "CONFLICTING" ]; then break; fi
+            sleep 5
+          done
+          if [ "$STATE" = "MERGEABLE" ]; then
+            # #5894: a merge commit (not squash) keeps the release branch and its
+            # version tag in main's history. merge-commit-pr.cjs merges through
+            # the REST endpoint pinned to the head sha and fails unless the
+            # result is a two-parent commit that main now contains.
+            if node scripts/merge-commit-pr.cjs "$PR"; then
+              echo "Auto-merged release→main PR #$PR."
+            else
+              echo "::warning::PR #$PR is mergeable but was not landed as a verified merge commit. Merge it with: node scripts/merge-commit-pr.cjs $PR (never squash)."
+            fi
+          else
+            echo "::warning::Release→main PR #$PR is not cleanly mergeable (state: $STATE). Left open for manual resolution."
+          fi
+
+      # Regression #2423: keep `next` at the last published release for final
+      # releases, not just rc/hotfix. Without this, `next` drifts to whatever
+      # rc.N the release branch forked from, and every npm script banner on
+      # `next` (and feature branches cut from it) reports the stale rc version
+      # — e.g. `lint:ci` reported `@opengsd/gsd-core@1.7.0-rc.6` after 1.7.0
+      # shipped. Mirrors the rc job's sync step at line ~479. Idempotent: a
+      # no-op when `next` is already at the target version.
+      - name: Sync next branch to the published release
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GSD_BOT_PR_TOKEN || secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: node scripts/sync-next-version.cjs "$VERSION"
+
+      - name: Summary
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          echo "## Release v${VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "**DRY RUN** — npm publish, tagging, and push skipped" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "- Published to npm as \`latest\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Tagged \`v${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- PR created to merge back to main" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Install: \`npx @opengsd/gsd-core@latest\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

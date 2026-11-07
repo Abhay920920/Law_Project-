@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "query",
+    "check.verify-schema-drift",
+    "1"
+  ],
+  "fixture": "schema-drift",
+  "stdout": "{\n  \"block\": true,\n  \"drift_detected\": true,\n  \"blocking\": true,\n  \"schema_files\": [\n    \"prisma/schema.prisma\"\n  ],\n  \"orms\": [\n    \"prisma\"\n  ],\n  \"unpushed_orms\": [\n    \"prisma\"\n  ],\n  \"message\": \"Schema drift detected: schema-relevant files changed but no database push was executed.\\n\\nSchema files changed: prisma/schema.prisma\\nORMs requiring push: prisma\\n\\nRequired push commands:\\n  prisma: npx prisma db push --accept-data-loss (if destructive changes are intended)\\n\\nRun the appropriate push command, or set GSD_SKIP_SCHEMA_CHECK=true to bypass this gate.\",\n  \"skipped\": false\n}",
+  "stderr": "",
+  "exitCode": 0
+}
