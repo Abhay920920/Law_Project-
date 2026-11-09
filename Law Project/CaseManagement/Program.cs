@@ -210,6 +210,12 @@ using (var scope = app.Services.CreateScope())
 // Request Correlation ID Middleware for distributed tracing and observability
 app.UseMiddleware<CorrelationIdMiddleware>();
 
+// Enable standard forwarded headers for reverse proxies / IIS ARR
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+});
+
 // Configure the HTTP request pipeline
 if (!app.Environment.IsDevelopment())
 {

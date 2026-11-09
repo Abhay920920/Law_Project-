@@ -120,6 +120,17 @@ namespace MVCCaseManagement.Controllers
                 if (updated)
                 {
                     _userRepository.MarkOtpAsVerified(user.UserID, model.OTP);
+                    _ = _activityLogger.LogAuthActionAsync(
+                        user.UserID,
+                        user.Username,
+                        user.FullName,
+                        user.RoleName,
+                        user.DivisionID,
+                        user.DivisionName,
+                        "PASSWORD_RESET",
+                        $"Password reset successfully for '{user.Username}' ({user.FullName}) via OTP verification",
+                        new { user.UserID, user.Username });
+
                     TempData["SuccessMessage"] = "Password reset successfully. Please login with your new password.";
                     return RedirectToAction("Login");
                 }
@@ -184,9 +195,32 @@ namespace MVCCaseManagement.Controllers
                     _cache.Set(lockoutKey, true, TimeSpan.FromMinutes(15));
                     _logger.LogWarning("Login lockout triggered for username '{Username}' from IP {IP}",
                         model.Username, HttpContext.Connection.RemoteIpAddress);
+
+                    _ = _activityLogger.LogAuthActionAsync(
+                        user?.UserID,
+                        model.Username ?? "Unknown",
+                        user?.FullName ?? model.Username ?? "Unknown",
+                        user?.RoleName ?? "Guest",
+                        user?.DivisionID,
+                        user?.DivisionName,
+                        "LOGIN_FAILED",
+                        $"Account locked out after 5 consecutive failed login attempts for username '{model.Username}'",
+                        new { Username = model.Username, Attempts = failCount });
+
                     ModelState.AddModelError(string.Empty, "Account locked after 5 failed attempts. Please try again in 15 minutes.");
                     return View(model);
                 }
+
+                _ = _activityLogger.LogAuthActionAsync(
+                    user?.UserID,
+                    model.Username ?? "Unknown",
+                    user?.FullName ?? model.Username ?? "Unknown",
+                    user?.RoleName ?? "Guest",
+                    user?.DivisionID,
+                    user?.DivisionName,
+                    "LOGIN_FAILED",
+                    $"Failed login attempt for username '{model.Username}' (Attempt {failCount}/5)",
+                    new { Username = model.Username, Attempts = failCount });
 
                 ModelState.AddModelError(string.Empty, "Invalid username or password");
                 return View(model);
@@ -194,6 +228,17 @@ namespace MVCCaseManagement.Controllers
 
             if (!user.IsActive)
             {
+                _ = _activityLogger.LogAuthActionAsync(
+                    user.UserID,
+                    user.Username,
+                    user.FullName,
+                    user.RoleName,
+                    user.DivisionID,
+                    user.DivisionName,
+                    "LOGIN_FAILED",
+                    $"Deactivated user '{user.Username}' attempted login",
+                    new { user.UserID, user.Username });
+
                 ModelState.AddModelError(string.Empty, "Your account has been deactivated. Please contact administrator.");
                 return View(model);
             }
@@ -270,23 +315,39 @@ namespace MVCCaseManagement.Controllers
             _userRepository.UpdateLastLogin(user.UserID);
 
             string clientMac = NetworkDeviceHelper.GetClientMacAddress(HttpContext);
-            _ = _activityLogger.LogSubEntityActionAsync(
-                "ACCOUNT",
+            _ = _activityLogger.LogAuthActionAsync(
                 user.UserID,
                 user.Username,
+                user.FullName,
+                user.RoleName,
+                user.DivisionID,
+                userDivName,
                 "USER_LOGIN",
-                $"User '{user.Username}' ({user.FullName}) logged in successfully. Role: {user.RoleName}, Division: {user.DivisionName ?? "Central Office"} [MAC: {clientMac}]",
+                $"User '{user.Username}' ({user.FullName}) logged in successfully. Role: {user.RoleName}, Division: {userDivName} [MAC: {clientMac}]",
                 new { user.UserID, user.Username, user.FullName, user.RoleName, user.DivisionID, MacAddress = clientMac });
         }
 
         public async Task<IActionResult> Logout()
         {
-            var username = User.Identity?.Name ?? "User";
+            var username = User.Identity?.Name ?? HttpContext.Session.GetString(SessionKeys.Username) ?? "User";
+            var fullName = User.FindFirstValue("FullName") ?? HttpContext.Session.GetString(SessionKeys.FullName) ?? username;
+            var role = User.FindFirstValue(ClaimTypes.Role) ?? User.FindFirstValue("Role") ?? HttpContext.Session.GetString(SessionKeys.RoleName) ?? "User";
+            var divIdStr = User.FindFirstValue("DivisionID");
+            int? divId = int.TryParse(divIdStr, out int d) ? d : HttpContext.Session.GetInt32(SessionKeys.DivisionID);
+            var divName = User.FindFirstValue("DivisionName") ?? HttpContext.Session.GetString(SessionKeys.DivisionName);
+            int? userId = null;
+            var uidStr = User.FindFirstValue("UserID") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (int.TryParse(uidStr, out int uid)) userId = uid;
+            else userId = HttpContext.Session.GetInt32(SessionKeys.UserID);
+
             string clientMac = NetworkDeviceHelper.GetClientMacAddress(HttpContext);
-            _ = _activityLogger.LogSubEntityActionAsync(
-                "ACCOUNT",
-                0,
+            _ = _activityLogger.LogAuthActionAsync(
+                userId,
                 username,
+                fullName,
+                role,
+                divId,
+                divName,
                 "USER_LOGOUT",
                 $"User '{username}' logged out of system [MAC: {clientMac}]",
                 new { username, MacAddress = clientMac });

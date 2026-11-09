@@ -202,6 +202,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Advocate", "CREATED", $"Created Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("Advocates");
             }
             return View("AdvocateForm", advocate);
@@ -222,6 +223,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Advocate", "UPDATED", $"Updated Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("Advocates");
             }
             return View("AdvocateForm", advocate);
@@ -232,6 +234,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult AdvocateDelete(int id)
         {
             _masterRepo.DeleteAdvocate(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"Advocate #{id}", "DELETED", $"Deleted Advocate #{id}");
             return RedirectToAction("Advocates");
         }
 
@@ -258,6 +261,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddMACT(mact);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", mact.MACTID, mact.MACTName ?? "MACT", "CREATED", $"Created MACT '{mact.MACTName}'", mact);
                 return RedirectToAction("MACTs");
             }
             return View("MACTForm", mact);
@@ -279,6 +283,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateMACT(mact);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", mact.MACTID, mact.MACTName ?? "MACT", "UPDATED", $"Updated MACT '{mact.MACTName}'", mact);
                 return RedirectToAction("MACTs");
             }
             return View("MACTForm", mact);
@@ -289,6 +294,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult MACTDelete(int id)
         {
             _masterRepo.DeleteMACT(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"MACT #{id}", "DELETED", $"Deleted MACT #{id}");
             return RedirectToAction("MACTs");
         }
 
@@ -312,6 +318,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddHighCourtAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "HC Advocate", "CREATED", $"Created High Court Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("HighCourtAdvocates");
             }
             return View("HighCourtAdvocateForm", advocate);
@@ -332,6 +339,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateHighCourtAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "HC Advocate", "UPDATED", $"Updated High Court Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("HighCourtAdvocates");
             }
             return View("HighCourtAdvocateForm", advocate);
@@ -342,6 +350,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult HighCourtAdvocateDelete(int id)
         {
             _masterRepo.DeleteHighCourtAdvocate(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"HC Advocate #{id}", "DELETED", $"Deleted High Court Advocate #{id}");
             return RedirectToAction("HighCourtAdvocates");
         }
 
@@ -365,6 +374,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddGratuityCourt(court);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", court.CourtID, court.CourtName ?? "Gratuity Court", "CREATED", $"Created Gratuity Court '{court.CourtName}'", court);
                 return RedirectToAction("GratuityCourts");
             }
             return View("GratuityCourtForm", court);
@@ -385,6 +395,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateGratuityCourt(court);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", court.CourtID, court.CourtName ?? "Gratuity Court", "UPDATED", $"Updated Gratuity Court '{court.CourtName}'", court);
                 return RedirectToAction("GratuityCourts");
             }
             return View("GratuityCourtForm", court);
@@ -395,6 +406,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult GratuityCourtDelete(int id)
         {
             _masterRepo.DeleteGratuityCourt(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"Gratuity Court #{id}", "DELETED", $"Deleted Gratuity Court #{id}");
             return RedirectToAction("GratuityCourts");
         }
 
@@ -418,6 +430,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddGratuityAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Gratuity Advocate", "CREATED", $"Created Gratuity Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("GratuityAdvocates");
             }
             return View("GratuityAdvocateForm", advocate);
@@ -438,6 +451,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateGratuityAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Gratuity Advocate", "UPDATED", $"Updated Gratuity Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("GratuityAdvocates");
             }
             return View("GratuityAdvocateForm", advocate);
@@ -448,6 +462,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult GratuityAdvocateDelete(int id)
         {
             _masterRepo.DeleteGratuityAdvocate(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"Gratuity Advocate #{id}", "DELETED", $"Deleted Gratuity Advocate #{id}");
             return RedirectToAction("GratuityAdvocates");
         }
         // --- LABOUR COURT ACTIONS ---
@@ -470,6 +485,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddLabourCourt(court);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", court.CourtID, court.CourtName ?? "Labour Court", "CREATED", $"Created Labour Court '{court.CourtName}'", court);
                 return RedirectToAction("LabourCourts");
             }
             return View("LabourCourtForm", court);
@@ -490,6 +506,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateLabourCourt(court);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", court.CourtID, court.CourtName ?? "Labour Court", "UPDATED", $"Updated Labour Court '{court.CourtName}'", court);
                 return RedirectToAction("LabourCourts");
             }
             return View("LabourCourtForm", court);
@@ -500,6 +517,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult LabourCourtDelete(int id)
         {
             _masterRepo.DeleteLabourCourt(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"Labour Court #{id}", "DELETED", $"Deleted Labour Court #{id}");
             return RedirectToAction("LabourCourts");
         }
 
@@ -523,6 +541,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.AddLabourAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Labour Advocate", "CREATED", $"Created Labour Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("LabourAdvocates");
             }
             return View("LabourAdvocateForm", advocate);
@@ -543,6 +562,7 @@ namespace MVCCaseManagement.Controllers
             if (ModelState.IsValid)
             {
                 _masterRepo.UpdateLabourAdvocate(advocate);
+                _ = _activityLogger.LogSubEntityActionAsync("MASTER", advocate.AdvocateID, advocate.AdvocateName ?? "Labour Advocate", "UPDATED", $"Updated Labour Advocate '{advocate.AdvocateName}'", advocate);
                 return RedirectToAction("LabourAdvocates");
             }
             return View("LabourAdvocateForm", advocate);
@@ -553,6 +573,7 @@ namespace MVCCaseManagement.Controllers
         public IActionResult LabourAdvocateDelete(int id)
         {
             _masterRepo.DeleteLabourAdvocate(id);
+            _ = _activityLogger.LogSubEntityActionAsync("MASTER", id, $"Labour Advocate #{id}", "DELETED", $"Deleted Labour Advocate #{id}");
             return RedirectToAction("LabourAdvocates");
         }
 

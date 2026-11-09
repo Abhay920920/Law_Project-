@@ -14,7 +14,7 @@
         var isGratuity = currentController == "Gratuity";
         var isLabour = currentController == "Labour" || currentController == "LabourEP" || (currentController == "ECourts" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase));
         var isOtherCourts = currentController == "Home" && (currentAction == "OtherCourts" || currentAction == "OSCorporation" || currentAction == "OSClaimant" || currentAction == "OtherCourtsCaseList" || currentAction?.EndsWith("Form") == true);
-        var isMaster = currentController == "Master" || currentController == "ApiDashboard";
+        var isMaster = currentController == "Master" || currentController == "ApiDashboard" || currentController == "ActivityLog";
         var isMVC = !isLabour && !isGratuity && !isReport && !isOtherCourts && !isMaster && currentController != "Home";
 
         var layoutRole = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? User.FindFirst("Role")?.Value ?? "";
@@ -319,6 +319,14 @@
         <a class="nav-link @(currentController == "Master" ? "active" : "")" href="/Master">
             <i class="bi bi-gear-wide-connected"></i>
             <span>Systems Setup</span>
+        </a>
+    }
+
+    @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || isDivisionController || !string.IsNullOrEmpty(layoutRole))
+    {
+        <a class="nav-link @(currentController == "ActivityLog" ? "active" : "")" href="/ActivityLog">
+            <i class="bi bi-clock-history"></i>
+            <span>Activity Log</span>
         </a>
     }
 

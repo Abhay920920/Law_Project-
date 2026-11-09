@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using MVCCaseManagement.Common;
 using MVCCaseManagement.Models.Audit;
 using MVCCaseManagement.Services;
 using MVCCaseManagement.Utils;
@@ -62,7 +63,7 @@ namespace MVCCaseManagement.Services.Audit
             string role = "System";
             int? divisionId = null;
             string divisionName = "Central Office";
-            string ipAddress = context?.Connection?.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+            string ipAddress = NetworkDeviceHelper.GetClientIpAddress(context);
             string? macAddress = NetworkDeviceHelper.GetClientMacAddress(context);
 
             if (user != null && user.Identity != null && user.Identity.IsAuthenticated)
@@ -86,8 +87,55 @@ namespace MVCCaseManagement.Services.Audit
                 var defaultDivPrefix = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
                 divisionName = user.FindFirstValue("DivisionName") ?? (divisionId == 5 ? "Central Office" : $"{defaultDivPrefix} Division");
             }
+            else if (context?.Session != null)
+            {
+                try
+                {
+                    var sessUser = context.Session.GetString(SessionKeys.Username);
+                    if (!string.IsNullOrEmpty(sessUser))
+                    {
+                        username = sessUser;
+                        fullName = context.Session.GetString(SessionKeys.FullName) ?? sessUser;
+                        role = context.Session.GetString(SessionKeys.RoleName) ?? "User";
+                        userId = context.Session.GetInt32(SessionKeys.UserID);
+                        divisionId = context.Session.GetInt32(SessionKeys.DivisionID);
+                        var defaultDivPrefix = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+                        divisionName = context.Session.GetString(SessionKeys.DivisionName) ?? (divisionId == 5 ? "Central Office" : $"{defaultDivPrefix} Division");
+                    }
+                }
+                catch
+                {
+                    // Fallback gracefully if session middleware is not ready
+                }
+            }
 
             return (userId, username, fullName, role, divisionId, divisionName, ipAddress, macAddress);
+        }
+
+        private (int? divisionId, string? divisionName) ResolveTargetDivision(object? entity, int? actorDivId, string? actorDivName)
+        {
+            if (entity != null)
+            {
+                var divProp = entity.GetType().GetProperty("DivisionID", BindingFlags.Public | BindingFlags.Instance)
+                           ?? entity.GetType().GetProperty("DivisionCode", BindingFlags.Public | BindingFlags.Instance);
+                if (divProp != null)
+                {
+                    var val = divProp.GetValue(entity);
+                    if (val is int intVal && intVal > 0)
+                    {
+                        string? name = null;
+                        var nameProp = entity.GetType().GetProperty("DivisionName", BindingFlags.Public | BindingFlags.Instance)
+                                    ?? entity.GetType().GetProperty("DivisionNameEnglish", BindingFlags.Public | BindingFlags.Instance);
+                        if (nameProp != null)
+                        {
+                            name = nameProp.GetValue(entity)?.ToString();
+                        }
+                        var defaultDivPrefix = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+                        return (intVal, name ?? (intVal == 5 ? "Central Office" : $"{defaultDivPrefix} Division"));
+                    }
+                }
+            }
+            return (actorDivId, actorDivName);
         }
 
         public async Task LogCaseCreatedAsync(
@@ -103,6 +151,7 @@ namespace MVCCaseManagement.Services.Audit
             try
             {
                 var actor = GetCurrentActor();
+                var targetDiv = ResolveTargetDivision(newValues, actor.divisionId, actor.divisionName);
                 string newJson = JsonSerializer.Serialize(newValues, _jsonOptions);
                 string summary = customSummary ?? $"Registered new {module} case {caseNumber}" + 
                     (!string.IsNullOrEmpty(vehicleNo) ? $" [Vehicle: {vehicleNo}]" : "") +
@@ -115,8 +164,8 @@ namespace MVCCaseManagement.Services.Audit
                     Username = actor.username,
                     UserFullName = actor.fullName,
                     UserRole = actor.role,
-                    DivisionID = actor.divisionId,
-                    DivisionName = actor.divisionName,
+                    DivisionID = targetDiv.divisionId,
+                    DivisionName = targetDiv.divisionName,
                     IpAddress = actor.ipAddress,
                     MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
@@ -150,6 +199,7 @@ namespace MVCCaseManagement.Services.Audit
             try
             {
                 var actor = GetCurrentActor();
+                var targetDiv = ResolveTargetDivision(newValues ?? oldValues, actor.divisionId, actor.divisionName);
                 string oldJson = JsonSerializer.Serialize(oldValues, _jsonOptions);
                 string newJson = JsonSerializer.Serialize(newValues, _jsonOptions);
 
@@ -173,8 +223,8 @@ namespace MVCCaseManagement.Services.Audit
                     Username = actor.username,
                     UserFullName = actor.fullName,
                     UserRole = actor.role,
-                    DivisionID = actor.divisionId,
-                    DivisionName = actor.divisionName,
+                    DivisionID = targetDiv.divisionId,
+                    DivisionName = targetDiv.divisionName,
                     IpAddress = actor.ipAddress,
                     MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
@@ -206,6 +256,7 @@ namespace MVCCaseManagement.Services.Audit
             try
             {
                 var actor = GetCurrentActor();
+                var targetDiv = (divisionId: actor.divisionId, divisionName: actor.divisionName);
                 string summary = $"Deleted {module} case {caseNumber}. Reason: {reason}";
 
                 await InsertActivityLogAsync(new CaseActivityLog
@@ -215,8 +266,8 @@ namespace MVCCaseManagement.Services.Audit
                     Username = actor.username,
                     UserFullName = actor.fullName,
                     UserRole = actor.role,
-                    DivisionID = actor.divisionId,
-                    DivisionName = actor.divisionName,
+                    DivisionID = targetDiv.divisionId,
+                    DivisionName = targetDiv.divisionName,
                     IpAddress = actor.ipAddress,
                     MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
@@ -248,6 +299,7 @@ namespace MVCCaseManagement.Services.Audit
             try
             {
                 var actor = GetCurrentActor();
+                var targetDiv = (divisionId: (int?)(toDivisionId > 0 ? toDivisionId : actor.divisionId), divisionName: !string.IsNullOrEmpty(toDivisionName) ? toDivisionName : actor.divisionName);
                 string summary = $"Transferred {module} case {caseNumber} from {fromDivisionName} to {toDivisionName}." +
                     (!string.IsNullOrEmpty(reason) ? $" Reason: {reason}" : "");
 
@@ -258,8 +310,8 @@ namespace MVCCaseManagement.Services.Audit
                     Username = actor.username,
                     UserFullName = actor.fullName,
                     UserRole = actor.role,
-                    DivisionID = actor.divisionId,
-                    DivisionName = actor.divisionName,
+                    DivisionID = targetDiv.divisionId,
+                    DivisionName = targetDiv.divisionName,
                     IpAddress = actor.ipAddress,
                     MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
@@ -288,6 +340,7 @@ namespace MVCCaseManagement.Services.Audit
             try
             {
                 var actor = GetCurrentActor();
+                var targetDiv = ResolveTargetDivision(details, actor.divisionId, actor.divisionName);
                 string? detailsJson = details != null ? JsonSerializer.Serialize(details, _jsonOptions) : null;
 
                 await InsertActivityLogAsync(new CaseActivityLog
@@ -297,8 +350,8 @@ namespace MVCCaseManagement.Services.Audit
                     Username = actor.username,
                     UserFullName = actor.fullName,
                     UserRole = actor.role,
-                    DivisionID = actor.divisionId,
-                    DivisionName = actor.divisionName,
+                    DivisionID = targetDiv.divisionId,
+                    DivisionName = targetDiv.divisionName,
                     IpAddress = actor.ipAddress,
                     MacAddress = actor.macAddress,
                     Module = module.ToUpperInvariant(),
@@ -313,6 +366,54 @@ namespace MVCCaseManagement.Services.Audit
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to write sub-action {ActionType} for case {CaseNumber}", actionType, caseNumber);
+            }
+        }
+
+        public async Task LogAuthActionAsync(
+            int? userId,
+            string username,
+            string fullName,
+            string role,
+            int? divisionId,
+            string? divisionName,
+            string actionType,
+            string summary,
+            object? details = null,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var context = _httpContextAccessor.HttpContext;
+                string ipAddress = NetworkDeviceHelper.GetClientIpAddress(context);
+                string? macAddress = NetworkDeviceHelper.GetClientMacAddress(context);
+                string? detailsJson = details != null ? JsonSerializer.Serialize(details, _jsonOptions) : null;
+
+                var defaultDivPrefix = _orgSettings?.GetCurrentSettings()?.OrganizationShortName ?? "NWKRTC";
+                string resolvedDivName = divisionName ?? (divisionId == 5 ? "Central Office" : (divisionId.HasValue ? $"{defaultDivPrefix} Division" : "Central Office"));
+
+                await InsertActivityLogAsync(new CaseActivityLog
+                {
+                    Timestamp = DateTime.Now,
+                    UserID = userId,
+                    Username = username,
+                    UserFullName = fullName,
+                    UserRole = role,
+                    DivisionID = divisionId,
+                    DivisionName = resolvedDivName,
+                    IpAddress = ipAddress,
+                    MacAddress = macAddress,
+                    Module = "ACCOUNT",
+                    CaseID = userId ?? 0,
+                    CaseNumber = username,
+                    ActionType = actionType.ToUpperInvariant(),
+                    ActionSummary = summary,
+                    ChangedFieldsSummary = summary,
+                    NewValuesJson = detailsJson
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to write auth activity log for user {Username} ({ActionType})", username, actionType);
             }
         }
 
@@ -459,7 +560,7 @@ namespace MVCCaseManagement.Services.Audit
                     LogID, Timestamp, UserID, Username, UserFullName, UserRole,
                     DivisionID, DivisionName, IpAddress, MacAddress, Module, CaseID,
                     CaseNumber, VehicleNo, CourtName, ActionType, ActionSummary,
-                    ChangedFieldsSummary, OldValuesJson, NewValuesJson
+                    ChangedFieldsSummary
                 FROM CASE_ACTIVITY_LOGS
                 {whereSql}
                 ORDER BY Timestamp DESC
@@ -497,8 +598,8 @@ namespace MVCCaseManagement.Services.Audit
                         ActionType = reader.GetString(15),
                         ActionSummary = reader.GetString(16),
                         ChangedFieldsSummary = reader.IsDBNull(17) ? null : reader.GetString(17),
-                        OldValuesJson = reader.IsDBNull(18) ? null : reader.GetString(18),
-                        NewValuesJson = reader.IsDBNull(19) ? null : reader.GetString(19)
+                        OldValuesJson = null,
+                        NewValuesJson = null
                     });
                 }
             }
@@ -547,16 +648,23 @@ namespace MVCCaseManagement.Services.Audit
             return kpi;
         }
 
-        public async Task<List<FieldChangeDiff>> GetLogDiffAsync(long logId, CancellationToken cancellationToken = default)
+        public async Task<List<FieldChangeDiff>> GetLogDiffAsync(long logId, int? divisionId = null, CancellationToken cancellationToken = default)
         {
             var list = new List<FieldChangeDiff>();
 
-            const string sql = "SELECT OldValuesJson, NewValuesJson FROM CASE_ACTIVITY_LOGS WHERE LogID = @LogID;";
+            string sql = (divisionId.HasValue && divisionId.Value > 0)
+                ? "SELECT OldValuesJson, NewValuesJson FROM CASE_ACTIVITY_LOGS WHERE LogID = @LogID AND DivisionID = @DivisionID;"
+                : "SELECT OldValuesJson, NewValuesJson FROM CASE_ACTIVITY_LOGS WHERE LogID = @LogID;";
+
             using var conn = new SqlConnection(_connectionString);
             await conn.OpenAsync(cancellationToken);
 
             using var cmd = new SqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@LogID", logId);
+            if (divisionId.HasValue && divisionId.Value > 0)
+            {
+                cmd.Parameters.AddWithValue("@DivisionID", divisionId.Value);
+            }
 
             using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))

@@ -25,6 +25,89 @@ namespace MVCCaseManagement.Utils
         private static readonly object _serverMacLock = new object();
 
         /// <summary>
+        /// Resolves the actual client IP address, properly handling reverse proxies,
+        /// Cloudflare, IIS ARR, and load balancers.
+        /// </summary>
+        public static string GetClientIpAddress(HttpContext? httpContext)
+        {
+            if (httpContext == null) return "127.0.0.1";
+
+            try
+            {
+                var headers = httpContext.Request?.Headers;
+                if (headers != null)
+                {
+                    if (headers.TryGetValue("X-Forwarded-For", out var xff) && !string.IsNullOrWhiteSpace(xff))
+                    {
+                        var first = xff.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+                        if (!string.IsNullOrEmpty(first) && IPAddress.TryParse(first, out var parsedXff))
+                        {
+                            return parsedXff.ToString();
+                        }
+                    }
+
+                    if (headers.TryGetValue("CF-Connecting-IP", out var cfIp) && !string.IsNullOrWhiteSpace(cfIp))
+                    {
+                        var trimmed = cfIp.ToString().Trim();
+                        if (IPAddress.TryParse(trimmed, out var parsedCf)) return parsedCf.ToString();
+                    }
+
+                    if (headers.TryGetValue("X-Real-IP", out var realIp) && !string.IsNullOrWhiteSpace(realIp))
+                    {
+                        var trimmed = realIp.ToString().Trim();
+                        if (IPAddress.TryParse(trimmed, out var parsedReal)) return parsedReal.ToString();
+                    }
+                }
+
+                var remoteIp = httpContext.Connection?.RemoteIpAddress;
+                if (remoteIp == null) return "127.0.0.1";
+                if (remoteIp.IsIPv4MappedToIPv6) remoteIp = remoteIp.MapToIPv4();
+                return remoteIp.ToString();
+            }
+            catch
+            {
+                return "127.0.0.1";
+            }
+        }
+
+        /// <summary>
+        /// Determines whether a resolved MAC address represents a genuine physical network adapter
+        /// (via local LAN ARP or gateway header) versus an IP-derived synthetic virtual device ID.
+        /// </summary>
+        public static bool IsPhysicalMac(string? mac)
+        {
+            if (string.IsNullOrWhiteSpace(mac) || mac == "N/A") return false;
+            if (mac.Contains("Header:", StringComparison.OrdinalIgnoreCase)) return true;
+            // Locally Administered MACs synthesized from public IPs start with 02:
+            if (mac.StartsWith("02:", StringComparison.OrdinalIgnoreCase)) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Determines whether an IP address is a private, loopback, or link-local address.
+        /// Public WAN addresses cannot be resolved via Layer-2 ARP across routers.
+        /// </summary>
+        public static bool IsPrivateOrLocalIp(IPAddress ip)
+        {
+            if (IPAddress.IsLoopback(ip)) return true;
+            if (ip.AddressFamily != AddressFamily.InterNetwork) return false;
+
+            byte[] b = ip.GetAddressBytes();
+            if (b.Length != 4) return false;
+
+            // 10.0.0.0/8
+            if (b[0] == 10) return true;
+            // 172.16.0.0/12
+            if (b[0] == 172 && b[1] >= 16 && b[1] <= 31) return true;
+            // 192.168.0.0/16
+            if (b[0] == 192 && b[1] == 168) return true;
+            // 169.254.0.0/16 (Link Local)
+            if (b[0] == 169 && b[1] == 254) return true;
+
+            return false;
+        }
+
+        /// <summary>
         /// Attempts to resolve the client machine's physical hardware MAC address.
         /// Evaluates reverse-proxy/client headers first, then local host interfaces for loopback requests,
         /// and utilizes SendARP on Windows for LAN/subnetwork clients.
@@ -35,6 +118,14 @@ namespace MVCCaseManagement.Utils
 
             try
             {
+                // Prune cache if it exceeds bounds (prevent unbounded memory leak)
+                if (_macCache.Count > 1000)
+                {
+                    var expired = _macCache.Where(kvp => kvp.Value.expires <= DateTime.UtcNow).Select(kvp => kvp.Key).ToList();
+                    foreach (var k in expired) _macCache.TryRemove(k, out _);
+                    if (_macCache.Count > 2000) _macCache.Clear();
+                }
+
                 // 1. Check HTTP headers only if explicitly forwarded by verified network devices
                 var headers = httpContext.Request?.Headers;
                 string? clientReportedMac = null;
@@ -56,16 +147,19 @@ namespace MVCCaseManagement.Utils
                 }
 
                 // 2. Resolve Remote IP Address
-                var remoteIp = httpContext.Connection?.RemoteIpAddress;
+                string ipStr = GetClientIpAddress(httpContext);
+                if (!IPAddress.TryParse(ipStr, out var remoteIp))
+                {
+                    remoteIp = httpContext.Connection?.RemoteIpAddress;
+                }
                 if (remoteIp == null) return "N/A";
 
                 // Handle IPv4-mapped IPv6 addresses (e.g., ::ffff:192.168.1.50)
                 if (remoteIp.IsIPv4MappedToIPv6)
                 {
                     remoteIp = remoteIp.MapToIPv4();
+                    ipStr = remoteIp.ToString();
                 }
-
-                string ipStr = remoteIp.ToString();
 
                 // 3. Check if Loopback or Localhost (e.g. running locally / dev / localhost:5000)
                 if (IPAddress.IsLoopback(remoteIp) || ipStr == "127.0.0.1" || ipStr == "::1")
@@ -79,8 +173,9 @@ namespace MVCCaseManagement.Utils
                     return cached.mac;
                 }
 
-                // 5. Query via SendARP for IPv4 on Local Subnet / Corporate LAN
-                if (remoteIp.AddressFamily == AddressFamily.InterNetwork)
+                // 5. Query via SendARP ONLY for private/local IPv4 on Local Subnet / Corporate LAN.
+                // Do NOT invoke SendARP for public WAN IPs because ARP cannot cross routers and blocks for 1-3 seconds.
+                if (remoteIp.AddressFamily == AddressFamily.InterNetwork && IsPrivateOrLocalIp(remoteIp))
                 {
                     byte[] ipBytes = remoteIp.GetAddressBytes();
                     uint destIp = BitConverter.ToUInt32(ipBytes, 0);

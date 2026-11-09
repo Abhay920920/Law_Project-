@@ -16,6 +16,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
 using System.Threading;
+using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -32,6 +33,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IOrganizationSettingsService? _orgSettings;
         private readonly IHighCourtCauseListScannerService? _causeListScanner;
         private readonly IHighCourtPartySearchStore? _partyStore;
+        private readonly ICaseActivityLogger? _activityLogger;
 
         public ECourtsController(
             IECourtsNapixService napixService,
@@ -43,7 +45,8 @@ namespace MVCCaseManagement.Controllers
             NapixSyncEngine syncEngine,
             IOrganizationSettingsService? orgSettings = null,
             IHighCourtCauseListScannerService? causeListScanner = null,
-            IHighCourtPartySearchStore? partyStore = null)
+            IHighCourtPartySearchStore? partyStore = null,
+            ICaseActivityLogger? activityLogger = null)
         {
             _napixService = napixService;
             _ecourtsRepo = ecourtsRepo;
@@ -55,6 +58,7 @@ namespace MVCCaseManagement.Controllers
             _orgSettings = orgSettings;
             _causeListScanner = causeListScanner;
             _partyStore = partyStore;
+            _activityLogger = activityLogger;
         }
 
         // POST / GET: /ECourts/QueueCaseSync
@@ -2018,6 +2022,12 @@ namespace MVCCaseManagement.Controllers
                 else if (module.Equals("Labour_Claimant", StringComparison.OrdinalIgnoreCase))
                 {
                     await conn.ExecuteAsync("UPDATE LABOUR_CASES SET CO_Claimant_CNRNumber = @cleanCnr, ModifiedDate = GETDATE() WHERE CaseID = @caseId", new { cleanCnr, caseId });
+                }
+
+                if (_activityLogger != null)
+                {
+                    string mod = module.StartsWith("Labour", StringComparison.OrdinalIgnoreCase) ? "LABOUR" : module.ToUpperInvariant();
+                    _ = _activityLogger.LogSubEntityActionAsync(mod, caseId, $"Case #{caseId}", "CNR_UPDATED", $"Linked CNR {cleanCnr} via {strategyUsed ?? "Direct Linking"}", new { CNR = cleanCnr, Strategy = strategyUsed, Module = module });
                 }
 
                 return Json(new { success = true, cnr = cleanCnr, strategy = strategyUsed, message = $"CNR {cleanCnr} successfully linked to case!" });
@@ -8406,6 +8416,11 @@ namespace MVCCaseManagement.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error updating order PDF path for CaseID {CaseID}", caseId);
+            }
+
+            if (_activityLogger != null && caseId.HasValue && caseId.Value > 0)
+            {
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", caseId.Value, $"Case #{caseId.Value}", "DOCUMENT_UPLOADED", $"Uploaded court order document '{fileName}' for CNR {cleanCnr}", new { FileName = fileName, CNR = cleanCnr, RelativePath = relativePath, Title = title, OrderDate = date });
             }
 
             return RedirectToAction("ViewOrderPdf", new { cnr = cleanCnr, title, date, caseId, url = relativePath });

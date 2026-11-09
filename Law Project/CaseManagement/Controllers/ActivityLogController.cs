@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models.Audit;
 using MVCCaseManagement.Services;
+using Microsoft.AspNetCore.Http;
+using MVCCaseManagement.Common;
 using MVCCaseManagement.Services.Audit;
 
 namespace MVCCaseManagement.Controllers
@@ -33,18 +35,45 @@ namespace MVCCaseManagement.Controllers
             _orgSettings = orgSettings;
         }
 
+        private (bool isCentralOffice, int? divisionId) ResolveUserDivisionScope()
+        {
+            var divIdString = User.FindFirstValue("DivisionID");
+            bool isCentralOffice = divIdString == "0" || divIdString == "5" 
+                || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || User.IsInRole("CO");
+
+            if (isCentralOffice)
+            {
+                return (true, null);
+            }
+
+            if (int.TryParse(divIdString, out int userDivId) && userDivId > 0)
+            {
+                return (false, userDivId);
+            }
+
+            int? sessDiv = HttpContext.Session.GetInt32(SessionKeys.DivisionID);
+            if (sessDiv.HasValue && sessDiv.Value > 0)
+            {
+                if (sessDiv.Value == 5) return (true, null);
+                return (false, sessDiv.Value);
+            }
+
+            // Fail-closed security: unassigned / unauthenticated division access denied
+            return (false, -1);
+        }
+
         public async Task<IActionResult> Index(ActivityLogFilter filter, CancellationToken cancellationToken)
         {
             filter ??= new ActivityLogFilter();
 
-            // Division-level scoping for non-HQ users
-            var divIdString = User.FindFirstValue("DivisionID");
-            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" 
-                || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || User.IsInRole("CO");
-
-            if (!isCentralOffice && int.TryParse(divIdString, out int userDivId))
+            var scope = ResolveUserDivisionScope();
+            if (!scope.isCentralOffice)
             {
-                filter.DivisionID = userDivId;
+                if (!scope.divisionId.HasValue || scope.divisionId <= 0)
+                {
+                    return Forbid();
+                }
+                filter.DivisionID = scope.divisionId;
                 ViewBag.IsDivisionRestricted = true;
             }
             else
@@ -61,7 +90,13 @@ namespace MVCCaseManagement.Controllers
         [HttpGet]
         public async Task<IActionResult> GetDiff(long id, CancellationToken cancellationToken)
         {
-            var diffs = await _activityLogger.GetLogDiffAsync(id, cancellationToken);
+            var scope = ResolveUserDivisionScope();
+            if (!scope.isCentralOffice && (!scope.divisionId.HasValue || scope.divisionId <= 0))
+            {
+                return Forbid();
+            }
+
+            var diffs = await _activityLogger.GetLogDiffAsync(id, scope.isCentralOffice ? null : scope.divisionId, cancellationToken);
             return Json(diffs);
         }
 
@@ -72,13 +107,14 @@ namespace MVCCaseManagement.Controllers
             filter.Page = 1;
             filter.PageSize = 5000; // Export up to 5,000 records
 
-            var divIdString = User.FindFirstValue("DivisionID");
-            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" 
-                || User.IsInRole("Admin") || User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("MD") || User.IsInRole("CO");
-
-            if (!isCentralOffice && int.TryParse(divIdString, out int userDivId))
+            var scope = ResolveUserDivisionScope();
+            if (!scope.isCentralOffice)
             {
-                filter.DivisionID = userDivId;
+                if (!scope.divisionId.HasValue || scope.divisionId <= 0)
+                {
+                    return Forbid();
+                }
+                filter.DivisionID = scope.divisionId;
             }
 
             var model = await _activityLogger.GetLogSheetAsync(filter, cancellationToken);
