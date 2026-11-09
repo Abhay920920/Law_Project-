@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <RollForward>Major</RollForward>
+    <UseAppHost>false</UseAppHost>
     <NoWarn>$(NoWarn);CS8600;CS8601;CS8602;CS8603;CS8604;CS8618;CS8625;CS8629;CS0219;CS0168;CS1998</NoWarn>
   </PropertyGroup>
 
