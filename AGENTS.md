@@ -6,13 +6,16 @@
 
 ---
 
-## 🧭 The 4 Compulsory Skills
+## 🧭 The Core Skills Framework
 
-1. 🕸️ **`graphify-8` — Structural Dependency & Impact Mapping** (`.agents/skills/graphify-8/`)
+1. 📚 **`law-project-expert` — Complete Law Project Architecture & Reference Manual** (`.agents/skills/law-project-expert/`)
+   - Consult for complete directory blueprints, controller mappings, services, database schemas on `198.38.89.31` (`Admin_Law`), SQL Server 2012 dialect rules, multi-tenant boundaries, and developer runbooks.
+
+2. 🕸️ **`graphify-8` — Structural Dependency & Impact Mapping** (`.agents/skills/graphify-8/`)
    - Check the affected community (eCourts, Labour, MVC, Gratuity, AI, DAL, etc.) and God Nodes ([`DBHelper`](Law%20Project/CaseManagement/DAL/DBHelper.cs), [`CaseRepository`](Law%20Project/CaseManagement/DAL/CaseRepository.cs), [`ECourtsController`](Law%20Project/CaseManagement/Controllers/ECourtsController.cs), [`LabourController`](Law%20Project/CaseManagement/Controllers/LabourController.cs)).
    - Map inward and outward dependency edges before modifying any file to prevent cascade failures.
 
-2. 🦹 **`rules/ponytail.md` — Lazy Senior Developer Principle** (`.agents/skills/rules/ponytail.md`)
+3. 🦹 **`rules/ponytail.md` — Lazy Senior Developer Principle** (`.agents/skills/rules/ponytail.md`)
    - *"The best code is the code never written."* Climb the 7-Rung Ladder:
      1. *Does this need to be built at all? (YAGNI)*
      2. *Does it already exist in this codebase?* (Reuse existing DAL repositories, `DBHelper`, `DataRowExtensions`, `PasswordHelper`).
@@ -24,13 +27,13 @@
    - Fix root cause in shared functions once, not symptoms across individual call sites.
    - Deletion over addition; zero unnecessary abstractions or boilerplate; shortest working diff.
 
-3. 🔍 **`find-security-vulnerabilities-in-code` — Strix White-Box Security Gate** (`.agents/skills/find-security-vulnerabilities-in-code/`)
+4. 🔍 **`find-security-vulnerabilities-in-code` — Strix White-Box Security Gate** (`.agents/skills/find-security-vulnerabilities-in-code/`)
    - **Multi-Tenant Boundary Isolation**: Every SQL query must filter by `DivisionID` unless the user is Central Office or Admin (`DivisionID = 0 or 5`).
    - **100% Parameterization**: All SQL queries must use parameters (`@param`) with `SqlCommand` or Dapper. Never concatenate strings into SQL queries.
    - **Authorization & IDOR Defense**: Enforce `[Authorize]`, claims checking, and `DivisionControllerReadOnlyFilter` (Division Controller is strictly read-only; no POST/PUT/DELETE mutations).
    - **SSRF & Input Validation**: Validate external and e-Courts URLs via `UrlSecurityValidator`.
 
-4. ⚡ **`gsd-core-next` — Spec-Driven Phased Execution Loop** (`.agents/skills/gsd-core-next/`)
+5. ⚡ **`gsd-core-next` — Spec-Driven Phased Execution Loop** (`.agents/skills/gsd-core-next/`)
    - Follow the 5-step loop: **Discuss $\to$ Plan $\to$ Execute $\to$ Verify $\to$ Ship**.
    - **Plan First**: Always present a structured plan with clear phases/waves before writing code.
    - **Implement One by One**: Execute code modifications sequentially, file by file, preserving clean boundaries and existing comments.
