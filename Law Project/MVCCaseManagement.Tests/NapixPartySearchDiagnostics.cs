@@ -201,7 +201,7 @@ namespace MVCCaseManagement.Tests
             var quotaService = new NapixQuotaService(configuration, NullLogger<NapixQuotaService>.Instance);
             var napixService = new ECourtsNapixService(httpClient, memoryCache, configuration, NullLogger<ECourtsNapixService>.Instance, quotaService);
 
-            var benchesResult = await napixService.GetHighCourtCauselistBenchesAsync("KAHC02", "2026-11-03");
+            var benchesResult = await napixService.GetHighCourtCauselistBenchesAsync("KAHC02", "2026-11-11");
             if (!benchesResult.HasValue) return;
 
             foreach (var prop in benchesResult.Value.EnumerateObject())
@@ -211,7 +211,7 @@ namespace MVCCaseManagement.Tests
                 string jName = prop.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() ?? "" : "";
                 string cNo = prop.Value.TryGetProperty("court_no", out var cp) ? cp.GetString() ?? "" : "";
 
-                var dtlResult = await napixService.GetHighCourtCauselistDetailsAsync("KAHC02", bId, "2026-11-03");
+                var dtlResult = await napixService.GetHighCourtCauselistDetailsAsync("KAHC02", bId, "2026-11-11");
                 if (!dtlResult.HasValue || dtlResult.Value.ValueKind != JsonValueKind.Object)
                 {
                     _output.WriteLine($"Bench: {bId} | Court: {cNo} | Judge: {jName} | No causelists");

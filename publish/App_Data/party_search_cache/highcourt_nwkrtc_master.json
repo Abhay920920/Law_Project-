@@ -1405,7 +1405,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020005452020",
@@ -3786,9 +3786,9 @@
     "MatchedDesignation": "Petitioner Management",
     "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
     "HighCourtBench": "Dharwad Bench",
-    "NextHearingDate": "2026-11-04T00:00:00+05:30",
+    "NextHearingDate": "2026-11-11T00:00:00",
     "CaseStage": "HEARING",
-    "CourtHall": "COURT HALL NO : 10 (Serial No. 4)",
+    "CourtHall": "COURT HALL NO : 10 (Serial No. 23)",
     "IsLocalMatch": false,
     "LocalCaseId": null,
     "LocalAppealId": null,
@@ -3799,13 +3799,13 @@
     "AssignedWorker": null,
     "CauseListType": null,
     "CauseListNo": "1",
-    "CauseListItemNo": "4",
+    "CauseListItemNo": "23",
     "JudgeName": null,
-    "Advocate": "PRASHANT HOSMANI",
+    "Advocate": "PRAKASH HOSAMANI",
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Past Hearing"
+    "ListingStatus": "Listed Today"
   },
   {
     "CNRNumber": "KAHC020182382011",
@@ -6461,7 +6461,7 @@
     "SubjectCategory": null,
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Future Hearing"
+    "ListingStatus": "Upcoming This Week"
   },
   {
     "CNRNumber": "KAHC020136062026",
@@ -6717,7 +6717,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020017282014",
@@ -7389,7 +7389,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020013752026",
@@ -7997,7 +7997,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020032712013",
@@ -8957,7 +8957,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020066192019",
@@ -9629,7 +9629,7 @@
     "SubjectCategory": "(MV, )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020215132025",
@@ -10493,7 +10493,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020121882016",
@@ -10826,9 +10826,9 @@
     "MatchedDesignation": "Petitioner Management",
     "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
     "HighCourtBench": "Dharwad Bench",
-    "NextHearingDate": "2026-11-05T00:00:00",
+    "NextHearingDate": "2026-11-11T00:00:00",
     "CaseStage": "HEARING",
-    "CourtHall": "COURT HALL NO : 10 (Serial No. 1)",
+    "CourtHall": "COURT HALL NO : 10 (Serial No. 43)",
     "IsLocalMatch": false,
     "LocalCaseId": null,
     "LocalAppealId": null,
@@ -10839,7 +10839,7 @@
     "AssignedWorker": null,
     "CauseListType": null,
     "CauseListNo": "1",
-    "CauseListItemNo": "1",
+    "CauseListItemNo": "43",
     "JudgeName": null,
     "Advocate": "PRASHANT S HOSMANI",
     "SubjectCategory": "(L, KSRTC )",
@@ -11069,7 +11069,7 @@
     "SubjectCategory": "(MV, I)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020048342023",
@@ -11520,6 +11520,38 @@
     "ListingStatus": "Date Pending"
   },
   {
+    "CNRNumber": "KAHC02WP10522720",
+    "CaseType": "WP",
+    "RegNumber": "105227",
+    "RegYear": "2018",
+    "PetitionerName": "INAYAT BAGBAN S/O. IMAMSAHEB BAGBAN K L PATIL",
+    "RespondentName": "KARNATAKA STATE ROAD TRANSPORT CORPORATION AND OTHERS",
+    "NwkrtcRole": "Against NWKRTC",
+    "MatchedDesignation": "Respondent Corporation",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 6 (Serial No. 17)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "17",
+    "JudgeName": null,
+    "Advocate": "SHIVAKUMAR S BADAWADAGI",
+    "SubjectCategory": "(S, KSRTC )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
+  },
+  {
     "CNRNumber": "KAHC020181622026",
     "CaseType": "WP",
     "RegNumber": "108357",
@@ -11933,7 +11965,7 @@
     "SubjectCategory": "(MV, D )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020086492025",
@@ -12701,7 +12733,7 @@
     "SubjectCategory": null,
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Future Hearing"
+    "ListingStatus": "Upcoming This Week"
   },
   {
     "CNRNumber": "KAHC020009242017",
@@ -14845,7 +14877,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020011672019",
@@ -15517,7 +15549,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020013332022",
@@ -15741,7 +15773,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020130502023",
@@ -18685,7 +18717,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020084952020",
@@ -18942,6 +18974,38 @@
     "RoznamaText": null,
     "HasRoznama": false,
     "ListingStatus": "Date Pending"
+  },
+  {
+    "CNRNumber": "KAHC02WP11228220",
+    "CaseType": "WP",
+    "RegNumber": "112282",
+    "RegYear": "2019",
+    "PetitionerName": "SMT.MAHADEVI W/O SHARANAPPA BIRADAR AND ANOTHER",
+    "RespondentName": "THE DIVISIONAL CONTROLER PRASHANT S HOSMANI (NOC)",
+    "NwkrtcRole": "With NWKRTC",
+    "MatchedDesignation": "Respondent Corporation",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 6 (Serial No. 40)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "40",
+    "JudgeName": null,
+    "Advocate": "RAVI HEGDE",
+    "SubjectCategory": "(S, KSRTC )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
   },
   {
     "CNRNumber": "KAHC020056832019",
@@ -19901,7 +19965,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020026162017",
@@ -21053,7 +21117,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020032872017",
@@ -21597,7 +21661,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020030912026",
@@ -22365,7 +22429,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020023942017",
@@ -23389,7 +23453,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020115632025",
@@ -25213,7 +25277,7 @@
     "SubjectCategory": null,
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Future Hearing"
+    "ListingStatus": "Upcoming This Week"
   },
   {
     "CNRNumber": "KAHC020191232022",
@@ -30941,7 +31005,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020036072015",
@@ -31965,7 +32029,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020161672026",
@@ -36192,6 +36256,38 @@
     "ListingStatus": "Date Pending"
   },
   {
+    "CNRNumber": "KAHC02WP10453420",
+    "CaseType": "WP",
+    "RegNumber": "104534",
+    "RegYear": "2026",
+    "PetitionerName": "THE MANAGEMENT OF NWKRTC KHANNUR MADAN. M",
+    "RespondentName": "SHRI. SHANKARGOUDA RAMAGOUDRA PATIL SHANKARGOUDA-SD Connected",
+    "NwkrtcRole": "By NWKRTC",
+    "MatchedDesignation": "Petitioner Management",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 4 (Serial No. 66)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "66",
+    "JudgeName": null,
+    "Advocate": "",
+    "SubjectCategory": "(L, KSRTC )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
+  },
+  {
     "CNRNumber": "KAHC020156172023",
     "CaseType": "MFA",
     "RegNumber": "104501",
@@ -37853,7 +37949,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020025702018",
@@ -40477,7 +40573,7 @@
     "SubjectCategory": "(MV, D )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020202542025",
@@ -44413,7 +44509,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020046592026",
@@ -47037,7 +47133,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020040052019",
@@ -49117,7 +49213,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020089992023",
@@ -49469,7 +49565,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020085582019",
@@ -50301,7 +50397,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020114042025",
@@ -52864,6 +52960,38 @@
     "ListingStatus": "Date Pending"
   },
   {
+    "CNRNumber": "KAHC02WP10464220",
+    "CaseType": "WP",
+    "RegNumber": "104642",
+    "RegYear": "2026",
+    "PetitionerName": "THE MANAGEMENT OF NWKRTC KHANNUR MADAN. M",
+    "RespondentName": "SHRI. SHANKARGOUDA RAMAGOUDRA PATIL",
+    "NwkrtcRole": "By NWKRTC",
+    "MatchedDesignation": "Petitioner Management",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 4 (Serial No. 66.1)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "66.1",
+    "JudgeName": null,
+    "Advocate": "RAVI HEGDE",
+    "SubjectCategory": "(L, ID )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
+  },
+  {
     "CNRNumber": "KAHC020201112024",
     "CaseType": "WP",
     "RegNumber": "107192",
@@ -53149,7 +53277,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020159972019",
@@ -56512,6 +56640,38 @@
     "ListingStatus": "Date Pending"
   },
   {
+    "CNRNumber": "KAHC02WP10301820",
+    "CaseType": "WP",
+    "RegNumber": "103018",
+    "RegYear": "2026",
+    "PetitionerName": "THE DIVISIONAL CONTROLLER KHANNUR MADAN. M",
+    "RespondentName": "SHRI IRAPPA S/O DUNDAPPA NAIK S K",
+    "NwkrtcRole": "By NWKRTC",
+    "MatchedDesignation": "Petitioner Management",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 4 (Serial No. 63)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "63",
+    "JudgeName": null,
+    "Advocate": "",
+    "SubjectCategory": "(L, ID )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
+  },
+  {
     "CNRNumber": "KAHC020137232026",
     "CaseType": "MFA",
     "RegNumber": "102449",
@@ -57373,7 +57533,7 @@
     "SubjectCategory": null,
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Future Hearing"
+    "ListingStatus": "Upcoming This Week"
   },
   {
     "CNRNumber": "KAHC020147282025",
@@ -60893,7 +61053,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020062082019",
@@ -61598,6 +61758,38 @@
     "RoznamaText": null,
     "HasRoznama": false,
     "ListingStatus": "Date Pending"
+  },
+  {
+    "CNRNumber": "KAHC02WA10076720",
+    "CaseType": "WA",
+    "RegNumber": "100767",
+    "RegYear": "2025",
+    "PetitionerName": "SRI. SHEKARGOUDA S/O VIRAPPANAGOUDA PIDDANAGOUDAR",
+    "RespondentName": "THE DIVISIONAL CONTROLLER PRASHANT S HOSMANI",
+    "NwkrtcRole": "Against NWKRTC",
+    "MatchedDesignation": "Respondent Corporation",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 2 (Serial No. 54)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "54",
+    "JudgeName": null,
+    "Advocate": "RAVI HEGDE",
+    "SubjectCategory": "(L, ID )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
   },
   {
     "CNRNumber": "KAHC020100632018",
@@ -62538,9 +62730,9 @@
     "MatchedDesignation": "Petitioner Management",
     "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
     "HighCourtBench": "Dharwad Bench",
-    "NextHearingDate": "2026-11-05T00:00:00",
+    "NextHearingDate": "2026-11-11T00:00:00",
     "CaseStage": "HEARING",
-    "CourtHall": "COURT HALL NO : 10 (Serial No. 1.1)",
+    "CourtHall": "COURT HALL NO : 10 (Serial No. 43.1)",
     "IsLocalMatch": false,
     "LocalCaseId": null,
     "LocalAppealId": null,
@@ -62551,7 +62743,7 @@
     "AssignedWorker": null,
     "CauseListType": null,
     "CauseListNo": "1",
-    "CauseListItemNo": "1.1",
+    "CauseListItemNo": "43.1",
     "JudgeName": null,
     "Advocate": "PRASHANT S HOSMANI",
     "SubjectCategory": "(L, KSRTC )",
@@ -63613,7 +63805,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020086872025",
@@ -64285,7 +64477,7 @@
     "SubjectCategory": "(MV, I )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020259092025",
@@ -68288,6 +68480,38 @@
     "ListingStatus": "Date Pending"
   },
   {
+    "CNRNumber": "KAHC02WA10062720",
+    "CaseType": "WA",
+    "RegNumber": "100627",
+    "RegYear": "2026",
+    "PetitionerName": "SRI IRAYYA S/O",
+    "RespondentName": "N.W.K.R.T.C (DATE) PANCHAXARAYYA HIREMATH VENKATESH M KHARVI DHANANJAY H M, PRAVEEN",
+    "NwkrtcRole": "With NWKRTC",
+    "MatchedDesignation": "Respondent Corporation",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "Court Hall ((ADDL. REGISTRAR JUDICIAL)) (Serial No. 23)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "23",
+    "JudgeName": null,
+    "Advocate": "",
+    "SubjectCategory": "(L, KSRTC )",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
+  },
+  {
     "CNRNumber": "KAHC020057562019",
     "CaseType": "MFA",
     "RegNumber": "100070",
@@ -69917,7 +70141,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020042452026",
@@ -70302,6 +70526,38 @@
     "RoznamaText": null,
     "HasRoznama": false,
     "ListingStatus": "Date Pending"
+  },
+  {
+    "CNRNumber": "KAHC02CCC1002072",
+    "CaseType": "CCC",
+    "RegNumber": "100207",
+    "RegYear": "2025",
+    "PetitionerName": "SHRI SOMALINGAPPA S/O. NINGAPPA SYRYAVANSHI",
+    "RespondentName": "MR. V.G.GULAPPANAVAR AND ANOTHER PRASHANT S HOSMANI FOR A1 \u0026 A2",
+    "NwkrtcRole": "With NWKRTC",
+    "MatchedDesignation": "Respondent Corporation",
+    "EstablishmentName": "High Court of Karnataka, Dharwad Bench",
+    "HighCourtBench": "Dharwad Bench",
+    "NextHearingDate": "2026-11-11T00:00:00",
+    "CaseStage": "HEARING",
+    "CourtHall": "COURT HALL NO : 3 (Serial No. 1)",
+    "IsLocalMatch": false,
+    "LocalCaseId": null,
+    "LocalAppealId": null,
+    "LocalModule": null,
+    "IsListedToday": true,
+    "IsTrackedInMyCases": false,
+    "TrackedId": null,
+    "AssignedWorker": null,
+    "CauseListType": null,
+    "CauseListNo": "1",
+    "CauseListItemNo": "1",
+    "JudgeName": null,
+    "Advocate": "RAVI HEGDE",
+    "SubjectCategory": "(CCC)",
+    "RoznamaText": null,
+    "HasRoznama": false,
+    "ListingStatus": "Listed Today"
   },
   {
     "CNRNumber": "KAHC020026072019",
@@ -71517,7 +71773,7 @@
     "SubjectCategory": "(S, KSRTC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020028662015",
@@ -71677,7 +71933,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC020047462016",

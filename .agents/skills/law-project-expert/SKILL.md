@@ -185,3 +185,4 @@ For **EVERY** future prompt, you must evaluate changes against the 4 compulsory 
 2. 🦹 **`rules/ponytail.md`**: Climb the 7-Rung Ladder; reuse existing DAL/helpers; fix root causes in shared methods once; zero unnecessary boilerplate.
 3. 🔍 **`find-security-vulnerabilities-in-code`**: Multi-tenant boundary isolation, 100% parameterization (`@param`), IDOR prevention, read-only AST safety.
 4. ⚡ **`gsd-core-next`**: Follow Discuss $\to$ Plan $\to$ Execute $\to$ Verify $\to$ Ship. Verify via `dotnet build -t:Compile` and test suites before reporting completion.
+

@@ -408,7 +408,8 @@
                             html = '<div class="text-center p-4 text-muted small">No new notifications</div>';
                         }
                         $('#notificationList').html(html);
-                    }).fail(function() {
+                    }).fail(function(xhr) {
+                        if (xhr && xhr.status === 401) { $('#notificationBadge').addClass('d-none'); return; }
                         $('#notificationList').html('<div class="text-center p-3 text-muted small">Notifications unavailable</div>');
                     });
                 }

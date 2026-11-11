@@ -227,9 +227,9 @@ namespace MVCCaseManagement.DAL
                     a.CorpMFAYear AS MFAYear,
                     a.CorpMFACNRNumber AS CNRNumber,
                     CASE 
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC01%' OR a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC03%' OR a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC02%' OR a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
                         WHEN a.HighCourtBench IS NOT NULL AND a.HighCourtBench <> '' THEN a.HighCourtBench
                         ELSE 'Dharwad Bench'
                     END AS HighCourtBench,
@@ -261,9 +261,9 @@ namespace MVCCaseManagement.DAL
                     a.ClaimantMFAYear AS MFAYear,
                     a.ClaimantMFACNRNumber AS CNRNumber,
                     CASE 
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
-                        WHEN a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC01%' OR a.CorpMFACNRNumber LIKE 'KAHC01%' THEN 'Principal Bench (Bengaluru)'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC03%' OR a.CorpMFACNRNumber LIKE 'KAHC03%' THEN 'Kalaburagi Bench'
+                        WHEN a.ClaimantMFACNRNumber LIKE 'KAHC02%' OR a.CorpMFACNRNumber LIKE 'KAHC02%' THEN 'Dharwad Bench'
                         WHEN a.HighCourtBench IS NOT NULL AND a.HighCourtBench <> '' THEN a.HighCourtBench
                         ELSE 'Dharwad Bench'
                     END AS HighCourtBench,

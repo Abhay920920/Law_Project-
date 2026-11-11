@@ -24,7 +24,7 @@ namespace MVCCaseManagement.Utils
     {
         // 1. Primary entity acronyms and known data-entry typos in court systems
         private static readonly Regex AcronymRegex = new(
-            @"\b(NWKRTC|NKWRTC|NWKTC|NWKRTS|NWSRTC|NWKSRTC|N\s*W\s*K\s*R\s*T\s*C|N\.W\.K\.R\.T\.C|N\.W\.K\.S\.R\.T\.C|KSRTC\s*\(NW\))\b",
+            @"(?:\b|(?<=\W))(NWKRTC|NKWRTC|NWKTC|NWKRTS|NWSRTC|NWKSRTC|N[-.\s]*W[-.\s]*K[-.\s]*R[-.\s]*T[-.\s]*C\.?|N[-.\s]*W[-.\s]*K[-.\s]*S[-.\s]*R[-.\s]*T[-.\s]*C\.?|KSRTC\s*\(NW\))(?=\b|(?:\W|$))",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         // 2. Full corporate names
@@ -52,7 +52,7 @@ namespace MVCCaseManagement.Utils
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex DivisionalControllerRegex = new(
-            @"\b(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|THE\s+DIVISIONAL\s*CONTROLLER|DIVISION\s+NWKRTC)\b",
+            @"\b(DIVIS?IONAL\s*CONTROL+ER|DIVIS?IONALCONTROL+ER|THE\s+DIVIS?IONAL\s*CONTROL+ER|DIVISION\s+NWKRTC)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private static readonly Regex DepotManagerRegex = new(
@@ -93,6 +93,8 @@ namespace MVCCaseManagement.Utils
                 s.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NWKSRTC", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N.W.K.S.R.T.C", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH WEST", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH-WEST", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH WESTERN", StringComparison.OrdinalIgnoreCase) ||
@@ -145,7 +147,9 @@ namespace MVCCaseManagement.Utils
             // 2. Exclude State Government / Police / Revenue / Municipal entities without NWKRTC reference
             if (Regex.IsMatch(s, @"\b(STATE\s+OF\s+KARNATAKA|GOVERNMENT\s+OF|DEPUTY\s+COMMISSIONER|ASSISTANT\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|MUNICIPAL|CITY\s+CORPORATION|HDMC|UNIVERSITY|COLLEGE|SCHOOL)\b", RegexOptions.IgnoreCase) &&
                 !s.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) &&
-                !s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase))
+                !s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase) &&
+                !s.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) &&
+                !AcronymRegex.IsMatch(s))
             {
                 return false;
             }
@@ -153,17 +157,25 @@ namespace MVCCaseManagement.Utils
             // 3. Exclude non-transport commercial / private / banking / insurance entities without NWKRTC reference
             if (NonTransportCorporateRegex.IsMatch(s) &&
                 !s.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) &&
-                !s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase))
+                !s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase) &&
+                !s.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) &&
+                !AcronymRegex.IsMatch(s) &&
+                !InsuranceFundRegex.IsMatch(s))
             {
                 return false;
             }
 
             bool hasAcronym = AcronymRegex.IsMatch(s);
             bool hasFullName = FullNameRegex.IsMatch(s);
-            bool hasNwkrtcKeyword = hasAcronym || hasFullName ||
+            bool hasInsuranceFund = InsuranceFundRegex.IsMatch(s);
+            bool hasNwkrtcKeyword = hasAcronym || hasFullName || hasInsuranceFund ||
                 s.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NKWRTC", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NWKSRTC", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N.W.K.S.R.T.C", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N-W-K-R-T-C", StringComparison.OrdinalIgnoreCase) ||
+                s.Contains("N W K R T C", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH WEST", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH-WEST", StringComparison.OrdinalIgnoreCase) ||
                 s.Contains("NORTH WESTERN", StringComparison.OrdinalIgnoreCase) ||
@@ -215,6 +227,17 @@ namespace MVCCaseManagement.Utils
                     !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
                 {
                     designation = "Depot Manager";
+                    return true;
+                }
+                if (CpmRegex.IsMatch(s) &&
+                    !Regex.IsMatch(s, @"\b(RAILWAY|BESCOM|HESCOM|NEKRTC|KKRTC|BMTC)\b", RegexOptions.IgnoreCase))
+                {
+                    designation = "CPM (Personnel)";
+                    return true;
+                }
+                if (InsuranceFundRegex.IsMatch(s))
+                {
+                    designation = "Insurance Fund";
                     return true;
                 }
                 if (Regex.IsMatch(s, @"\b(THE\s+MANAGEMENT\s+OF\s+NWKRTC|THE\s+MANAGING\s+OF\s+NWKRTC|MANAGEMENTOF\s*NWKRTC)\b", RegexOptions.IgnoreCase))

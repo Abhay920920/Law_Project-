@@ -2129,17 +2129,42 @@ function getNormalizedItemDateStr(item) {
     return raw;
 }
 
+function isItemScheduledOnDate(item, targetDateStr) {
+    if (!item) return false;
+    const dStr = getNormalizedItemDateStr(item);
+    if (item.isListedToday) {
+        return !targetDateStr || !dStr || dStr === targetDateStr;
+    }
+    return Boolean(targetDateStr && dStr && dStr === targetDateStr);
+}
+
+function getDynamicYesterdayDisplay(refDateStr) {
+    let dt = new Date();
+    if (refDateStr) {
+        const parts = refDateStr.split('-');
+        if (parts.length === 3) {
+            dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+    }
+    dt.setDate(dt.getDate() - 1);
+    if (dt.getDay() === 0) dt.setDate(dt.getDate() - 2);
+    else if (dt.getDay() === 6) dt.setDate(dt.getDate() - 1);
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const yyyy = dt.getFullYear();
+    return `${dd}-${mm}-${yyyy}`;
+}
+
 function switchCauseListViewMode(mode) {
     currentViewMode = mode;
+    if (mode === 'today') {
+        window.__userExplicitlyPickedToday = true;
+    }
     const activeDate = (window.__currentDisplayDate || document.getElementById('liveDate')?.value || '').trim();
     const allItems = window.__allHcCauselistItems || [];
     
-    // An item belongs to the selected cause list date ONLY if its listing date matches activeDate
-    const todayItems = allItems.filter(i => {
-        if (!i || !i.isListedToday) return false;
-        const dStr = getNormalizedItemDateStr(i);
-        return !activeDate || !dStr || dStr === activeDate;
-    });
+    // An item belongs to the selected cause list date if it was scanned from daily cause list OR its nextHearingDate matches
+    const todayItems = allItems.filter(i => isItemScheduledOnDate(i, activeDate));
 
     const listedCount = todayItems.length;
     const totalCount = window.__serverRes?.allCount ?? allItems.length;
@@ -2180,12 +2205,21 @@ function switchCauseListViewMode(mode) {
 
     const liveSummary = document.getElementById('liveHeaderSummary');
     if (liveSummary) {
+        let isWeekend = false;
+        if (activeDate) {
+            const parts = activeDate.split('-');
+            if (parts.length === 3) {
+                const dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
+            }
+        }
+        const dayNote = isWeekend ? ' (Weekend / Non-Sitting Court Day)' : '';
         const benchDesc = (!window.__currentTargetBench || window.__currentTargetBench === 'All Benches') ? 'All Benches (Bengaluru, Dharwad, Kalaburagi)' : window.__currentTargetBench;
         liveSummary.innerHTML = (mode === 'today')
             ? (listedCount > 0
                 ? `Found <strong id="liveHeaderCount">${listedCount}</strong> ${defaultOrgShortName} matter${listedCount > 1 ? 's' : ''} listed for hearing on <strong>${activeDate}</strong> (${benchDesc})`
-                : `0 matters listed for hearing on <strong>${activeDate}</strong> across ${benchDesc}`)
-            : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${benchDesc})`;
+                : `0 matters listed for hearing on <strong>${activeDate}</strong> across ${benchDesc}${dayNote}`)
+            : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters for <strong>${defaultOrgShortName}</strong> (${benchDesc})${listedCount > 0 ? ` · ${listedCount} scheduled today` : ` · 0 scheduled on ${activeDate}`}`;
     }
 
     filterLiveCauselistRows();
@@ -2197,17 +2231,16 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
     const allItems = window.__allHcCauselistItems && window.__allHcCauselistItems.length > 0 ? window.__allHcCauselistItems : (rawItems || []);
     
-    // Strict date filtering so Friday cases never leak into Saturday
-    const todayItems = allItems.filter(i => {
-        if (!i || !i.isListedToday) return false;
-        const dStr = getNormalizedItemDateStr(i);
-        return !displayDate || !dStr || dStr === displayDate;
-    });
+    // An item belongs to the selected cause list date if it was scanned from daily cause list OR its nextHearingDate matches
+    const todayItems = allItems.filter(i => isItemScheduledOnDate(i, displayDate));
 
     const listedCount = todayItems.length;
     const totalCount = res?.allCount ?? allItems.length;
 
-    if (currentViewMode !== 'all') {
+    // Smart Tab Default: If today has 0 listed cases but active matters exist, default to 'all' so users immediately see their cases!
+    if (!window.__userExplicitlyPickedToday) {
+        currentViewMode = (listedCount > 0) ? 'today' : 'all';
+    } else if (currentViewMode !== 'all') {
         currentViewMode = 'today';
     }
     const displayedItems = (currentViewMode === 'today') ? todayItems : allItems;
@@ -2239,6 +2272,16 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
         }
     }
 
+    let isWeekend = false;
+    if (displayDate) {
+        const parts = displayDate.split('-');
+        if (parts.length === 3) {
+            const dt = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
+        }
+    }
+    const dayNote = isWeekend ? ' (Weekend / Non-Sitting Court Day)' : '';
+
     let headerHtml = `
     <div class="p-2.5 bg-light border-bottom hc-sub-header">
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2">
@@ -2250,8 +2293,8 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
                     ${currentViewMode === 'today' 
                         ? (listedCount > 0
                             ? `Found <strong id="liveHeaderCount">${listedCount}</strong> matters listed for hearing on <strong>${displayDate}</strong>`
-                            : `0 matters listed for hearing on <strong>${displayDate}</strong> (Court Holiday / Non-Sitting Weekend)`)
-                        : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters (${targetBench})`}
+                            : `0 matters listed for hearing on <strong>${displayDate}</strong>${dayNote}`)
+                        : `Displaying <strong id="liveHeaderCount">${totalCount}</strong> active High Court matters (${targetBench})${listedCount > 0 ? ` · ${listedCount} scheduled today` : ` · 0 scheduled on ${displayDate}`}`}
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2 w-100 w-md-auto justify-content-between justify-content-md-end">
@@ -2342,176 +2385,117 @@ function renderLivePartyCauseList(rawItems, displayDate, targetBench, container,
 
 
 function filterLiveCauselistRows() {
-
     const partyInput = (document.getElementById('livePartySearchInput')?.value || '').trim().toLowerCase();
-
     const benchFilter = (document.getElementById('liveBenchId')?.value || 'ALL').trim();
-
     const causeListFilter = (document.getElementById('liveCauseListNo')?.value || 'ALL').trim();
-
     const allItems = window.__currentHcCauselistItems || [];
-
-
+    const activeDate = (window.__currentDisplayDate || document.getElementById('liveDate')?.value || '').trim();
 
     const filtered = allItems.filter(item => {
+        // In 'today' mode, item must be scheduled on the target active date
+        if (currentViewMode === 'today' && !isItemScheduledOnDate(item, activeDate)) return false;
 
         const pet = (item.petitionerName || '').toUpperCase();
-
         const resName = (item.respondentName || '').toUpperCase();
+        const role = (item.nwkrtcRole || '').toUpperCase();
+        const designation = (item.matchedDesignation || '').toUpperCase();
 
-        const isCorp = item.nwkrtcRole === 'With NWKRTC' || item.nwkrtcRole === 'Against NWKRTC' ||
-
-            (item.nwkrtcRole && item.nwkrtcRole.includes(defaultOrgShortName)) ||
-
-            pet.includes('NWKRTC') || resName.includes('NWKRTC') ||
-
-            pet.includes('NKWRTC') || resName.includes('NKWRTC') ||
-
-            pet.includes('NWKSRTC') || resName.includes('NWKSRTC') ||
-
-            pet.includes(defaultOrgShortName.toUpperCase()) || resName.includes(defaultOrgShortName.toUpperCase());
-
-
+        // All items delivered by GetLiveHighCourtPartyCases are pre-validated Corporation matters
+        const isCorp = role.includes('NWKRTC') || 
+                       role === 'WITH NWKRTC' || 
+                       role === 'AGAINST NWKRTC' || 
+                       role === 'BY NWKRTC' ||
+                       designation.includes('CONTROLLER') ||
+                       designation.includes('DIRECTOR') ||
+                       designation.includes('MANAGER') ||
+                       designation.includes('CORPORATION') ||
+                       pet.includes('NWKRTC') || resName.includes('NWKRTC') ||
+                       pet.includes('N.W.K.R.T.C') || resName.includes('N.W.K.R.T.C') ||
+                       pet.includes('NKWRTC') || resName.includes('NKWRTC') ||
+                       pet.includes(defaultOrgShortName.toUpperCase()) || resName.includes(defaultOrgShortName.toUpperCase()) ||
+                       item.isListedToday;
 
         if (!isCorp) return false;
 
-        if (currentViewMode === 'today' && !item.isListedToday) return false;
-
-
-
         const caseNo = `${item.caseType || 'MFA'} ${item.regNumber || ''}/${item.regYear || ''}`.trim();
-
         const courtNo = item.courtHall || '';
-
         const itemCnr = (item.cnrNumber || '').trim();
-
         const stageText = item.caseStage || '';
-
         const searchTerms = `${pet} ${resName} ${caseNo} ${courtNo} ${itemCnr} ${stageText} ${item.matchedDesignation || ''} ${item.highCourtBench || ''}`.toLowerCase();
 
-
-
         let matchParty = true;
-
         if (partyInput && partyInput !== defaultOrgShortName.toLowerCase() && partyInput !== 'nwkrtc') {
-
-            matchParty = searchTerms.includes(partyInput);
-
+            if (partyInput === 'cpm' || partyInput === 'chief personnel manager') {
+                matchParty = searchTerms.includes('cpm') || searchTerms.includes('personnel') || searchTerms.includes('chief personnel');
+            } else if (partyInput === 'md') {
+                matchParty = searchTerms.includes('managing director') || searchTerms.includes(' md ') || searchTerms.includes('md,');
+            } else if (partyInput === 'dc') {
+                matchParty = searchTerms.includes('divisional controller') || searchTerms.includes(' dc ') || searchTerms.includes('division');
+            } else if (partyInput === 'dm') {
+                matchParty = searchTerms.includes('depot manager') || searchTerms.includes(' dm ') || searchTerms.includes('depot');
+            } else {
+                matchParty = searchTerms.includes(partyInput);
+            }
         }
 
-
-
         let matchBench = true;
-
         if (benchFilter !== 'ALL') {
-
             matchBench = searchTerms.includes(`court hall ${benchFilter.toLowerCase()}`) || searchTerms.includes(`bench #${benchFilter.toLowerCase()}`);
-
         }
 
         let matchCauseList = true;
-
         if (causeListFilter !== 'ALL') {
-
             const itemCl = (item.causeListNo || (item.causeListType ? item.causeListType.match(/\d+/)?.[0] : '') || (item.isListedToday ? '1' : '')).toString();
-
             matchCauseList = itemCl === causeListFilter || searchTerms.includes(`cause list no. ${causeListFilter}`) || searchTerms.includes(`cause list no : ${causeListFilter}`);
-
         }
-
-
 
         return matchParty && matchBench && matchCauseList;
-
     });
 
-
-
     window.__filteredHcCauselistItems = filtered;
-
     hcCurrentPage = 1;
-
     const visibleCount = filtered.length;
 
-
-
     const badge = document.getElementById('liveListBadge');
-
     if (badge) {
-
         const dateInputVal = document.getElementById('liveDate')?.value || '';
-
         if (currentViewMode === 'today') {
-
             badge.className = visibleCount > 0 ? "badge bg-danger px-3 py-1 shadow-sm" : "badge bg-secondary px-3 py-1";
-
             badge.textContent = `${visibleCount} ${defaultOrgShortName} Matter${visibleCount === 1 ? '' : 's'} Listed on ${dateInputVal}`;
-
         } else {
-
             badge.className = "badge bg-primary px-3 py-1 shadow-sm";
-
             badge.textContent = `${visibleCount} Active ${defaultOrgShortName} Matters Loaded`;
-
         }
-
     }
-
-
 
     const headerCount = document.getElementById('liveHeaderCount');
-
     if (headerCount) headerCount.textContent = visibleCount;
 
-
-
     const countVisEl = document.getElementById('exportCountVisible');
-
     if (countVisEl) countVisEl.textContent = visibleCount;
 
-
-
     if (currentViewMode === 'all' && (!partyInput || partyInput === defaultOrgShortName.toLowerCase() || partyInput === 'nwkrtc') && benchFilter === 'ALL') {
-
         const tabCountAll = document.getElementById('tabCountAll');
-
         if (tabCountAll) tabCountAll.textContent = visibleCount;
-
         const kpiTotal = document.getElementById('kpiTotalNwkrtcVal');
-
         if (kpiTotal) kpiTotal.textContent = visibleCount;
-
     }
 
-
-
     renderHcCauselistPage();
-
 }
 
-
-
 function renderHcCauselistPage() {
-
     const items = window.__filteredHcCauselistItems || [];
-
     const totalItems = items.length;
-
     const tbody = document.getElementById('liveTableBody');
-
     const cardsContainer = document.getElementById('liveCardsContainer');
-
     const paginationContainer = document.getElementById('livePaginationContainer');
-
-
 
     if (!tbody || !cardsContainer) return;
 
-
-
     if (totalItems === 0) {
-
         const dateInputVal = (document.getElementById('liveDate')?.value || window.__currentDisplayDate || '').trim();
+        const prevDayStr = getDynamicYesterdayDisplay(dateInputVal);
         let isWeekend = false;
         let dayName = '';
         if (dateInputVal) {
@@ -2524,6 +2508,8 @@ function renderHcCauselistPage() {
             }
         }
 
+        const totalActive = window.__serverRes?.allCount ?? window.__allHcCauselistItems?.length ?? 2210;
+
         if (currentViewMode === 'today' && isWeekend) {
             tbody.innerHTML = `<tr>
                 <td colspan="7" class="text-center py-5">
@@ -2535,11 +2521,11 @@ function renderHcCauselistPage() {
                     <h6 class="fw-bold text-dark mb-1">High Court Non-Sitting Day (${dateInputVal}, ${dayName})</h6>
                     <p class="text-muted small mb-3">The High Court of Karnataka (Dharwad, Bengaluru, Kalaburagi) does not conduct hearings on weekends.<br />Daily cause lists are published by the Court Registry strictly for sitting court days.</p>
                     <div class="d-flex justify-content-center gap-2">
-                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="setQuickDate('yesterday')">
-                            <i class="bi bi-clock-history me-1"></i> View Yesterday's Listed Matters (30-10-2026)
+                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="switchCauseListViewMode('all')">
+                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${totalActive})
                         </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold" onclick="switchCauseListViewMode('all')">
-                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${window.__allHcCauselistItems?.length || 2179})
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold" onclick="setQuickDate('yesterday')">
+                            <i class="bi bi-clock-history me-1"></i> View Previous Sitting Day (${prevDayStr})
                         </button>
                     </div>
                 </td>
@@ -2552,14 +2538,14 @@ function renderHcCauselistPage() {
                             <i class="bi bi-calendar-check fs-3"></i>
                         </span>
                     </div>
-                    <h6 class="fw-bold text-dark mb-1">No '${defaultOrgShortName}' Matters Listed on ${dateInputVal}</h6>
-                    <p class="text-muted small mb-3">No matters for ${defaultOrgShortName} are listed on the official High Court daily roster for this date across Dharwad, Bengaluru, and Kalaburagi.</p>
+                    <h6 class="fw-bold text-dark mb-1">No '${defaultOrgShortName}' Matters Scheduled for ${dateInputVal}</h6>
+                    <p class="text-muted small mb-3">No matters for ${defaultOrgShortName} are listed on the official High Court daily roster for ${dateInputVal} across Dharwad, Bengaluru, and Kalaburagi.<br /><strong class="text-dark">${totalActive} active matters</strong> are tracked in the High Court master registry.</p>
                     <div class="d-flex justify-content-center gap-2">
-                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="setQuickDate('yesterday')">
-                            <i class="bi bi-clock-history me-1"></i> Check Yesterday (30-10-2026)
+                        <button type="button" class="btn btn-danger btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="switchCauseListViewMode('all')">
+                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${totalActive})
                         </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold" onclick="switchCauseListViewMode('all')">
-                            <i class="bi bi-collection-fill me-1"></i> View All Active Matters (${window.__allHcCauselistItems?.length || 2179})
+                        <button type="button" class="btn btn-outline-secondary btn-sm px-3 py-1.5 fw-bold shadow-sm" onclick="setQuickDate('yesterday')">
+                            <i class="bi bi-clock-history me-1"></i> Check Previous Court Day (${prevDayStr})
                         </button>
                     </div>
                 </td>
@@ -2574,16 +2560,21 @@ function renderHcCauselistPage() {
                 <h6 class="fw-bold text-dark mb-1">Non-Sitting Court Day (${dateInputVal}, ${dayName})</h6>
                 <p class="text-muted extra-small mb-2">High Court does not sit on weekends.</p>
                 <div class="d-flex justify-content-center gap-1">
-                    <button type="button" class="btn btn-danger btn-xs py-1 px-2 fw-bold" onclick="setQuickDate('yesterday')">View Yesterday (30-10-2026)</button>
-                    <button type="button" class="btn btn-outline-secondary btn-xs py-1 px-2" onclick="switchCauseListViewMode('all')">All Matters</button>
+                    <button type="button" class="btn btn-danger btn-xs py-1 px-2 fw-bold" onclick="switchCauseListViewMode('all')">All Matters (${totalActive})</button>
+                    <button type="button" class="btn btn-outline-secondary btn-xs py-1 px-2" onclick="setQuickDate('yesterday')">View ${prevDayStr}</button>
                 </div>
             </div>`
-            : `<div class="text-center py-4 text-muted small"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found.</div>`;
+            : (currentViewMode === 'today' 
+                ? `<div class="text-center py-4 px-2">
+                    <span class="badge bg-light text-secondary border p-2 rounded-circle mb-2"><i class="bi bi-calendar-check fs-4"></i></span>
+                    <h6 class="fw-bold text-dark mb-1">0 Listed on ${dateInputVal}</h6>
+                    <p class="text-muted extra-small mb-2">${totalActive} active High Court matters available.</p>
+                    <button type="button" class="btn btn-danger btn-xs py-1 px-2 fw-bold" onclick="switchCauseListViewMode('all')">View All Active Matters (${totalActive})</button>
+                </div>`
+                : `<div class="text-center py-4 text-muted small"><i class="bi bi-info-circle me-1"></i>No matching High Court cases found.</div>`);
 
         if (paginationContainer) paginationContainer.innerHTML = '';
-
         return;
-
     }
 
 
@@ -2634,20 +2625,12 @@ function renderHcCauselistPage() {
         // Extract and sanitize Serial Number
         const slM = courtNo ? courtNo.match(/Serial\s+No\.?\s*(\d+(?:\.\d+)?)/i) : null;
         let effectiveSerial = item.causeListItemNo || (slM ? slM[1] : '');
-        // Disentangle prepended page digit if still lingering in effectiveSerial (e.g. 211 -> 11.2, 547 -> 47)
-        if (effectiveSerial === '211') effectiveSerial = '11.2';
-        else if (effectiveSerial === '547') effectiveSerial = '47';
-        else if (effectiveSerial === '6746') effectiveSerial = '46';
-        else if (effectiveSerial === '7451') effectiveSerial = '51';
-        else if (effectiveSerial === '723') effectiveSerial = '23';
-        else if (effectiveSerial === '817') effectiveSerial = '17';
-        else if (effectiveSerial === '168') effectiveSerial = '68.1';
         const serialSuffix = effectiveSerial ? ` (Serial No. ${effectiveSerial})` : '';
 
         // Format clean Court Hall / Bench name without stripping named benches
         let cleanHallName = 'Court Hall';
         if (courtNo) {
-            const numM = courtNo.match(/(?:COURT\s+HALL\s+(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
+            const numM = courtNo.match(/(?:COURT\s+(?:HALL\s+)?(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
             if (numM) {
                 let hallNum = numM[1];
                 if (hallNum === '98') hallNum = '9'; // Normalize OCR artifact Hall 98 -> Hall 9
@@ -2655,7 +2638,7 @@ function renderHcCauselistPage() {
                 courtNo = `${cleanHallName}${serialSuffix}`;
             } else {
                 // Registrar / Named benches: e.g. "Court Hall (ADDL. REGISTRAR GENERAL)"
-                cleanHallName = courtNo.replace(/Serial\s+No\.?[^\)]*\)?/gi, '').replace(/\(\s*\)/g, '').trim();
+                cleanHallName = courtNo.replace(/\s*\(\s*Serial\s+No\.?[^\)]*\)/gi, '').replace(/\(\s*\)/g, '').replace(/[\(\s\-,:]+$/, '').trim();
                 if (!cleanHallName || cleanHallName.toLowerCase().includes('cause list')) {
                     cleanHallName = itemBench || 'Court Hall';
                 }
@@ -2748,10 +2731,6 @@ function renderHcCauselistPage() {
                     <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold text-nowrap">
                         <i class="bi bi-bank2 me-1"></i>${cleanHallName}
                     </span>
-                    ${effectiveSerial ? `
-                    <span class="badge bg-danger-subtle text-danger border border-danger font-monospace fw-bold text-nowrap shadow-xs" title="Official Cause List Serial No. / Turn Number">
-                        <i class="bi bi-list-ol me-1"></i>Sl.No. ${effectiveSerial}
-                    </span>` : ''}
                 </div>
 
                 ${clNo ? `
@@ -2840,11 +2819,10 @@ function renderHcCauselistPage() {
                 <span class="extra-small text-muted flex-shrink-0 text-nowrap"><i class="bi bi-geo-alt me-0.5"></i>${itemBench}</span>
             </div>
 
-            <!-- Court Hall, Sl.No. & Cause List Badge Row -->
+            <!-- Court Hall & Cause List Badge Row -->
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-1 mb-2 p-1.5 rounded-2 bg-warning-subtle bg-opacity-40 border border-warning border-opacity-50">
                 <div class="extra-small fw-bold text-dark d-flex align-items-center gap-1.5 flex-wrap min-w-0" style="line-height: 1.25;">
                     <span class="badge bg-warning-subtle text-dark border border-warning font-monospace"><i class="bi bi-bank2 me-1"></i>${cleanHallName}</span>
-                    ${effectiveSerial ? `<span class="badge bg-danger-subtle text-danger border border-danger font-monospace"><i class="bi bi-list-ol me-1"></i>Sl.No. ${effectiveSerial}</span>` : ''}
                 </div>
                 ${clNo ? `<span class="badge bg-primary text-white extra-small font-monospace flex-shrink-0"><i class="bi bi-card-checklist me-0.5"></i>CL No: ${clNo}</span>` : ''}
             </div>
@@ -3949,9 +3927,16 @@ function setQuickDate(preset) {
     const today = new Date();
     let target = new Date();
     if (preset === 'yesterday') {
-        target.setDate(today.getDate() - 1);
+        const day = today.getDay();
+        if (day === 1) target.setDate(today.getDate() - 3); // Monday -> Friday
+        else if (day === 0) target.setDate(today.getDate() - 2); // Sunday -> Friday
+        else if (day === 6) target.setDate(today.getDate() - 1); // Saturday -> Friday
+        else target.setDate(today.getDate() - 1);
     } else if (preset === 'tomorrow') {
-        target.setDate(today.getDate() + 1);
+        const day = today.getDay();
+        if (day === 5) target.setDate(today.getDate() + 3); // Friday -> Monday
+        else if (day === 6) target.setDate(today.getDate() + 2); // Saturday -> Monday
+        else target.setDate(today.getDate() + 1);
     }
     const dd = String(target.getDate()).padStart(2, '0');
     const mm = String(target.getMonth() + 1).padStart(2, '0');
@@ -3971,6 +3956,7 @@ function setQuickDate(preset) {
     const activeB = document.getElementById(activeId);
     if (activeB) activeB.className = 'btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active';
 
+    window.__userExplicitlyPickedToday = true;
     loadHcCourtBenches();
     fetchLiveHcCauselist('today');
 }
@@ -4305,7 +4291,7 @@ function copyRoznamaText() {
 
 document.addEventListener('DOMContentLoaded', function () {
     loadHcCourtBenches();
-    fetchLiveHcCauselist('today');
+    fetchLiveHcCauselist();
 
     // Ensure modals are mounted to document.body to prevent flex overflow clipping and background scroll jumping
     const dModal = document.getElementById('dossierModal');

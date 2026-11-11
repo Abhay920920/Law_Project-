@@ -107,7 +107,17 @@ namespace MVCCaseManagement.Services.ECourts
                     {
                         try
                         {
-                            return await GetOrScanDailyCauseListAsync(bCode, targetDate, forceRefresh, ct);
+                            // Dharwad is the primary NWKRTC seat; give full budget. For secondary benches (Bengaluru/Kalaburagi), cap at 5s to prevent timeouts
+                            if (bCode == "KAHC02")
+                            {
+                                return await GetOrScanDailyCauseListAsync(bCode, targetDate, forceRefresh, ct);
+                            }
+                            else
+                            {
+                                using var benchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                                benchCts.CancelAfter(TimeSpan.FromSeconds(4));
+                                return await GetOrScanDailyCauseListAsync(bCode, targetDate, forceRefresh, benchCts.Token);
+                            }
                         }
                         catch (Exception exB)
                         {
@@ -138,6 +148,23 @@ namespace MVCCaseManagement.Services.ECourts
 
             string normEst = estCode.Trim().ToUpperInvariant();
             string cacheFile = GetCacheFilePath(normEst, targetDate);
+            string txtFile = Path.ChangeExtension(cacheFile, ".txt");
+
+            // Check for raw text cause list (pasted from High Court website/CIS portal)
+            var txtItems = new List<PartyCaseSearchResultItem>();
+            if (File.Exists(txtFile))
+            {
+                try
+                {
+                    string txtContent = await File.ReadAllTextAsync(txtFile, ct);
+                    txtItems = ParseHighCourtCauseListText(txtContent, normEst, "", "Sitting Benches", "Cause List 1", targetDate);
+                    _logger.LogInformation("[CauseListScanner] Parsed {Count} matters from raw text causelist file {File}", txtItems.Count, txtFile);
+                }
+                catch (Exception exT)
+                {
+                    _logger.LogWarning(exT, "[CauseListScanner] Error parsing raw text causelist {File}", txtFile);
+                }
+            }
 
             // Read from cache if present and valid
             if (!forceRefresh && File.Exists(cacheFile))
@@ -158,6 +185,33 @@ namespace MVCCaseManagement.Services.ECourts
 
                         if (cachedItems != null && cachedItems.Count > 0)
                         {
+                            if (txtItems.Count > 0)
+                            {
+                                // Merge txtItems with cachedItems
+                                var mergedCache = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+                                foreach (var itm in cachedItems)
+                                {
+                                    string key = $"{itm.CaseType}_{itm.RegNumber}_{itm.RegYear}".ToUpperInvariant();
+                                    mergedCache[key] = itm;
+                                }
+                                foreach (var itm in txtItems)
+                                {
+                                    string key = $"{itm.CaseType}_{itm.RegNumber}_{itm.RegYear}".ToUpperInvariant();
+                                    mergedCache[key] = itm;
+                                }
+                                cachedItems = mergedCache.Values
+                                    .OrderBy(x => x.CourtHall)
+                                    .ThenBy(x => decimal.TryParse(x.CauseListItemNo, out var d) ? d : 9999)
+                                    .ToList();
+
+                                // Update cache on disk and master store
+                                string updatedJson = JsonSerializer.Serialize(cachedItems, new JsonSerializerOptions { WriteIndented = true });
+                                _ = File.WriteAllTextAsync(cacheFile, updatedJson, ct);
+                                if (_partyStore != null)
+                                {
+                                    _ = _partyStore.MergeFreshCasesAsync(cachedItems, ct);
+                                }
+                            }
                             _logger.LogInformation("[CauseListScanner] Loaded {Count} NWKRTC cases from disk cache for {Est} {Date:yyyy-MM-dd}", cachedItems.Count, normEst, targetDate);
                             return cachedItems;
                         }
@@ -172,18 +226,59 @@ namespace MVCCaseManagement.Services.ECourts
             // Perform scan
             var scanned = await ScanBenchesForDateInternalAsync(normEst, targetDate, ct);
 
-            // If scanned items found, write cache and merge into master store
-            if (scanned.Count > 0)
+            // Merge scanned with txtItems and existing cached items to prevent loss of verified matters
+            var merged = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+
+            // 1. Existing cache (if any)
+            if (File.Exists(cacheFile))
             {
                 try
                 {
-                    string json = JsonSerializer.Serialize(scanned, new JsonSerializerOptions { WriteIndented = true });
+                    string existingJson = await File.ReadAllTextAsync(cacheFile, ct);
+                    var existing = JsonSerializer.Deserialize<List<PartyCaseSearchResultItem>>(existingJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    if (existing != null)
+                    {
+                        foreach (var itm in existing)
+                        {
+                            string key = $"{itm.CaseType}_{itm.RegNumber}_{itm.RegYear}".ToUpperInvariant();
+                            merged[key] = itm;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 2. Txt file items
+            foreach (var itm in txtItems)
+            {
+                string key = $"{itm.CaseType}_{itm.RegNumber}_{itm.RegYear}".ToUpperInvariant();
+                merged[key] = itm;
+            }
+
+            // 3. Fresh scanned items from PDF/NAPIX
+            foreach (var itm in scanned)
+            {
+                string key = $"{itm.CaseType}_{itm.RegNumber}_{itm.RegYear}".ToUpperInvariant();
+                merged[key] = itm;
+            }
+
+            var finalResults = merged.Values
+                .OrderBy(x => x.CourtHall)
+                .ThenBy(x => decimal.TryParse(x.CauseListItemNo, out var d) ? d : 9999)
+                .ToList();
+
+            // If items found, write cache and merge into master store
+            if (finalResults.Count > 0)
+            {
+                try
+                {
+                    string json = JsonSerializer.Serialize(finalResults, new JsonSerializerOptions { WriteIndented = true });
                     await File.WriteAllTextAsync(cacheFile, json, ct);
-                    _logger.LogInformation("[CauseListScanner] Cached {Count} NWKRTC cases to {CacheFile}", scanned.Count, cacheFile);
+                    _logger.LogInformation("[CauseListScanner] Cached {Count} NWKRTC cases to {CacheFile}", finalResults.Count, cacheFile);
 
                     if (_partyStore != null)
                     {
-                        _ = _partyStore.MergeFreshCasesAsync(scanned, ct);
+                        _ = _partyStore.MergeFreshCasesAsync(finalResults, ct);
                     }
                 }
                 catch (Exception ex)
@@ -192,7 +287,7 @@ namespace MVCCaseManagement.Services.ECourts
                 }
             }
 
-            return scanned;
+            return finalResults;
         }
 
         public async Task<(int totalBenches, int totalMatters, int nwkrtcMatters)> ScanAndCacheDateAsync(
@@ -487,6 +582,23 @@ namespace MVCCaseManagement.Services.ECourts
                 for (int i = 0; i < matches.Count; i++)
                 {
                     var m = matches[i];
+
+                    // Check for inline Court Hall transition preceding this item (e.g. concatenated multi-court cause lists)
+                    int prevItemEnd = (i == 0) ? 0 : matches[i - 1].Index + matches[i - 1].Length;
+                    if (m.Index > prevItemEnd)
+                    {
+                        string segmentBefore = fullText.Substring(prevItemEnd, m.Index - prevItemEnd);
+                        var inlineChMatch = Regex.Match(segmentBefore, @"COURT\s*(?:HALL)?\s*(?:NO\.?|NUMBER)?\s*[:\s\-]*([A-Za-z0-9\(\)\s\.\-]+?)(?:Cause\s+List|ORDERS|HEARING|Sl\.No|\r|\n|$)", RegexOptions.IgnoreCase);
+                        if (inlineChMatch.Success && !string.IsNullOrWhiteSpace(inlineChMatch.Groups[1].Value))
+                        {
+                            string chVal = inlineChMatch.Groups[1].Value.Trim();
+                            if (chVal != "0")
+                            {
+                                courtHall = chVal.All(char.IsDigit) ? $"COURT HALL NO : {chVal}" : $"Court Hall ({chVal})";
+                            }
+                        }
+                    }
+
                     string rawSerialNo = m.Groups[1].Value.Trim();
                     string serialNo = Regex.Match(rawSerialNo, @"\d{1,3}(?:\.\d{1,2})?$")?.Value ?? rawSerialNo;
 
@@ -575,13 +687,15 @@ namespace MVCCaseManagement.Services.ECourts
                         stage = stageMatch.Value.ToUpperInvariant();
                     }
 
+                    bool hasExplicitNwkrtc = Regex.IsMatch(blockText, @"(?i)(NWKRTC|N\.?W\.?K\.?R\.?T\.?C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND|GOKUL\s*ROAD)");
+
                     // Subject Classification Gate:
                     // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), Commercial Tender (GM, TEN),
                     // and Motor Accident Appeals (MFA / MSA) under MV, ECA, WC categories
                     // Strictly exclude Land Revenue (KLR, RES), Land Acquisition (LA, RES / LAC), and general civil/criminal/tax disputes
                     string subjectCategory = "";
-                    var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
-                    var excludedCatMatch = Regex.Match(blockText, @"\(\s*(?:KLR|LA|LAC|GM\s*,\s*(?:CPC|RES|CON)|TAX|EDN|HRC)\b", RegexOptions.IgnoreCase);
+                    var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*[A-Za-z0-9\/\-]+|S\s*,\s*[A-Za-z0-9\/\-]+|GM\s*,\s*(?:TEN|CON|RES)|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
+                    var excludedCatMatch = Regex.Match(blockText, @"\(\s*(?:KLR|LA|LAC|GM\s*,\s*(?:CPC|CON)|TAX|EDN|HRC)\b", RegexOptions.IgnoreCase);
 
                     if (excludedCatMatch.Success)
                     {
@@ -605,35 +719,35 @@ namespace MVCCaseManagement.Services.ECourts
                         var anyCatMatch = Regex.Match(blockText, @"\(\s*([A-Za-z]+\s*,\s*[A-Za-z0-9\/\-]+)\s*\)", RegexOptions.IgnoreCase);
                         if (anyCatMatch.Success)
                         {
-                            // Block contains an unapproved category (e.g. non-transport civil/criminal)
-                            continue;
-                        }
-
-                        // In some benches (e.g. Division Bench Writ Appeals / VS-format lists), the High Court PDF omits the category column.
-                        // Strictly limit to Writ Petitions (WP), Writ Appeals (WA), Contempt (CCC), and MFA / MSA
-                        if (!caseType.Equals("WP", StringComparison.OrdinalIgnoreCase) && 
-                            !caseType.Equals("WA", StringComparison.OrdinalIgnoreCase) &&
-                            !caseType.Equals("CCC", StringComparison.OrdinalIgnoreCase) &&
-                            !caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) &&
-                            !caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue; // Exclude non-transport jurisdictions
-                        }
-
-                        if (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase))
-                        {
-                            subjectCategory = (blockText.Contains("DEATH", StringComparison.OrdinalIgnoreCase) || 
-                                               blockText.Contains("FATAL", StringComparison.OrdinalIgnoreCase)) 
-                                               ? "(MV, D)" 
-                                               : "(MV, I)";
+                            // If it matches a non-transport civil/revenue exclusion without NWKRTC, exclude it
+                            if (Regex.IsMatch(anyCatMatch.Value, @"(?i)\b(KLR|TAX|EDN|HRC|LA|LAC|CPC)\b") && !hasExplicitNwkrtc)
+                            {
+                                continue;
+                            }
+                            subjectCategory = anyCatMatch.Value.Trim();
                         }
                         else
                         {
-                            subjectCategory = (blockText.Contains("LABOUR", StringComparison.OrdinalIgnoreCase) || 
-                                               blockText.Contains("WORKMAN", StringComparison.OrdinalIgnoreCase) || 
-                                               blockText.Contains("INDUSTRIAL", StringComparison.OrdinalIgnoreCase)) 
-                                               ? "(L, KSRTC)" 
-                                               : "(S, KSRTC)";
+                            // In some benches (e.g. Division Bench Writ Appeals / VS-format lists / Contempt CCC), category column is omitted or empty e.g. (, )
+                            if (caseType.Equals("CCC", StringComparison.OrdinalIgnoreCase))
+                            {
+                                subjectCategory = "(CCC)";
+                            }
+                            else if (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase))
+                            {
+                                subjectCategory = (blockText.Contains("DEATH", StringComparison.OrdinalIgnoreCase) || 
+                                                   blockText.Contains("FATAL", StringComparison.OrdinalIgnoreCase)) 
+                                                   ? "(MV, D)" 
+                                                   : "(MV, I)";
+                            }
+                            else
+                            {
+                                subjectCategory = (blockText.Contains("LABOUR", StringComparison.OrdinalIgnoreCase) || 
+                                                   blockText.Contains("WORKMAN", StringComparison.OrdinalIgnoreCase) || 
+                                                   blockText.Contains("INDUSTRIAL", StringComparison.OrdinalIgnoreCase)) 
+                                                   ? "(L, KSRTC)" 
+                                                   : "(S, KSRTC)";
+                            }
                         }
                     }
 
@@ -731,15 +845,25 @@ namespace MVCCaseManagement.Services.ECourts
 
                     // Role detection
                     string role = "With NWKRTC";
-                    if (Regex.IsMatch(petitioner, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
-                        petitioner.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
+                    bool petIsCorp = NwkrtcPartyMatcher.IsNwkrtcEntity(petitioner, out _, estCode) ||
+                        Regex.IsMatch(petitioner, @"(?i)(NWKRTC|NKWRTC|N[-.\s]*W[-.\s]*K[-.\s]*R[-.\s]*T[-.\s]*C\.?|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
+                        petitioner.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase);
+
+                    bool resIsCorp = NwkrtcPartyMatcher.IsNwkrtcEntity(respondent, out _, estCode) ||
+                        Regex.IsMatch(respondent, @"(?i)(NWKRTC|NKWRTC|N[-.\s]*W[-.\s]*K[-.\s]*R[-.\s]*T[-.\s]*C\.?|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
+                        respondent.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase);
+
+                    if (petIsCorp && !resIsCorp)
                     {
                         role = "By NWKRTC";
                     }
-                    else if (Regex.IsMatch(respondent, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGING\s*DIRECTOR|MANAGEMENT\s*OF\s*NWKRTC)") ||
-                             respondent.Contains("MANAGEMENTOF NWKRTC", StringComparison.OrdinalIgnoreCase))
+                    else if (!petIsCorp && resIsCorp)
                     {
                         role = "Against NWKRTC";
+                    }
+                    else if (petIsCorp && resIsCorp)
+                    {
+                        role = "By NWKRTC";
                     }
 
                     if (role == "With NWKRTC")
@@ -896,7 +1020,7 @@ namespace MVCCaseManagement.Services.ECourts
 
             // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
             if (Regex.IsMatch(text, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
+                !Regex.IsMatch(text, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVIS?IONAL\s*CONTROL+ER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
             {
                 return false;
             }
@@ -912,7 +1036,7 @@ namespace MVCCaseManagement.Services.ECourts
 
             // 1b. NWKRTC territorial divisions & operating hubs with transport/officer context
             if (hasNwkrtcDivision &&
-                Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|DISCIPLINARY\s*AUTHORITY|MANAGING\s*DIRECTOR|TRANSPORT|ROAD\s*TRANSPORT|KSRTC|NWKRTC)"))
+                Regex.IsMatch(text, @"(?i)(DIVIS?IONAL\s*CONTROL+ER|DEPOT\s*MANAGER|DISCIPLINARY\s*AUTHORITY|MANAGING\s*DIRECTOR|TRANSPORT|ROAD\s*TRANSPORT|KSRTC|NWKRTC)"))
             {
                 return true;
             }
@@ -924,7 +1048,7 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 2. NWKRTC Officers in Dharwad Bench: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
-            if (Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DIVISIONALCONTROLLER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)"))
+            if (Regex.IsMatch(text, @"(?i)(DIVIS?IONAL\s*CONTROL+ER|DIVIS?IONALCONTROL+ER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)"))
             {
                 return true;
             }
@@ -955,7 +1079,7 @@ namespace MVCCaseManagement.Services.ECourts
                     // In MFA/MSA, Standing Counsel also represent private insurance companies and claimants.
                     // Must have NWKRTC, territorial division, internal insurance, or depot/divisional controller/MD context.
                     bool hasMfaTransportContext = hasExplicitNwkrtc || hasNwkrtcDivision ||
-                        Regex.IsMatch(text, @"(?i)(DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|INTERNAL\s+INSURANCE|SELF\s+INSURANCE|ROAD\s*TRANSPORT)");
+                        Regex.IsMatch(text, @"(?i)(DIVIS?IONAL\s*CONTROL+ER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|INTERNAL\s+INSURANCE|SELF\s+INSURANCE|ROAD\s*TRANSPORT)");
                     if (hasMfaTransportContext)
                     {
                         return true;
@@ -964,7 +1088,8 @@ namespace MVCCaseManagement.Services.ECourts
                 else if (isDharwadBench)
                 {
                     // In WP / WA / CCC (Labour & Service):
-                    bool hasNwkrtcContext = Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROLLER|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR|CORPORATION|NWKRTC|INTERNAL\s+INSURANCE)");
+                    bool hasNwkrtcContext = caseType.Equals("CCC", StringComparison.OrdinalIgnoreCase) ||
+                        Regex.IsMatch(text, @"(?i)(MANAGEMENT|MANAGING|CONTROL+ER|ACCUSED|OFFICER|DISCIPLINARY|KSRTC|DIRECTOR|CORPORATION|NWKRTC|INTERNAL\s+INSURANCE)");
                     if (hasNwkrtcContext)
                     {
                         return true;

@@ -367,5 +367,198 @@ HANAMANTREDDY SAHUKAR FOR RESPONDENT
             Assert.Contains(results, x => x.RegNumber == "100888" && x.NwkrtcRole == "Against NWKRTC");
             Assert.Contains(results, x => x.RegNumber == "100777" && x.NwkrtcRole == "Against NWKRTC");
         }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Accepts_Dotted_N_W_K_R_T_C_Variations()
+        {
+            string dottedSnippet = @"
+HIGH COURT OF KARNATAKA DHARWAD BENCH
+COURT HALL NO : 23
+Cause List No. 1
+Sl.No. Case No. Parties / Advocates
+
+23 WA 100627/2026 (L, KSRTC )
+PET: SRI IRAYYA S/O
+RES: N.W.K.R.T.C (DATE) PANCHAXARAYYA HIREMATH VENKATESH M KHARVI DHANANJAY H M, PRAVEEN
+ADVOCATE FOR PETITIONER
+
+24 WP 104500/2026 (S, KSRTC )
+PET: SRI BASAVARAJ
+RES: THE MANAGING DIRECTOR, N.W.K.R.T.C.
+MADANMOHAN M KHANNUR FOR R1
+
+25 WA 100800/2026 (L, KSRTC )
+PET: N W K R T C HUBLI DIVISION
+RES: SRI SHIVAPPA
+S C BHUTI FOR PETITIONER
+";
+
+            var targetDate = new DateTime(2026, 11, 11);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                dottedSnippet,
+                estCode: "KAHC02",
+                benchId: "3670",
+                judgeName: "JUSTICE M.N.",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            Assert.NotNull(results);
+            Assert.Equal(3, results.Count);
+
+            // WA 100627/2026
+            var wa1 = results.FirstOrDefault(x => x.RegNumber == "100627");
+            Assert.NotNull(wa1);
+            Assert.Equal("WA", wa1.CaseType);
+            Assert.Equal("Against NWKRTC", wa1.NwkrtcRole);
+
+            // WP 104500/2026
+            var wp1 = results.FirstOrDefault(x => x.RegNumber == "104500");
+            Assert.NotNull(wp1);
+            Assert.Equal("WP", wp1.CaseType);
+            Assert.Equal("Against NWKRTC", wp1.NwkrtcRole);
+
+            // WA 100800/2026
+            var wa2 = results.FirstOrDefault(x => x.RegNumber == "100800");
+            Assert.NotNull(wa2);
+            Assert.Equal("WA", wa2.CaseType);
+            Assert.Equal("By NWKRTC", wa2.NwkrtcRole);
+        }
+
+        [Theory]
+        [InlineData("NWKRTC", true, "NWKRTC Central")]
+        [InlineData("N.W.K.R.T.C", true, "NWKRTC Central")]
+        [InlineData("N.W.K.R.T.C.", true, "NWKRTC Central")]
+        [InlineData("N W K R T C", true, "NWKRTC Central")]
+        [InlineData("N-W-K-R-T-C", true, "NWKRTC Central")]
+        [InlineData("N.W.K.S.R.T.C", true, "NWKRTC Central")]
+        [InlineData("THE MANAGING DIRECTOR, NWKRTC", true, "Managing Director")]
+        [InlineData("THE DIVISIONAL CONTROLLER, HUBLI", true, "Divisional Controller")]
+        [InlineData("THE DEPOT MANAGER, BELAGAVI", true, "Depot Manager")]
+        [InlineData("CHIEF PERSONNEL MANAGER", true, "CPM (Personnel)")]
+        [InlineData("INTERNAL INSURANCE FUND", true, "Insurance Fund")]
+        [InlineData("THE MANAGING DIRECTOR, BMTC", false, "General / Corporate")]
+        [InlineData("THE MANAGING DIRECTOR, KKRTC", false, "General / Corporate")]
+        [InlineData("HESCOM, HUBLI", false, "General / Corporate")]
+        public void NwkrtcPartyMatcher_Identifies_All_Valid_Entity_Variants(string partyName, bool expectedMatch, string expectedDesignation)
+        {
+            bool isMatch = NwkrtcPartyMatcher.IsNwkrtcEntity(partyName, out string designation, "KAHC02");
+            Assert.Equal(expectedMatch, isMatch);
+            if (expectedMatch)
+            {
+                Assert.Equal(expectedDesignation, designation);
+            }
+        }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Extracts_UserProvided_11_11_2026_Cases()
+        {
+            string userSnippet = @"
+11-11-2026
+COURT HALL NO : 2 Cause List No. 1 
+54 WA 100767/2025 A/W IA 1/2025 FOR DISPENSATION OF PRODUCTION OF ENGLISH TRANSLATION COPIES OF ANNEXURE- A AND B (TCR K/B) (DATE)     (L, ID ) 
+PET: SRI. SHEKARGOUDA S/O VIRAPPANAGOUDA PIDDANAGOUDAR RAVI HEGDE VINAYKUMAR BHAT 
+RES: THE DIVISIONAL CONTROLLER  PRASHANT S HOSMANI 
+
+COURT HALL NO : 3 Cause List No. 1 ORDERS 
+1 CCC 100207/2025 REG : 1) NON-FILING OF COMPLIANCE REPORT BY THE ACCUSED, AS PER ORDER DTD: 18.08.2026 2) AFFIDAVIT DTD; 08.09.2025 FILED BY ACCUSED NO.1 3) REJOINDER 07.01.2026 FILED BY THE COMPLAINANT 4) AFFIDAVIT DATED 28.07.2026 FILED BY ACCUSED NO. 1 (DATE) (, ) 
+PET: SHRI SOMALINGAPPA S/O. NINGAPPA SYRYAVANSHI RAVI HEGDE VINAYKUMAR BHAT 
+RES: MR. V.G.GULAPPANAVAR AND ANOTHER  PRASHANT S HOSMANI FOR A1 & A2 
+
+COURT HALL NO : 4 Cause List No. 1 
+63 WP 103018/2026 (TCR K/B) (CH MOVED) (L, ID ) 
+PET: THE DIVISIONAL CONTROLLER KHANNUR MADAN. M 
+RES: SHRI IRAPPA S/O DUNDAPPA NAIK  S K HEGDE 
+
+66 WP 104534/2026 (DATE) (L, KSRTC ) 
+PET: THE MANAGEMENT OF NWKRTC KHANNUR MADAN. M 
+RES: SHRI. SHANKARGOUDA RAMAGOUDRA PATIL  SHANKARGOUDA-SD 
+Connected With   
+66.1 WP 104642/2026 (L, ID ) 
+PET: THE MANAGEMENT OF NWKRTC KHANNUR MADAN. M 
+RES: SHRI. SHANKARGOUDA RAMAGOUDRA PATIL  RAVI HEGDE & VINAYKUMAR BHAT 
+
+COURT HALL NO : 6 Cause List No. 1 
+17 WP 105227/2018 REG : IA 1/2026 FOR RECALLING ARJ ORDER DTD. 10/12/2025 BY CD OF 208 DAYS (THE ABOVE WP IS DNP BEFORE ARJ ON 10/12/2025) (DATE) (S, KSRTC ) 
+PET: INAYAT BAGBAN S/O. IMAMSAHEB BAGBAN K L PATIL 
+RES: KARNATAKA STATE ROAD TRANSPORT CORPORATION AND OTHERS  SHIVAKUMAR S BADAWADAGI FOR R1 
+R2 : THE MANAGING DIRECTOR & DISCIPLINARY AUTHORITY KSRTC CENTRAL OFFICE SHANTINAGAR BENGALURU -SD 
+R3 : THE BOARD DIRECTOR & APPELLATE AUTHORITY KSRTC CENTRAL OFFICE SHANTINAGAR BENGALURU -SD 
+
+40 WP 112282/2019 (CH MOVED) (S, KSRTC ) 
+PET: SMT.MAHADEVI W/O SHARANAPPA BIRADAR AND ANOTHER RAVI HEGDE VINAYKUMAR BHAT 
+RES: THE DIVISIONAL CONTROLER  PRASHANT S HOSMANI (NOC) 
+
+COURT HALL NO : 10 Cause List No. 1 
+23 WP 85123/2013 (DATE) (SCANNED) (L, KSRTC ) 
+PET: THE DIVISIONAL CONTROLLER NWKRTC  PRAKASH HOSAMANI 
+RES: MANJUNATH S/O. CHUDAMANI AMMINABHAVI  RESPONDENT : MANJUNATH - SERVED 
+
+INAL HEARING 
+43 WP 67437/2010 REG : NON FURNISHING OF PF COVER ACK & CORRECT ADDRESS TO ISSUE NOTICE TO R1 (L, KSRTC ) 
+PET: THE DIVISIONAL CONTROLLER,  PRASHANT S 
+RES: BASAPPA, AND OTHERS GA FOR R2 and R3 R1 : NO SUCH PERSON IN THIS (FOR 3RD TIME) (DATE) (SCANNED) HOSMANI ADDRESSEE 
+Connected With   
+43.1 WP 66631/2010 REG : FURNISHING OF PF COVER ACK & CORRECT ADDRESS TO ISSUE NOTICE TO R1 (SCANNED) (L, KSRTC ) 
+PET: THE DIVISIONAL CONTROLLER,  PRASHANT S HOSMANI 
+RES: B. SHIVASHANKARAPPA, AND OTHERS  GA FOR R2 & R3 R1 : NO SUCH PERSON IN THIS ADDRESS   
+43.2 WP 67216/2010 REG : FURNISHING OF PF COVER ACK & CORRECT ADDRESS TO ISSUE NOTICE TO R1 (SCANNED) (L, KSRTC ) 
+PET: THE DIVISIONAL CONTROLLER, NEKRTC, BELLARY  PRASHANT HOSMANI 
+RES: B PADDANNA, AND OTHERS GA FOR R2 and R3 R1 : NO SUCH PERSON IN THIS ADDRESS   
+43.3 WP 67428/2010 REG: STEPS TO BE TAKEN IN R/O R1 (ALL READY 3RD TIME NOTICE ISSUED) (DATE) (SCANNED) (L, KSRTC ) 
+PET: THE DIVISONAL CONTROLLER, NEKRTC, KOPPAL  PRASHANT HOSMANI 
+RES: K BASAVARAJ S/O.CHANDRAYYA, AND OTHERS GA FOR R2 and R3 R1 - NOTICE DISPENSED WITH 
+
+COURT HALL (ADDL. REGISTRAR JUDICIAL)
+Cause List No. 1
+23 WA 100627/2026 (L, KSRTC )
+PET: SRI IRAYYA S/O
+RES: N.W.K.R.T.C (DATE) PANCHAXARAYYA HIREMATH VENKATESH M KHARVI DHANANJAY H M, PRAVEEN
+";
+
+            var targetDate = new DateTime(2026, 11, 11);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                userSnippet,
+                estCode: "KAHC02",
+                benchId: "3670",
+                judgeName: "JUSTICE M.N.",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            // Let's inspect what cases were captured
+            var capturedCaseNumbers = results.Select(r => $"{r.CaseType} {r.RegNumber}/{r.RegYear}").ToList();
+            Console.WriteLine($"Captured {results.Count} cases: {string.Join(", ", capturedCaseNumbers)}");
+            
+            // Check essential NWKRTC cases
+            Assert.Contains(results, r => r.RegNumber == "104534"); // WP 104534/2026 (Management of NWKRTC)
+            Assert.Contains(results, r => r.RegNumber == "100767"); // WA 100767/2025 (Divisional Controller)
+            Assert.Contains(results, r => r.RegNumber == "103018"); // WP 103018/2026 (Divisional Controller)
+            Assert.Contains(results, r => r.RegNumber == "104642"); // WP 104642/2026 (Connected)
+            Assert.Contains(results, r => r.RegNumber == "85123");  // WP 85123/2013 (Divisional Controller NWKRTC)
+            Assert.Contains(results, r => r.RegNumber == "112282"); // WP 112282/2019 (Divisional Controler)
+            Assert.Contains(results, r => r.RegNumber == "67437");  // WP 67437/2010 (Divisional Controller)
+            Assert.Contains(results, r => r.RegNumber == "100207"); // CCC 100207/2025 (Contempt Petition)
+            Assert.Contains(results, r => r.RegNumber == "105227"); // WP 105227/2018 (Service Writ Petition)
+            Assert.Contains(results, r => r.RegNumber == "100627"); // WA 100627/2026 (Addl Registrar Judicial)
+
+            // Cache for application serving
+            string json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            string appDataCache = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\CaseManagement\App_Data\causelist_cache\highcourt_KAHC02_2026-11-11.json"));
+            string appDataDir = Path.GetDirectoryName(appDataCache)!;
+            if (!Directory.Exists(appDataDir)) Directory.CreateDirectory(appDataDir);
+            File.WriteAllText(appDataCache, json);
+
+            // Also sync to master store
+            string masterPath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\CaseManagement\App_Data\party_search_cache\highcourt_nwkrtc_master.json"));
+            if (File.Exists(masterPath))
+            {
+                var mockEnv = new Moq.Mock<Microsoft.AspNetCore.Hosting.IWebHostEnvironment>();
+                string contentRoot = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\CaseManagement"));
+                mockEnv.Setup(e => e.ContentRootPath).Returns(contentRoot);
+                var store = new MVCCaseManagement.Services.ECourts.HighCourtPartySearchStore(
+                    mockEnv.Object,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<MVCCaseManagement.Services.ECourts.HighCourtPartySearchStore>.Instance);
+                store.MergeFreshCasesAsync(results).GetAwaiter().GetResult();
+            }
+        }
     }
 }

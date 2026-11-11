@@ -258,7 +258,7 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            var nwkrtcList = itemsList.Where(i => i.NwkrtcRole == "With NWKRTC" || i.NwkrtcRole == "Against NWKRTC").ToList();
+            var nwkrtcList = itemsList.Where(i => i.NwkrtcRole == "With NWKRTC" || i.NwkrtcRole == "Against NWKRTC" || i.NwkrtcRole == "By NWKRTC" || (i.NwkrtcRole != null && i.NwkrtcRole.Contains("NWKRTC"))).ToList();
 
             vm.NwkrtcTotalCount = nwkrtcList.Count;
             vm.NwkrtcWithCount = nwkrtcList.Count(i => i.NwkrtcRole == "With NWKRTC");
@@ -456,13 +456,15 @@ namespace MVCCaseManagement.Controllers
                                  (estCodes.Length == 1 && string.Equals(estCodes[0], "KAHC02", StringComparison.OrdinalIgnoreCase));
 
                 // 0. Strict Exclusions & Subject Category Gate:
-                // Strictly allow Labour (L, KSRTC), Gratuity (L, PG), Service (S, KSRTC), Commercial Tender (GM, TEN),
-                // and Motor Accident Appeals (MFA / MSA) under MV, ECA, WC categories
+                // Strictly allow Labour (L, KSRTC, L, ID, L, PG), Service (S, KSRTC, S, RES), Commercial Tender (GM, TEN),
+                // Contempt (CCC), and Motor Accident Appeals (MFA / MSA) under MV, ECA, WC categories
                 // Strictly exclude Land Revenue (KLR, RES), Land Acquisition (LA, RES / LAC), and general civil/criminal/tax disputes
                 if (!string.IsNullOrEmpty(sc.SubjectCategory))
                 {
-                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*(?:KSRTC|PG)|S\s*,\s*KSRTC|GM\s*,\s*TEN|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
-                    if (!isAllowedCat) return false;
+                    bool isAllowedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:L\s*,\s*[A-Za-z0-9\/\-]+|S\s*,\s*[A-Za-z0-9\/\-]+|GM\s*,\s*(?:TEN|CON|RES)|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?|CCC\s*,?)\s*\)", RegexOptions.IgnoreCase);
+                    bool isExcludedCat = Regex.IsMatch(sc.SubjectCategory, @"\(\s*(?:KLR|LA|LAC|GM\s*,\s*CPC|TAX|EDN|HRC)\b", RegexOptions.IgnoreCase);
+                    if (isExcludedCat) return false;
+                    if (!isAllowedCat && Regex.IsMatch(sc.SubjectCategory, @"(?i)\b(KLR|TAX|EDN|HRC|LA|LAC|CPC)\b")) return false;
                 }
 
                 // 1. Sibling Corporation Blocklist: Zero tolerance for BMTC, KKRTC, NEKRTC
@@ -473,28 +475,37 @@ namespace MVCCaseManagement.Controllers
 
                 // High Court subject code: In Dharwad Bench, (L, KSRTC ) and (S, KSRTC ) denote Labour/Service classification, NOT external KSRTC.
                 if (!isDharwad && Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST)"))
                 {
                     return false;
                 }
 
                 // 2. Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
                 if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|MANAGEMENT\s*OF\s*NWKRTC)", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST|DIVIS?IONAL\s*CONTROL+ER|MANAGEMENT\s*OF\s*NWKRTC)"))
                 {
                     return false;
                 }
 
                 // 3. Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
                 if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC|MANAGING\s*DIRECTOR)", RegexOptions.IgnoreCase))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST|DIVIS?IONAL\s*CONTROL+ER|DISCIPLINARY\s*AUTHORITY|MANAGEMENT\s*OF\s*NWKRTC|MANAGING\s*DIRECTOR)"))
                 {
                     return false;
                 }
 
+                // 3b. Verify directly through authoritative NwkrtcPartyMatcher
+                bool isPetNwk = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.PetitionerName, out _, isDharwad ? "KAHC02" : null, sc.Advocate);
+                bool isResNwk = NwkrtcPartyMatcher.IsNwkrtcEntity(sc.RespondentName, out _, isDharwad ? "KAHC02" : null, sc.Advocate);
+                if (isPetNwk || isResNwk)
+                {
+                    return true;
+                }
+
                 // 4. Check for direct NWKRTC party keywords
-                if (Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|MANAGEMENT\s*OF?\s*NWKRTC|DIVISIONAL\s*CONTROLLER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)") ||
-                    comb.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase))
+                if (Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C[\.]?|NORTH\s*[- ]?WEST|MANAGEMENT\s*OF?\s*NWKRTC|DIVIS?IONAL\s*CONTROL+ER|DEPOT\s*MANAGER|CHIEF\s*PERSONNEL\s*MANAGER|DISCIPLINARY\s*AUTHORITY)") ||
+                    comb.Contains("NWKRTC", StringComparison.OrdinalIgnoreCase) ||
+                    comb.Contains("N.W.K.R.T.C", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -509,6 +520,12 @@ namespace MVCCaseManagement.Controllers
                     {
                         return true;
                     }
+                }
+
+                // 6. Empanelled Standing Counsel in Dharwad Bench (e.g. CCC Contempt petitions, service disputes)
+                if (isDharwad && Regex.IsMatch(comb, @"(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|MARADI|SAHUKAR|KUPPELUR|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV)", RegexOptions.IgnoreCase))
+                {
+                    return true;
                 }
 
                 // 6. Standing counsel check with officer / court context
@@ -616,21 +633,21 @@ namespace MVCCaseManagement.Controllers
                     return false;
                 }
                 if (Regex.IsMatch(comb, @"\b(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)"))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST)"))
                 {
                     return false;
                 }
 
                 // Exclude non-transport entities: Tax, Land Tribunal, Revenue, Deputy Commissioner, private industries, temples/mosques
                 if (Regex.IsMatch(comb, @"\b(CENTRAL\s+TAX|INCOME\s+TAX|LAND\s+TRIBUNAL|DEPUTY\s+COMMISSIONER|TAHSILDAR|POLICE|GRAM\s+PANCHAYAT|ISPAT|STEEL|SUGAR|HESCOM|BESCOM|KPTCL|MASJID|TEMPLE|WAKF)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER)"))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST|DIVIS?IONAL\s*CONTROL+ER)"))
                 {
                     return false;
                 }
 
                 // Exclude pure State of Karnataka / Government disputes without NWKRTC / RTC context
                 if (Regex.IsMatch(comb, @"\b(STATE\s+OF\s+KARNATAKA)\b", RegexOptions.IgnoreCase) &&
-                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST|DIVISIONAL\s*CONTROLLER|DISCIPLINARY\s*AUTHORITY)"))
+                    !Regex.IsMatch(comb, @"(?i)(NWKRTC|NKWRTC|N[\.\s\-]*W[\.\s\-]*K[\.\s\-]*R[\.\s\-]*T[\.\s\-]*C|NORTH\s*[- ]?WEST|DIVIS?IONAL\s*CONTROL+ER|DISCIPLINARY\s*AUTHORITY)"))
                 {
                     return false;
                 }
@@ -682,7 +699,7 @@ namespace MVCCaseManagement.Controllers
                 ? allSorted.Where(x => x.IsListedToday).ToList()
                 : allSorted;
 
-            int withCount = allSorted.Count(x => x.NwkrtcRole == "With NWKRTC" || (x.NwkrtcRole != null && x.NwkrtcRole.Contains("With")));
+            int withCount = allSorted.Count(x => x.NwkrtcRole == "With NWKRTC" || x.NwkrtcRole == "By NWKRTC" || (x.NwkrtcRole != null && (x.NwkrtcRole.Contains("With") || x.NwkrtcRole.Contains("By"))));
             int againstCount = allSorted.Count(x => x.NwkrtcRole == "Against NWKRTC" || (x.NwkrtcRole != null && x.NwkrtcRole.Contains("Against")));
 
             return Json(new { 
