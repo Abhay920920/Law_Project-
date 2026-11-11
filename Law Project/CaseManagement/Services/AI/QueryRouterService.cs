@@ -454,10 +454,32 @@ namespace MVCCaseManagement.Services.AI
             }
             else
             {
-                plan.Intent = LegalQueryIntent.GeneralInquiry;
-                result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
-                result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
-                result.Reasoning = "General query routed to internal database without external web search.";
+                // Adversarial prompt injection or non-database security probes should never trigger deterministic SQL execution
+                bool isAdversarialOrSecurityProbe = lower.Contains("ignore all previous") ||
+                                                   lower.Contains("connection string") ||
+                                                   lower.Contains("administrative credential") ||
+                                                   lower.Contains("system prompt") ||
+                                                   lower.Contains("jailbreak") ||
+                                                   lower.Contains("bypass security") ||
+                                                   lower.Contains("developer mode") ||
+                                                   lower.Contains("override prompt");
+
+                if (isAdversarialOrSecurityProbe)
+                {
+                    plan.Intent = LegalQueryIntent.GeneralInquiry;
+                    plan.IsDeterministicDatabaseQuery = false;
+                    result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                    result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                    result.Reasoning = "Security-sensitive or adversarial input treated as standard evidence without database execution.";
+                }
+                else
+                {
+                    plan.Intent = LegalQueryIntent.DynamicDatabaseInquiry;
+                    plan.IsDeterministicDatabaseQuery = true;
+                    result.PrimaryCategory = QuerySourceCategory.InternalDatabase;
+                    result.RequiredSources.Add(QuerySourceCategory.InternalDatabase);
+                    result.Reasoning = "Natural language operational or litigation query routed to dynamic database intelligence engine.";
+                }
             }
 
             // Deduplicate required sources

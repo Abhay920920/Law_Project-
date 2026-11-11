@@ -755,6 +755,7 @@ namespace MVCCaseManagement.Services.AI
                         if (divDossier != null) return divDossier;
                         break;
 
+                    case LegalQueryIntent.DynamicDatabaseInquiry:
                     case LegalQueryIntent.AgeFilter:
                     case LegalQueryIntent.FinancialBalance:
                     case LegalQueryIntent.DataIntegrityAudit:
@@ -765,7 +766,7 @@ namespace MVCCaseManagement.Services.AI
                         if (_dynamicRetrieval != null)
                         {
                             var dynResult = await _dynamicRetrieval.ExecuteDynamicQueryAsync(plan, userDivisionId, cancellationToken);
-                            if (dynResult.Success)
+                            if (dynResult != null && dynResult.Success)
                             {
                                 var dynDossier = new CaseDossier
                                 {

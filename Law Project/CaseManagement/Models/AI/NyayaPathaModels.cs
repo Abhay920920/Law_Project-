@@ -355,7 +355,8 @@ namespace MVCCaseManagement.Models.AI
         DelayAnalysis,
         MissingEvidence,
         CaseComparison,
-        PettyBillSettlement
+        PettyBillSettlement,
+        DynamicDatabaseInquiry
     }
 
     public enum EvidenceSufficiencyLevel

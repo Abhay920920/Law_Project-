@@ -1,14 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models.AI;
+using MVCCaseManagement.Services.AI.Catalog;
+using MVCCaseManagement.Services.AI.Compiler;
+using MVCCaseManagement.Services.AI.Presentation;
 
 namespace MVCCaseManagement.Services.AI
 {
@@ -52,6 +58,9 @@ namespace MVCCaseManagement.Services.AI
             {
                 switch (plan.Intent)
                 {
+                    case LegalQueryIntent.DynamicDatabaseInquiry:
+                        return await ExecuteDynamicInquiryAsync(plan.RawQuery, userDivisionId, plan.IsCentralOffice, cancellationToken);
+
                     case LegalQueryIntent.AgeFilter:
                         return await ExecuteAgeFilterQueryAsync(plan, userDivisionId, cancellationToken);
 
@@ -835,35 +844,311 @@ namespace MVCCaseManagement.Services.AI
             return dict;
         }
 
-        private Task<DynamicQueryResult> ExecuteMissingEvidenceQueryAsync(
+        private async Task<DynamicQueryResult> ExecuteMissingEvidenceQueryAsync(
             LegalQueryPlan plan,
             int userDivisionId,
             CancellationToken cancellationToken)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine("## 📋 Evidentiary Checklist & Missing Records Analysis");
-            sb.AppendLine();
-            sb.AppendLine("To complete the legal brief and assessment, the following items are verified in current records:");
-            sb.AppendLine();
-            sb.AppendLine("| Document / Evidence Element | Current Status | Impact on Legal Defense |");
-            sb.AppendLine("|---|---|---|");
-            sb.AppendLine("| **TR-18 Departmental Accident Report** | Required | Establishes immediate departmental facts vs police FIR |");
-            sb.AppendLine("| **Police Spot Sketch & Mahazar** | Required | Crucial to establish Contributory Negligence |");
-            sb.AppendLine("| **Bus Camera CCTV Footage** | Verifiable | Objective video evidence of vehicle speed and impact |");
-            sb.AppendLine("| **Driver / Conductor RW Deposition** | Required | Primary defense testimony before the Tribunal |");
-            sb.AppendLine("| **Certified Copy of Award / Order** | Critical | Required to calculate limitation for High Court MFA appeal (90 days) |");
-            sb.AppendLine();
-            sb.AppendLine("> [!IMPORTANT]");
-            sb.AppendLine("> Ensure the Certified Copy Delivered Date is verified to accurately compute the limitation period under Section 173 of the MV Act 1988.");
+            bool isCentralOffice = userDivisionId == 5 || userDivisionId == 0;
+            var sw = Stopwatch.StartNew();
 
-            return Task.FromResult(new DynamicQueryResult
+            string sql = @"
+                SELECT TOP 100 
+                    c.CaseID, 
+                    c.MVCNo, 
+                    c.MVCYear, 
+                    ISNULL(c.VehicleNo, 'N/A') AS VehicleNo, 
+                    c.AccidentDate, 
+                    c.IsObjectionFiled, 
+                    c.IsEvidenceFiled, 
+                    ISNULL(ad.IsFIRFiled, 0) AS FIRFiled, 
+                    ISNULL(ad.IsChargeSheetFiled, 0) AS ChargeSheetFiled, 
+                    ISNULL(ad.IsBusCameraInstalled, 0) AS CameraInstalled, 
+                    ISNULL(c.CurrentStage, 'Trial') AS CurrentStage
+                FROM MVC_CASES c
+                LEFT JOIN MVC_CASE_ADVERSE_DETAILS ad ON c.CaseID = ad.CaseID
+                WHERE (c.IsEvidenceFiled = 0 OR c.IsObjectionFiled = 0 OR ISNULL(ad.IsFIRFiled, 0) = 0)
+                  AND (c.DisposalStatus = 'Pending' OR c.DisposalStatus IS NULL)";
+
+            var parameters = new DynamicParameters();
+            if (!isCentralOffice && userDivisionId > 0)
             {
-                IntentName = "MissingEvidence",
-                Title = "Missing Evidence & Compliance Checklist",
-                FormattedMarkdown = sb.ToString(),
-                RecordCount = 5,
-                IsDeterministicSuccess = true
-            });
+                sql += " AND c.DivisionID = @UserDivisionID";
+                parameters.Add("@UserDivisionID", userDivisionId);
+            }
+            if (plan.DivisionId.HasValue && plan.DivisionId.Value > 0)
+            {
+                sql += " AND c.DivisionID = @TargetDivID";
+                parameters.Add("@TargetDivID", plan.DivisionId.Value);
+            }
+
+            sql += " ORDER BY c.MVCYear DESC, c.CaseID DESC";
+
+            using var conn = _db.GetConnection();
+            await conn.OpenAsync(cancellationToken);
+            var rows = (await conn.QueryAsync(sql, parameters)).Select(r => (IDictionary<string, object?>)r).ToList();
+            sw.Stop();
+
+            return DynamicTabularPresenter.FormatResult(
+                rows,
+                "Pre-Briefing Evidentiary Documentation Audit",
+                "MVC_CASES",
+                sw.ElapsedMilliseconds,
+                "The following active cases require immediate evidentiary review (missing objections, evidence affidavits, or FIR copies):");
+        }
+
+        public async Task<DynamicQueryResult> ExecuteDynamicInquiryAsync(
+            string naturalQuery,
+            int userDivisionId,
+            bool isCentralOffice,
+            CancellationToken cancellationToken = default)
+        {
+            var sw = Stopwatch.StartNew();
+            _logger.LogInformation("Processing dynamic database inquiry: '{Query}' for Division={Div}, CentralOffice={IsCO}",
+                naturalQuery, userDivisionId, isCentralOffice);
+
+            try
+            {
+                var compiled = DynamicSqlCompiler.CompileQuery(naturalQuery, userDivisionId, isCentralOffice);
+                var validation = StrixSqlSafetyGuard.ValidateAndEnforceTenancy(
+                    compiled.Sql,
+                    compiled.Parameters,
+                    userDivisionId,
+                    isCentralOffice);
+
+                if (!validation.IsValid)
+                {
+                    _logger.LogWarning("Dynamic SQL safety guard rejected query: {Reason}", validation.FailureReason);
+                    sw.Stop();
+                    return new DynamicQueryResult
+                    {
+                        IntentName = "SecurityViolation",
+                        Title = "Security Policy Rejection",
+                        Summary = validation.FailureReason ?? "Query was rejected by security safety guard.",
+                        FormattedMarkdown = $"> ⛔ **Security Policy Notice**: {validation.FailureReason}",
+                        IsDeterministicSuccess = false
+                    };
+                }
+
+                using var conn = _db.GetConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                var rows = (await conn.QueryAsync(validation.CleanedSql, validation.Parameters))
+                    .Select(r => (IDictionary<string, object?>)r)
+                    .ToList();
+
+                sw.Stop();
+                _logger.LogInformation("Dynamic query '{Title}' returned {Count} rows in {Elapsed}ms",
+                    compiled.IntentTitle, rows.Count, sw.ElapsedMilliseconds);
+
+                return DynamicTabularPresenter.FormatResult(
+                    rows,
+                    compiled.IntentTitle,
+                    compiled.PrimaryTable,
+                    sw.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                _logger.LogError(ex, "Failed to execute dynamic database inquiry: '{Query}'", naturalQuery);
+                return new DynamicQueryResult
+                {
+                    IntentName = "DatabaseError",
+                    Title = "Database Retrieval Failure",
+                    Summary = "An error occurred while executing the dynamic query against the case repository.",
+                    FormattedMarkdown = $"> ⚠️ **Database Error**: {ex.Message}",
+                    IsDeterministicSuccess = false
+                };
+            }
+        }
+
+        public async Task<CaseDossier?> RetrieveCaseDossierAsync(
+            string module,
+            string caseNumber,
+            int year,
+            int userDivisionId,
+            bool isCentralOffice,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(caseNumber)) return null;
+
+            using var conn = _db.GetConnection();
+            await conn.OpenAsync(cancellationToken);
+
+            string mod = (module ?? "MVC").ToUpperInvariant().Trim();
+
+            if (mod.Contains("LABOUR") || mod.Contains("ID"))
+            {
+                string sql = @"
+                    SELECT TOP 1 
+                        l.CaseID, l.DivisionID, l.CaseNumber, l.CaseYear, 
+                        ISNULL(d.DivisionNameEnglish, 'NWKRTC') AS DivisionName,
+                        ISNULL(l.PetitionerName, 'N/A') AS Petitioner,
+                        ISNULL(l.EmployeeNo, '') AS EmployeeNo,
+                        ISNULL(l.Designation, '') AS Designation,
+                        ISNULL(l.NatureOfMisconduct, '') AS Misconduct,
+                        ISNULL(l.CurrentStage, 'Proceedings') AS CurrentStage,
+                        l.NextHearingDate,
+                        ISNULL(l.CaseStatus, 'Pending') AS DisposalStatus,
+                        ISNULL(l.DisposalResult, '') AS DisposalResult,
+                        ISNULL(l.AwardDetails, '') AS AwardDetails,
+                        l.CO_IsWorkmanReinstated,
+                        ISNULL(l.CO_WP_StayGranted, '') AS StayGranted,
+                        ISNULL(l.AdvocateName, '') AS AdvocateName
+                    FROM LABOUR_CASES l
+                    LEFT JOIN DIVISION_MASTER d ON l.DivisionID = d.DivisionID
+                    WHERE l.CaseNumber = @No " + (year > 0 ? "AND l.CaseYear = @Year " : "") + @"
+                      AND (@IsCO = 1 OR l.DivisionID = @DivId)
+                    ORDER BY l.CaseID DESC";
+
+                var row = await conn.QueryFirstOrDefaultAsync(sql, new
+                {
+                    No = caseNumber.Trim(),
+                    Year = year,
+                    IsCO = isCentralOffice || userDivisionId == 0 || userDivisionId == 5 ? 1 : 0,
+                    DivId = userDivisionId
+                });
+
+                if (row == null) return null;
+
+                var dossier = new CaseDossier
+                {
+                    CaseId = row.CaseID,
+                    CaseType = "LABOUR",
+                    CaseNumber = $"{row.CaseNumber}/{row.CaseYear}",
+                    CourtName = "Labour Court / Industrial Tribunal",
+                    CurrentStage = row.CurrentStage ?? "Active Proceedings",
+                    NextHearingDate = row.NextHearingDate,
+                    Petitioner = row.Petitioner ?? "Workman",
+                    Respondent = $"NWKRTC ({row.DivisionName})"
+                };
+
+                dossier.StructuredFacts["Workman Name"] = row.Petitioner ?? "";
+                dossier.StructuredFacts["Employee No"] = row.EmployeeNo ?? "";
+                dossier.StructuredFacts["Designation"] = row.Designation ?? "";
+                dossier.StructuredFacts["Nature of Misconduct"] = row.Misconduct ?? "";
+                dossier.StructuredFacts["Reinstatement Ordered"] = row.CO_IsWorkmanReinstated == true ? "Yes" : "No";
+                dossier.StructuredFacts["High Court Stay"] = row.StayGranted ?? "None";
+                dossier.StructuredFacts["Disposal Status"] = row.DisposalStatus ?? "Pending";
+                dossier.StructuredFacts["Advocate"] = row.AdvocateName ?? "Panel Counsel";
+
+                return dossier;
+            }
+            else if (mod.Contains("GRA") || mod.Contains("PGA"))
+            {
+                string sql = @"
+                    SELECT TOP 1 
+                        g.CaseID, g.DivisionCode, g.PGANumber, 
+                        ISNULL(g.ClaimantName, 'N/A') AS Petitioner,
+                        ISNULL(g.ClaimantDesignation, '') AS Designation,
+                        ISNULL(g.AmountClaimed, 0) AS ClaimedAmount,
+                        ISNULL(g.OrderedAmount_CA, 0) AS OrderedAmount,
+                        ISNULL(g.ActualPaidAmount, 0) AS PaidAmount,
+                        ISNULL(g.CurrentStage, 'Hearing') AS CurrentStage,
+                        g.NextHearingDate,
+                        ISNULL(g.CaseStatus, 'Pending') AS DisposalStatus,
+                        ISNULL(g.AdvocateName, '') AS AdvocateName
+                    FROM GRA_CASES g
+                    WHERE (g.PGANumber = @No OR g.PGANumber LIKE @LikeNo)
+                      AND (@IsCO = 1 OR g.DivisionCode = CAST(@DivId AS VARCHAR(10)) OR g.DivisionCode = @DivCode)
+                    ORDER BY g.CaseID DESC";
+
+                var row = await conn.QueryFirstOrDefaultAsync(sql, new
+                {
+                    No = caseNumber.Trim(),
+                    LikeNo = $"%{caseNumber.Trim()}%",
+                    IsCO = isCentralOffice || userDivisionId == 0 || userDivisionId == 5 ? 1 : 0,
+                    DivId = userDivisionId,
+                    DivCode = userDivisionId.ToString()
+                });
+
+                if (row == null) return null;
+
+                var dossier = new CaseDossier
+                {
+                    CaseId = row.CaseID,
+                    CaseType = "GRATUITY",
+                    CaseNumber = row.PGANumber,
+                    CourtName = "Controlling Authority under Payment of Gratuity Act",
+                    CurrentStage = row.CurrentStage ?? "Active Proceedings",
+                    NextHearingDate = row.NextHearingDate,
+                    Petitioner = row.Petitioner ?? "Claimant",
+                    Respondent = "NWKRTC"
+                };
+
+                dossier.StructuredFacts["Claimant Name"] = row.Petitioner ?? "";
+                dossier.StructuredFacts["Designation"] = row.Designation ?? "";
+                dossier.StructuredFacts["Claimed Amount"] = $"₹{Convert.ToDecimal(row.ClaimedAmount):N2}";
+                dossier.StructuredFacts["CA Ordered Amount"] = $"₹{Convert.ToDecimal(row.OrderedAmount):N2}";
+                dossier.StructuredFacts["Disbursed Amount"] = $"₹{Convert.ToDecimal(row.PaidAmount):N2}";
+                dossier.StructuredFacts["Disposal Status"] = row.DisposalStatus ?? "Pending";
+                dossier.StructuredFacts["Advocate"] = row.AdvocateName ?? "Panel Counsel";
+
+                return dossier;
+            }
+            else
+            {
+                // MVC Case
+                string sql = @"
+                    SELECT TOP 1 
+                        c.CaseID, c.DivisionID, c.MVCNo, c.MVCYear, 
+                        ISNULL(d.DivisionNameEnglish, 'NWKRTC') AS DivisionName,
+                        ISNULL(c.VehicleNo, 'N/A') AS VehicleNo,
+                        c.AccidentDate,
+                        ISNULL(c.ClaimType, 'Injury') AS ClaimType,
+                        ISNULL(c.ClaimAmount, 0) AS ClaimAmount,
+                        ISNULL(ad.AwardAmount, 0) AS AwardAmount,
+                        ISNULL(c.CurrentStage, 'Active') AS CurrentStage,
+                        c.NextHearingDate,
+                        ISNULL(c.DisposalStatus, 'Pending') AS DisposalStatus,
+                        ISNULL(c.DisposalResult, '') AS DisposalResult,
+                        ISNULL(c.CNRNumber, '') AS CNRNumber,
+                        ISNULL(c.AdvocateName, '') AS AdvocateName,
+                        ISNULL(m.MACTName, 'MACT Tribunal') AS Tribunal
+                    FROM MVC_CASES c
+                    LEFT JOIN MVC_CASE_ADVERSE_DETAILS ad ON c.CaseID = ad.CaseID
+                    LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
+                    LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
+                    WHERE c.MVCNo = @No " + (year > 0 ? "AND c.MVCYear = @Year " : "") + @"
+                      AND (@IsCO = 1 OR c.DivisionID = @DivId)
+                    ORDER BY c.CaseID DESC";
+
+                var row = await conn.QueryFirstOrDefaultAsync(sql, new
+                {
+                    No = caseNumber.Trim(),
+                    Year = year,
+                    IsCO = isCentralOffice || userDivisionId == 0 || userDivisionId == 5 ? 1 : 0,
+                    DivId = userDivisionId
+                });
+
+                if (row == null) return null;
+
+                var dossier = new CaseDossier
+                {
+                    CaseId = row.CaseID,
+                    CaseType = "MVC",
+                    CaseNumber = $"{row.MVCNo}/{row.MVCYear}",
+                    CourtName = row.Tribunal ?? "MACT Tribunal",
+                    CurrentStage = row.CurrentStage ?? "Active Proceedings",
+                    NextHearingDate = row.NextHearingDate,
+                    VehicleNo = row.VehicleNo,
+                    CNRNumber = row.CNRNumber,
+                    Petitioner = "Claimant",
+                    Respondent = $"NWKRTC ({row.DivisionName})"
+                };
+
+                dossier.StructuredFacts["Case Number"] = $"MVC {row.MVCNo}/{row.MVCYear}";
+                dossier.StructuredFacts["Vehicle Number"] = row.VehicleNo ?? "N/A";
+                dossier.StructuredFacts["Accident Date"] = row.AccidentDate != null ? Convert.ToDateTime(row.AccidentDate).ToString("dd-MM-yyyy") : "N/A";
+                dossier.StructuredFacts["Claim Amount"] = $"₹{Convert.ToDecimal(row.ClaimAmount):N2}";
+                dossier.StructuredFacts["Award Amount"] = $"₹{Convert.ToDecimal(row.AwardAmount):N2}";
+                dossier.StructuredFacts["Current Stage"] = row.CurrentStage ?? "Pending";
+                dossier.StructuredFacts["Disposal Status"] = row.DisposalStatus ?? "Pending";
+                dossier.StructuredFacts["Advocate"] = row.AdvocateName ?? "Panel Counsel";
+                dossier.StructuredFacts["CNR Number"] = row.CNRNumber ?? "";
+
+                return dossier;
+            }
         }
     }
 }
