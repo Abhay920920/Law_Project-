@@ -2135,7 +2135,8 @@ function isItemScheduledOnDate(item, targetDateStr) {
     if (item.isListedToday) {
         return !targetDateStr || !dStr || dStr === targetDateStr;
     }
-    return Boolean(targetDateStr && dStr && dStr === targetDateStr);
+    // Only matters actively listed in the official High Court cause list qualify as Today's Cause List
+    return false;
 }
 
 function getDynamicYesterdayDisplay(refDateStr) {
@@ -2163,8 +2164,22 @@ function switchCauseListViewMode(mode) {
     const activeDate = (window.__currentDisplayDate || document.getElementById('liveDate')?.value || '').trim();
     const allItems = window.__allHcCauselistItems || [];
     
-    // An item belongs to the selected cause list date if it was scanned from daily cause list OR its nextHearingDate matches
-    const todayItems = allItems.filter(i => isItemScheduledOnDate(i, activeDate));
+    // An item belongs to the selected cause list date if it was scanned from daily cause list
+    const rawToday = allItems.filter(i => isItemScheduledOnDate(i, activeDate));
+    const seenTodayKeys = new Set();
+    const todayItems = [];
+    for (const itm of rawToday) {
+        const cKey = `${itm.caseType || ''}_${itm.regNumber || ''}_${itm.regYear || ''}`.toUpperCase().trim();
+        const cnr = (itm.cnrNumber || '').toUpperCase().trim();
+        if (cKey && cKey !== '__') {
+            if (seenTodayKeys.has(cKey)) continue;
+            seenTodayKeys.add(cKey);
+        } else if (cnr && cnr !== '-') {
+            if (seenTodayKeys.has(cnr)) continue;
+            seenTodayKeys.add(cnr);
+        }
+        todayItems.push(itm);
+    }
 
     const listedCount = todayItems.length;
     const totalCount = window.__serverRes?.allCount ?? allItems.length;
@@ -2452,9 +2467,25 @@ function filterLiveCauselistRows() {
         return matchParty && matchBench && matchCauseList;
     });
 
-    window.__filteredHcCauselistItems = filtered;
+    // Strict deduplication by case number so no matter appears more than once
+    const seenFilterKeys = new Set();
+    const dedupedFiltered = [];
+    for (const itm of filtered) {
+        const cKey = `${itm.caseType || ''}_${itm.regNumber || ''}_${itm.regYear || ''}`.toUpperCase().trim();
+        const cnr = (itm.cnrNumber || '').toUpperCase().trim();
+        if (cKey && cKey !== '__') {
+            if (seenFilterKeys.has(cKey)) continue;
+            seenFilterKeys.add(cKey);
+        } else if (cnr && cnr !== '-') {
+            if (seenFilterKeys.has(cnr)) continue;
+            seenFilterKeys.add(cnr);
+        }
+        dedupedFiltered.push(itm);
+    }
+
+    window.__filteredHcCauselistItems = dedupedFiltered;
     hcCurrentPage = 1;
-    const visibleCount = filtered.length;
+    const visibleCount = dedupedFiltered.length;
 
     const badge = document.getElementById('liveListBadge');
     if (badge) {

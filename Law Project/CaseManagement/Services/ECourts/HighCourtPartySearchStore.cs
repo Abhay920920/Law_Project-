@@ -84,6 +84,7 @@ namespace MVCCaseManagement.Services.ECourts
 
                     if (items != null && items.Count > 0)
                     {
+                        bool anyDeduplicated = false;
                         foreach (var itm in items)
                         {
                             // Sanitize placeholder dates (e.g. 5000-01-01, 1900-01-01, 0001-01-01)
@@ -95,9 +96,33 @@ namespace MVCCaseManagement.Services.ECourts
                             string key = GetItemKey(itm);
                             if (!string.IsNullOrEmpty(key))
                             {
-                                _cases[key] = itm;
+                                if (_cases.TryGetValue(key, out var existing))
+                                {
+                                    MergeItem(existing, itm, ref anyDeduplicated);
+                                }
+                                else
+                                {
+                                    _cases[key] = itm;
+                                }
                             }
                         }
+
+                        if (anyDeduplicated)
+                        {
+                            try
+                            {
+                                string tmpPath = filePath + ".tmp";
+                                string dedupJson = JsonSerializer.Serialize(_cases.Values.ToList(), new JsonSerializerOptions { WriteIndented = true });
+                                File.WriteAllText(tmpPath, dedupJson);
+                                File.Move(tmpPath, filePath, overwrite: true);
+                                _logger.LogInformation("[HighCourtPartySearchStore] Master store deduplicated and persisted ({Count} unique cases).", _cases.Count);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "[HighCourtPartySearchStore] Warning persisting deduplicated store on startup.");
+                            }
+                        }
+
                         _logger.LogInformation("[HighCourtPartySearchStore] Loaded {Count} master NWKRTC cases from {File}", _cases.Count, filePath);
                     }
                 }
@@ -118,14 +143,73 @@ namespace MVCCaseManagement.Services.ECourts
             }
         }
 
+        private static string GetEstablishmentCode(PartyCaseSearchResultItem item)
+        {
+            if (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6)
+            {
+                return item.CNRNumber.Substring(0, 6).ToUpperInvariant();
+            }
+            if (item.HighCourtBench != null)
+            {
+                if (item.HighCourtBench.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) || item.HighCourtBench.Contains("Principal", StringComparison.OrdinalIgnoreCase))
+                    return "KAHC01";
+                if (item.HighCourtBench.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase))
+                    return "KAHC03";
+            }
+            return "KAHC02";
+        }
+
         private static string GetItemKey(PartyCaseSearchResultItem item)
         {
+            string est = GetEstablishmentCode(item);
+            if (!string.IsNullOrEmpty(item.CaseType) && !string.IsNullOrEmpty(item.RegNumber) && !string.IsNullOrEmpty(item.RegYear))
+            {
+                return $"{est}_{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim().ToUpperInvariant();
+            }
             if (!string.IsNullOrWhiteSpace(item.CNRNumber) && item.CNRNumber.Trim() != "-")
             {
                 return item.CNRNumber.Trim().ToUpperInvariant();
             }
-            string regKey = $"{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim().ToUpperInvariant();
-            return regKey != "__" ? regKey : "";
+            return "";
+        }
+
+        private static void MergeItem(PartyCaseSearchResultItem existing, PartyCaseSearchResultItem incoming, ref bool modified)
+        {
+            // Real CNR (digits after 6-char est code) always takes precedence over synthetic CNR (letters in sequence)
+            bool existingIsSynthetic = string.IsNullOrEmpty(existing.CNRNumber) || Regex.IsMatch(existing.CNRNumber.Substring(Math.Min(6, existing.CNRNumber.Length)), @"[A-Za-z]");
+            bool incomingIsSynthetic = string.IsNullOrEmpty(incoming.CNRNumber) || Regex.IsMatch(incoming.CNRNumber.Substring(Math.Min(6, incoming.CNRNumber.Length)), @"[A-Za-z]");
+
+            if (existingIsSynthetic && !incomingIsSynthetic && !string.IsNullOrEmpty(incoming.CNRNumber))
+            {
+                existing.CNRNumber = incoming.CNRNumber;
+                modified = true;
+            }
+
+            if (!string.IsNullOrEmpty(incoming.CourtHall) && existing.CourtHall != incoming.CourtHall) { existing.CourtHall = incoming.CourtHall; modified = true; }
+            if (!string.IsNullOrEmpty(incoming.CauseListNo) && existing.CauseListNo != incoming.CauseListNo) { existing.CauseListNo = incoming.CauseListNo; modified = true; }
+            if (!string.IsNullOrEmpty(incoming.CauseListItemNo) && existing.CauseListItemNo != incoming.CauseListItemNo) { existing.CauseListItemNo = incoming.CauseListItemNo; modified = true; }
+            if (!string.IsNullOrEmpty(incoming.CaseStage) && existing.CaseStage != incoming.CaseStage) { existing.CaseStage = incoming.CaseStage; modified = true; }
+            if (!string.IsNullOrEmpty(incoming.Advocate) && existing.Advocate != incoming.Advocate) { existing.Advocate = incoming.Advocate; modified = true; }
+            if (!string.IsNullOrEmpty(incoming.SubjectCategory) && existing.SubjectCategory != incoming.SubjectCategory) { existing.SubjectCategory = incoming.SubjectCategory; modified = true; }
+            if (incoming.NextHearingDate.HasValue && existing.NextHearingDate != incoming.NextHearingDate) { existing.NextHearingDate = incoming.NextHearingDate; modified = true; }
+
+            if (!string.IsNullOrEmpty(incoming.PetitionerName) && incoming.PetitionerName.Length > (existing.PetitionerName?.Length ?? 0))
+            {
+                existing.PetitionerName = incoming.PetitionerName;
+                modified = true;
+            }
+            if (!string.IsNullOrEmpty(incoming.RespondentName) && incoming.RespondentName.Length > (existing.RespondentName?.Length ?? 0))
+            {
+                existing.RespondentName = incoming.RespondentName;
+                modified = true;
+            }
+
+            if ((string.IsNullOrEmpty(existing.NwkrtcRole) || existing.NwkrtcRole == "Unknown") && !string.IsNullOrEmpty(incoming.NwkrtcRole))
+            {
+                existing.NwkrtcRole = incoming.NwkrtcRole;
+                existing.MatchedDesignation = incoming.MatchedDesignation;
+                modified = true;
+            }
         }
 
         public async Task<List<PartyCaseSearchResultItem>> GetPartyCasesAsync(
@@ -282,12 +366,7 @@ namespace MVCCaseManagement.Services.ECourts
 
                 if (_cases.TryGetValue(key, out var existing))
                 {
-                    if (!string.IsNullOrEmpty(item.CourtHall) && existing.CourtHall != item.CourtHall) { existing.CourtHall = item.CourtHall; modified = true; }
-                    if (!string.IsNullOrEmpty(item.CauseListNo) && existing.CauseListNo != item.CauseListNo) { existing.CauseListNo = item.CauseListNo; modified = true; }
-                    if (!string.IsNullOrEmpty(item.CauseListItemNo) && existing.CauseListItemNo != item.CauseListItemNo) { existing.CauseListItemNo = item.CauseListItemNo; modified = true; }
-                    if (!string.IsNullOrEmpty(item.CaseStage) && existing.CaseStage != item.CaseStage) { existing.CaseStage = item.CaseStage; modified = true; }
-                    if (!string.IsNullOrEmpty(item.Advocate) && existing.Advocate != item.Advocate) { existing.Advocate = item.Advocate; modified = true; }
-                    if (item.NextHearingDate.HasValue && existing.NextHearingDate != item.NextHearingDate) { existing.NextHearingDate = item.NextHearingDate; modified = true; }
+                    MergeItem(existing, item, ref modified);
                 }
                 else
                 {

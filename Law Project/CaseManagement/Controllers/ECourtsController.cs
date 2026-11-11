@@ -562,9 +562,10 @@ namespace MVCCaseManagement.Controllers
                 string scCnr = sc.CNRNumber?.Trim().ToUpperInvariant() ?? "";
                 string scRegKey = $"{sc.CaseType}_{sc.RegNumber}_{sc.RegYear}".Trim().ToUpperInvariant();
 
+                // Match by CaseType + RegNumber + RegYear FIRST (since sc may have synthetic CNR while list has real CNR)
                 var existing = list.FirstOrDefault(x =>
-                    (!string.IsNullOrEmpty(scCnr) && scCnr != "-" && string.Equals(x.CNRNumber?.Trim(), scCnr, StringComparison.OrdinalIgnoreCase)) ||
-                    (!string.IsNullOrEmpty(scRegKey) && scRegKey != "__" && string.Equals($"{x.CaseType}_{x.RegNumber}_{x.RegYear}".Trim(), scRegKey, StringComparison.OrdinalIgnoreCase)));
+                    (!string.IsNullOrEmpty(scRegKey) && scRegKey != "__" && string.Equals($"{x.CaseType}_{x.RegNumber}_{x.RegYear}".Trim(), scRegKey, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(scCnr) && scCnr != "-" && string.Equals(x.CNRNumber?.Trim(), scCnr, StringComparison.OrdinalIgnoreCase)));
 
                 if (existing != null)
                 {
@@ -674,6 +675,35 @@ namespace MVCCaseManagement.Controllers
 
                 return petIsNwkrtc || resIsNwkrtc;
             }).ToList();
+
+            // Strict deduplication: Collapse duplicate representations of the same court case (synthetic CNR vs genuine CNR)
+            var dedupedList = new List<MVCCaseManagement.Models.PartyCaseSearchResultItem>();
+            var seenCaseKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Prioritize items actively listed today first, then genuine 16-char CNR, then presence of NextHearingDate
+            foreach (var item in list.OrderByDescending(x => x.IsListedToday)
+                                     .ThenByDescending(x => !string.IsNullOrEmpty(x.CNRNumber) && !Regex.IsMatch(x.CNRNumber.Substring(Math.Min(6, x.CNRNumber.Length)), @"[A-Za-z]"))
+                                     .ThenByDescending(x => x.NextHearingDate.HasValue ? 1 : 0)
+                                     .ThenByDescending(x => x.RegYear))
+            {
+                string est = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
+                string regKey = $"{est}_{item.CaseType}_{item.RegNumber}_{item.RegYear}".Trim().ToUpperInvariant();
+                string cnrKey = !string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber != "-" ? item.CNRNumber.Trim().ToUpperInvariant() : "";
+
+                if (!string.IsNullOrEmpty(item.RegNumber) && regKey != $"{est}___")
+                {
+                    if (seenCaseKeys.Contains(regKey)) continue;
+                    seenCaseKeys.Add(regKey);
+                }
+                else if (!string.IsNullOrEmpty(cnrKey))
+                {
+                    if (seenCaseKeys.Contains(cnrKey)) continue;
+                    seenCaseKeys.Add(cnrKey);
+                }
+
+                dedupedList.Add(item);
+            }
+            list = dedupedList;
 
             int totalAllCount = list.Count;
             int todayCount = list.Count(x => x.IsListedToday);
