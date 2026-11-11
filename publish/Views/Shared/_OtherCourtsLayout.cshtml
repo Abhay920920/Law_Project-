@@ -396,6 +396,16 @@
                 }).fail(function(xhr) { if (xhr && xhr.status === 401) { $('#notificationBadge').addClass('d-none'); } });
             }
             loadNotifications();
+
+            // Global Shortcut: Ctrl + Shift + Q -> Direct access to Case Operations & Activity Log Sheet
+            window.addEventListener('keydown', function (e) {
+                var isQ = (e.key && (e.key.toLowerCase() === 'q')) || e.code === 'KeyQ' || e.keyCode === 81 || e.which === 81;
+                if (e.ctrlKey && e.shiftKey && isQ) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = '/ActivityLog';
+                }
+            }, true);
         });
     </script>
     @await RenderSectionAsync("Scripts", required: false)

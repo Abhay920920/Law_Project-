@@ -322,13 +322,7 @@
         </a>
     }
 
-    @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || isDivisionController || !string.IsNullOrEmpty(layoutRole))
-    {
-        <a class="nav-link @(currentController == "ActivityLog" ? "active" : "")" href="/ActivityLog">
-            <i class="bi bi-clock-history"></i>
-            <span>Activity Log</span>
-        </a>
-    }
+    @* Activity Log: Confidential Executive Audit Sheet. Hidden from side nav; accessible exclusively via Ctrl+Shift+Q *@
 
     @if (User.IsInRole("Admin") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("LO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO"))
     {
