@@ -208,5 +208,62 @@ namespace MVCCaseManagement.Tests
             Assert.NotNull(resolved);
             Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
         }
+
+        [Fact]
+        public void LocatePhysicalFile_WithQueryString_ResolvesCorrectly()
+        {
+            string vaultRoot = _service.GetVaultRootPath();
+            string dir = Path.Combine(vaultRoot, "judgments");
+            Directory.CreateDirectory(dir);
+            string filePath = Path.Combine(dir, "Award_Copy.pdf");
+            File.WriteAllText(filePath, "%PDF-1.4 test");
+
+            string? resolved = _service.LocatePhysicalFile("/uploads/judgments/Award_Copy.pdf?v=12345&t=67890");
+            Assert.NotNull(resolved);
+            Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
+        }
+
+        [Fact]
+        public void LocatePhysicalFile_WithUploadsVaultPrefix_ResolvesCorrectly()
+        {
+            string vaultRoot = _service.GetVaultRootPath();
+            string dir = Path.Combine(vaultRoot, "orders");
+            Directory.CreateDirectory(dir);
+            string filePath = Path.Combine(dir, "Interim_Order.pdf");
+            File.WriteAllText(filePath, "%PDF-1.4 test");
+
+            string? resolved = _service.LocatePhysicalFile("uploads_vault/orders/Interim_Order.pdf");
+            Assert.NotNull(resolved);
+            Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
+        }
+
+        [Fact]
+        public void LocatePhysicalFile_InsideContentRootUploadsVault_ResolvesCorrectly()
+        {
+            // Simulate Plesk httpdocs\uploads_vault structure
+            string pleskVault = Path.Combine(_testRoot, "uploads_vault", "judgments");
+            Directory.CreateDirectory(pleskVault);
+            string filePath = Path.Combine(pleskVault, "Plesk_Adverse_Award.pdf");
+            File.WriteAllText(filePath, "%PDF-1.4 test adverse award");
+
+            string? resolved = _service.LocatePhysicalFile("/uploads/judgments/Plesk_Adverse_Award.pdf");
+            Assert.NotNull(resolved);
+            Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
+        }
+
+        [Fact]
+        public void LocatePhysicalFile_DeepSubdirectorySearch_ResolvesCorrectly()
+        {
+            // Simulate deeply nested file
+            string nestedDir = Path.Combine(_testRoot, "uploads_vault", "Labour", "reinstated", "nested_folder");
+            Directory.CreateDirectory(nestedDir);
+            string filePath = Path.Combine(nestedDir, "DeeplyNestedDoc.pdf");
+            File.WriteAllText(filePath, "%PDF-1.4 nested");
+
+            // Look up by filename only or partial path
+            string? resolved = _service.LocatePhysicalFile("DeeplyNestedDoc.pdf");
+            Assert.NotNull(resolved);
+            Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
+        }
     }
 }

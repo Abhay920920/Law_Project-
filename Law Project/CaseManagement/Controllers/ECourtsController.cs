@@ -7342,12 +7342,33 @@ namespace MVCCaseManagement.Controllers
                 return File(pdfBytes, "application/pdf");
             }
 
-            // 2. Try physical file if local path in storage vault or wwwroot
-            if (!string.IsNullOrWhiteSpace(decodedUrl) && !decodedUrl.StartsWith("/Case/Details", StringComparison.OrdinalIgnoreCase) && !decodedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            // 2. Try physical file if local path in storage vault, wwwroot, or uploads
+            string? localCandidatePath = null;
+            if (!string.IsNullOrWhiteSpace(decodedUrl))
+            {
+                if (decodedUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || decodedUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (Uri.TryCreate(decodedUrl, UriKind.Absolute, out var parsedUri) && parsedUri.AbsolutePath.Contains("/uploads", StringComparison.OrdinalIgnoreCase))
+                    {
+                        localCandidatePath = parsedUri.AbsolutePath;
+                    }
+                }
+                else if (!decodedUrl.StartsWith("/Case/Details", StringComparison.OrdinalIgnoreCase))
+                {
+                    localCandidatePath = decodedUrl;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(localCandidatePath))
             {
                 try
                 {
-                    string relativePath = decodedUrl.TrimStart('/', '\\');
+                    string relativePath = localCandidatePath.TrimStart('/', '\\');
+                    int qIdx = relativePath.IndexOf('?');
+                    if (qIdx >= 0)
+                    {
+                        relativePath = relativePath.Substring(0, qIdx);
+                    }
 
                     // Check storage vault first via _storageService
                     if (_storageService != null)
