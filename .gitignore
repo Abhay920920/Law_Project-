@@ -74,8 +74,10 @@ ShadowCopy/
 
 ## File Uploads & User Media (preserve directories via .gitkeep)
 uploads/*
+!uploads/**/.gitkeep
 !uploads/.gitkeep
 **/wwwroot/uploads/*
+!**/wwwroot/uploads/**/.gitkeep
 !**/wwwroot/uploads/.gitkeep
 
 ## Sensitive Configs & Local Overrides
