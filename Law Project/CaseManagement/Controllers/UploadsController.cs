@@ -198,6 +198,14 @@ namespace MVCCaseManagement.Controllers
                                 SELECT OrderID AS CaseID, 0 AS DivisionID, 1 AS IsShared
                                 FROM CASE_ORDERS
                                 WHERE LocalPdfPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 10. MVC Case User-Uploaded Documents
+                                SELECT md.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID, 0 AS IsShared
+                                FROM MVC_CASE_DOCUMENTS md
+                                INNER JOIN MVC_CASES m ON md.CaseID = m.CaseID
+                                WHERE md.DocumentPath LIKE '%' + @fileName + '%'
                             ) AS AllAttachments";
 
                         using (var cmd = new SqlCommand(sql, conn))
@@ -207,8 +215,9 @@ namespace MVCCaseManagement.Controllers
                             {
                                 if (r.Read())
                                 {
-                                    attachedCaseDivId = r.IsDBNull(0) ? 0 : Convert.ToInt32(r.GetValue(0));
-                                    isSharedDoc = !r.IsDBNull(1) && Convert.ToInt32(r.GetValue(1)) == 1;
+                                    // Column 0: CaseID, Column 1: DivisionID, Column 2: IsShared
+                                    attachedCaseDivId = r.IsDBNull(1) ? 0 : Convert.ToInt32(r.GetValue(1));
+                                    isSharedDoc = !r.IsDBNull(2) && Convert.ToInt32(r.GetValue(2)) == 1;
                                 }
                             }
                         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
@@ -1234,6 +1234,12 @@ namespace MVCCaseManagement.DAL
             }
             model.AdverseAward.IsAllegedAccident = model.IsAllegedAccident || model.AdverseAward.IsAllegedAccident;
             model.IsAllegedAccident = model.AdverseAward.IsAllegedAccident;
+
+            try
+            {
+                model.UploadedDocuments = GetCaseDocuments(caseId);
+            }
+            catch { /* Ignore */ }
 
             return model;
         }
@@ -4208,6 +4214,105 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 Console.WriteLine($"GetThirdPartySummaryStats Error: {ex.Message}");
             }
             return (0, 0, 0, 0);
+        }
+
+        public List<MvcCaseDocument> GetCaseDocuments(int caseId)
+        {
+            var list = new List<MvcCaseDocument>();
+            string query = @"
+                IF OBJECT_ID('MVC_CASE_DOCUMENTS', 'U') IS NOT NULL
+                BEGIN
+                    SELECT DocumentID, CaseID, DocumentName, DocumentPath, UploadedDate, UploadedBy, Remarks
+                    FROM MVC_CASE_DOCUMENTS
+                    WHERE CaseID = @CaseID
+                    ORDER BY UploadedDate DESC
+                END";
+            try
+            {
+                DataTable dt = _db.ExecuteQuery(query, new[] { new SqlParameter("@CaseID", caseId) });
+                foreach (DataRow row in dt.Rows)
+                {
+                    list.Add(new MvcCaseDocument
+                    {
+                        DocumentID = Convert.ToInt32(row["DocumentID"]),
+                        CaseID = Convert.ToInt32(row["CaseID"]),
+                        DocumentName = row["DocumentName"]?.ToString() ?? "",
+                        DocumentPath = row["DocumentPath"]?.ToString() ?? "",
+                        UploadedDate = row["UploadedDate"] != DBNull.Value ? Convert.ToDateTime(row["UploadedDate"]) : DateTime.MinValue,
+                        UploadedBy = row["UploadedBy"] != DBNull.Value ? (int?)Convert.ToInt32(row["UploadedBy"]) : null,
+                        Remarks = row["Remarks"]?.ToString()
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching MVC_CASE_DOCUMENTS for CaseID {caseId}: {ex.Message}");
+            }
+            return list;
+        }
+
+        public void AddCaseDocument(MvcCaseDocument doc)
+        {
+            string query = @"
+                IF OBJECT_ID('MVC_CASE_DOCUMENTS', 'U') IS NOT NULL
+                BEGIN
+                    INSERT INTO MVC_CASE_DOCUMENTS (CaseID, DocumentName, DocumentPath, UploadedDate, UploadedBy, Remarks)
+                    VALUES (@CaseID, @DocumentName, @DocumentPath, GETDATE(), @UploadedBy, @Remarks)
+                END";
+            _db.ExecuteNonQuery(query, new[] {
+                new SqlParameter("@CaseID", doc.CaseID),
+                new SqlParameter("@DocumentName", (object?)doc.DocumentName ?? DBNull.Value),
+                new SqlParameter("@DocumentPath", (object?)doc.DocumentPath ?? DBNull.Value),
+                new SqlParameter("@UploadedBy", (object?)doc.UploadedBy ?? DBNull.Value),
+                new SqlParameter("@Remarks", (object?)doc.Remarks ?? DBNull.Value)
+            });
+        }
+
+        public List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)> GetCaseOrdersByCnrs(IEnumerable<string> cnrs)
+        {
+            var list = new List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)>();
+            var cleanCnrs = (cnrs ?? Enumerable.Empty<string>())
+                .Where(c => !string.IsNullOrWhiteSpace(c) && c.Trim().Length >= 10)
+                .Select(c => c.Trim().Replace("-", "").Replace(" ", "").ToUpperInvariant())
+                .Distinct()
+                .ToList();
+
+            if (!cleanCnrs.Any()) return list;
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                conn.Open();
+                string sql = @"
+                    SELECT CNRNumber, OrderDate, OrderType, LocalPdfPath, OrderPdfUrl
+                    FROM CASE_ORDERS
+                    WHERE UPPER(REPLACE(REPLACE(CNRNumber, '-', ''), ' ', '')) IN (" +
+                    string.Join(",", cleanCnrs.Select((_, i) => $"@cnr{i}")) + @")
+                    ORDER BY OrderDate DESC";
+
+                using var cmd = new SqlCommand(sql, conn);
+                for (int i = 0; i < cleanCnrs.Count; i++)
+                {
+                    cmd.Parameters.Add(new SqlParameter($"@cnr{i}", cleanCnrs[i]));
+                }
+
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    string cnr = r["CNRNumber"]?.ToString() ?? "";
+                    DateTime? dt = r["OrderDate"] != DBNull.Value ? Convert.ToDateTime(r["OrderDate"]) : null;
+                    string oType = r["OrderType"]?.ToString() ?? "Court Order";
+                    string? localPdf = r["LocalPdfPath"] != DBNull.Value ? r["LocalPdfPath"]?.ToString() : null;
+                    string? extUrl = r["OrderPdfUrl"] != DBNull.Value ? r["OrderPdfUrl"]?.ToString() : null;
+                    list.Add((cnr, dt, oType, localPdf, extUrl));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error querying CASE_ORDERS: {ex.Message}");
+            }
+
+            return list;
         }
     }
 }

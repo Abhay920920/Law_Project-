@@ -8551,10 +8551,25 @@ namespace MVCCaseManagement.Controllers
             string webRoot = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
             if (!Directory.Exists(webRoot)) webRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wwwroot");
 
-            // 1. If physical file path in wwwroot is provided directly, serve immediately
+            // 1. If physical file path in persistent uploads_vault or wwwroot is provided directly, serve immediately
             if (!string.IsNullOrWhiteSpace(pdfPath) && !pdfPath.StartsWith("http", StringComparison.OrdinalIgnoreCase) && !pdfPath.StartsWith("/ECourts/ViewOrderPdf", StringComparison.OrdinalIgnoreCase))
             {
                 string directRelPath = pdfPath.Trim().TrimStart('/', '\\');
+
+                // Priority A: Resolve directly from uploads_vault via _storageService
+                if (_storageService != null)
+                {
+                    string? vaultFile = _storageService.LocatePhysicalFile(directRelPath);
+                    if (!string.IsNullOrEmpty(vaultFile) && System.IO.File.Exists(vaultFile))
+                    {
+                        Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{Path.GetFileName(vaultFile)}\"");
+                        string ext = Path.GetExtension(vaultFile).ToLowerInvariant();
+                        string mime = ext switch { ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", _ => "application/pdf" };
+                        return PhysicalFile(vaultFile, mime);
+                    }
+                }
+
+                // Priority B: Direct fallback in wwwroot
                 string localFile = Path.Combine(webRoot, directRelPath);
                 if (System.IO.File.Exists(localFile) && localFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 {
@@ -8626,6 +8641,19 @@ namespace MVCCaseManagement.Controllers
                         foreach (var rel in candidatePaths)
                         {
                             if (string.IsNullOrWhiteSpace(rel)) continue;
+
+                            if (_storageService != null)
+                            {
+                                string? vFile = _storageService.LocatePhysicalFile(rel);
+                                if (!string.IsNullOrEmpty(vFile) && System.IO.File.Exists(vFile))
+                                {
+                                    Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{Path.GetFileName(vFile)}\"");
+                                    string ext = Path.GetExtension(vFile).ToLowerInvariant();
+                                    string mime = ext switch { ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", _ => "application/pdf" };
+                                    return PhysicalFile(vFile, mime);
+                                }
+                            }
+
                             string full = Path.Combine(webRoot, rel.TrimStart('/', '\\'));
                             if (System.IO.File.Exists(full) && full.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                             {

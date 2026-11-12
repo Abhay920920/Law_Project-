@@ -147,15 +147,33 @@ namespace MVCCaseManagement.Services.Storage
             }
 
             // 1. Direct candidate probes across all search roots
+            string rawRel = (relativePath ?? string.Empty).Trim().TrimStart('/', '\\').Replace('/', '\\');
             foreach (var root in searchRoots)
             {
                 try
                 {
-                    // Check exact relative subpath (e.g., judgments\file.pdf)
+                    // Check exact clean relative subpath (e.g., Labour\Judgments\file.pdf)
                     string directCandidate = Path.Combine(root, cleanPath);
                     if (File.Exists(directCandidate))
                     {
                         return directCandidate;
+                    }
+
+                    // Check with explicit 'uploads' folder (e.g., root\uploads\Labour\Judgments\file.pdf)
+                    string uploadsCandidate = Path.Combine(root, "uploads", cleanPath);
+                    if (File.Exists(uploadsCandidate))
+                    {
+                        return uploadsCandidate;
+                    }
+
+                    // Check unstripped raw relative path if different
+                    if (!string.IsNullOrEmpty(rawRel) && !rawRel.Equals(cleanPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string rawCandidate = Path.Combine(root, rawRel);
+                        if (File.Exists(rawCandidate))
+                        {
+                            return rawCandidate;
+                        }
                     }
 
                     // Check flat file in root (e.g., root\file.pdf)
@@ -171,17 +189,42 @@ namespace MVCCaseManagement.Services.Storage
                 catch { }
             }
 
-            // 2. Recursive search within all known roots for exact filename (minimum 4 characters)
+            // 2. Context-aware recursive search within all known roots for exact filename
             if (!string.IsNullOrEmpty(fileName) && fileName.Length >= 4)
             {
+                string? expectedDirName = Path.GetDirectoryName(cleanPath);
                 foreach (var root in searchRoots)
                 {
                     try
                     {
                         var matches = Directory.GetFiles(root, fileName, SearchOption.AllDirectories);
-                        if (matches.Length > 0 && File.Exists(matches[0]))
+                        if (matches.Length > 0)
                         {
-                            return matches[0];
+                            // Priority 1: Match that resides within the expected subfolder path
+                            if (!string.IsNullOrEmpty(expectedDirName))
+                            {
+                                var contextMatch = matches.FirstOrDefault(m => 
+                                    m.Contains(expectedDirName, StringComparison.OrdinalIgnoreCase) ||
+                                    m.Contains(Path.GetFileName(expectedDirName), StringComparison.OrdinalIgnoreCase));
+                                if (!string.IsNullOrEmpty(contextMatch) && File.Exists(contextMatch))
+                                {
+                                    return contextMatch;
+                                }
+                            }
+
+                            // Priority 2: If only 1 file exists across the vault with this exact name, return it safely
+                            if (matches.Length == 1 && File.Exists(matches[0]))
+                            {
+                                return matches[0];
+                            }
+                            // Priority 3: If multiple matches exist, avoid returning wrong document if name is too generic
+                            else if (matches.Length > 1 && fileName.Length > 8)
+                            {
+                                if (File.Exists(matches[0]))
+                                {
+                                    return matches[0];
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)

@@ -775,6 +775,13 @@ namespace MVCCaseManagement.Controllers
             ViewBag.MACTs = _masterRepo.GetAllMACTs();
             ViewBag.Advocates = _masterRepo.GetAllAdvocates();
             ViewBag.CaseNotings = isCentralOffice ? _notingRepo.GetNotings("MVC", id) : new List<MVCCaseManagement.Models.CaseNoting>();
+            
+            var activeCnrs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(model.CNRNumber)) activeCnrs.Add(model.CNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.LinkedAppeal?.CorpMFACNRNumber)) activeCnrs.Add(model.LinkedAppeal.CorpMFACNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.LinkedAppeal?.ClaimantMFACNRNumber)) activeCnrs.Add(model.LinkedAppeal.ClaimantMFACNRNumber);
+            ViewBag.CaseOrders = _caseRepo.GetCaseOrdersByCnrs(activeCnrs);
+
             try
             {
                 ViewBag.PettyBills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(model.CaseID, model.MVCNo, model.MVCYear);
@@ -884,6 +891,84 @@ namespace MVCCaseManagement.Controllers
             return Json(new { success = deleted, message = deleted ? "Noting deleted successfully." : "Failed to delete noting." });
         }
 
+        [HttpPost]
+        public async Task<IActionResult> UploadCaseDocumentWithRemark(int caseId, string? documentName, string? remarks, IFormFile? documentFile)
+        {
+            try
+            {
+                if (caseId <= 0)
+                {
+                    return Json(new { success = false, message = "Invalid case ID." });
+                }
+
+                var kase = _caseRepo.GetCaseById(caseId);
+                if (kase == null)
+                {
+                    return Json(new { success = false, message = "Case not found." });
+                }
+
+                var divIdString = User.FindFirst("DivisionID")?.Value;
+                var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+                bool isCentral = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                                 || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                                 || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+                int userDivId = int.TryParse(divIdString, out int parsedDiv) ? parsedDiv : -1;
+
+                if (!isCentral && kase.DivisionID != userDivId)
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot upload documents for another division's case." });
+                }
+
+                if (documentFile == null || documentFile.Length == 0)
+                {
+                    return Json(new { success = false, message = "Please select a document file to upload." });
+                }
+
+                string fileName = Path.GetFileNameWithoutExtension(documentFile.FileName);
+                string title = !string.IsNullOrWhiteSpace(documentName) ? documentName.Trim() : fileName;
+                string finalDocName = !string.IsNullOrWhiteSpace(remarks) ? $"{title} | Remark: {remarks.Trim()}" : title;
+
+                string? filePath = null;
+                if (_storageService != null)
+                {
+                    filePath = await _storageService.SaveFileAsync(documentFile, "cases/CaseDocuments");
+                }
+                else
+                {
+                    filePath = SaveFile(documentFile, "cases");
+                }
+
+                if (string.IsNullOrEmpty(filePath))
+                {
+                    return Json(new { success = false, message = "Failed to save file to storage vault." });
+                }
+
+                int? currentUserId = null;
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdClaim, out int uid)) currentUserId = uid;
+
+                var doc = new MvcCaseDocument
+                {
+                    CaseID = caseId,
+                    DocumentName = finalDocName,
+                    DocumentPath = filePath,
+                    UploadedDate = DateTime.Now,
+                    UploadedBy = currentUserId,
+                    Remarks = remarks
+                };
+
+                _caseRepo.AddCaseDocument(doc);
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", caseId, $"MVC #{kase.MVCNo}/{kase.MVCYear}", "DOCUMENT_UPLOADED", $"Uploaded document: {finalDocName}");
+
+                return Json(new { success = true, message = "Document uploaded successfully.", path = filePath, name = finalDocName });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading MVC case document for CaseID {CaseID}", caseId);
+                return Json(new { success = false, message = "Error uploading document: " + ex.Message });
+            }
+        }
+
         [HttpGet]
         public async Task<IActionResult> RemindBackDetails(int id)
         {
@@ -915,6 +1000,13 @@ namespace MVCCaseManagement.Controllers
             }
 
             ViewData["HideActionBtn"] = true;
+
+            var activeCnrs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(model.CNRNumber)) activeCnrs.Add(model.CNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.LinkedAppeal?.CorpMFACNRNumber)) activeCnrs.Add(model.LinkedAppeal.CorpMFACNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.LinkedAppeal?.ClaimantMFACNRNumber)) activeCnrs.Add(model.LinkedAppeal.ClaimantMFACNRNumber);
+            ViewBag.CaseOrders = _caseRepo.GetCaseOrdersByCnrs(activeCnrs);
+
             try
             {
                 ViewBag.PettyBills = _pettyBillRepo.GetFullPettyBillsByCaseIdOrMVC(model.CaseID, model.MVCNo, model.MVCYear);

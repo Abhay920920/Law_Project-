@@ -263,6 +263,9 @@ namespace MVCCaseManagement.Models
         public string? TransferredFromDivisionName { get; set; }
         public DateTime? TransferDate { get; set; }
         public bool IsTransferViewed { get; set; }
+
+        // USER UPLOADED SUPPLEMENTARY DOCUMENTS (MVC_CASE_DOCUMENTS)
+        public List<MvcCaseDocument> UploadedDocuments { get; set; } = new();
     }
 
     public class RespondentViewModel

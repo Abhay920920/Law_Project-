@@ -1986,6 +1986,55 @@ namespace MVCCaseManagement.DAL
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_6_DeduplicateLabourCasesMigrationId, migTimer18.ElapsedMilliseconds);
                     }
 
+                    // 19. Migration: Create MVC_CASE_DOCUMENTS table
+                    const string v1_2_7_MvcCaseDocumentsMigrationId = "20261112_v1_2_7_Create_MVC_CASE_DOCUMENTS_Table";
+                    using (var checkCmd19 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd19.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_7_MvcCaseDocumentsMigrationId });
+                        bool isMig19Applied = ((int?)checkCmd19.ExecuteScalar() ?? 0) > 0;
+
+                        if (!isMig19Applied)
+                        {
+                            logger.LogInformation("Applying migration {MigrationId}: Create MVC_CASE_DOCUMENTS table...", v1_2_7_MvcCaseDocumentsMigrationId);
+                            var migTimer19 = Stopwatch.StartNew();
+
+                            string mig19Sql = @"
+                                IF OBJECT_ID('MVC_CASE_DOCUMENTS', 'U') IS NULL
+                                BEGIN
+                                    CREATE TABLE MVC_CASE_DOCUMENTS (
+                                        DocumentID INT IDENTITY(1,1) PRIMARY KEY,
+                                        CaseID INT NOT NULL,
+                                        DocumentName NVARCHAR(500) NOT NULL,
+                                        DocumentPath NVARCHAR(1000) NOT NULL,
+                                        UploadedDate DATETIME NOT NULL DEFAULT GETDATE(),
+                                        UploadedBy INT NULL,
+                                        Remarks NVARCHAR(MAX) NULL,
+                                        CONSTRAINT FK_MVC_CaseDocs_CaseID FOREIGN KEY (CaseID) REFERENCES MVC_CASES(CaseID) ON DELETE CASCADE
+                                    );
+                                    CREATE NONCLUSTERED INDEX IX_MVC_CASE_DOCUMENTS_CaseID ON MVC_CASE_DOCUMENTS (CaseID);
+                                END
+                            ";
+
+                            using (var migCmd19 = new SqlCommand(mig19Sql, conn))
+                            {
+                                migCmd19.CommandTimeout = 120;
+                                migCmd19.ExecuteNonQuery();
+                            }
+
+                            string recordSql19 = @"
+                                INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                                VALUES (@id, @desc, @time)";
+                            using (var recordCmd19 = new SqlCommand(recordSql19, conn))
+                            {
+                                recordCmd19.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_7_MvcCaseDocumentsMigrationId });
+                                recordCmd19.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Create MVC_CASE_DOCUMENTS table for user uploaded supplementary case files" });
+                                recordCmd19.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer19.ElapsedMilliseconds });
+                                recordCmd19.ExecuteNonQuery();
+                            }
+                            logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_7_MvcCaseDocumentsMigrationId, migTimer19.ElapsedMilliseconds);
+                        }
+                    }
+
                     }
                 }
                 finally

@@ -1,4 +1,4 @@
-﻿using MVCCaseManagement.Models;
+using MVCCaseManagement.Models;
 
 namespace MVCCaseManagement.DAL
 {
@@ -43,5 +43,10 @@ namespace MVCCaseManagement.DAL
         List<MVCCaseViewModel> GetAllThirdPartyCases(int divisionId = 0, int page = 1, int pageSize = 10, string? search = null);
         int GetTotalThirdPartyCaseCount(int divisionId = 0, string? search = null);
         (int Total, int Pending, int Favor, int Against) GetThirdPartySummaryStats(int divisionId = 0);
+
+        // Case Documents & e-Courts Orders
+        List<MvcCaseDocument> GetCaseDocuments(int caseId);
+        void AddCaseDocument(MvcCaseDocument doc);
+        List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)> GetCaseOrdersByCnrs(IEnumerable<string> cnrs);
     }
 }

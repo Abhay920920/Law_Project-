@@ -1313,6 +1313,13 @@ namespace MVCCaseManagement.Controllers
             var linkedArisingApps = _arisingRepo.GetByParentCaseId(id, model.CaseNumber, model.CaseYear).ToList();
             ViewBag.LinkedArisingApplications = linkedArisingApps;
 
+            var activeCnrs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(model.CNRNumber)) activeCnrs.Add(model.CNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.CO_WP_CNRNumber)) activeCnrs.Add(model.CO_WP_CNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.CO_WA_CNRNumber)) activeCnrs.Add(model.CO_WA_CNRNumber);
+            if (!string.IsNullOrWhiteSpace(model.CO_Claimant_CNRNumber)) activeCnrs.Add(model.CO_Claimant_CNRNumber);
+            ViewBag.CaseOrders = _labourRepo.GetCaseOrdersByCnrs(activeCnrs);
+
             ViewBag.CaseNotings = isCO ? _notingRepo.GetNotings("LABOUR", id) : new List<MVCCaseManagement.Models.CaseNoting>();
             return View(model);
         }
