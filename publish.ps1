@@ -66,7 +66,13 @@ if (-not $SkipTests) {
     Write-Host "[2/4] Skipping unit tests (-SkipTests specified)..." -ForegroundColor Yellow
 }
 
-# Clean existing outputs
+# Clean existing outputs while safely preserving any existing local uploads
+$tempBackupUploads = Join-Path ([System.IO.Path]::GetTempPath()) "LawProject_Uploads_Backup_$(Get-Date -Format 'yyyyMMddHHmmss')"
+$existingUploadsDir = Join-Path $webOut "wwwroot\uploads"
+if (Test-Path $existingUploadsDir) {
+    Copy-Item -Path $existingUploadsDir -Destination $tempBackupUploads -Recurse -Force
+}
+
 if (Test-Path $webOut) { Remove-Item -Recurse -Force $webOut }
 if (Test-Path $apiOut) { Remove-Item -Recurse -Force $apiOut }
 
@@ -118,6 +124,12 @@ New-Item -ItemType Directory -Force -Path (Join-Path $webOut "uploads") | Out-Nu
 New-Item -ItemType Directory -Force -Path (Join-Path $webOut "wwwroot\uploads") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $apiOut "logs") | Out-Null
 
+# Restore preserved uploads if any were backed up
+if (Test-Path $tempBackupUploads) {
+    Copy-Item -Path "$tempBackupUploads\*" -Destination (Join-Path $webOut "wwwroot\uploads") -Recurse -Force
+    Remove-Item -Recurse -Force $tempBackupUploads -ErrorAction SilentlyContinue
+}
+
 # Copy App_Data (including persistent NAPIX party search master store and cause list caches)
 $sourceAppData = Join-Path $scriptDir "Law Project\CaseManagement\App_Data"
 $targetAppData = Join-Path $webOut "App_Data"
@@ -136,8 +148,14 @@ Copy-Item -Path "$sourceViews\*" -Destination $targetWebViews -Recurse -Force
 
 $rootPublish = Join-Path $scriptDir "publish"
 if (Test-Path $rootPublish) {
-    Write-Host "  Syncing to $rootPublish..." -ForegroundColor Gray
-    Copy-Item -Path "$webOut\*" -Destination $rootPublish -Recurse -Force
+    Write-Host "  Syncing to $rootPublish (preserving existing uploads)..." -ForegroundColor Gray
+    # Copy all binaries and views while preserving existing files in rootPublish uploads
+    Get-ChildItem -Path $webOut | Where-Object { $_.Name -notin @("uploads") } | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination $rootPublish -Recurse -Force
+    }
+    # Ensure uploads directory structure exists in rootPublish without overwriting existing files
+    $rootUploads = Join-Path $rootPublish "wwwroot\uploads"
+    if (-not (Test-Path $rootUploads)) { New-Item -ItemType Directory -Force -Path $rootUploads | Out-Null }
 }
 
 Write-Host ""

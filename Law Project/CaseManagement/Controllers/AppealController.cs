@@ -19,6 +19,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<AppealController> _logger;
         private readonly ICaseActivityLogger _activityLogger;
+        private readonly MVCCaseManagement.Services.Storage.IFileStorageService? _storageService;
 
         public AppealController(
             ICaseRepository caseRepo, 
@@ -26,7 +27,8 @@ namespace MVCCaseManagement.Controllers
             IMasterRepository masterRepo, 
             IWebHostEnvironment environment, 
             ILogger<AppealController> logger,
-            ICaseActivityLogger activityLogger)
+            ICaseActivityLogger activityLogger,
+            MVCCaseManagement.Services.Storage.IFileStorageService? storageService = null)
         {
             _caseRepo = caseRepo;
             _appealRepo = appealRepo;
@@ -34,6 +36,7 @@ namespace MVCCaseManagement.Controllers
             _environment = environment;
             _logger = logger;
             _activityLogger = activityLogger;
+            _storageService = storageService;
         }
 
         [HttpGet]
@@ -809,6 +812,11 @@ namespace MVCCaseManagement.Controllers
         private string? SaveFile(IFormFile? file, string folder)
         {
             if (file == null || file.Length == 0) return null;
+
+            if (_storageService != null)
+            {
+                return _storageService.SaveFileAsync(file, folder).GetAwaiter().GetResult();
+            }
 
             // Security: validate extension against whitelist
             string ext = Path.GetExtension(file.FileName).ToLowerInvariant();

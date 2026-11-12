@@ -478,8 +478,8 @@ namespace MVCCaseManagement.Services.AI
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string fullPath = Path.Combine(webRoot, "uploads", docRef.RelativePath.TrimStart('/', '\\'));
-                string docHash = ComputeFileSha256(fullPath);
+                string? fullPath = _extractor.ResolveSecurePhysicalPath(docRef.RelativePath);
+                string docHash = !string.IsNullOrEmpty(fullPath) ? ComputeFileSha256(fullPath) : string.Empty;
                 string docType = ClassifyDocumentType(docRef.DocumentName, null);
 
                 var pages = await ExtractPagesAsync(docRef.RelativePath, docRef.CaseType, docRef.CaseId, maxPages: 20, cancellationToken);

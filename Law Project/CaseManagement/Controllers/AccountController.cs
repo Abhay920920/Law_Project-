@@ -150,15 +150,19 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpGet]
-        public IActionResult Login()
+        public IActionResult Login(string? returnUrl = null)
         {
-            // If already logged in, redirect to Home dashboard
+            // If already logged in, redirect to returnUrl or Home dashboard
             if (HttpContext.Session.GetInt32(SessionKeys.UserID).HasValue)
             {
+                if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    return Redirect(returnUrl);
+                }
                 return RedirectToAction("Index", "Home");
             }
 
-            return View();
+            return View(new LoginViewModel { ReturnUrl = returnUrl });
         }
 
         [HttpPost]
@@ -248,6 +252,12 @@ namespace MVCCaseManagement.Controllers
             _cache.Remove(lockoutKey);
 
             await SignInUser(user);
+
+            if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+            {
+                return Redirect(model.ReturnUrl);
+            }
+
             return RedirectToAction("Index", "Home");
         }
 

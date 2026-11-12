@@ -13,12 +13,14 @@ namespace MVCCaseManagement.Controllers
         private readonly IJudgementRepository _repo;
         private readonly IWebHostEnvironment _environment;
         private readonly ICaseActivityLogger _activityLogger;
+        private readonly MVCCaseManagement.Services.Storage.IFileStorageService? _storageService;
 
-        public JudgementController(IJudgementRepository repo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger)
+        public JudgementController(IJudgementRepository repo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger, MVCCaseManagement.Services.Storage.IFileStorageService? storageService = null)
         {
             _repo = repo;
             _environment = environment;
             _activityLogger = activityLogger;
+            _storageService = storageService;
         }
 
         public IActionResult Index()
@@ -215,6 +217,7 @@ namespace MVCCaseManagement.Controllers
         private string? SaveFile(IFormFile file)
         {
             if (file == null || file.Length == 0) return null;
+            if (_storageService != null) return _storageService.SaveFileAsync(file, "judgments").GetAwaiter().GetResult();
 
             string ext = Path.GetExtension(file.FileName);
             if (!_allowedExtensions.Contains(ext))

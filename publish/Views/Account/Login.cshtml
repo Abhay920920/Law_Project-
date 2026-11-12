@@ -38,6 +38,7 @@
 
             <form action="@Url.Action("Login", "Account")" method="post">
                 @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="ReturnUrl" />
                 
                 <div class="mb-4">
                     <label asp-for="Username" class="auth-label">Username</label>

@@ -17,6 +17,7 @@ using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
 using System.Threading;
 using MVCCaseManagement.Services.Audit;
+using MVCCaseManagement.Services.Storage;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -34,6 +35,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IHighCourtCauseListScannerService? _causeListScanner;
         private readonly IHighCourtPartySearchStore? _partyStore;
         private readonly ICaseActivityLogger? _activityLogger;
+        private readonly IFileStorageService? _storageService;
 
         public ECourtsController(
             IECourtsNapixService napixService,
@@ -46,7 +48,8 @@ namespace MVCCaseManagement.Controllers
             IOrganizationSettingsService? orgSettings = null,
             IHighCourtCauseListScannerService? causeListScanner = null,
             IHighCourtPartySearchStore? partyStore = null,
-            ICaseActivityLogger? activityLogger = null)
+            ICaseActivityLogger? activityLogger = null,
+            IFileStorageService? storageService = null)
         {
             _napixService = napixService;
             _ecourtsRepo = ecourtsRepo;
@@ -59,6 +62,7 @@ namespace MVCCaseManagement.Controllers
             _causeListScanner = causeListScanner;
             _partyStore = partyStore;
             _activityLogger = activityLogger;
+            _storageService = storageService;
         }
 
         // POST / GET: /ECourts/QueueCaseSync
@@ -8403,18 +8407,27 @@ namespace MVCCaseManagement.Controllers
             }
 
             string cleanCnr = !string.IsNullOrWhiteSpace(cnr) ? System.Text.RegularExpressions.Regex.Replace(cnr.Trim(), @"[^A-Za-z0-9]", "").ToUpperInvariant() : "ORDER";
-            string uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "orders");
-            if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
+            string relativePath;
 
-            string fileName = $"{cleanCnr}_{Guid.NewGuid():N}.pdf";
-            string filePath = Path.Combine(uploadsDir, fileName);
-
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            if (_storageService != null)
             {
-                await pdfFile.CopyToAsync(stream);
+                relativePath = await _storageService.SaveFileAsync(pdfFile, "orders");
             }
+            else
+            {
+                string uploadsDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "orders");
+                if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
 
-            string relativePath = $"/uploads/orders/{fileName}";
+                string localOrderFileName = $"{cleanCnr}_{Guid.NewGuid():N}.pdf";
+                string filePath = Path.Combine(uploadsDir, localOrderFileName);
+
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await pdfFile.CopyToAsync(stream);
+                }
+
+                relativePath = $"/uploads/orders/{localOrderFileName}";
+            }
 
             try
             {
@@ -8465,6 +8478,7 @@ namespace MVCCaseManagement.Controllers
                 _logger.LogError(ex, "Error updating order PDF path for CaseID {CaseID}", caseId);
             }
 
+            string fileName = Path.GetFileName(relativePath);
             if (_activityLogger != null && caseId.HasValue && caseId.Value > 0)
             {
                 _ = _activityLogger.LogSubEntityActionAsync("MVC", caseId.Value, $"Case #{caseId.Value}", "DOCUMENT_UPLOADED", $"Uploaded court order document '{fileName}' for CNR {cleanCnr}", new { FileName = fileName, CNR = cleanCnr, RelativePath = relativePath, Title = title, OrderDate = date });

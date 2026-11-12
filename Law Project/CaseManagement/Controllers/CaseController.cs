@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Services;
@@ -28,6 +28,7 @@ namespace MVCCaseManagement.Controllers
         private readonly MVCCaseManagement.Services.Audit.ICaseActivityLogger _activityLogger;
         private readonly ILogger<CaseController> _logger;
         private readonly IOrganizationSettingsService? _orgSettings;
+        private readonly MVCCaseManagement.Services.Storage.IFileStorageService? _storageService;
 
         public CaseController(
             IMasterRepository masterRepo,
@@ -42,7 +43,8 @@ namespace MVCCaseManagement.Controllers
             IPettyBillRepository pettyBillRepo,
             MVCCaseManagement.Services.Audit.ICaseActivityLogger activityLogger,
             ILogger<CaseController> logger,
-            IOrganizationSettingsService? orgSettings = null)
+            IOrganizationSettingsService? orgSettings = null,
+            MVCCaseManagement.Services.Storage.IFileStorageService? storageService = null)
         {
             _masterRepo = masterRepo;
             _caseRepo = caseRepo;
@@ -57,6 +59,7 @@ namespace MVCCaseManagement.Controllers
             _activityLogger = activityLogger;
             _logger = logger;
             _orgSettings = orgSettings;
+            _storageService = storageService;
         }
 
         [HttpGet]
@@ -1283,6 +1286,11 @@ namespace MVCCaseManagement.Controllers
         private string? SaveFile(IFormFile? file, string folder)
         {
             if (file == null || file.Length == 0) return null;
+
+            if (_storageService != null)
+            {
+                return _storageService.SaveFileAsync(file, folder).GetAwaiter().GetResult();
+            }
 
             // 1. FILE SIZE VALIDATION (10MB max)
             const long maxFileSize = 10 * 1024 * 1024; // 10MB

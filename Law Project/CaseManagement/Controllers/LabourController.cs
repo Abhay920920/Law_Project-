@@ -6,6 +6,7 @@ using MVCCaseManagement.Models;
 using MVCCaseManagement.Models.Audit;
 using MVCCaseManagement.Services;
 using MVCCaseManagement.Services.Audit;
+using MVCCaseManagement.Services.Storage;
 using System.Security.Claims;
 using System.Text;
 using System.Net;
@@ -26,8 +27,9 @@ namespace MVCCaseManagement.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<LabourController> _logger;
         private readonly IOrganizationSettingsService? _orgSettings;
+        private readonly IFileStorageService? _storageService;
 
-        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, ICaseActivityLogger activityLogger, IWebHostEnvironment env, ILogger<LabourController> logger, IOrganizationSettingsService? orgSettings = null)
+        public LabourController(ILabourRepository labourRepo, ILabourEPRepository labourEPRepo, IArisingApplicationRepository arisingRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IECourtsRepository ecourtsRepo, ICaseNotingRepository notingRepo, ICaseActivityLogger activityLogger, IWebHostEnvironment env, ILogger<LabourController> logger, IOrganizationSettingsService? orgSettings = null, IFileStorageService? storageService = null)
         {
             _labourRepo = labourRepo;
             _labourEPRepo = labourEPRepo;
@@ -40,6 +42,7 @@ namespace MVCCaseManagement.Controllers
             _env = env;
             _logger = logger;
             _orgSettings = orgSettings;
+            _storageService = storageService;
         }
 
         [HttpGet]
@@ -2744,6 +2747,11 @@ namespace MVCCaseManagement.Controllers
         private string SaveFile(IFormFile file, string subFolder, string? existingFilePath = null)
         {
             if (file == null || file.Length == 0) return existingFilePath ?? string.Empty;
+
+            if (_storageService != null)
+            {
+                return _storageService.SaveFileAsync(file, subFolder, existingFilePath).GetAwaiter().GetResult();
+            }
 
             // Security: validate extension against whitelist
             string ext = Path.GetExtension(file.FileName);

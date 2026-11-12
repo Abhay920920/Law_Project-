@@ -1,10 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Authorization;
 using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.Common;
 using MVCCaseManagement.Services.Audit;
+using MVCCaseManagement.Services.Storage;
 using System.Security.Claims;
 
 namespace MVCCaseManagement.Controllers
@@ -18,8 +19,9 @@ namespace MVCCaseManagement.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly ICaseActivityLogger _activityLogger;
         private readonly ILogger<GratuityController> _logger;
+        private readonly IFileStorageService? _storageService;
 
-        public GratuityController(IGratuityRepository gratuityRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger, ILogger<GratuityController> logger)
+        public GratuityController(IGratuityRepository gratuityRepo, IMasterRepository masterRepo, ICaseRepository caseRepo, IWebHostEnvironment environment, ICaseActivityLogger activityLogger, ILogger<GratuityController> logger, IFileStorageService? storageService = null)
         {
             _gratuityRepo = gratuityRepo;
             _masterRepo = masterRepo;
@@ -27,6 +29,7 @@ namespace MVCCaseManagement.Controllers
             _environment = environment;
             _activityLogger = activityLogger;
             _logger = logger;
+            _storageService = storageService;
         }
 
         public async Task<IActionResult> Index()
@@ -1318,6 +1321,7 @@ namespace MVCCaseManagement.Controllers
         private string? SaveFile(IFormFile? file, string folder)
         {
             if (file == null || file.Length == 0) return null;
+            if (_storageService != null) return _storageService.SaveFileAsync(file, folder).GetAwaiter().GetResult();
 
             // Security: validate extension against whitelist
             string ext = Path.GetExtension(file.FileName);

@@ -29,7 +29,7 @@
     "SubjectCategory": "(L, ID )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02CCC1002072",
@@ -61,7 +61,7 @@
     "SubjectCategory": "(CCC)",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP10301820",
@@ -93,7 +93,7 @@
     "SubjectCategory": "(L, ID )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP10453420",
@@ -125,7 +125,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP10464220",
@@ -157,7 +157,7 @@
     "SubjectCategory": "(L, ID )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP10522720",
@@ -189,7 +189,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP11228220",
@@ -221,7 +221,7 @@
     "SubjectCategory": "(S, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP85123201",
@@ -253,7 +253,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP67437201",
@@ -285,7 +285,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WP66631201",
@@ -317,7 +317,7 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   },
   {
     "CNRNumber": "KAHC02WA10062720",
@@ -349,6 +349,6 @@
     "SubjectCategory": "(L, KSRTC )",
     "RoznamaText": null,
     "HasRoznama": false,
-    "ListingStatus": "Listed Today"
+    "ListingStatus": "Past Hearing"
   }
 ]

@@ -137,6 +137,9 @@ builder.Services.AddSingleton<MVCCaseManagement.Services.ECourts.IHighCourtParty
 builder.Services.AddSingleton<MVCCaseManagement.Services.ECourts.IHighCourtCauseListScannerService, MVCCaseManagement.Services.ECourts.HighCourtDailyCauseListScannerService>();
 builder.Services.AddHostedService<MVCCaseManagement.Services.ECourts.HighCourtCauseListBackgroundSyncService>();
 
+// Add Persistent Document Storage Service (Zero Data Loss Vault)
+builder.Services.AddSingleton<MVCCaseManagement.Services.Storage.IFileStorageService, MVCCaseManagement.Services.Storage.PhysicalFileStorageService>();
+
 // Add authentication
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>

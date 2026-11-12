@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
+using MVCCaseManagement.Services.Storage;
 
 namespace MVCCaseManagement.Controllers
 {
@@ -17,6 +18,7 @@ namespace MVCCaseManagement.Controllers
         private readonly IWebHostEnvironment _environment;
         private readonly IConfiguration _configuration;
         private readonly ILogger<UploadsController> _logger;
+        private readonly IFileStorageService _fileStorageService;
 
         private static readonly string[] AllowedExtensions = new[]
         {
@@ -26,11 +28,13 @@ namespace MVCCaseManagement.Controllers
         public UploadsController(
             IWebHostEnvironment environment,
             IConfiguration configuration,
-            ILogger<UploadsController> logger)
+            ILogger<UploadsController> logger,
+            IFileStorageService fileStorageService)
         {
             _environment = environment;
             _configuration = configuration;
             _logger = logger;
+            _fileStorageService = fileStorageService;
         }
 
         [Route("uploads/{*filePath}")]
@@ -68,6 +72,7 @@ namespace MVCCaseManagement.Controllers
 
             int attachedCaseId = 0;
             int attachedCaseDivId = 0;
+            bool isSharedDoc = false;
             string attachedMvcNo = "";
             int attachedMvcYr = 0;
 
@@ -80,9 +85,9 @@ namespace MVCCaseManagement.Controllers
                     {
                         conn.Open();
                         string sql = @"
-                            SELECT TOP 1 DivisionID FROM (
+                            SELECT TOP 1 DivisionID, IsShared FROM (
                                 -- 1. MVC Case Adverse Details
-                                SELECT a.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID
+                                SELECT a.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID, 0 AS IsShared
                                 FROM MVC_CASE_ADVERSE_DETAILS a
                                 INNER JOIN MVC_CASES m ON a.CaseID = m.CaseID
                                 WHERE a.GovIDProofUploadPath LIKE '%' + @fileName + '%'
@@ -96,8 +101,16 @@ namespace MVCCaseManagement.Controllers
 
                                 UNION ALL
 
-                                -- 2. MVC High Court Appeals
-                                SELECT ap.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID
+                                -- 2. MVC Direct Cases
+                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID, 0 AS IsShared
+                                FROM MVC_CASES
+                                WHERE InterimOrderFilePath LIKE '%' + @fileName + '%'
+                                   OR FavorJudgmentPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 3. MVC High Court Appeals
+                                SELECT ap.CaseID, ISNULL(m.DivisionID, 0) AS DivisionID, 0 AS IsShared
                                 FROM APPEAL_DETAILS ap
                                 INNER JOIN MVC_CASES m ON ap.CaseID = m.CaseID
                                 WHERE ap.ApprovalCopyPath LIKE '%' + @fileName + '%'
@@ -111,8 +124,8 @@ namespace MVCCaseManagement.Controllers
 
                                 UNION ALL
 
-                                -- 3. Labour Court Cases
-                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                -- 4. Labour Court Cases
+                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID, 0 AS IsShared
                                 FROM LABOUR_CASES
                                 WHERE Against_PunishmentCopyPath LIKE '%' + @fileName + '%'
                                    OR ClaimPetitionPath LIKE '%' + @fileName + '%'
@@ -125,8 +138,8 @@ namespace MVCCaseManagement.Controllers
 
                                 UNION ALL
 
-                                -- 4. Labour Arising Applications (Section 33-C(2))
-                                SELECT ArisingID AS CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                -- 5. Labour Arising Applications (Section 33-C(2))
+                                SELECT ArisingID AS CaseID, ISNULL(DivisionID, 0) AS DivisionID, 0 AS IsShared
                                 FROM LABOUR_ARISING_APPLICATIONS
                                 WHERE JudgmentCopyPath LIKE '%' + @fileName + '%'
                                    OR LokAdalatDocumentPath LIKE '%' + @fileName + '%'
@@ -136,8 +149,8 @@ namespace MVCCaseManagement.Controllers
 
                                 UNION ALL
 
-                                -- 5. Gratuity Claims (CA / AA)
-                                SELECT CaseID, ISNULL(DivisionCode, 0) AS DivisionID
+                                -- 6. Gratuity Claims (CA / AA)
+                                SELECT CaseID, ISNULL(DivisionCode, 0) AS DivisionID, 0 AS IsShared
                                 FROM GRA_CASES
                                 WHERE AdverseJudgmentPath LIKE '%' + @fileName + '%'
                                    OR AppealJudgmentPath LIKE '%' + @fileName + '%'
@@ -148,11 +161,26 @@ namespace MVCCaseManagement.Controllers
 
                                 UNION ALL
 
-                                -- 6. Other Courts
-                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID
+                                -- 7. Other Courts
+                                SELECT CaseID, ISNULL(DivisionID, 0) AS DivisionID, 0 AS IsShared
                                 FROM OTHER_CASES
-                                WHERE PetitionCopyPath LIKE '%' + @fileName + '%'
-                                   OR OrderCopyPath LIKE '%' + @fileName + '%'
+                                WHERE InterimOrderFilePath LIKE '%' + @fileName + '%'
+                                   OR FinalJudgmentFilePath LIKE '%' + @fileName + '%'
+                                   OR AppealJudgmentCopyPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 8. Organization Judgments / Circulars (Shared Corp-Wide)
+                                SELECT JudgementID AS CaseID, 0 AS DivisionID, 1 AS IsShared
+                                FROM JUDGEMENT_REPO
+                                WHERE FilePath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 9. e-Courts Orders (Shared Corp-Wide)
+                                SELECT OrderID AS CaseID, 0 AS DivisionID, 1 AS IsShared
+                                FROM CASE_ORDERS
+                                WHERE LocalPdfPath LIKE '%' + @fileName + '%'
                             ) AS AllAttachments";
 
                         using (var cmd = new SqlCommand(sql, conn))
@@ -163,6 +191,7 @@ namespace MVCCaseManagement.Controllers
                                 if (r.Read())
                                 {
                                     attachedCaseDivId = r.IsDBNull(0) ? 0 : Convert.ToInt32(r.GetValue(0));
+                                    isSharedDoc = !r.IsDBNull(1) && Convert.ToInt32(r.GetValue(1)) == 1;
                                 }
                             }
                         }
@@ -177,14 +206,29 @@ namespace MVCCaseManagement.Controllers
             // Zero-trust enforcement: Non-central office users can only download documents verified to belong to their assigned division
             if (!isCentral)
             {
-                if (attachedCaseDivId <= 0 || attachedCaseDivId != userDivId)
+                // Corporation-wide shared documents (precedent circulars, e-Courts cause lists) are accessible by all authenticated users
+                if (isSharedDoc
+                    || decodedPath.StartsWith("judgments/", StringComparison.OrdinalIgnoreCase)
+                    || decodedPath.StartsWith("judgements/", StringComparison.OrdinalIgnoreCase)
+                    || decodedPath.StartsWith("cases/", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Allowed
+                }
+                else if (attachedCaseDivId > 0 && attachedCaseDivId != userDivId)
                 {
                     _logger.LogWarning("Cross-tenant download forbidden: User Division {UserDiv} tried accessing document {FileName} (Resolved Division: {CaseDiv})", userDivId, fileName, attachedCaseDivId);
                     return Forbid();
                 }
             }
 
-            // 2. Locate and stream physical file from allowed canonical boundaries
+            // 2. Locate and stream physical file: Check persistent storage vault first via IFileStorageService
+            string? vaultPhysicalPath = _fileStorageService.LocatePhysicalFile(decodedPath);
+            if (!string.IsNullOrEmpty(vaultPhysicalPath) && System.IO.File.Exists(vaultPhysicalPath))
+            {
+                return PhysicalFile(vaultPhysicalPath, GetContentType(vaultPhysicalPath));
+            }
+
+            // 3. Fallback: Locate physical file from legacy canonical boundaries
             var candidatePaths = new[]
             {
                 Path.Combine(_environment.ContentRootPath, "uploads", decodedPath),

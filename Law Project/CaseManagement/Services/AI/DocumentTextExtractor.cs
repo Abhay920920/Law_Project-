@@ -14,6 +14,7 @@ namespace MVCCaseManagement.Services.AI
     {
         private readonly IWebHostEnvironment _environment;
         private readonly ILogger<DocumentTextExtractor> _logger;
+        private readonly Storage.IFileStorageService? _storageService;
 
         private static readonly string[] AllowedExtensions = new[]
         {
@@ -22,16 +23,35 @@ namespace MVCCaseManagement.Services.AI
 
         public DocumentTextExtractor(
             IWebHostEnvironment environment,
-            ILogger<DocumentTextExtractor> logger)
+            ILogger<DocumentTextExtractor> logger,
+            Storage.IFileStorageService? storageService = null)
         {
             _environment = environment ?? throw new ArgumentNullException(nameof(environment));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _storageService = storageService;
         }
 
         public string? ResolveSecurePhysicalPath(string relativeOrFileName)
         {
             if (string.IsNullOrWhiteSpace(relativeOrFileName))
                 return null;
+
+            // Priority 1: Check persistent storage vault via IFileStorageService
+            if (_storageService != null)
+            {
+                try
+                {
+                    string? vaultPath = _storageService.LocatePhysicalFile(relativeOrFileName);
+                    if (!string.IsNullOrEmpty(vaultPath) && File.Exists(vaultPath))
+                    {
+                        return vaultPath;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error checking persistent storage vault in DocumentTextExtractor for: {Path}", relativeOrFileName);
+                }
+            }
 
             string cleanPath = Uri.UnescapeDataString(relativeOrFileName).TrimStart('/', '\\');
             if (cleanPath.Contains("..") || Path.IsPathRooted(cleanPath))

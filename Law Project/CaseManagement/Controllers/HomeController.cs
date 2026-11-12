@@ -15,13 +15,38 @@ namespace MVCCaseManagement.Controllers
         private readonly IOtherCourtsRepository _otherRepo;
         private readonly IMasterRepository _masterRepo;
         private readonly IWebHostEnvironment _env;
+        private readonly MVCCaseManagement.Services.Storage.IFileStorageService? _storageService;
 
-        public HomeController(ICaseRepository caseRepo, IOtherCourtsRepository otherRepo, IMasterRepository masterRepo, IWebHostEnvironment env)
+        public HomeController(
+            ICaseRepository caseRepo,
+            IOtherCourtsRepository otherRepo,
+            IMasterRepository masterRepo,
+            IWebHostEnvironment env,
+            MVCCaseManagement.Services.Storage.IFileStorageService? storageService = null)
         {
             _caseRepo = caseRepo;
             _otherRepo = otherRepo;
             _masterRepo = masterRepo;
             _env = env;
+            _storageService = storageService;
+        }
+
+        private async Task<string?> SaveOtherCourtsFileAsync(Microsoft.AspNetCore.Http.IFormFile? file, string subFolder, string? existingPath = null)
+        {
+            if (file == null || file.Length == 0) return existingPath;
+            if (_storageService != null)
+            {
+                return await _storageService.SaveFileAsync(file, subFolder, existingPath);
+            }
+            string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", subFolder);
+            if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
+            string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(file.FileName);
+            string filePath = Path.Combine(uploadsFolder, uniqueFileName);
+            using (var fileStream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(fileStream);
+            }
+            return $"/uploads/{subFolder}/{uniqueFileName}";
         }
 
         public IActionResult Index()
@@ -240,7 +265,7 @@ namespace MVCCaseManagement.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult SaveOtherCourtsCase(OtherCourtsCase model)
+        public async Task<IActionResult> SaveOtherCourtsCase(OtherCourtsCase model)
         {
             try
             {
@@ -252,49 +277,19 @@ namespace MVCCaseManagement.Controllers
                 // Handle Interim Order File Upload
                 if (model.InterimOrderFile != null && model.InterimOrderFile.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.InterimOrderFile.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.InterimOrderFile.CopyTo(fileStream);
-                    }
-                    model.InterimOrderFilePath = "/uploads/other_courts/" + uniqueFileName;
+                    model.InterimOrderFilePath = await SaveOtherCourtsFileAsync(model.InterimOrderFile, "other_courts");
                 }
 
                 // Handle Final Judgment File Upload
                 if (model.FinalJudgmentFile != null && model.FinalJudgmentFile.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts_judgments");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.FinalJudgmentFile.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.FinalJudgmentFile.CopyTo(fileStream);
-                    }
-                    model.FinalJudgmentFilePath = "/uploads/other_courts_judgments/" + uniqueFileName;
+                    model.FinalJudgmentFilePath = await SaveOtherCourtsFileAsync(model.FinalJudgmentFile, "other_courts_judgments");
                 }
 
                 // Handle Appeal Judgment File Upload
                 if (model.AppealJudgmentCopy != null && model.AppealJudgmentCopy.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts_appeals");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.AppealJudgmentCopy.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.AppealJudgmentCopy.CopyTo(fileStream);
-                    }
-                    model.AppealJudgmentCopyPath = "/uploads/other_courts_appeals/" + uniqueFileName;
+                    model.AppealJudgmentCopyPath = await SaveOtherCourtsFileAsync(model.AppealJudgmentCopy, "other_courts_appeals");
                 }
 
                 int newId = _otherRepo.SaveCase(model);
@@ -335,7 +330,7 @@ namespace MVCCaseManagement.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public IActionResult UpdateOtherCourtsCase(OtherCourtsCase model)
+        public async Task<IActionResult> UpdateOtherCourtsCase(OtherCourtsCase model)
         {
             try
             {
@@ -353,49 +348,19 @@ namespace MVCCaseManagement.Controllers
                 // Handle Interim Order File Upload
                 if (model.InterimOrderFile != null && model.InterimOrderFile.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.InterimOrderFile.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.InterimOrderFile.CopyTo(fileStream);
-                    }
-                    model.InterimOrderFilePath = "/uploads/other_courts/" + uniqueFileName;
+                    model.InterimOrderFilePath = await SaveOtherCourtsFileAsync(model.InterimOrderFile, "other_courts", existingCase.InterimOrderFilePath);
                 }
 
                 // Handle Final Judgment File Upload
                 if (model.FinalJudgmentFile != null && model.FinalJudgmentFile.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts_judgments");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.FinalJudgmentFile.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.FinalJudgmentFile.CopyTo(fileStream);
-                    }
-                    model.FinalJudgmentFilePath = "/uploads/other_courts_judgments/" + uniqueFileName;
+                    model.FinalJudgmentFilePath = await SaveOtherCourtsFileAsync(model.FinalJudgmentFile, "other_courts_judgments", existingCase.FinalJudgmentFilePath);
                 }
 
                 // Handle Appeal Judgment File Upload
                 if (model.AppealJudgmentCopy != null && model.AppealJudgmentCopy.Length > 0)
                 {
-                    string uploadsFolder = Path.Combine(_env.WebRootPath, "uploads", "other_courts_appeals");
-                    if (!Directory.Exists(uploadsFolder)) Directory.CreateDirectory(uploadsFolder);
-
-                    string uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(model.AppealJudgmentCopy.FileName);
-                    string filePath = Path.Combine(uploadsFolder, uniqueFileName);
-
-                    using (var fileStream = new FileStream(filePath, FileMode.Create))
-                    {
-                        model.AppealJudgmentCopy.CopyTo(fileStream);
-                    }
-                    model.AppealJudgmentCopyPath = "/uploads/other_courts_appeals/" + uniqueFileName;
+                    model.AppealJudgmentCopyPath = await SaveOtherCourtsFileAsync(model.AppealJudgmentCopy, "other_courts_appeals", existingCase.AppealJudgmentCopyPath);
                 }
 
                 if (_otherRepo.UpdateCase(model))
