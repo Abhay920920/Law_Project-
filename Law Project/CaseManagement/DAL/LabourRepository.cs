@@ -307,7 +307,8 @@ namespace MVCCaseManagement.DAL
             paramsList.Add(new SqlParameter("@Search", string.IsNullOrEmpty(search) ? (object)DBNull.Value : "%" + search.Trim() + "%"));
 
             string query = $@"
-                SELECT c.*, lc.CourtName, dm.DivisionNameEnglish as DivisionName,
+                SELECT c.*, lc.CourtName, 
+                       COALESCE(dm.DivisionNameEnglish, CASE WHEN c.DivisionID IN (0, 5) THEN 'Central Office' END) as DivisionName,
                        la.AdvocateName as LA_AdvocateName,
                        hca.AdvocateName as HCA_AdvocateName,
                        am.AdvocateName as AM_AdvocateName,
@@ -465,7 +466,8 @@ namespace MVCCaseManagement.DAL
         public LabourCase? GetCaseById(int id)
         {
             string query = @"
-                SELECT c.*, lc.CourtName, dm.DivisionNameEnglish as DivisionName,
+                SELECT c.*, lc.CourtName, 
+                       COALESCE(dm.DivisionNameEnglish, CASE WHEN c.DivisionID IN (0, 5) THEN 'Central Office' END) as DivisionName,
                        la.AdvocateName as LA_AdvocateName,
                        hca.AdvocateName as HCA_AdvocateName,
                        am.AdvocateName as AM_AdvocateName
@@ -1251,7 +1253,9 @@ namespace MVCCaseManagement.DAL
                 DivisionID = GetInt(row, "DivisionID") ?? 0,
                 
                 // Helper to check column existence before access
-                DivisionName = GetString(row, "DivisionName"),
+                DivisionName = !string.IsNullOrWhiteSpace(GetString(row, "DivisionName"))
+                    ? GetString(row, "DivisionName")
+                    : (GetInt(row, "DivisionID") == 0 || GetInt(row, "DivisionID") == 5 ? "Central Office" : null),
                 CaseType = GetString(row, "CaseType") ?? "",
                 CaseStatus = GetString(row, "CaseStatus") ?? "Pending",
                 CaseNumber = GetString(row, "CaseNumber") ?? "",

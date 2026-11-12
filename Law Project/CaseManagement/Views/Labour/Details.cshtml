@@ -1,4 +1,5 @@
 @model MVCCaseManagement.Models.LabourCase
+@inject MVCCaseManagement.DAL.IMasterRepository MasterRepo
 
 @{
     ViewData["Title"] = "Labour Case Details - " + Model.CaseNumber;
@@ -34,9 +35,75 @@
     int? displayCaseYear = Model.CaseYear.HasValue && Model.CaseYear > 0 
         ? Model.CaseYear 
         : (Model.CO_Claimant_CaseYear ?? Model.CO_WP_Year ?? Model.Arising_OriginalCaseYear);
+
+    string printDivisionName = !string.IsNullOrWhiteSpace(Model.DivisionName)
+        ? Model.DivisionName
+        : (Model.DivisionID == 0 || Model.DivisionID == 5 
+            ? "Central Office" 
+            : (MasterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == Model.DivisionID)?.DivisionNameEnglish ?? "Central Office"));
 }
 
-<div class="container py-3 py-md-4 fade-in details-page-container">
+<!-- Print-only View: Official Labour Case Dossier -->
+<div class="d-none d-print-block print-container">
+    <div class="text-center mb-3">
+        <h5 class="fw-bold mb-0">@OrgService.GetCurrentSettings().OrganizationNameEnglish.ToUpper()</h5>
+        <h6 class="fw-bold mb-0">@(printDivisionName.ToUpper()) DIVISION, @(printDivisionName.ToUpper()) (LAW SECTION)</h6>
+        <hr class="mt-2 mb-3" style="border-top: 2px solid #000;" />
+    </div>
+    <table class="table table-bordered border-dark print-table">
+        <tbody>
+            <tr><td style="width: 50px;">1</td><td style="width: 300px;">Name of the Division</td><td>@printDivisionName</td></tr>
+            <tr><td>2</td><td>Case No.</td><td>@(Model.CaseType ?? "Case") No. @displayCaseNo/@(displayCaseYear?.ToString() ?? "N/A")</td></tr>
+            <tr><td>3</td><td>Name of the Advocate</td><td>@(!string.IsNullOrWhiteSpace(Model.AdvocateName) ? Model.AdvocateName : "N.A")</td></tr>
+            <tr><td>4</td><td>Name of the Court</td><td>@(!string.IsNullOrWhiteSpace(Model.CourtName) ? Model.CourtName : (!string.IsNullOrWhiteSpace(Model.OtherCourtDetails) ? Model.OtherCourtDetails : "N.A"))</td></tr>
+            <tr><td>5</td><td>In case of Ref. Details of reference made by Govt. Order</td><td>@(Model.CaseType == "REF" ? "Available in Case Records" : "N.A")</td></tr>
+            <tr><td>6</td><td>Name &amp; Designation of the workman</td><td>@Model.PetitionerName, @(!string.IsNullOrWhiteSpace(Model.Designation) ? Model.Designation : "N.A") @(!string.IsNullOrWhiteSpace(Model.EmployeeNo) ? "(" + Model.EmployeeNo + ")" : "")</td></tr>
+            <tr><td>7</td><td>Status of workman</td><td>@(!string.IsNullOrWhiteSpace(Model.WorkingStatus) ? Model.WorkingStatus : "N.A") @(Model.WorkingStatus == "Death" && !string.IsNullOrEmpty(Model.LegalRepresentativeName) ? " (LRs: " + Model.LegalRepresentativeName + ")" : "")</td></tr>
+            <tr><td>8</td><td>Details of Misconduct/Charges</td><td>@(!string.IsNullOrWhiteSpace(Model.Against_CaseCategory) ? Model.Against_CaseCategory : "N.A") - @(!string.IsNullOrWhiteSpace(Model.NatureOfMisconduct) ? Model.NatureOfMisconduct : "N.A")</td></tr>
+            <tr><td>9</td><td>Order No, Date &amp; of penalty imposed by D.A</td><td>No:@(!string.IsNullOrWhiteSpace(Model.Against_PunishmentNo) ? Model.Against_PunishmentNo : "N.A"); Dt:@(Model.Against_PunishmentDate?.ToShortDateString() ?? "N.A")</td></tr>
+            <tr><td>10</td><td>Order No. Date &amp; details of appellate Authority</td><td>@(!string.IsNullOrWhiteSpace(Model.Against_PunishmentImposed) ? Model.Against_PunishmentImposed : "N.A")</td></tr>
+            <tr><td>11</td><td>Whether Counter Statement filed?</td><td>@(Model.IsObjectionFiled ? "YES" : "NO")</td></tr>
+            <tr><td>12</td><td>List of document produced &amp; marked before Tribunal</td><td>@(Model.DE_DocumentsMarked ? "YES" : "NO")</td></tr>
+            <tr><td>13</td><td>Order of Domestic Enquiry</td><td>@(!string.IsNullOrWhiteSpace(Model.DE_Order) ? Model.DE_Order : "N.A") @(!string.IsNullOrEmpty(Model.ChargesStatus) ? " (Charges: " + Model.ChargesStatus + ")" : "")</td></tr>
+            <tr><td>14</td><td>If it is held unfair, the reasons given by court</td><td>@(Model.DE_ObjectionsRemark ?? "NA")</td></tr>
+            <tr><td>15</td><td>Name &amp; Design. Of witnesses examined on behalf of Corp.</td><td>@(!string.IsNullOrWhiteSpace(Model.DE_EO_Name) ? Model.DE_EO_Name : "N.A"), @(!string.IsNullOrWhiteSpace(Model.DE_EO_Designation) ? Model.DE_EO_Designation : "N.A")</td></tr>
+            <tr><td>16</td><td>Whether management witness are tendered for Cross-examination</td><td>@(Model.IsEnquiryOfficerEvidence ? "YES" : "NO")</td></tr>
+            <tr><td>17</td><td>If management witness are not examined/cross examined reasons</td><td>NA</td></tr>
+            <tr><td>18</td><td>Name &amp; design. Of witness examined by workman &amp; cross examined</td><td>@(!string.IsNullOrWhiteSpace(Model.DE_Other_Name) ? Model.DE_Other_Name : "N.A") (@(!string.IsNullOrWhiteSpace(Model.DE_Other_Designation) ? Model.DE_Other_Designation : "N.A"))</td></tr>
+            <tr><td>19</td><td>Whether advocate for Corporation submitted arguments</td><td>YES</td></tr>
+            <tr><td>20</td><td>Findings of Tribunal (proved/not)</td><td>@(!string.IsNullOrWhiteSpace(Model.DisposalResult) ? Model.DisposalResult : "Pending")</td></tr>
+            <tr><td>21</td><td>Date of Order</td><td>@(Model.DisposalDate?.ToShortDateString() ?? "N.A")</td></tr>
+            <tr><td>22</td><td>Date of publication of award</td><td>@(Model.CC_PublicationDate?.ToShortDateString() ?? "Not received")</td></tr>
+            <tr><td>23</td><td>Date of receipt of CC at Division</td><td>@(Model.CC_ReceivedDate?.ToShortDateString() ?? "N.A")</td></tr>
+            <tr><td>24</td><td>@(isServiceMatter ? "Prayer / Subject Matter" : "Gist of the award (in details)")</td><td><div class="white-space-pre-line">@(isServiceMatter ? (!string.IsNullOrWhiteSpace(Model.CO_Service_Prayer) ? Model.CO_Service_Prayer : (!string.IsNullOrWhiteSpace(Model.AwardDetails) ? Model.AwardDetails : "N.A")) : (!string.IsNullOrWhiteSpace(Model.AwardDetails) ? Model.AwardDetails : "N.A"))</div></td></tr>
+            <tr><td>25</td><td>If there is delay in furnishing CC the reasons for it</td><td>@(Model.CC_Remarks ?? "NA")</td></tr>
+            <tr><td>26</td><td>Opinion of Advocate</td><td>@(!string.IsNullOrWhiteSpace(Model.Opinion_Advocate) ? Model.Opinion_Advocate : "N.A")</td></tr>
+            <tr><td>27</td><td>Details of action taken against the official for lapse</td><td>N.A.</td></tr>
+            <tr><td>28</td><td>List of document forwarded to Central Office</td><td>1)Objections 2)Claim Statement 3)Order on DE 4)Judgment 5)Opinion</td></tr>
+            <tr><td>29</td><td>If the workman was dismissed on earlier occasions (Repeat Dismissal)</td><td>@(Model.IsRepeatDismissal ? "YES: " + Model.RepeatDismissalRemark : "NO")</td></tr>
+            <tr><td>30</td><td>Details of past history of the workman</td><td><div class="white-space-pre-line">@(!string.IsNullOrWhiteSpace(Model.CaseHistory) ? Model.CaseHistory : "N.A")</div></td></tr>
+            @if (!string.IsNullOrEmpty(Model.SerialApp_CaseNumber)) {
+                <tr><td>31</td><td>Serial Application Details</td><td>Case Number: @Model.SerialApp_CaseNumber | Stage: @(!string.IsNullOrWhiteSpace(Model.SerialApp_CurrentStage) ? Model.SerialApp_CurrentStage : "N.A")</td></tr>
+            }
+            <tr><td>32</td><td>Terminal Benefits Paid</td><td>@(Model.TerminalBenefitsPaid ?? "NA")</td></tr>
+            <tr><td>33</td><td>Amount of back wages payable in terms of the award</td><td>NA</td></tr>
+            <tr><td>34</td><td>Opinion of Law Officer</td><td><div class="white-space-pre-line">@(!string.IsNullOrWhiteSpace(Model.Opinion_LO) ? Model.Opinion_LO : "N.A")</div></td></tr>
+        </tbody>
+    </table>
+
+    <div class="row mt-4 pt-4 print-sig-block">
+        <div class="col-6 text-center">
+            <p class="fw-bold mb-0">Law Officer</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @printDivisionName Division</p>
+        </div>
+        <div class="col-6 text-center">
+            <p class="fw-bold mb-0">Divisional Controller</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @printDivisionName Division</p>
+        </div>
+    </div>
+</div>
+
+<div class="container py-3 py-md-4 fade-in details-page-container d-print-none">
     <!-- Header -->
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-3 mb-md-4 d-print-none details-page-header">
         <div>
@@ -2524,7 +2591,7 @@
 </div>
 
 <!-- UPDATE CNR NUMBER MODAL -->
-<div class="modal fade" id="updateCnrModal" tabindex="-1" aria-labelledby="updateCnrModalLabel" aria-hidden="true">
+<div class="modal fade d-print-none" id="updateCnrModal" tabindex="-1" aria-labelledby="updateCnrModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
         <div class="modal-content border-0 shadow-lg rounded-4">
             <div class="modal-header bg-primary text-white py-3 px-4">
@@ -2576,7 +2643,7 @@
 </div>
 
 <!-- FULL DETAILS MODAL -->
-<div class="modal fade" id="labourFullDetailsModal" tabindex="-1" aria-labelledby="labourFullDetailsModalLabel" aria-hidden="true">
+<div class="modal fade d-print-none" id="labourFullDetailsModal" tabindex="-1" aria-labelledby="labourFullDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down" style="max-width: min(96vw, 1320px);">
         <div class="modal-content border-0 shadow-lg overflow-hidden" style="border-radius: 16px !important;">
             <!-- Modal Header — Premium gradient style -->
@@ -2609,67 +2676,6 @@
                     <i class="bi bi-x-lg me-1"></i> Close
                 </button>
             </div>
-        </div>
-    </div>
-</div>
-
-<!-- Print-only View -->
-<div class="d-none d-print-block print-container">
-    <div class="text-center mb-4">
-        <h5 class="fw-bold mb-0">@OrgService.GetCurrentSettings().OrganizationNameEnglish.ToUpper()</h5>
-        <h6 class="fw-bold mb-0">@Model.DivisionName?.ToUpper() DIVISION, @Model.DivisionName?.ToUpper() (LAW SECTION)</h6>
-        <hr class="mt-2 mb-3" style="border-top: 2px solid #000;" />
-    </div>
-    <table class="table table-bordered border-dark print-table">
-        <tbody>
-            <tr><td style="width: 50px;">1</td><td style="width: 300px;">Name of the Division</td><td>@Model.DivisionName</td></tr>
-            <tr><td>2</td><td>Case No.</td><td>@Model.CaseType No.@Model.CaseNumber/@Model.CaseYear</td></tr>
-            <tr><td>3</td><td>Name of the Advocate</td><td>@Model.AdvocateName</td></tr>
-            <tr><td>4</td><td>Name of the Court</td><td>@Model.CourtName</td></tr>
-            <tr><td>5</td><td>In case of Ref. Details of reference made by Govt. Order</td><td>@(Model.CaseType == "REF" ? "Available in Case Records" : "N.A")</td></tr>
-            <tr><td>6</td><td>Name &amp; Designation of the workman</td><td>@Model.PetitionerName, @Model.Designation @(Model.EmployeeNo != null ? "("+Model.EmployeeNo+")" : "")</td></tr>
-            <tr><td>7</td><td>Status of workman</td><td>@Model.WorkingStatus @(Model.WorkingStatus == "Death" && !string.IsNullOrEmpty(Model.LegalRepresentativeName) ? " (LRs: " + Model.LegalRepresentativeName + ")" : "")</td></tr>
-            <tr><td>8</td><td>Details of Misconduct/Charges</td><td>@Model.Against_CaseCategory - @Model.NatureOfMisconduct</td></tr>
-            <tr><td>9</td><td>Order No, Date &amp; of penalty imposed by D.A</td><td>No:@Model.Against_PunishmentNo; Dt:@(Model.Against_PunishmentDate?.ToShortDateString() ?? "N.A")</td></tr>
-            <tr><td>10</td><td>Order No. Date &amp; details of appellate Authority</td><td>@Model.Against_PunishmentImposed</td></tr>
-            <tr><td>11</td><td>Whether Counter Statement filed?</td><td>@(Model.IsObjectionFiled ? "YES" : "NO")</td></tr>
-            <tr><td>12</td><td>List of document produced &amp; marked before Tribunal</td><td>@(Model.DE_DocumentsMarked ? "YES" : "NO")</td></tr>
-            <tr><td>13</td><td>Order of Domestic Enquiry</td><td>@Model.DE_Order @(!string.IsNullOrEmpty(Model.ChargesStatus) ? " (Charges: " + Model.ChargesStatus + ")" : "")</td></tr>
-            <tr><td>14</td><td>If it is held unfair, the reasons given by court</td><td>@(Model.DE_ObjectionsRemark ?? "NA")</td></tr>
-            <tr><td>15</td><td>Name &amp; Design. Of witnesses examined on behalf of Corp.</td><td>@Model.DE_EO_Name, @Model.DE_EO_Designation</td></tr>
-            <tr><td>16</td><td>Whether management witness are tendered for Cross-examination</td><td>@(Model.IsEnquiryOfficerEvidence ? "YES" : "NO")</td></tr>
-            <tr><td>17</td><td>If management witness are not examined/cross examined reasons</td><td>NA</td></tr>
-            <tr><td>18</td><td>Name &amp; design. Of witness examined by workman &amp; cross examined</td><td>@Model.DE_Other_Name (@Model.DE_Other_Designation)</td></tr>
-            <tr><td>19</td><td>Whether advocate for Corporation submitted arguments</td><td>YES</td></tr>
-            <tr><td>20</td><td>Findings of Tribunal (proved/not)</td><td>@Model.DisposalResult</td></tr>
-            <tr><td>21</td><td>Date of Order</td><td>@(Model.DisposalDate?.ToShortDateString() ?? "N.A")</td></tr>
-            <tr><td>22</td><td>Date of publication of award</td><td>@(Model.CC_PublicationDate?.ToShortDateString() ?? "Not received")</td></tr>
-            <tr><td>23</td><td>Date of receipt of CC at Division</td><td>@(Model.CC_ReceivedDate?.ToShortDateString() ?? "N.A")</td></tr>
-            <tr><td>24</td><td>@(isServiceMatter ? "Prayer / Subject Matter" : "Gist of the award (in details)")</td><td><div class="white-space-pre-line">@(isServiceMatter ? (Model.CO_Service_Prayer ?? Model.AwardDetails) : Model.AwardDetails)</div></td></tr>
-            <tr><td>25</td><td>If there is delay in furnishing CC the reasons for it</td><td>@(Model.CC_Remarks ?? "NA")</td></tr>
-            <tr><td>26</td><td>Opinion of Advocate</td><td>@Model.Opinion_Advocate</td></tr>
-            <tr><td>27</td><td>Details of action taken against the official for lapse</td><td>N.A.</td></tr>
-            <tr><td>28</td><td>List of document forwarded to Central Office</td><td>1)Objections 2)Claim Statement 3)Order on DE 4)Judgment 5)Opinion</td></tr>
-            <tr><td>29</td><td>If the workman was dismissed on earlier occasions (Repeat Dismissal)</td><td>@(Model.IsRepeatDismissal ? "YES: " + Model.RepeatDismissalRemark : "NO")</td></tr>
-            <tr><td>30</td><td>Details of past history of the workman</td><td><div class="white-space-pre-line">@Model.CaseHistory</div></td></tr>
-            @if (!string.IsNullOrEmpty(Model.SerialApp_CaseNumber)) {
-                <tr><td>31</td><td>Serial Application Details</td><td>Case Number: @Model.SerialApp_CaseNumber | Stage: @Model.SerialApp_CurrentStage</td></tr>
-            }
-            <tr><td>32</td><td>Terminal Benefits Paid</td><td>@(Model.TerminalBenefitsPaid ?? "NA")</td></tr>
-            <tr><td>33</td><td>Amount of back wages payable in terms of the award</td><td>NA</td></tr>
-            <tr><td>34</td><td>Opinion of Law Officer</td><td><div class="white-space-pre-line">@Model.Opinion_LO</div></td></tr>
-        </tbody>
-    </table>
-
-
-    <div class="row mt-5 pt-5">
-        <div class="col-6 text-center">
-            <p class="fw-bold mb-0">Law Officer</p>
-            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @Model.DivisionName Division</p>
-        </div>
-        <div class="col-6 text-center">
-            <p class="fw-bold mb-0">Divisional Controller</p>
-            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @Model.DivisionName Division</p>
         </div>
     </div>
 </div>
@@ -2947,14 +2953,62 @@
            PRINT STYLES
            ============================================================ */
         @@media print {
-            .navbar, .sidebar, .d-print-none, footer, .modal { display: none !important; }
-            .container-fluid { padding: 0 !important; margin: 0 !important; width: 100% !important; }
-            body { background-color: white !important; font-size: 11pt !important; color: black !important; }
-            .print-container { display: block !important; padding: 1.5cm !important; margin: 0 !important; }
-            .print-table { border: 2px solid black !important; width: 100% !important; border-collapse: collapse !important; }
-            .print-table th, .print-table td { border: 1px solid black !important; padding: 6px 10px !important; vertical-align: top !important; }
-            .white-space-pre-line { white-space: pre-line !important; }
-            hr { border-top: 2px solid black !important; margin: 10px 0 !important; }
+            .navbar, .sidebar, .d-print-none, footer, .modal, #sidebar, .app-header, .alert, .branding-header {
+                display: none !important;
+            }
+            html, body {
+                background-color: #fff !important;
+                font-size: 10pt !important;
+                color: #000 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                height: auto !important;
+                min-height: 0 !important;
+                overflow: visible !important;
+            }
+            .container, .container-fluid, .content-area, .main-wrapper {
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                min-height: 0 !important;
+            }
+            .print-container {
+                display: block !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                page-break-before: avoid !important;
+                break-before: avoid !important;
+            }
+            .print-table {
+                border: 1.5px solid #000 !important;
+                width: 100% !important;
+                border-collapse: collapse !important;
+                font-size: 9pt !important;
+                margin-bottom: 8px !important;
+            }
+            .print-table th, .print-table td {
+                border: 1px solid #000 !important;
+                padding: 4px 8px !important;
+                vertical-align: top !important;
+                color: #000 !important;
+            }
+            .print-table tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .print-sig-block {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .white-space-pre-line {
+                white-space: pre-line !important;
+            }
+            hr {
+                border-top: 2px solid #000 !important;
+                margin: 8px 0 !important;
+            }
         }
     </style>
 }
