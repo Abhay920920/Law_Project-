@@ -121,6 +121,7 @@ namespace MVCCaseManagement.Controllers
                                    OR ap.MFAJudgmentCopyPath LIKE '%' + @fileName + '%'
                                    OR ap.ComplianceLetterPath LIKE '%' + @fileName + '%'
                                    OR ap.CorpMFAActionTakenPath LIKE '%' + @fileName + '%'
+                                   OR ap.ClaimantSCJudgmentPath LIKE '%' + @fileName + '%'
 
                                 UNION ALL
 
@@ -129,12 +130,28 @@ namespace MVCCaseManagement.Controllers
                                 FROM LABOUR_CASES
                                 WHERE Against_PunishmentCopyPath LIKE '%' + @fileName + '%'
                                    OR ClaimPetitionPath LIKE '%' + @fileName + '%'
+                                   OR JudgmentCopyPath LIKE '%' + @fileName + '%'
                                    OR JudgmentCopyPath2 LIKE '%' + @fileName + '%'
                                    OR LokAdalatDocumentPath LIKE '%' + @fileName + '%'
                                    OR CO_WP_JudgmentCopyPath LIKE '%' + @fileName + '%'
                                    OR CO_WA_StayOrderPath LIKE '%' + @fileName + '%'
+                                   OR CO_WP_StayOrderPath LIKE '%' + @fileName + '%'
                                    OR CO_StayComplianceFilePath LIKE '%' + @fileName + '%'
                                    OR CO_ClosedDocumentPath LIKE '%' + @fileName + '%'
+                                   OR DE_HistorySheetPath LIKE '%' + @fileName + '%'
+                                   OR CO_Claimant_PetitionCopyPath LIKE '%' + @fileName + '%'
+                                   OR CO_Service_PetitionCopyPath LIKE '%' + @fileName + '%'
+                                   OR CO_Service_ApprovalCopyPath LIKE '%' + @fileName + '%'
+                                   OR CO_Reinstatement_StayOrderPath LIKE '%' + @fileName + '%'
+                                   OR CO_Reinstatement_ApprovalCopyPath LIKE '%' + @fileName + '%'
+
+                                UNION ALL
+
+                                -- 4b. Labour Reinstated / User Uploaded Documents
+                                SELECT r.CaseID, ISNULL(lc.DivisionID, 0) AS DivisionID, 0 AS IsShared
+                                FROM LABOUR_REINSTATED_DOCUMENTS r
+                                INNER JOIN LABOUR_CASES lc ON r.CaseID = lc.CaseID
+                                WHERE r.DocumentPath LIKE '%' + @fileName + '%'
 
                                 UNION ALL
 
@@ -225,6 +242,7 @@ namespace MVCCaseManagement.Controllers
             string? vaultPhysicalPath = _fileStorageService.LocatePhysicalFile(decodedPath);
             if (!string.IsNullOrEmpty(vaultPhysicalPath) && System.IO.File.Exists(vaultPhysicalPath))
             {
+                Response.Headers.Append("Content-Disposition", $"inline; filename=\"{fileName}\"");
                 return PhysicalFile(vaultPhysicalPath, GetContentType(vaultPhysicalPath));
             }
 
@@ -245,6 +263,7 @@ namespace MVCCaseManagement.Controllers
                 {
                     if (System.IO.File.Exists(fullCandidate))
                     {
+                        Response.Headers.Append("Content-Disposition", $"inline; filename=\"{fileName}\"");
                         return PhysicalFile(fullCandidate, GetContentType(fullCandidate));
                     }
                 }
@@ -258,6 +277,7 @@ namespace MVCCaseManagement.Controllers
                     var matchingFiles = Directory.GetFiles(canonicalContentUploads, fileName, SearchOption.AllDirectories);
                     if (matchingFiles.Length > 0 && System.IO.File.Exists(matchingFiles[0]))
                     {
+                        Response.Headers.Append("Content-Disposition", $"inline; filename=\"{fileName}\"");
                         return PhysicalFile(matchingFiles[0], GetContentType(matchingFiles[0]));
                     }
                 }
@@ -267,6 +287,7 @@ namespace MVCCaseManagement.Controllers
                     var matchingFiles = Directory.GetFiles(canonicalWebUploads, fileName, SearchOption.AllDirectories);
                     if (matchingFiles.Length > 0 && System.IO.File.Exists(matchingFiles[0]))
                     {
+                        Response.Headers.Append("Content-Disposition", $"inline; filename=\"{fileName}\"");
                         return PhysicalFile(matchingFiles[0], GetContentType(matchingFiles[0]));
                     }
                 }

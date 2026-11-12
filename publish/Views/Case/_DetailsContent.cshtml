@@ -500,9 +500,14 @@
             </div>
             @if (Model.AdverseAward?.SecurityRequired == true && !string.IsNullOrEmpty(Model.AdverseAward?.SecurityUploadPath))
             {
-                <a href="@Model.AdverseAward.SecurityUploadPath" target="_blank" class="btn btn-sm btn-warning fw-bold text-dark rounded-pill px-3 shadow-sm flex-shrink-0 border border-dark border-opacity-25">
-                    <i class="bi bi-file-earmark-pdf me-1"></i> View Investigation Report
-                </a>
+                <div class="d-flex align-items-center gap-1.5 flex-shrink-0">
+                    <button type="button" onclick="openOrderInModal('@Model.AdverseAward.SecurityUploadPath', 'Security Investigation Report', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-warning fw-bold text-dark rounded-pill px-3 shadow-sm border border-dark border-opacity-25" title="View Security Report in Modal">
+                        <i class="bi bi-eye me-1"></i> View Report
+                    </button>
+                    <a href="@Model.AdverseAward.SecurityUploadPath" target="_blank" class="btn btn-sm btn-outline-dark rounded-pill px-2.5 shadow-sm" title="Open in New Tab / Download">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                </div>
             }
         </div>
     }
@@ -970,13 +975,29 @@
                                     <span class="badge bg-white text-danger fw-bold ms-1" style="font-size:0.7rem">@Model.AdverseAward.InterestRate% p.a.</span>
                                 }
                             </div>
-                            <button type="button" class="btn btn-sm btn-light text-danger fw-semibold px-2 py-0 mt-2 rounded-pill shadow-xs" data-bs-toggle="modal" data-bs-target="#fullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-award-nav')).show(); }, 150);" style="font-size: 0.75rem;">
-                                <i class="bi bi-calculator me-1"></i>View Award Details
-                            </button>
+                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                <button type="button" class="btn btn-sm btn-light text-danger fw-semibold px-2 py-0 rounded-pill shadow-xs" data-bs-toggle="modal" data-bs-target="#fullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-award-nav')).show(); }, 150);" style="font-size: 0.75rem;">
+                                    <i class="bi bi-calculator me-1"></i>Award Details
+                                </button>
+                                @if (!string.IsNullOrEmpty(Model.AdverseAward?.AdverseJudgmentUploadPath))
+                                {
+                                    <button type="button" onclick="openOrderInModal('@Model.AdverseAward.AdverseJudgmentUploadPath', 'MACT Adverse Award Judgment', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-light text-danger fw-bold rounded-pill px-2 py-0 shadow-xs" style="font-size: 0.75rem;" title="View Adverse Award Judgment in Modal">
+                                        <i class="bi bi-file-earmark-pdf me-1"></i>View Award
+                                    </button>
+                                }
+                            </div>
                         }
                         else if (isFavor)
                         {
                             <div class="small text-white text-opacity-90"><i class="bi bi-shield-check me-1"></i>Nil Liability / Dismissed</div>
+                            @if (!string.IsNullOrEmpty(Model.FavorJudgmentPath))
+                            {
+                                <div class="mt-2">
+                                    <button type="button" onclick="openOrderInModal('@Model.FavorJudgmentPath', 'In-Favor Judgment Copy', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-light text-success fw-bold rounded-pill px-2.5 py-0 shadow-xs" style="font-size: 0.75rem;" title="View Judgment Copy in Modal">
+                                        <i class="bi bi-file-earmark-check me-1"></i>View Judgment Copy
+                                    </button>
+                                </div>
+                            }
                         }
                     </div>
                     @if (Model.ClaimAmount > 0)
@@ -1813,6 +1834,116 @@
         </div>
     </div>
 </div>
+
+
+
+
+    <!-- CASE DOCUMENTS & DIGITAL DOSSIER (ALL RELATED UPLOADED FILES) -->
+    @{
+        var mvcDocs = new List<(string? Path, string Title, string Category, string Icon, string Color)>
+        {
+            (Model.AdverseAward?.AdverseJudgmentUploadPath, "MACT Adverse Award / Judgment", "Tribunal Award", "bi-file-earmark-pdf-fill", "danger"),
+            (Model.FavorJudgmentPath, "In-Favor Award / Judgment", "Tribunal Judgment", "bi-file-earmark-check-fill", "success"),
+            (Model.InterimOrderFilePath, "Interim Court Order", "Tribunal Order", "bi-file-earmark-text-fill", "warning"),
+            (Model.AdverseAward?.TR18UploadPath, "TR-18 Accident Report", "Police / Corp Record", "bi-file-earmark-medical-fill", "primary"),
+            (Model.AdverseAward?.PunishmentOrderUploadPath, "Driver Punishment Order", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger"),
+            (Model.AdverseAward?.DelayApplicationPath, "Delay Condonation Application (IA)", "Interim Application", "bi-file-earmark-text", "warning"),
+            (Model.AdverseAward?.DelayCondonedOrderPath, "Delay Condonation Order", "Tribunal Order", "bi-file-earmark-check", "success"),
+            (Model.AdverseAward?.SecurityUploadPath, "Security Investigation Report", "Security Dossier", "bi-shield-check", "info"),
+            (Model.AdverseAward?.GovIDProofUploadPath, "Government ID Proof", "Claimant Proof", "bi-card-heading", "secondary"),
+            (Model.AdverseAward?.AgeProofUploadPath, "Victim Age Proof", "Claimant Proof", "bi-person-badge", "secondary"),
+            (Model.LinkedAppeal?.ApprovalCopyPath, "MD Sanction / Approval Order", "Central Office Order", "bi-award-fill", "success"),
+            (Model.LinkedAppeal?.MFAJudgmentCopyPath, "High Court MFA Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary"),
+            (Model.LinkedAppeal?.InitialActionPath1, "Legal Noting Sheet 1", "Central Office Noting", "bi-file-text-fill", "secondary"),
+            (Model.LinkedAppeal?.InitialActionPath2, "Legal Noting Sheet 2", "Central Office Noting", "bi-file-text-fill", "secondary"),
+            (Model.LinkedAppeal?.StayOrderPath1, "High Court Stay Order Copy 1", "High Court Stay", "bi-shield-slash-fill", "primary"),
+            (Model.LinkedAppeal?.StayOrderPath2, "High Court Stay Order Copy 2", "High Court Stay", "bi-shield-slash-fill", "primary"),
+            (Model.LinkedAppeal?.CorpMFAActionTakenPath, "Corporation MFA Action Taken", "High Court Compliance", "bi-file-earmark-check-fill", "info"),
+            (Model.LinkedAppeal?.ClaimantSCJudgmentPath, "Supreme Court Judgment", "Apex Court Ruling", "bi-bank2", "danger"),
+            (Model.LinkedAppeal?.ComplianceLetterPath, "Final Compliance Letter", "Court Compliance", "bi-envelope-check-fill", "success")
+        };
+        var availableMvcDocs = mvcDocs.Where(d => !string.IsNullOrEmpty(d.Path)).ToList();
+    }
+
+    <div class="card shadow-sm border-0 mb-4 rounded-3 overflow-hidden" id="caseDocumentsCard">
+        <div class="card-header bg-white py-3 px-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="d-flex align-items-center">
+                <div class="bg-primary-subtle text-primary rounded-3 p-2 me-2.5 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                    <i class="bi bi-folder-check fs-5"></i>
+                </div>
+                <div>
+                    <h6 class="mb-0 fw-bold text-dark">Case Documents &amp; Uploaded Files</h6>
+                    <small class="text-muted extra-small">Digital judgments, tribunal orders, police reports, and appellate filings</small>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                @if (availableMvcDocs.Any())
+                {
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 font-monospace">
+                        <i class="bi bi-paperclip me-1"></i>@availableMvcDocs.Count Document@(availableMvcDocs.Count == 1 ? "" : "s") Attached
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-3 py-1 font-monospace">
+                        0 Documents Attached
+                    </span>
+                }
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#fullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-evidence-nav')).show(); }, 150);">
+                    <i class="bi bi-folder2-open me-1"></i>View Full Dossier
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-3 p-md-4">
+            @if (availableMvcDocs.Any())
+            {
+                <div class="row g-3">
+                    @foreach (var doc in availableMvcDocs)
+                    {
+                        var safeDocPath = (doc.Path ?? "").Replace("'", "\\'");
+                        var safeDocTitle = (doc.Title ?? "Case Document").Replace("'", "\\'");
+                        var rawFileName = System.IO.Path.GetFileName(doc.Path ?? "");
+                        <div class="col-12 col-md-6 col-xl-4">
+                            <div class="card h-100 border border-light-subtle shadow-xs rounded-3 p-3 bg-white d-flex flex-column justify-content-between hover-shadow transition-all">
+                                <div class="d-flex align-items-start gap-2.5 mb-2">
+                                    <div class="bg-@doc.Color-subtle text-@doc.Color rounded-3 p-2 flex-shrink-0 d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                        <i class="bi @doc.Icon fs-5"></i>
+                                    </div>
+                                    <div class="text-truncate flex-grow-1">
+                                        <span class="badge bg-@doc.Color-subtle text-@doc.Color border border-@doc.Color-subtle extra-small fw-semibold mb-1">@doc.Category</span>
+                                        <h6 class="fw-bold text-dark small mb-0 text-truncate" title="@doc.Title">@doc.Title</h6>
+                                        <small class="text-muted extra-small font-monospace text-truncate d-block mt-0.5" title="@rawFileName">
+                                            <i class="bi bi-file-earmark me-1"></i>@rawFileName
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center justify-content-end gap-1.5 pt-2 border-top border-light-subtle">
+                                    <button type="button" onclick="openOrderInModal('@safeDocPath', '@safeDocTitle', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs d-inline-flex align-items-center" style="font-size: 0.78rem;" title="View Document in Modal">
+                                        <i class="bi bi-eye me-1"></i>View
+                                    </button>
+                                    <a href="@doc.Path" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2.5 py-1 shadow-xs" style="font-size: 0.78rem;" title="Open in New Tab / Download">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-center py-4 text-muted">
+                    <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center p-3 mb-2 shadow-xs">
+                        <i class="bi bi-folder2-open display-6 text-secondary opacity-50"></i>
+                    </div>
+                    <div class="fw-bold text-dark small">No Digital Documents Uploaded Yet</div>
+                    <div class="extra-small text-muted mt-1" style="max-width: 500px; margin: 0 auto;">
+                        Tribunal award judgments, TR-18 accident records, interim stay orders, and appeal documents will automatically appear here once attached to this case.
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
 
 
 
@@ -4132,9 +4263,12 @@
                                             {
                                                 <div class="info-row">
                                                     <div class="info-label">Adverse Judgment Copy:</div>
-                                                    <div class="info-value">
-                                                        <a href="@Model.AdverseAward.AdverseJudgmentUploadPath" target="_blank" class="btn btn-sm btn-outline-danger">
-                                                            <i class="bi bi-file-earmark-pdf me-1"></i> Download MACT Adverse Award Judgment
+                                                    <div class="info-value d-flex align-items-center gap-1.5 flex-wrap">
+                                                        <button type="button" onclick="openOrderInModal('@Model.AdverseAward.AdverseJudgmentUploadPath', 'MACT Adverse Award Judgment', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-danger rounded-pill px-3 shadow-xs fw-semibold">
+                                                            <i class="bi bi-eye me-1"></i> View Judgment
+                                                        </button>
+                                                        <a href="@Model.AdverseAward.AdverseJudgmentUploadPath" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2.5 shadow-xs" title="Open in New Tab / Download">
+                                                            <i class="bi bi-box-arrow-up-right"></i>
                                                         </a>
                                                     </div>
                                                 </div>
@@ -4212,9 +4346,14 @@
                                                     <div class="info-value">
                                                         @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
                                                         {
-                                                            <a href="@Model.InterimOrderFilePath" target="_blank" class="btn btn-xs btn-outline-warning text-dark py-0 px-2">
-                                                                <i class="bi bi-file-earmark-pdf me-1"></i> Download Interim Order
-                                                            </a>
+                                                            <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                                                                <button type="button" onclick="openOrderInModal('@Model.InterimOrderFilePath', 'Interim Court Order', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-xs btn-outline-warning text-dark py-1 px-2.5 rounded-pill shadow-xs fw-semibold">
+                                                                    <i class="bi bi-eye me-1"></i> View Order
+                                                                </button>
+                                                                <a href="@Model.InterimOrderFilePath" target="_blank" class="btn btn-xs btn-outline-secondary py-1 px-2 rounded-pill shadow-xs" title="Open in New Tab / Download">
+                                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                                </a>
+                                                            </div>
                                                         }
                                                         else
                                                         {
@@ -4816,9 +4955,12 @@
                                                 {
                                                     <div class="info-row">
                                                         <div class="info-label">Sanction Order:</div>
-                                                        <div class="info-value">
-                                                            <a href="@Model.LinkedAppeal.ApprovalCopyPath" target="_blank" class="btn btn-sm btn-outline-success">
-                                                                <i class="bi bi-file-earmark-pdf me-1"></i> Download MD Sanction Order
+                                                        <div class="info-value d-flex align-items-center gap-1.5 flex-wrap">
+                                                            <button type="button" onclick="openOrderInModal('@Model.LinkedAppeal.ApprovalCopyPath', 'MD Sanction Order Copy', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-success rounded-pill px-3 shadow-xs fw-semibold">
+                                                                <i class="bi bi-eye me-1"></i> View Sanction Order
+                                                            </button>
+                                                            <a href="@Model.LinkedAppeal.ApprovalCopyPath" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2.5 shadow-xs" title="Open in New Tab / Download">
+                                                                <i class="bi bi-box-arrow-up-right"></i>
                                                             </a>
                                                         </div>
                                                     </div>
@@ -4862,15 +5004,25 @@
                                                     <div class="info-value d-flex flex-wrap gap-1">
                                                         @if (!string.IsNullOrEmpty(Model.LinkedAppeal.StayOrderPath1))
                                                         {
-                                                            <a href="@Model.LinkedAppeal.StayOrderPath1" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2">
-                                                                <i class="bi bi-file-earmark-pdf me-1"></i>Stay Order 1
-                                                            </a>
+                                                            <div class="d-inline-flex align-items-center gap-1">
+                                                                <button type="button" onclick="openOrderInModal('@Model.LinkedAppeal.StayOrderPath1', 'HC Stay Order Copy 1', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill shadow-xs fw-semibold">
+                                                                    <i class="bi bi-eye me-1"></i>Stay Order 1
+                                                                </button>
+                                                                <a href="@Model.LinkedAppeal.StayOrderPath1" target="_blank" class="btn btn-xs btn-outline-secondary py-0 px-1.5 rounded-pill shadow-xs" title="Open in New Tab / Download">
+                                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                                </a>
+                                                            </div>
                                                         }
                                                         @if (!string.IsNullOrEmpty(Model.LinkedAppeal.StayOrderPath2))
                                                         {
-                                                            <a href="@Model.LinkedAppeal.StayOrderPath2" target="_blank" class="btn btn-xs btn-outline-primary py-0 px-2">
-                                                                <i class="bi bi-file-earmark-pdf me-1"></i>Stay Order 2
-                                                            </a>
+                                                            <div class="d-inline-flex align-items-center gap-1">
+                                                                <button type="button" onclick="openOrderInModal('@Model.LinkedAppeal.StayOrderPath2', 'HC Stay Order Copy 2', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-xs btn-outline-primary py-0 px-2 rounded-pill shadow-xs fw-semibold">
+                                                                    <i class="bi bi-eye me-1"></i>Stay Order 2
+                                                                </button>
+                                                                <a href="@Model.LinkedAppeal.StayOrderPath2" target="_blank" class="btn btn-xs btn-outline-secondary py-0 px-1.5 rounded-pill shadow-xs" title="Open in New Tab / Download">
+                                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                                </a>
+                                                            </div>
                                                         }
                                                         @if (string.IsNullOrEmpty(Model.LinkedAppeal.StayOrderPath1) && string.IsNullOrEmpty(Model.LinkedAppeal.StayOrderPath2))
                                                         {
@@ -5544,244 +5696,48 @@
                             <div class="col-lg-7">
                                 <div class="card shadow-sm border-0 h-100 bg-white">
                                     <div class="card-header bg-white py-2 border-bottom fw-bold small text-primary d-flex align-items-center justify-content-between">
-                                        <span><i class="bi bi-cloud-arrow-down me-1"></i> Digital Copies &amp; Attached Files</span>
+                                        <span><i class="bi bi-cloud-arrow-down me-1"></i> Digital Copies &amp; Attached Files (@availableMvcDocs.Count)</span>
                                         <i class="bi bi-file-earmark-pdf text-danger"></i>
                                     </div>
                                     <div class="card-body p-3">
-                                        <div class="row g-2">
-
-                                            <!-- Adverse Judgment -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.AdverseJudgmentUploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.AdverseJudgmentUploadPath" target="_blank" class="btn btn-outline-danger w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-pdf fs-4 me-2 text-danger"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">MACT Adverse Judgment</strong>
-                                                            <span class="extra-small text-muted">Tribunal Award Copy</span>
+                                        @if (availableMvcDocs.Any())
+                                        {
+                                            <div class="row g-2">
+                                                @foreach (var doc in availableMvcDocs)
+                                                {
+                                                    var safeDocPath = (doc.Path ?? "").Replace("'", "\\'");
+                                                    var safeDocTitle = (doc.Title ?? "Case Document").Replace("'", "\\'");
+                                                    var rawFileName = System.IO.Path.GetFileName(doc.Path ?? "");
+                                                    <div class="col-sm-6">
+                                                        <div class="border rounded-3 p-2 bg-light d-flex flex-column justify-content-between h-100 shadow-xs">
+                                                            <div class="d-flex align-items-start gap-2 mb-2">
+                                                                <i class="bi @doc.Icon fs-4 text-@doc.Color flex-shrink-0 mt-0.5"></i>
+                                                                <div class="text-truncate flex-grow-1">
+                                                                    <span class="badge bg-@doc.Color-subtle text-@doc.Color border border-@doc.Color-subtle extra-small fw-semibold mb-0.5">@doc.Category</span>
+                                                                    <strong class="d-block small text-dark text-truncate" title="@doc.Title">@doc.Title</strong>
+                                                                    <span class="extra-small text-muted font-monospace text-truncate d-block" title="@rawFileName">@rawFileName</span>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex align-items-center justify-content-end gap-1 pt-1.5 border-top border-secondary-subtle">
+                                                                <button type="button" onclick="openOrderInModal('@safeDocPath', '@safeDocTitle', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-xs btn-outline-@doc.Color rounded-pill px-2.5 py-1 fw-bold shadow-xs" title="View in Modal Viewer">
+                                                                    <i class="bi bi-eye me-1"></i>View
+                                                                </button>
+                                                                <a href="@doc.Path" target="_blank" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" title="Open in New Tab / Download">
+                                                                    <i class="bi bi-box-arrow-up-right"></i>
+                                                                </a>
+                                                            </div>
                                                         </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Interim Order -->
-                                            @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.InterimOrderFilePath" target="_blank" class="btn btn-outline-warning w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-text fs-4 me-2 text-warning"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Interim Court Order</strong>
-                                                            <span class="extra-small text-muted">Relief / Stay Order</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- TR-18 Report -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.TR18UploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.TR18UploadPath" target="_blank" class="btn btn-outline-primary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-medical fs-4 me-2 text-primary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">TR-18 Accident Report</strong>
-                                                            <span class="extra-small text-muted">Police / Corporation Record</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Driver Punishment Order -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.PunishmentOrderUploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.PunishmentOrderUploadPath" target="_blank" class="btn btn-outline-danger w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-ruled fs-4 me-2 text-danger"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Driver Punishment Order</strong>
-                                                            <span class="extra-small text-muted">Disciplinary Action</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- IA Delay Application -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.DelayApplicationPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.DelayApplicationPath" target="_blank" class="btn btn-outline-warning w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-text fs-4 me-2 text-warning"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">IA Delay Application</strong>
-                                                            <span class="extra-small text-muted">Limitation Condonation</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Delay Condoned Order -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.DelayCondonedOrderPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.DelayCondonedOrderPath" target="_blank" class="btn btn-outline-success w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-check fs-4 me-2 text-success"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Delay Condonation Order</strong>
-                                                            <span class="extra-small text-muted">Tribunal Order</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Security Investigation Report -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.SecurityUploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.SecurityUploadPath" target="_blank" class="btn btn-outline-info w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-shield-check fs-4 me-2 text-info"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Security Report</strong>
-                                                            <span class="extra-small text-muted">Investigation Dossier</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Age Proof / Gov ID -->
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.AgeProofUploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.AgeProofUploadPath" target="_blank" class="btn btn-outline-secondary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-person-badge fs-4 me-2 text-secondary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Victim Age Proof</strong>
-                                                            <span class="extra-small text-muted">ID Verification</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-                                            @if (!string.IsNullOrEmpty(Model.AdverseAward?.GovIDProofUploadPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.AdverseAward.GovIDProofUploadPath" target="_blank" class="btn btn-outline-secondary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-card-heading fs-4 me-2 text-secondary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Government ID Proof</strong>
-                                                            <span class="extra-small text-muted">Claimant Proof</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Central Office Sanction Order -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.ApprovalCopyPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.ApprovalCopyPath" target="_blank" class="btn btn-outline-success w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-award fs-4 me-2 text-success"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">MD Sanction Order</strong>
-                                                            <span class="extra-small text-muted">Central Office Executive Order</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- High Court MFA Judgment -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.MFAJudgmentCopyPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.MFAJudgmentCopyPath" target="_blank" class="btn btn-outline-primary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-pdf fs-4 me-2 text-primary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">High Court Judgment</strong>
-                                                            <span class="extra-small text-muted">MFA Final Order Copy</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- CO Noting Sheets -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.InitialActionPath1))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.InitialActionPath1" target="_blank" class="btn btn-outline-secondary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-text fs-4 me-2 text-secondary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">CO Noting Sheet 1</strong>
-                                                            <span class="extra-small text-muted">Legal File Notes</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.InitialActionPath2))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.InitialActionPath2" target="_blank" class="btn btn-outline-secondary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-text fs-4 me-2 text-secondary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">CO Noting Sheet 2</strong>
-                                                            <span class="extra-small text-muted">Legal File Notes</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Supreme Court Judgment -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.ClaimantSCJudgmentPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.ClaimantSCJudgmentPath" target="_blank" class="btn btn-outline-danger w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-bank fs-4 me-2 text-danger"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Supreme Court Judgment</strong>
-                                                            <span class="extra-small text-muted">Apex Court Ruling</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Stay Orders -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.StayOrderPath1))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.StayOrderPath1" target="_blank" class="btn btn-outline-primary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-shield-slash fs-4 me-2 text-primary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">HC Stay Order Copy 1</strong>
-                                                            <span class="extra-small text-muted">Interim Stay</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.StayOrderPath2))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.StayOrderPath2" target="_blank" class="btn btn-outline-primary w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-shield-slash fs-4 me-2 text-primary"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">HC Stay Order Copy 2</strong>
-                                                            <span class="extra-small text-muted">Interim Stay</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-
-                                            <!-- Compliance Letter -->
-                                            @if (!string.IsNullOrEmpty(Model.LinkedAppeal?.ComplianceLetterPath))
-                                            {
-                                                <div class="col-sm-6">
-                                                    <a href="@Model.LinkedAppeal.ComplianceLetterPath" target="_blank" class="btn btn-outline-success w-100 text-start p-2 shadow-xs d-flex align-items-center">
-                                                        <i class="bi bi-file-earmark-check fs-4 me-2 text-success"></i>
-                                                        <div>
-                                                            <strong class="d-block small text-dark">Final Compliance Letter</strong>
-                                                            <span class="extra-small text-muted">Court Compliance Record</span>
-                                                        </div>
-                                                    </a>
-                                                </div>
-                                            }
-                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-center text-muted py-4 small">
+                                                <i class="bi bi-folder-x fs-4 d-block mb-1 opacity-50"></i>
+                                                No digital files attached to this case yet.
+                                            </div>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -6169,6 +6125,10 @@
     .italic { font-style: italic; }
 
     /* Modal Enhancements */
+    #ecourtsOrderModal {
+        z-index: 1070 !important;
+    }
+
     #fullDetailsModal .modal-content {
         border-radius: 12px;
         overflow: hidden;

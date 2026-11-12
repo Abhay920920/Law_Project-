@@ -36,16 +36,16 @@ $apiOut = Join-Path $OutputDir "NapixEcourtsApi"
 
 # Step 1: Solution Build
 Write-Host "[1/4] Compiling MVCCaseManagement and NapixEcourtsApi (Release)..." -ForegroundColor Yellow
-dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --no-restore --nologo
+dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --no-restore --nologo -p:NuGetAudit=false
 if ($LASTEXITCODE -ne 0) {
-    dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --nologo
+    dotnet build "$scriptDir\Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release --nologo -p:NuGetAudit=false
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Build failed for MVCCaseManagement with exit code $LASTEXITCODE"
 }
-dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --no-restore --nologo
+dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --no-restore --nologo -p:NuGetAudit=false
 if ($LASTEXITCODE -ne 0) {
-    dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --nologo
+    dotnet build "$scriptDir\NapixEcourtsApi\NapixEcourtsApi.csproj" -c Release --nologo -p:NuGetAudit=false
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Build failed for NapixEcourtsApi with exit code $LASTEXITCODE"

@@ -7342,22 +7342,38 @@ namespace MVCCaseManagement.Controllers
                 return File(pdfBytes, "application/pdf");
             }
 
-            // 2. Try physical file if local path in wwwroot
+            // 2. Try physical file if local path in storage vault or wwwroot
             if (!string.IsNullOrWhiteSpace(decodedUrl) && !decodedUrl.StartsWith("/Case/Details", StringComparison.OrdinalIgnoreCase) && !decodedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
+                    string relativePath = decodedUrl.TrimStart('/', '\\');
+
+                    // Check storage vault first via _storageService
+                    if (_storageService != null)
+                    {
+                        string? vaultPhysical = _storageService.LocatePhysicalFile(relativePath);
+                        if (!string.IsNullOrEmpty(vaultPhysical) && System.IO.File.Exists(vaultPhysical))
+                        {
+                            Response.Headers.Append("Content-Disposition", $"inline; filename=\"{Path.GetFileName(vaultPhysical)}\"");
+                            string ext = Path.GetExtension(vaultPhysical).ToLowerInvariant();
+                            string mime = ext switch { ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", _ => "application/pdf" };
+                            return PhysicalFile(vaultPhysical, mime);
+                        }
+                    }
+
                     string webRoot = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"));
                     string contentRoot = Path.GetFullPath(Directory.GetCurrentDirectory());
-                    string relativePath = decodedUrl.TrimStart('/', '\\');
                     string fullPath = Path.GetFullPath(Path.Combine(webRoot, relativePath));
                     
                     if (fullPath.StartsWith(webRoot, StringComparison.OrdinalIgnoreCase) || fullPath.StartsWith(contentRoot, StringComparison.OrdinalIgnoreCase))
                     {
                         if (System.IO.File.Exists(fullPath))
                         {
-                            Response.Headers.Append("Content-Disposition", $"inline; filename=\"eCourts_Order_{targetCnr}_{(orderNo ?? "1")}.pdf\"");
-                            return PhysicalFile(fullPath, "application/pdf");
+                            Response.Headers.Append("Content-Disposition", $"inline; filename=\"{Path.GetFileName(fullPath)}\"");
+                            string ext = Path.GetExtension(fullPath).ToLowerInvariant();
+                            string mime = ext switch { ".jpg" or ".jpeg" => "image/jpeg", ".png" => "image/png", _ => "application/pdf" };
+                            return PhysicalFile(fullPath, mime);
                         }
                     }
                 }
@@ -7553,11 +7569,24 @@ namespace MVCCaseManagement.Controllers
                     foreach (var rel in candidatePaths)
                     {
                         if (string.IsNullOrWhiteSpace(rel)) continue;
-                        string full = Path.Combine(webRoot, rel.TrimStart('/', '\\'));
+                        string cleanRel = rel.TrimStart('/', '\\');
+
+                        if (_storageService != null)
+                        {
+                            string? vaultPath = _storageService.LocatePhysicalFile(cleanRel);
+                            if (!string.IsNullOrEmpty(vaultPath) && System.IO.File.Exists(vaultPath))
+                            {
+                                _logger.LogInformation("[ViewOrderPdf] Serving Labour authentic PDF from vault immediately: {Path}", vaultPath);
+                                Response.Headers.Append("Content-Disposition", $"inline; filename=\"{Path.GetFileName(vaultPath)}\"");
+                                return PhysicalFile(vaultPath, "application/pdf");
+                            }
+                        }
+
+                        string full = Path.Combine(webRoot, cleanRel);
                         if (System.IO.File.Exists(full) && full.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                         {
                             _logger.LogInformation("[ViewOrderPdf] Serving Labour authentic PDF immediately: {Path}", full);
-                            Response.Headers.Append("Content-Disposition", $"inline; filename=\"eCourts_Order_{targetCnr ?? "document"}.pdf\"");
+                            Response.Headers.Append("Content-Disposition", $"inline; filename=\"{Path.GetFileName(full)}\"");
                             return PhysicalFile(full, "application/pdf");
                         }
                     }

@@ -856,6 +856,9 @@
             loadPayments();
 
             const cnr = '@(Model.CNRNumber ?? "")'.trim();
+            if (cnr) {
+                refreshCaseOrdersLive(cnr, @Model.CaseID);
+            }
 
             const caseCollapseEl = document.getElementById('collapseCaseNapixSection');
             if (caseCollapseEl) {
@@ -879,9 +882,11 @@
             if (ordersTabBtn) {
                 ordersTabBtn.addEventListener('shown.bs.tab', function () {
                     const activeCnr = (window.currentActiveCnr || cnr || '').trim();
-                    const container = document.getElementById('live-orders-container');
-                    if (container && (!container.querySelector('table') || container.innerText.includes('Querying'))) {
-                        refreshCaseOrdersLive(activeCnr, @Model.CaseID);
+                    if (activeCnr && activeCnr.length >= 5) {
+                        const container = document.getElementById('live-orders-container');
+                        if (container && (!container.querySelector('table') || container.innerText.includes('Querying'))) {
+                            refreshCaseOrdersLive(activeCnr, @Model.CaseID);
+                        }
                     }
                 });
             }

@@ -79,6 +79,10 @@ uploads/*
 **/wwwroot/uploads/*
 !**/wwwroot/uploads/**/.gitkeep
 !**/wwwroot/uploads/.gitkeep
+uploads_vault/
+**/uploads_vault/*
+!**/uploads_vault/**/.gitkeep
+!**/uploads_vault/.gitkeep
 
 ## Sensitive Configs & Local Overrides
 **/appsettings.Development.json

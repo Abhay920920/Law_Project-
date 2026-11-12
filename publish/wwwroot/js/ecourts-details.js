@@ -311,7 +311,7 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
     var modalElem = document.getElementById('ecourtsOrderModal');
     if (!modalElem) {
         var modalHtml =
-            '<div class="modal fade" id="ecourtsOrderModal" tabindex="-1" aria-hidden="true">' +
+            '<div class="modal fade" id="ecourtsOrderModal" tabindex="-1" aria-hidden="true" style="z-index: 1070;">' +
             '<div class="modal-dialog modal-xl modal-dialog-centered" style="height: 88vh;">' +
             '<div class="modal-content h-100 shadow-lg border-0 rounded-4 overflow-hidden">' +
             '<div class="modal-header bg-dark text-white py-2 px-3 border-bottom border-secondary">' +
@@ -334,6 +334,14 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
             '</div>';
         document.body.insertAdjacentHTML('beforeend', modalHtml);
         modalElem = document.getElementById('ecourtsOrderModal');
+        if (modalElem) {
+            modalElem.addEventListener('shown.bs.modal', function () {
+                var bds = document.querySelectorAll('.modal-backdrop');
+                if (bds.length > 1) {
+                    bds[bds.length - 1].style.zIndex = '1065';
+                }
+            });
+        }
     }
 
     var titleElem = document.getElementById('ecourtsOrderModalTitle');
@@ -384,7 +392,13 @@ function openOrderInModal(targetUrl, title, cnr, date, caseId, orderNo) {
     }
 
     if (iframeElem) iframeElem.src = proxyUrl;
-    if (newTabElem) newTabElem.href = proxyUrl;
+    if (newTabElem) {
+        if (targetUrl && (targetUrl.startsWith('/uploads/') || targetUrl.startsWith('uploads/'))) {
+            newTabElem.href = targetUrl.startsWith('/') ? targetUrl : ('/' + targetUrl);
+        } else {
+            newTabElem.href = proxyUrl;
+        }
+    }
 
     if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
         var bsModal = bootstrap.Modal.getInstance(modalElem) || new bootstrap.Modal(modalElem);
