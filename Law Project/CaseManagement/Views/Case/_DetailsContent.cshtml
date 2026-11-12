@@ -1529,7 +1529,7 @@
                 <div id="details-cnr-badge" class="d-flex flex-wrap align-items-center gap-2" onclick="event.stopPropagation();">
                     @if (!string.IsNullOrEmpty(Model.CNRNumber))
                     {
-                        <span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
+                        <span id="live-cnr-badge-span" class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
                             <i class="bi bi-broadcast me-1"></i> CNR: @Model.CNRNumber
                         </span>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Copy CNR Number" onclick="event.stopPropagation(); navigator.clipboard.writeText('@Model.CNRNumber'); alert('CNR Number copied to clipboard: @Model.CNRNumber');">
@@ -1544,7 +1544,7 @@
                     }
                     else
                     {
-                        <span class="badge bg-warning text-dark px-3 py-2">
+                        <span id="live-cnr-badge-span" class="badge bg-warning text-dark px-3 py-2">
                             <i class="bi bi-exclamation-triangle-fill me-1"></i> CNR Not Linked
                         </span>
                         <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs" onclick="event.stopPropagation(); openUpdateCnrModal()">

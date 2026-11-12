@@ -395,7 +395,7 @@
                 <div id="details-cnr-badge" class="d-flex flex-wrap align-items-center gap-2" onclick="event.stopPropagation();">
                     @if (!string.IsNullOrEmpty(activeCnrNumber))
                     {
-                        <span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
+                        <span id="live-cnr-badge-span" class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
                             <i class="bi bi-broadcast me-1"></i> CNR: @activeCnrNumber
                         </span>
                         <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Copy CNR Number" onclick="event.stopPropagation(); navigator.clipboard.writeText('@activeCnrNumber'); alert('CNR Number copied to clipboard: @activeCnrNumber');">
@@ -404,7 +404,7 @@
                     }
                     else
                     {
-                        <span class="badge bg-warning text-dark px-3 py-2">
+                        <span id="live-cnr-badge-span" class="badge bg-warning text-dark px-3 py-2">
                             <i class="bi bi-exclamation-triangle-fill me-1"></i> CNR Not Linked
                         </span>
                     }
@@ -3345,9 +3345,17 @@
                         if (statusData.status === 'Success') {
                             clearInterval(pollInterval);
                             if (msgElem) {
-                                msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Synced with e-Courts! Reloading...</span>';
+                                msgElem.innerHTML = '<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Synced with e-Courts Gateway!</span>';
                             }
-                            setTimeout(() => window.location.reload(), 1200);
+                            sessionStorage.setItem('labourNapixOpen_' + caseId, 'true');
+                            if (typeof fetchLiveCnrDetails === 'function') {
+                                fetchLiveCnrDetails(cnr, caseId);
+                            }
+                            var collapseEl = document.getElementById('collapseLabourNapixSection');
+                            if (collapseEl && !collapseEl.classList.contains('show')) {
+                                var bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false });
+                                bsCollapse.show();
+                            }
                         } else if (statusData.status === 'Failed') {
                             clearInterval(pollInterval);
                             if (msgElem) {
@@ -3454,9 +3462,10 @@
         let labourNapixLoaded = false;
 
         function triggerFetchLabourLiveStatus() {
+            sessionStorage.setItem('labourNapixOpen_' + @Model.CaseID, 'true');
             var collapseEl = document.getElementById('collapseLabourNapixSection');
             if (collapseEl && !collapseEl.classList.contains('show')) {
-                var bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapseEl);
+                var bsCollapse = bootstrap.Collapse.getOrCreateInstance(collapseEl, { toggle: false });
                 bsCollapse.show();
             }
             var activeCnr = (window.currentActiveCnr || '@activeCnrNumber').trim();
@@ -3474,12 +3483,38 @@
 
             const activeCnr = '@(activeCnrNumber ?? "")'.trim();
 
-            // 1. Automatically fetch live CNR details (hearing history & court orders) on page load
+            // 1. Restore collapse open state if previously opened or refreshed
+            const isSavedOpen = sessionStorage.getItem('labourNapixOpen_' + @Model.CaseID);
+            const labourCollapseEl = document.getElementById('collapseLabourNapixSection');
+            if (labourCollapseEl) {
+                if (isSavedOpen === 'true' && !labourCollapseEl.classList.contains('show')) {
+                    const bsCollapse = bootstrap.Collapse.getOrCreateInstance(labourCollapseEl, { toggle: false });
+                    bsCollapse.show();
+                }
+
+                labourCollapseEl.addEventListener('show.bs.collapse', function () {
+                    sessionStorage.setItem('labourNapixOpen_' + @Model.CaseID, 'true');
+                    const icon = document.getElementById('iconToggleLabourNapix');
+                    const text = document.getElementById('textToggleLabourNapix');
+                    if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
+                    if (text) { text.textContent = 'Hide NAPIX Details'; }
+                });
+
+                labourCollapseEl.addEventListener('hide.bs.collapse', function () {
+                    sessionStorage.setItem('labourNapixOpen_' + @Model.CaseID, 'false');
+                    const icon = document.getElementById('iconToggleLabourNapix');
+                    const text = document.getElementById('textToggleLabourNapix');
+                    if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
+                    if (text) { text.textContent = 'View NAPIX Details'; }
+                });
+            }
+
+            // 2. Automatically fetch live CNR details (hearing history & court orders) on page load
             if (activeCnr && activeCnr.length >= 10 && typeof fetchLiveCnrDetails === 'function') {
                 fetchLiveCnrDetails(activeCnr, @Model.CaseID);
             }
 
-            // 2. Orders Tab listener: verify orders are loaded whenever the tab is shown
+            // 3. Orders Tab listener: verify orders are loaded whenever the tab is shown
             const ordersTabBtn = document.getElementById('orders-tab');
             if (ordersTabBtn) {
                 ordersTabBtn.addEventListener('shown.bs.tab', function () {
@@ -3490,23 +3525,6 @@
                             fetchLiveCnrDetails(cnrVal, @Model.CaseID);
                         }
                     }
-                });
-            }
-
-            const labourCollapseEl = document.getElementById('collapseLabourNapixSection');
-            if (labourCollapseEl) {
-                labourCollapseEl.addEventListener('show.bs.collapse', function () {
-                    const icon = document.getElementById('iconToggleLabourNapix');
-                    const text = document.getElementById('textToggleLabourNapix');
-                    if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
-                    if (text) { text.textContent = 'Hide NAPIX Details'; }
-                });
-
-                labourCollapseEl.addEventListener('hide.bs.collapse', function () {
-                    const icon = document.getElementById('iconToggleLabourNapix');
-                    const text = document.getElementById('textToggleLabourNapix');
-                    if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
-                    if (text) { text.textContent = 'View NAPIX Details'; }
                 });
             }
 

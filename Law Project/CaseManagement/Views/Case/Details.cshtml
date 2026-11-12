@@ -862,7 +862,14 @@
 
             const caseCollapseEl = document.getElementById('collapseCaseNapixSection');
             if (caseCollapseEl) {
+                const savedCaseState = sessionStorage.getItem('caseNapixOpen_' + @Model.CaseID);
+                if (savedCaseState === 'true' && !caseCollapseEl.classList.contains('show')) {
+                    const bsCollapse = bootstrap.Collapse.getOrCreateInstance(caseCollapseEl, { toggle: false });
+                    bsCollapse.show();
+                }
+
                 caseCollapseEl.addEventListener('show.bs.collapse', function () {
+                    sessionStorage.setItem('caseNapixOpen_' + @Model.CaseID, 'true');
                     const icon = document.getElementById('iconToggleCaseNapix');
                     const text = document.getElementById('textToggleCaseNapix');
                     if (icon) { icon.classList.remove('bi-chevron-down'); icon.classList.add('bi-chevron-up'); }
@@ -870,6 +877,7 @@
                 });
 
                 caseCollapseEl.addEventListener('hide.bs.collapse', function () {
+                    sessionStorage.setItem('caseNapixOpen_' + @Model.CaseID, 'false');
                     const icon = document.getElementById('iconToggleCaseNapix');
                     const text = document.getElementById('textToggleCaseNapix');
                     if (icon) { icon.classList.remove('bi-chevron-up'); icon.classList.add('bi-chevron-down'); }
@@ -1279,6 +1287,7 @@
         }
 
         function triggerFetchCaseLiveStatus() {
+            sessionStorage.setItem('caseNapixOpen_' + @Model.CaseID, 'true');
             const cnr = (window.currentActiveCnr || '@(Model.CNRNumber ?? "")').trim();
             if (!cnr || cnr === '') {
                 openUpdateCnrModal();

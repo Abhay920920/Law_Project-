@@ -756,12 +756,22 @@ function fetchLiveCnrDetails(cnr, caseId) {
             var d = json.data || {};
             window.lastLiveCnrData = d;
 
-            // Dynamically update top CNR badge if CNR was discovered/returned by server
+            // Dynamically update top CNR badge if CNR was discovered/returned by server without wiping out action buttons
             var activeCnr = d.cnr_number || (json.summary ? json.summary.cnr_number : '') || cnr;
             if (activeCnr && activeCnr.length >= 10 && !activeCnr.includes('PENDING')) {
-                var badgeEl = document.getElementById('details-cnr-badge');
-                if (badgeEl) {
-                    badgeEl.innerHTML = '<span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm"><i class="bi bi-check-circle-fill me-1"></i> CNR: ' + activeCnr + '</span>';
+                var badgeSpan = document.getElementById('live-cnr-badge-span');
+                if (badgeSpan) {
+                    badgeSpan.className = 'badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap';
+                    badgeSpan.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> CNR: ' + activeCnr;
+                } else {
+                    var badgeEl = document.getElementById('details-cnr-badge');
+                    if (badgeEl) {
+                        var innerBadge = badgeEl.querySelector('.badge');
+                        if (innerBadge) {
+                            innerBadge.className = 'badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap';
+                            innerBadge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> CNR: ' + activeCnr;
+                        }
+                    }
                 }
             }
 
@@ -1692,9 +1702,19 @@ function autoLinkCnrInline(caseId, module) {
             }
             setElem('lbl-cnr-number', data.cnr);
             setElem('cnr_badge', data.cnr);
-            var badgeEl = document.getElementById('details-cnr-badge');
-            if (badgeEl) {
-                badgeEl.innerHTML = '<span class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm"><i class="bi bi-check-circle-fill me-1"></i> CNR: ' + data.cnr + '</span>';
+            var badgeSpan = document.getElementById('live-cnr-badge-span');
+            if (badgeSpan) {
+                badgeSpan.className = 'badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap';
+                badgeSpan.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> CNR: ' + data.cnr;
+            } else {
+                var badgeEl = document.getElementById('details-cnr-badge');
+                if (badgeEl) {
+                    var innerBadge = badgeEl.querySelector('.badge');
+                    if (innerBadge) {
+                        innerBadge.className = 'badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap';
+                        innerBadge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> CNR: ' + data.cnr;
+                    }
+                }
             }
             setTimeout(function() {
                 fetchLiveCnrDetails(data.cnr, caseId);
