@@ -224,42 +224,6 @@
                     <div class="card-header bg-action"><h6 class="mb-0 fw-bold">1. Judgment & Initial Action</h6></div>
                     <div class="card-body">
                         <div class="row g-3">
-                            <!-- Divisional Opinions Reference Card -->
-                            <div class="col-12">
-                                <div class="p-3 bg-light rounded-3 border">
-                                    <h6 class="fw-bold small text-primary mb-2 text-uppercase">
-                                        <i class="bi bi-chat-square-quote me-1"></i> Preceding Trial &amp; Legal Opinions
-                                    </h6>
-                                    <div class="row g-2 extra-small">
-                                        <div class="col-md-4">
-                                            <span class="text-muted d-block fw-bold">Advocate:</span>
-                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_Advocate) ? "—" : Model.Opinion_Advocate)</span>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <span class="text-muted d-block fw-bold">Divisional LO:</span>
-                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_LO) ? "—" : Model.Opinion_LO)</span>
-                                        </div>
-                                        <div class="col-md-4">
-                                            <span class="text-muted d-block fw-bold">Divisional DC:</span>
-                                            <span class="text-dark">@(string.IsNullOrWhiteSpace(Model.Opinion_DC) ? "—" : Model.Opinion_DC)</span>
-                                        </div>
-                                        @if (!string.IsNullOrWhiteSpace(Model.Opinion_CLO))
-                                        {
-                                            <div class="col-12 mt-2 pt-2 border-top">
-                                                <span class="badge bg-primary me-1">CLO Opinion</span>
-                                                <strong class="text-primary">@Model.Opinion_CLO</strong>
-                                            </div>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(Model.CO_Remarks))
-                                        {
-                                            <div class="col-12 mt-1">
-                                                <span class="badge bg-warning text-dark me-1">MD Directives</span>
-                                                <strong class="text-dark">@Model.CO_Remarks</strong>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
                             <div class="col-md-4">
                                 <label class="form-label fw-bold">Judgment Received?</label>
                                 <select class="form-select" asp-for="CO_FeasibilityReceived">
