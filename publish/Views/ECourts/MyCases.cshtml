@@ -810,9 +810,9 @@
                         <th style="width: 45px;" class="ps-3">#</th>
                         <th style="min-width: 155px;">CNR Number</th>
                         <th style="min-width: 130px;">Case No &amp; Type</th>
-                        <th style="min-width: 175px;">Court Hall &amp; Bench</th>
-                        <th style="min-width: 190px; max-width: 250px;">Parties</th>
-                        <th style="min-width: 140px;">Next Hearing / Stage</th>
+                        <th style="min-width: 220px;">Court Hall &amp; Bench</th>
+                        <th style="min-width: 260px;">Parties</th>
+                        <th style="min-width: 160px;">Next Hearing / Stage</th>
                         <th style="min-width: 95px;">Status</th>
                         <th style="min-width: 95px;">Last Synced</th>
                         <th style="min-width: 165px;" class="text-end pe-3">Actions</th>
@@ -2285,7 +2285,7 @@
                         <span class="fw-bold ${isUpcoming ? "text-primary" : "text-danger"}"><i class="bi bi-calendar-event me-1"></i>${dtFormatted}</span>
                         ${urgencyBadge}
                     </div>
-                    <div class="extra-small text-dark fw-semibold text-truncate mt-0.5" style="max-width: 190px;" title="${escapeHtml(c.stagePurpose || "—")}">
+                    <div class="extra-small text-dark fw-semibold mt-0.5" style="min-width: 160px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.stagePurpose || "—")}">
                         <i class="bi bi-bookmark-star text-secondary me-0.5"></i>${escapeHtml(c.stagePurpose || "—")}
                     </div>`;
             }
@@ -2296,7 +2296,7 @@
                 <div class="fw-semibold text-secondary">
                     <i class="bi bi-hourglass-split me-1"></i>Date Awaited
                 </div>
-                <div class="extra-small text-muted text-truncate" style="max-width: 190px;" title="${escapeHtml(c.stagePurpose || "—")}">
+                <div class="extra-small text-muted mt-0.5" style="min-width: 160px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.stagePurpose || "—")}">
                     ${escapeHtml(c.stagePurpose || "—")}
                 </div>`;
         }
@@ -2369,7 +2369,7 @@
                 <div class="extra-small text-muted mt-0.5">Est: <span class="font-monospace">${escapeHtml(c.estCode || "—")}</span></div>
             </td>
             <td>
-                <div class="fw-bold text-dark text-truncate small" style="max-width: 220px;" title="${escapeHtml(c.courtEstName || c.estCode || 'Court')}">
+                <div class="fw-bold text-dark small" style="min-width: 220px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.courtEstName || c.estCode || 'Court')}">
                     <i class="bi bi-building me-1 text-primary"></i>${escapeHtml(c.courtEstName || c.estCode || 'Court')}
                 </div>
                 <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
@@ -2381,16 +2381,16 @@
                     ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                     <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                 </div>
-                <div class="extra-small text-muted text-truncate" style="max-width: 220px;" title="${escapeHtml(c.judgeDesignation || "")}">
+                <div class="extra-small text-muted mt-0.5" style="min-width: 220px; line-height: 1.3; word-break: break-word;" title="${escapeHtml(c.judgeDesignation || "")}">
                     <i class="bi bi-person-lines-fill me-1 text-secondary"></i>${escapeHtml(c.judgeDesignation || "—")}
                 </div>
                 ${c.causeListType ? `<div class="extra-small text-secondary mt-0.5"><i class="bi bi-list-check me-1 text-success"></i>${escapeHtml(c.causeListType)}</div>` : ''}
             </td>
             <td>
-                <div class="fw-bold text-dark text-truncate" style="max-width: 260px;" title="${escapeHtml(c.petitioner || "")}">
+                <div class="fw-bold text-dark" style="min-width: 250px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.petitioner || "")}">
                     ${escapeHtml(c.petitioner || "—")}
                 </div>
-                <div class="extra-small text-muted text-truncate" style="max-width: 260px;" title="${escapeHtml(c.respondent || "")}">
+                <div class="extra-small text-muted mt-1" style="min-width: 250px; line-height: 1.3; word-break: break-word;" title="${escapeHtml(c.respondent || "")}">
                     vs ${escapeHtml(c.respondent || "—")}
                 </div>
             </td>
@@ -2779,7 +2779,7 @@
 
                 <!-- Court Hall, Bench & Judge -->
                 <div class="mb-2">
-                    <div class="fw-bold text-dark small d-flex align-items-center gap-1 text-truncate">
+                    <div class="fw-bold text-dark small d-flex align-items-center gap-1" style="word-break: break-word;">
                         <i class="bi bi-building text-primary"></i>
                         <span>${escapeHtml(c.courtEstName || c.estCode || 'Court')}</span>
                     </div>
@@ -2792,17 +2792,17 @@
                         ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                         <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                     </div>
-                    <div class="extra-small text-muted text-truncate">
+                    <div class="extra-small text-muted" style="word-break: break-word;">
                         <i class="bi bi-person-lines-fill me-1"></i>Coram: ${escapeHtml(c.judgeDesignation || "—")}
                     </div>
                 </div>
 
                 <!-- Parties: Petitioner vs Respondent -->
                 <div class="p-2.5 rounded-3 bg-light border mb-2">
-                    <div class="fw-bold text-dark small text-truncate" title="${escapeHtml(c.petitioner || '')}">
+                    <div class="fw-bold text-dark small" style="word-break: break-word;" title="${escapeHtml(c.petitioner || '')}">
                         <span class="text-primary me-1 fw-bold">P:</span>${escapeHtml(c.petitioner || "—")}
                     </div>
-                    <div class="text-muted extra-small text-truncate mt-1" title="${escapeHtml(c.respondent || '')}">
+                    <div class="text-muted extra-small mt-1" style="word-break: break-word;" title="${escapeHtml(c.respondent || '')}">
                         <span class="text-danger me-1 fw-bold">R:</span>vs ${escapeHtml(c.respondent || "—")}
                     </div>
                 </div>
