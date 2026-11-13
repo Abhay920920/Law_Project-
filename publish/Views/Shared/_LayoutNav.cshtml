@@ -150,12 +150,15 @@
                 <span>EP (Execution Petitions)</span>
             </a>
         }
-        @if (!isReadOnlyRole && isCO_Layout)
+        @if (!isReadOnlyRole)
         {
             <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ServiceMatters" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageServiceMatter") ? "active" : "")" href="/Labour/ServiceMatters">
                 <i class="bi bi-file-earmark-text"></i>
                 <span>Service/Commercial Matters</span>
             </a>
+        }
+        @if (!isReadOnlyRole && isCO_Layout)
+        {
             <a class="nav-link @(currentController == "Labour" && (ViewContext.RouteData.Values["action"]?.ToString() == "ClaimantAppeals" || ViewContext.RouteData.Values["action"]?.ToString() == "ManageClaimantAppeal") ? "active" : "")" href="/Labour/ClaimantAppeals">
                 <i class="bi bi-person-badge"></i>
                 <span>Claimant Writ Petition </span>

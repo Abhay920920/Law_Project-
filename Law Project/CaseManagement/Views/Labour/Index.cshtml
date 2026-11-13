@@ -222,22 +222,19 @@
                         </a>
                     </div>
 
-                    @if (isCO)
-                    {
-                        <!-- Service/Commercial Matters -->
-                        <div class="col-md-6 col-lg-3">
-                            <a href="@Url.Action("ServiceMatters", "Labour")" class="text-decoration-none">
-                                <div class="pulse-stat-card bg-pulse-dark">
-                                    <div class="bg-shape"></div>
-                                    <i class="bi bi-file-earmark-ruled icon-left"></i>
-                                    <div class="content-wrapper">
-                                        <div class="label">Service/Comm. Matters</div>
-                                        <div class="value">@(stats?.ServiceMatterCount ?? 0)</div>
-                                    </div>
+                    <!-- Service/Commercial Matters (Visible for both CO and Divisions) -->
+                    <div class="col-md-6 col-lg-3">
+                        <a href="@Url.Action("ServiceMatters", "Labour")" class="text-decoration-none" title="View Service Matters entered by Central Office">
+                            <div class="pulse-stat-card bg-pulse-dark">
+                                <div class="bg-shape"></div>
+                                <i class="bi bi-file-earmark-ruled icon-left"></i>
+                                <div class="content-wrapper">
+                                    <div class="label">@(isCO ? "Service/Comm. Matters" : "Service Matters (CO)")</div>
+                                    <div class="value">@(stats?.ServiceMatterCount ?? 0)</div>
                                 </div>
-                            </a>
-                        </div>
-                    }
+                            </div>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

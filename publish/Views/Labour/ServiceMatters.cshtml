@@ -5,6 +5,11 @@
     ViewData["HidePageHeader"] = true;
     Layout = "~/Views/Shared/_Layout.cshtml";
 
+    bool isCO = (ViewBag.IsCentralOffice as bool?) ?? false;
+    int selectedDivId = (ViewBag.SelectedDivisionId as int?) ?? 0;
+    string divisionName = ViewBag.UserDivisionName as string ?? (isCO ? "All Divisions" : "Division");
+    var divisions = ViewBag.Divisions as IEnumerable<MVCCaseManagement.Models.Division>;
+
     var allItems = Model?.ToList() ?? new List<MVCCaseManagement.Models.LabourCase>();
     int totalCount = allItems.Count;
     
@@ -19,17 +24,50 @@
 }
 
 <div class="container-fluid fade-in py-3">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
         <div>
-            <h1 class="h3 mb-0 text-gray-800">
-                <i class="bi bi-file-earmark-text text-primary me-2"></i>Service/Commercial Matters
+            <h1 class="h3 mb-0 text-gray-800 d-flex flex-wrap align-items-center gap-2">
+                <i class="bi bi-file-earmark-text text-primary"></i>Service/Commercial Matters
+                @if (!isCO)
+                {
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fs-6 rounded-pill px-3 py-1 fw-bold">
+                        <i class="bi bi-building me-1"></i>@divisionName Division — Central Office Filings
+                    </span>
+                }
             </h1>
-            <p class="text-muted small mb-0">Manage Direct Writ Petitions and Service/Commercial Matters</p>
+            <p class="text-muted small mb-0">
+                @(isCO 
+                    ? "Manage Direct Writ Petitions and Service/Commercial Matters across all divisions" 
+                    : $"Service matters and Direct Writ Petitions filed by Central Office for {divisionName} Division")
+            </p>
         </div>
-        <div>
-            <a href="@Url.Action("ManageServiceMatter", "Labour")" class="btn btn-primary rounded-pill shadow-sm">
-                <i class="bi bi-plus-lg me-2"></i>Register New Matter
-            </a>
+        <div class="d-flex align-items-center gap-2">
+            @if (isCO)
+            {
+                <!-- Division Filter for Central Office -->
+                <div class="input-group input-group-sm" style="min-width: 220px;">
+                    <span class="input-group-text bg-white border-secondary-subtle text-muted small"><i class="bi bi-funnel me-1"></i>Division</span>
+                    <select class="form-select form-select-sm border-secondary-subtle" id="ddlDivisionFilter" onchange="filterByDivision(this.value)">
+                        <option value="0" selected="@(selectedDivId == 0)">All Divisions</option>
+                        @if (divisions != null)
+                        {
+                            foreach (var div in divisions)
+                            {
+                                <option value="@div.DivisionID" selected="@(selectedDivId == div.DivisionID)">@div.DivisionNameEnglish</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <a href="@Url.Action("ManageServiceMatter", "Labour")" class="btn btn-primary rounded-pill shadow-sm text-nowrap">
+                    <i class="bi bi-plus-lg me-1"></i>Register New Matter
+                </a>
+            }
+            else
+            {
+                <a href="@Url.Action("Index", "Labour")" class="btn btn-outline-secondary rounded-pill btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Dashboard
+                </a>
+            }
         </div>
     </div>
 
@@ -108,6 +146,7 @@
                         <tr>
                             <th class="ps-4">WP Number</th>
                             <th>Petitioner Name</th>
+                            <th>Division</th>
                             <th>Case Nature</th>
                             <th>Status</th>
                             <th>Action Taken</th>
@@ -128,6 +167,11 @@
                                         }
                                     </td>
                                     <td>@item.CO_Service_PetitionerName</td>
+                                    <td>
+                                        <span class="badge bg-light text-secondary border fw-medium">
+                                            <i class="bi bi-geo-alt me-1"></i>@(string.IsNullOrEmpty(item.DivisionName) ? "Central Office" : item.DivisionName)
+                                        </span>
+                                    </td>
                                     <td><span class="badge bg-light text-dark border">@item.CO_Service_CaseNature</span></td>
                                     <td>
                                         @if (item.CO_Service_Status == "PENDING")
@@ -141,12 +185,21 @@
                                     </td>
                                     <td>@item.CO_Service_ActionTaken</td>
                                     <td class="text-end pe-4">
-                                        <a href="@Url.Action("ServiceMatterDetails", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
+                                        @if (isCO)
+                                        {
+                                            <a href="@Url.Action("ServiceMatterDetails", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Full Details">
                                                 <i class="bi bi-eye-fill"></i>
                                             </a>
                                             <a href="@Url.Action("ManageServiceMatter", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
-                                            <i class="bi bi-pencil-fill"></i>
-                                        </a>
+                                                <i class="bi bi-pencil-fill"></i>
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a href="@Url.Action("ServiceMatterDetails", "Labour", new { id = item.ServiceID })" class="btn btn-sm btn-outline-info rounded-pill px-3 py-1 fw-bold" title="View Full Case Details">
+                                                <i class="bi bi-eye-fill me-1"></i>View Details
+                                            </a>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -154,9 +207,9 @@
                         else
                         {
                             <tr>
-                                <td colspan="6" class="text-center py-5 text-muted">
+                                <td colspan="7" class="text-center py-5 text-muted">
                                     <i class="bi bi-inbox fs-1 d-block mb-3"></i>
-                                    No Service/Commercial Matters found.
+                                    No Service/Commercial Matters found@(selectedDivId > 0 ? " for the selected division" : "").
                                 </td>
                             </tr>
                         }
@@ -166,6 +219,18 @@
         </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        function filterByDivision(divId) {
+            if (divId && divId !== "0") {
+                window.location.href = '@Url.Action("ServiceMatters", "Labour")?divisionId=' + divId;
+            } else {
+                window.location.href = '@Url.Action("ServiceMatters", "Labour")';
+            }
+        }
+    </script>
+}
 
 <style>
     .svc-stat-card {

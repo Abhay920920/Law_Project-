@@ -1570,10 +1570,11 @@ namespace MVCCaseManagement.Controllers
             if (model == null) return NotFound();
 
             var divIdString = User.FindFirst("DivisionID")?.Value;
-            bool isCO = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5";
-            int userDivId = int.TryParse(divIdString, out int parsedId) ? parsedId : -1;
+            int sessDivId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0;
+            int userDivId = int.TryParse(divIdString, out int parsedId) && parsedId > 0 ? parsedId : sessDivId;
+            bool isCO = userDivId == 0 || userDivId == 5 || string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5";
 
-            if (!isCO && model.DivisionID != userDivId)
+            if (!isCO && model.DivisionID > 0 && model.DivisionID != userDivId)
             {
                 _logger.LogWarning("Unauthorized access attempt to Service Matter ID {ServiceID} by User ID {UserID}", id, User.FindFirstValue(ClaimTypes.NameIdentifier));
                 return RedirectToAction("Index");
@@ -1581,7 +1582,7 @@ namespace MVCCaseManagement.Controllers
 
             ViewBag.IsCentralOffice = isCO;
             ViewBag.IsCLO = User.IsInRole("CLO") || User.IsInRole("Dy CLO") || User.IsInRole("DyCLO");
-            ViewBag.CanEdit = !isCO && !User.IsInRole("Division Controller") && !User.IsInRole("DC"); // Same logic as Labour cases
+            ViewBag.CanEdit = isCO; // Only Central Office can edit service matters; Division users have pure read-only dossier access
             ViewBag.IsServiceMatter = true;
 
             // Use the ServiceID as CaseID for links in Details view if they expect standard ID
@@ -3042,14 +3043,31 @@ namespace MVCCaseManagement.Controllers
 
         // --- SERVICE MATTERS ---
 
-        public IActionResult ServiceMatters()
+        public IActionResult ServiceMatters(int? divisionId = null)
         {
             var divIdString = User.FindFirst("DivisionID")?.Value;
             int sessDivId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0;
-            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" || sessDivId == 0 || sessDivId == 5;
-            int divisionId = isCentralOffice ? 0 : (int.TryParse(divIdString, out int id) ? id : sessDivId);
+            int userDivId = int.TryParse(divIdString, out int parsedId) && parsedId > 0 ? parsedId : sessDivId;
+            bool isCentralOffice = userDivId == 0 || userDivId == 5 || string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5";
 
-            var cases = _labourRepo.GetServiceMatters(divisionId);
+            int effectiveDivId;
+            if (isCentralOffice)
+            {
+                effectiveDivId = (divisionId.HasValue && divisionId.Value > 0) ? divisionId.Value : 0;
+            }
+            else
+            {
+                // Strict multi-tenant boundary: Division user can ONLY see their own division's cases
+                effectiveDivId = userDivId;
+            }
+
+            var cases = _labourRepo.GetServiceMatters(effectiveDivId);
+            var divisions = _masterRepo.GetAllDivisions();
+            ViewBag.IsCentralOffice = isCentralOffice;
+            ViewBag.SelectedDivisionId = effectiveDivId;
+            ViewBag.Divisions = divisions;
+            ViewBag.UserDivisionName = divisions.FirstOrDefault(d => d.DivisionID == effectiveDivId)?.DivisionNameEnglish 
+                                      ?? (isCentralOffice ? "All Divisions" : "Division");
             return View(cases);
         }
 

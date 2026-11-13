@@ -151,7 +151,7 @@ namespace MVCCaseManagement.DAL
             }
 
             // Fetch Service/Commercial Matter Count
-            string svcQuery = "SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID OR DivisionID = 0 OR DivisionID IS NULL)";
+            string svcQuery = "SELECT COUNT(*) FROM LABOUR_SERVICE_MATTERS WHERE (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID)";
             var dtSvc = _db.ExecuteQuery(svcQuery, new[] { new SqlParameter("@DivisionID", divisionID) });
             if (dtSvc.Rows.Count > 0)
             {
@@ -1990,7 +1990,7 @@ namespace MVCCaseManagement.DAL
                 SELECT s.*, d.DivisionNameEnglish as DivisionName 
                 FROM LABOUR_SERVICE_MATTERS s 
                 LEFT JOIN DIVISION_MASTER d ON s.DivisionID = d.DivisionID
-                WHERE (@DivisionID = 0 OR @DivisionID = 5 OR s.DivisionID = @DivisionID OR s.DivisionID = 0 OR s.DivisionID IS NULL)
+                WHERE (@DivisionID = 0 OR @DivisionID = 5 OR s.DivisionID = @DivisionID)
                 ORDER BY s.CreatedDate DESC";
             
             try
