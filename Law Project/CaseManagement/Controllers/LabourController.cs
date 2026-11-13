@@ -179,7 +179,27 @@ namespace MVCCaseManagement.Controllers
             var stats = _labourRepo.GetDashboardStats(isCentralOffice ? 0 : divisionId);
             ViewBag.Stats = stats;
             ViewBag.IsCentralOffice = isCentralOffice;
-            ViewBag.DivisionName = User.FindFirst("DivisionName")?.Value ?? "Division";
+
+            // Resolve authoritative Division Name
+            string? resolvedDivName = null;
+            if (divisionId > 0)
+            {
+                resolvedDivName = _masterRepo.GetAllDivisions()?.FirstOrDefault(d => d.DivisionID == divisionId)?.DivisionNameEnglish;
+            }
+            if (string.IsNullOrWhiteSpace(resolvedDivName))
+            {
+                resolvedDivName = User.FindFirst("DivisionName")?.Value;
+            }
+            if (string.IsNullOrWhiteSpace(resolvedDivName) || resolvedDivName.Equals("Division", StringComparison.OrdinalIgnoreCase))
+            {
+                resolvedDivName = User.FindFirst("FullName")?.Value;
+            }
+            if (string.IsNullOrWhiteSpace(resolvedDivName))
+            {
+                resolvedDivName = isCentralOffice ? "Central Office" : "Division";
+            }
+            ViewBag.DivisionName = resolvedDivName;
+
             DateTime today = DateTime.Today;
             ViewBag.SelectedDate = today.ToString("yyyy-MM-dd");
 

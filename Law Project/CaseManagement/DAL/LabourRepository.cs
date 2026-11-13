@@ -170,6 +170,22 @@ namespace MVCCaseManagement.DAL
             } 
             catch { /* Keep fallback count from LABOUR_CASES if table doesn't exist yet */ }
 
+            // Fetch Live e-Courts Dossier Count
+            try
+            {
+                string dossierQuery = @"
+                    SELECT COUNT(*) 
+                    FROM admin_Law.ECOURTS_TRACKED_CASES 
+                    WHERE RelatedModule = 'Labour' 
+                      AND (@DivisionID = 0 OR @DivisionID = 5 OR DivisionID = @DivisionID OR DivisionID IS NULL OR DivisionID = 0)";
+                var dtDossier = _db.ExecuteQuery(dossierQuery, new[] { new SqlParameter("@DivisionID", divisionID) });
+                if (dtDossier.Rows.Count > 0 && dtDossier.Rows[0][0] != DBNull.Value)
+                {
+                    stats.ECourtsDossierCount = Convert.ToInt32(dtDossier.Rows[0][0]);
+                }
+            }
+            catch { /* Non-critical if table inaccessible */ }
+
             return stats;
         }
 

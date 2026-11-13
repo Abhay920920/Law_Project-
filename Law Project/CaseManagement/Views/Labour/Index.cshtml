@@ -235,6 +235,20 @@
                             </div>
                         </a>
                     </div>
+
+                    <!-- 10. e-Courts Dossier Registry (Live High Court & District Court Dossiers) -->
+                    <div class="col-md-6 col-lg-3">
+                        <a href="/ECourts/MyCases?module=Labour" class="text-decoration-none" title="Access Official Live e-Courts Case Dossier Registry">
+                            <div class="pulse-stat-card bg-pulse-teal">
+                                <div class="bg-shape"></div>
+                                <i class="bi bi-journal-medical icon-left"></i>
+                                <div class="content-wrapper">
+                                    <div class="label">e-Courts Dossier</div>
+                                    <div class="value">@(stats?.ECourtsDossierCount > 0 ? stats.ECourtsDossierCount.ToString() : "Registry")</div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -250,8 +264,20 @@
                         <span class="fs-5 fw-bold text-primary d-flex align-items-center">
                             <i class="bi bi-calendar2-week-fill me-2 text-primary"></i>Scheduled Court Hearings
                         </span>
+                        @{
+                            var rawDivName = (ViewBag.DivisionName as string) ?? User.FindFirst("DivisionName")?.Value ?? User.FindFirst("FullName")?.Value ?? "Division";
+                            string cleanDivName = rawDivName.Trim();
+                            if (cleanDivName.Equals("Division", StringComparison.OrdinalIgnoreCase))
+                            {
+                                cleanDivName = User.FindFirst("FullName")?.Value ?? "Division";
+                            }
+                            if (!string.IsNullOrWhiteSpace(cleanDivName) && !cleanDivName.EndsWith("Division", StringComparison.OrdinalIgnoreCase))
+                            {
+                                cleanDivName += " Division";
+                            }
+                        }
                         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small fw-semibold">
-                            <i class="bi bi-geo-alt-fill me-1"></i>@(ViewBag.DivisionName ?? "Division") Division
+                            <i class="bi bi-geo-alt-fill me-1"></i>@cleanDivName
                         </span>
                         <span class="badge bg-light text-secondary border px-2 py-1 small fw-bold" id="hearingsCountBadge">
                             @(((IEnumerable<MVCCaseManagement.Models.LabourCase>)ViewBag.RecentCases)?.Count() ?? 0) Hearings
@@ -399,6 +425,7 @@
     .bg-pulse-orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
     .bg-pulse-pink { background: linear-gradient(135deg, #ec4899 0%, #be185d 100%); }
     .bg-pulse-dark { background: linear-gradient(135deg, #475569 0%, #1e293b 100%); }
+    .bg-pulse-teal { background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); }
 </style>
 
 @section Scripts {

@@ -94,8 +94,8 @@
                             <div class="d-inline-flex gap-1">
                                 @if (item.IsArisingApplication)
                                 {
-                                    <a href="@Url.Action("DetailsArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Details">
-                                        <i class="bi bi-eye-fill me-1"></i>View
+                                    <a href="@Url.Action("DetailsArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Case Dossier">
+                                        <i class="bi bi-file-earmark-medical me-1"></i>Dossier
                                     </a>
                                     <a href="@Url.Action("EditArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-secondary rounded-circle shadow-none" title="Edit Application">
                                         <i class="bi bi-pencil-fill"></i>
@@ -103,8 +103,8 @@
                                 }
                                 else
                                 {
-                                    <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Details">
-                                        <i class="bi bi-eye-fill me-1"></i>View
+                                    <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Case Dossier">
+                                        <i class="bi bi-file-earmark-medical me-1"></i>Dossier
                                     </a>
                                     <a href="@Url.Action("Edit", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-secondary rounded-circle shadow-none" title="Edit Case">
                                         <i class="bi bi-pencil-fill"></i>

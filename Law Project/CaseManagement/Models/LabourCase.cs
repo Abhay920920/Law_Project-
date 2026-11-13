@@ -623,6 +623,7 @@ namespace MVCCaseManagement.Models
         public int WritAppealsClaimantCount { get; set; }
         public int WritPetitionClaimantCount { get; set; }
         public int ServiceMatterCount { get; set; }
+        public int ECourtsDossierCount { get; set; }
         public decimal FinancialExposure { get; set; }
     }
     

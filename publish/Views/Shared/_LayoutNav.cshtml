@@ -126,6 +126,14 @@
 
         @if (!isReadOnlyRole && !isCO_Layout)
         {
+            <a class="nav-link @((currentController == "ECourts" && ViewContext.RouteData.Values["action"]?.ToString() == "MyCases" && currentModuleQuery.Equals("Labour", StringComparison.OrdinalIgnoreCase)) ? "active" : "")" href="/ECourts/MyCases?module=Labour">
+                <i class="bi bi-journal-medical text-info"></i>
+                <span>Case Dossier</span>
+            </a>
+        }
+
+        @if (!isReadOnlyRole && !isCO_Layout)
+        {
             <a class="nav-link @(currentController == "Labour" && 
                 ((ViewContext.RouteData.Values["action"]?.ToString() == "Create" && Context.Request.Query["type"] == "ArisingApplication") || 
                  (ViewContext.RouteData.Values["action"]?.ToString() == "CaseList" && Context.Request.Query["status"] == "ArisingApplication") ||
