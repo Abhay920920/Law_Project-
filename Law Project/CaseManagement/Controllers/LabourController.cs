@@ -1616,20 +1616,25 @@ namespace MVCCaseManagement.Controllers
             }
             else
             {
+                var divClaim = User.FindFirst("DivisionID")?.Value;
+                int divisionId = int.TryParse(divClaim, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0);
+                bool isCO = (divisionId == 0 || divisionId == 5 || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("Admin"));
+
                 var model = _labourRepo.GetCaseById(id);
                 if (model == null)
                 {
                     var svcModel = _labourRepo.GetServiceMatterById(id);
                     if (svcModel != null)
                     {
+                        if (!isCO)
+                        {
+                            return RedirectToAction("ServiceMatterDetails", new { id = svcModel.ServiceID ?? id });
+                        }
                         return RedirectToAction("ManageServiceMatter", new { id = svcModel.ServiceID ?? id });
                     }
                     return NotFound();
                 }
 
-                var divClaim = User.FindFirst("DivisionID")?.Value;
-                int divisionId = int.TryParse(divClaim, out int parsedDiv) ? parsedDiv : (HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0);
-                bool isCO = (divisionId == 0 || divisionId == 5 || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD") || User.IsInRole("Admin"));
                 if (!isCO)
                 {
                     TempData["ErrorMessage"] = "Access Denied: Only Central Office can perform this action.";
@@ -3073,6 +3078,17 @@ namespace MVCCaseManagement.Controllers
 
         public IActionResult ManageServiceMatter(int? id)
         {
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            int sessDivId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0;
+            int userDivId = int.TryParse(divIdString, out int parsedId) && parsedId > 0 ? parsedId : sessDivId;
+            bool isCO = userDivId == 0 || userDivId == 5 || string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" || User.IsInRole("Admin") || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD");
+
+            if (!isCO)
+            {
+                TempData["ErrorMessage"] = "Access Denied: Only Central Office can register or edit Service Matters. Division users have view-only access.";
+                return RedirectToAction("ServiceMatters");
+            }
+
             LabourCase model;
             if (id.HasValue && id.Value > 0)
             {
@@ -3080,7 +3096,7 @@ namespace MVCCaseManagement.Controllers
             }
             else
             {
-                model = new LabourCase { CaseType = "Service Matter", DivisionID = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0 };
+                model = new LabourCase { CaseType = "Service Matter", DivisionID = 0 };
             }
             
             ViewBag.Divisions = _masterRepo.GetAllDivisions();
@@ -3094,6 +3110,16 @@ namespace MVCCaseManagement.Controllers
         {
             try
             {
+                var divIdString = User.FindFirst("DivisionID")?.Value;
+                int sessDivId = HttpContext.Session.GetInt32(SessionKeys.DivisionID) ?? 0;
+                int userDivId = int.TryParse(divIdString, out int parsedId) && parsedId > 0 ? parsedId : sessDivId;
+                bool isCO = userDivId == 0 || userDivId == 5 || string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5" || User.IsInRole("Admin") || User.IsInRole("CentralOffice") || User.IsInRole("CO") || User.IsInRole("CLO") || User.IsInRole("MD");
+
+                if (!isCO)
+                {
+                    TempData["ErrorMessage"] = "Access Denied: Only Central Office can register or edit Service Matters. Division users have view-only access.";
+                    return RedirectToAction("ServiceMatters");
+                }
                 if (string.IsNullOrWhiteSpace(model.CO_Service_WPNumber))
                 {
                     ViewBag.Error = "WP Number is required.";
