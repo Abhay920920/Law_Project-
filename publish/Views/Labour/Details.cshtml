@@ -2461,13 +2461,15 @@
 
                 var allLabourDocs = new List<MVCCaseManagement.Models.CaseDocumentItemViewModel>();
 
-                void AddLabourDoc(string? path, string title, string category, string icon, string color, DateTime? date = null, string? remarks = null, string? cnr = null, string? orderNo = null, bool isECourts = false)
+                void AddLabourDoc(string? path, string title, string category, string icon, string color, string docKey, int? docId = null, int? arisingId = null, string? arisingField = null, DateTime? date = null, string? remarks = null, string? cnr = null, string? orderNo = null, bool isECourts = false)
                 {
                     if (string.IsNullOrWhiteSpace(path)) return;
                     string norm = NormalizeDocUrl(path);
                     bool onDisk = FileStorage.FileExists(path);
                     allLabourDocs.Add(new MVCCaseManagement.Models.CaseDocumentItemViewModel
                     {
+                        DocumentId = docId,
+                        DocKey = docKey,
                         Title = title,
                         Category = category,
                         RawPath = path,
@@ -2481,34 +2483,36 @@
                         IsAvailableOnDisk = onDisk,
                         IsFromECourts = isECourts,
                         CnrNumber = cnr,
-                        OrderNo = orderNo
+                        OrderNo = orderNo,
+                        OrderDate = date,
+                        IsEditable = true
                     });
                 }
 
                 // 1. Standard Case & High Court Writ Documents
-                AddLabourDoc(Model.JudgmentCopyPath, "Labour Court Judgment Copy", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger");
-                AddLabourDoc(Model.JudgmentCopyPath2, "Judgment Copy 2", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger");
-                AddLabourDoc(Model.CO_WP_JudgmentCopyPath, "High Court WP Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary");
-                AddLabourDoc(Model.Against_PunishmentCopyPath, "Punishment Order Copy", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger");
-                AddLabourDoc(Model.DE_HistorySheetPath, "DE History Sheet", "Disciplinary Enquiry", "bi-file-earmark-medical-fill", "secondary");
-                AddLabourDoc(Model.CO_WP_StayOrderPath, "High Court WP Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary");
-                AddLabourDoc(Model.CO_WA_StayOrderPath, "High Court WA Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary");
-                AddLabourDoc(Model.CO_Claimant_PetitionCopyPath, "Claimant Writ Petition", "High Court Petition", "bi-file-earmark-text-fill", "info");
-                AddLabourDoc(Model.CO_Service_PetitionCopyPath, "Service Matter Petition", "Service Matter", "bi-file-earmark-text", "secondary");
-                AddLabourDoc(Model.CO_Service_ApprovalCopyPath, "Service Approval Copy", "Central Office Order", "bi-award-fill", "success");
-                AddLabourDoc(Model.CO_ClosedDocumentPath, closureLabel, "Case Closure", "bi-file-earmark-check-fill", "success");
-                AddLabourDoc(Model.CO_StayComplianceFilePath, "Stay Compliance Document", "Court Compliance", "bi-envelope-check-fill", "info");
-                AddLabourDoc(Model.CO_Reinstatement_StayOrderPath, "Reinstatement Stay Order", "Stay Order", "bi-shield-slash-fill", "warning");
-                AddLabourDoc(Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement Approval Copy", "Central Office Order", "bi-award-fill", "success");
-                AddLabourDoc(Model.LokAdalatDocumentPath, "Lok Adalat Settlement Doc", "Lok Adalat Award", "bi-handshake-fill", "success");
-                AddLabourDoc(Model.ClaimPetitionPath, "Claim Petition Copy", "Claimant Filing", "bi-card-heading", "secondary");
+                AddLabourDoc(Model.JudgmentCopyPath, "Labour Court Judgment Copy", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger", "JudgmentCopy");
+                AddLabourDoc(Model.JudgmentCopyPath2, "Judgment Copy 2", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger", "JudgmentCopy2");
+                AddLabourDoc(Model.CO_WP_JudgmentCopyPath, "High Court WP Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary", "COWPJudgmentCopy");
+                AddLabourDoc(Model.Against_PunishmentCopyPath, "Punishment Order Copy", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger", "AgainstPunishmentCopy");
+                AddLabourDoc(Model.DE_HistorySheetPath, "DE History Sheet", "Disciplinary Enquiry", "bi-file-earmark-medical-fill", "secondary", "DEHistorySheet");
+                AddLabourDoc(Model.CO_WP_StayOrderPath, "High Court WP Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary", "COWPStayOrder");
+                AddLabourDoc(Model.CO_WA_StayOrderPath, "High Court WA Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary", "COWAStayOrder");
+                AddLabourDoc(Model.CO_Claimant_PetitionCopyPath, "Claimant Writ Petition", "High Court Petition", "bi-file-earmark-text-fill", "info", "COClaimantPetitionCopy");
+                AddLabourDoc(Model.CO_Service_PetitionCopyPath, "Service Matter Petition", "Service Matter", "bi-file-earmark-text", "secondary", "COServicePetitionCopy");
+                AddLabourDoc(Model.CO_Service_ApprovalCopyPath, "Service Approval Copy", "Central Office Order", "bi-award-fill", "success", "COServiceApprovalCopy");
+                AddLabourDoc(Model.CO_ClosedDocumentPath, closureLabel, "Case Closure", "bi-file-earmark-check-fill", "success", "COClosedDocument");
+                AddLabourDoc(Model.CO_StayComplianceFilePath, "Stay Compliance Document", "Court Compliance", "bi-envelope-check-fill", "info", "COStayComplianceFile");
+                AddLabourDoc(Model.CO_Reinstatement_StayOrderPath, "Reinstatement Stay Order", "Stay Order", "bi-shield-slash-fill", "warning", "COReinstatementStayOrder");
+                AddLabourDoc(Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement Approval Copy", "Central Office Order", "bi-award-fill", "success", "COReinstatementApprovalCopy");
+                AddLabourDoc(Model.LokAdalatDocumentPath, "Lok Adalat Settlement Doc", "Lok Adalat Award", "bi-handshake-fill", "success", "LokAdalatDocument");
+                AddLabourDoc(Model.ClaimPetitionPath, "Claim Petition Copy", "Claimant Filing", "bi-card-heading", "secondary", "ClaimPetition");
 
                 // 2. User-Uploaded Supplementary Documents (LABOUR_REINSTATED_DOCUMENTS)
                 if (Model.ReinstatedDocuments != null && Model.ReinstatedDocuments.Any())
                 {
                     foreach (var uDoc in Model.ReinstatedDocuments)
                     {
-                        AddLabourDoc(uDoc.DocumentPath, uDoc.DocumentName, "User Attachment", "bi-file-earmark-text-fill", "primary", uDoc.UploadedDate);
+                        AddLabourDoc(uDoc.DocumentPath, uDoc.DocumentName, "User Attachment", "bi-file-earmark-text-fill", "primary", "ReinstatedDocument", docId: uDoc.DocumentID, date: uDoc.UploadedDate);
                     }
                 }
 
@@ -2519,11 +2523,11 @@
                     foreach (var arising in linkedArisingList)
                     {
                         string appPrefix = $"App #{arising.ArisingID} ({arising.CaseNumber ?? "Arising"})";
-                        AddLabourDoc(arising.JudgmentCopyPath, $"{appPrefix} Judgment Copy", "Arising App Order", "bi-file-earmark-pdf-fill", "warning");
-                        AddLabourDoc(arising.ClaimPetitionPath, $"{appPrefix} Claim Petition", "Arising App Filing", "bi-file-earmark-text", "secondary");
-                        AddLabourDoc(arising.LokAdalatDocumentPath, $"{appPrefix} Lok Adalat Settlement", "Arising App Settlement", "bi-handshake-fill", "success");
-                        AddLabourDoc(arising.DE_HistorySheetPath, $"{appPrefix} History Sheet", "Arising App Record", "bi-file-earmark-medical", "secondary");
-                        AddLabourDoc(arising.CO_WP_JudgmentCopyPath, $"{appPrefix} WP Judgment Copy", "Arising High Court", "bi-file-earmark-pdf-fill", "primary");
+                        AddLabourDoc(arising.JudgmentCopyPath, $"{appPrefix} Judgment Copy", "Arising App Order", "bi-file-earmark-pdf-fill", "warning", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "JudgmentCopy");
+                        AddLabourDoc(arising.ClaimPetitionPath, $"{appPrefix} Claim Petition", "Arising App Filing", "bi-file-earmark-text", "secondary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "ClaimPetition");
+                        AddLabourDoc(arising.LokAdalatDocumentPath, $"{appPrefix} Lok Adalat Settlement", "Arising App Settlement", "bi-handshake-fill", "success", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "LokAdalatDocument");
+                        AddLabourDoc(arising.DE_HistorySheetPath, $"{appPrefix} History Sheet", "Arising App Record", "bi-file-earmark-medical", "secondary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "DEHistorySheet");
+                        AddLabourDoc(arising.CO_WP_JudgmentCopyPath, $"{appPrefix} WP Judgment Copy", "Arising High Court", "bi-file-earmark-pdf-fill", "primary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "COWPJudgmentCopy");
                     }
                 }
 
@@ -2536,7 +2540,7 @@
                         string oPath = !string.IsNullOrWhiteSpace(co.LocalPdfPath) ? co.LocalPdfPath : (co.ExternalUrl ?? "");
                         string dtStr = co.OrderDate.HasValue ? co.OrderDate.Value.ToString("dd-MMM-yyyy") : "Order";
                         string oTitle = $"eCourts {co.OrderType} ({dtStr})";
-                        AddLabourDoc(oPath, oTitle, "eCourts Order", "bi-file-earmark-pdf-fill", "info", co.OrderDate, null, co.Cnr, null, isECourts: true);
+                        AddLabourDoc(oPath, oTitle, "eCourts Order", "bi-file-earmark-pdf-fill", "info", "ECourtsOrder", date: co.OrderDate, cnr: co.Cnr, isECourts: true);
                     }
                 }
 
@@ -2635,13 +2639,27 @@
                                         }
                                     </div>
                                 </div>
-                                <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                                <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
                                     <button type="button" onclick="openOrderInModal('@safeDocPath', '@safeDocTitle', '@(activeCnrNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-1 fw-bold shadow-xs d-inline-flex align-items-center" style="font-size: 0.75rem;" title="View Document in Modal">
                                         <i class="bi bi-eye me-1"></i>View
                                     </button>
                                     <a href="@doc.NormalizedUrl" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" style="font-size: 0.75rem;" title="Open in New Tab / Download">
                                         <i class="bi bi-box-arrow-up-right"></i>
                                     </a>
+                                    @if (doc.IsEditable)
+                                    {
+                                        var safeRemarks = (doc.Remarks ?? "").Replace("'", "\\'");
+                                        var safeCategory = (doc.Category ?? "").Replace("'", "\\'");
+                                        var safeCnr = (doc.CnrNumber ?? "").Replace("'", "\\'");
+                                        var orderDtStr = doc.Date.HasValue ? doc.Date.Value.ToString("yyyy-MM-dd") : "";
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 py-1 fw-bold shadow-xs"
+                                                style="font-size: 0.75rem;"
+                                                onclick="openEditLabourDocModal('@doc.DocKey', @(doc.DocumentId.HasValue ? doc.DocumentId.Value.ToString() : "null"), null, null, '@safeDocTitle', '@safeDocPath', '@safeRemarks', '@safeCategory', '@safeCnr', '@orderDtStr')"
+                                                title="Edit or Re-upload document">
+                                            <i class="bi bi-pencil-square me-1"></i>Edit / Reupload
+                                        </button>
+                                    }
                                 </div>
                             </div>
                         }

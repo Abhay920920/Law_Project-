@@ -36,6 +36,7 @@ namespace MVCCaseManagement.DAL
         IEnumerable<LabourConnectedCase> GetConnectedCasesByCaseId(int caseId);
         IEnumerable<LabourReinstatementDocument> GetReinstatedDocuments(int caseId);
         void AddReinstatedDocument(LabourReinstatementDocument doc);
+        bool UpdateOrReuploadLabourDocument(int caseId, string docKey, int? documentId, int? arisingId, string? arisingField, string? newTitle, string? newRemarks, string? newPath, string? cnr, DateTime? orderDate, int? userId);
         List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)> GetCaseOrdersByCnrs(IEnumerable<string> cnrs);
         bool UpdateCNR(int caseId, string? cnrNumber, string? estCode, int modifiedBy);
         bool UpdateAppealCNR(int caseId, string appealType, string? cnrNumber, int modifiedBy);
@@ -2635,6 +2636,146 @@ namespace MVCCaseManagement.DAL
             }
             catch { }
             return list;
+        }
+
+        public bool UpdateOrReuploadLabourDocument(
+            int caseId,
+            string docKey,
+            int? documentId,
+            int? arisingId,
+            string? arisingField,
+            string? newTitle,
+            string? newRemarks,
+            string? newPath,
+            string? cnr,
+            DateTime? orderDate,
+            int? userId)
+        {
+            if (caseId <= 0 || string.IsNullOrWhiteSpace(docKey)) return false;
+
+            using var conn = _db.GetConnection();
+            conn.Open();
+            using var trans = conn.BeginTransaction();
+            try
+            {
+                switch (docKey)
+                {
+                    case "ClaimPetition":
+                    case "AgainstPunishmentCopy":
+                    case "DEHistorySheet":
+                    case "JudgmentCopy":
+                    case "JudgmentCopy2":
+                    case "LokAdalatDocument":
+                    case "COClosedDocument":
+                    case "COWPStayOrder":
+                    case "COWPJudgmentCopy":
+                    case "COWAStayOrder":
+                    case "COReinstatementStayOrder":
+                    case "COReinstatementApprovalCopy":
+                    case "COStayComplianceFile":
+                    case "COClaimantPetitionCopy":
+                    case "COServicePetitionCopy":
+                    case "COServiceApprovalCopy":
+                        string col = docKey switch
+                        {
+                            "ClaimPetition" => "ClaimPetitionPath",
+                            "AgainstPunishmentCopy" => "Against_PunishmentCopyPath",
+                            "DEHistorySheet" => "DE_HistorySheetPath",
+                            "JudgmentCopy" => "JudgmentCopyPath",
+                            "JudgmentCopy2" => "JudgmentCopy2",
+                            "LokAdalatDocument" => "LokAdalatDocumentPath",
+                            "COClosedDocument" => "CO_ClosedDocumentPath",
+                            "COWPStayOrder" => "CO_WP_StayOrderPath",
+                            "COWPJudgmentCopy" => "CO_WP_JudgmentCopyPath",
+                            "COWAStayOrder" => "CO_WA_StayOrderPath",
+                            "COReinstatementStayOrder" => "CO_Reinstatement_StayOrderPath",
+                            "COReinstatementApprovalCopy" => "CO_Reinstatement_ApprovalCopyPath",
+                            "COStayComplianceFile" => "CO_StayComplianceFilePath",
+                            "COClaimantPetitionCopy" => "CO_Claimant_PetitionCopyPath",
+                            "COServicePetitionCopy" => "CO_Service_PetitionCopyPath",
+                            "COServiceApprovalCopy" => "CO_Service_ApprovalCopyPath",
+                            _ => "ClaimPetitionPath"
+                        };
+
+                        using (var cmd = new SqlCommand($@"
+                            UPDATE LABOUR_CASES 
+                            SET {col} = COALESCE(@NewPath, {col})
+                            WHERE CaseID = @CaseID", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "ReinstatedDocument":
+                        if (documentId.HasValue && documentId.Value > 0)
+                        {
+                            using var cmd = new SqlCommand(@"
+                                UPDATE LABOUR_REINSTATED_DOCUMENTS 
+                                SET DocumentName = COALESCE(@DocumentName, DocumentName),
+                                    DocumentPath = COALESCE(@NewPath, DocumentPath),
+                                    UploadedDate = GETDATE()
+                                WHERE DocumentID = @DocumentID AND CaseID = @CaseID", conn, trans);
+                            cmd.Parameters.Add(new SqlParameter("@DocumentID", documentId.Value));
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@DocumentName", (object?)newTitle ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "ArisingApplicationDoc":
+                        if (arisingId.HasValue && arisingId.Value > 0 && !string.IsNullOrWhiteSpace(arisingField))
+                        {
+                            string arisingCol = arisingField switch
+                            {
+                                "JudgmentCopy" => "JudgmentCopyPath",
+                                "ClaimPetition" => "ClaimPetitionPath",
+                                "LokAdalatDocument" => "LokAdalatDocumentPath",
+                                "DEHistorySheet" => "DE_HistorySheetPath",
+                                "COWPJudgmentCopy" => "CO_WP_JudgmentCopyPath",
+                                _ => "JudgmentCopyPath"
+                            };
+                            using var cmd = new SqlCommand($@"
+                                UPDATE LABOUR_ARISING_APPLICATIONS
+                                SET {arisingCol} = COALESCE(@NewPath, {arisingCol})
+                                WHERE ArisingID = @ArisingID", conn, trans);
+                            cmd.Parameters.Add(new SqlParameter("@ArisingID", arisingId.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "ECourtsOrder":
+                        if (!string.IsNullOrWhiteSpace(cnr))
+                        {
+                            string cleanCnr = cnr.Trim().Replace("-", "").Replace(" ", "").ToUpperInvariant();
+                            using var cmd = new SqlCommand(@"
+                                UPDATE CASE_ORDERS 
+                                SET LocalPdfPath = COALESCE(@NewPath, LocalPdfPath)
+                                WHERE UPPER(REPLACE(REPLACE(CNRNumber, '-', ''), ' ', '')) = @Cnr
+                                  AND (@OrderDate IS NULL OR CAST(OrderDate AS DATE) = CAST(@OrderDate AS DATE))", conn, trans);
+                            cmd.Parameters.Add(new SqlParameter("@Cnr", cleanCnr));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@OrderDate", (object?)orderDate ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    default:
+                        throw new ArgumentException($"Unsupported document key: {docKey}");
+                }
+
+                trans.Commit();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                trans.Rollback();
+                Console.WriteLine($"Error updating/reuploading document for Labour CaseID {caseId}, DocKey {docKey}: {ex.Message}");
+                throw;
+            }
         }
     }
 }

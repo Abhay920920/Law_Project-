@@ -1185,39 +1185,39 @@
         <div class="lcp-pane" id="tab-docs">
             <div class="row g-3">
                 @{
-                    var docList = new List<(string Title, string? Path, string Category, string Icon)>();
+                    var docList = new List<(string Title, string? Path, string Category, string Icon, string DocKey)>();
                     if (!string.IsNullOrWhiteSpace(Model.ClaimPetitionPath))
-                        docList.Add(("Claim Petition (Workman)", Model.ClaimPetitionPath, "Dispute Initiation", "file-earmark-person"));
+                        docList.Add(("Claim Petition (Workman)", Model.ClaimPetitionPath, "Dispute Initiation", "file-earmark-person", "ClaimPetition"));
                     if (!string.IsNullOrWhiteSpace(Model.Against_PunishmentCopyPath))
-                        docList.Add(("Departmental Punishment Order", Model.Against_PunishmentCopyPath, "DE Proceedings", "file-earmark-x"));
+                        docList.Add(("Departmental Punishment Order", Model.Against_PunishmentCopyPath, "DE Proceedings", "file-earmark-x", "AgainstPunishmentCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.DE_HistorySheetPath))
-                        docList.Add(("DE History Sheet Document", Model.DE_HistorySheetPath, "DE Proceedings", "file-earmark-medical"));
+                        docList.Add(("DE History Sheet Document", Model.DE_HistorySheetPath, "DE Proceedings", "file-earmark-medical", "DEHistorySheet"));
                     if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath))
-                        docList.Add(("Labour Court Judgment (Copy 1)", Model.JudgmentCopyPath, "Court Judgment", "award"));
+                        docList.Add(("Labour Court Judgment (Copy 1)", Model.JudgmentCopyPath, "Court Judgment", "award", "JudgmentCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath2))
-                        docList.Add(("Labour Court Judgment (Copy 2)", Model.JudgmentCopyPath2, "Court Judgment", "award"));
+                        docList.Add(("Labour Court Judgment (Copy 2)", Model.JudgmentCopyPath2, "Court Judgment", "award", "JudgmentCopy2"));
                     if (!string.IsNullOrWhiteSpace(Model.LokAdalatDocumentPath))
-                        docList.Add(("Lok Adalat Settlement Award", Model.LokAdalatDocumentPath, "Settlement", "person-handshake"));
+                        docList.Add(("Lok Adalat Settlement Award", Model.LokAdalatDocumentPath, "Settlement", "person-handshake", "LokAdalatDocument"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_ClosedDocumentPath))
-                        docList.Add(("Central Office Sanction / Closure Order", Model.CO_ClosedDocumentPath, "Central Office Sanction", "shield-check"));
+                        docList.Add(("Central Office Sanction / Closure Order", Model.CO_ClosedDocumentPath, "Central Office Sanction", "shield-check", "COClosedDocument"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_WP_StayOrderPath))
-                        docList.Add(("High Court WP Stay Order", Model.CO_WP_StayOrderPath, "High Court Litigation", "bank"));
+                        docList.Add(("High Court WP Stay Order", Model.CO_WP_StayOrderPath, "High Court Litigation", "bank", "COWPStayOrder"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_WP_JudgmentCopyPath))
-                        docList.Add(("High Court WP Final Judgment", Model.CO_WP_JudgmentCopyPath, "High Court Litigation", "bank"));
+                        docList.Add(("High Court WP Final Judgment", Model.CO_WP_JudgmentCopyPath, "High Court Litigation", "bank", "COWPJudgmentCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_WA_StayOrderPath))
-                        docList.Add(("High Court WA Stay Order", Model.CO_WA_StayOrderPath, "High Court Litigation", "bank2"));
+                        docList.Add(("High Court WA Stay Order", Model.CO_WA_StayOrderPath, "High Court Litigation", "bank2", "COWAStayOrder"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_StayOrderPath))
-                        docList.Add(("Reinstatement Stay Order", Model.CO_Reinstatement_StayOrderPath, "Reinstatement", "person-slash"));
+                        docList.Add(("Reinstatement Stay Order", Model.CO_Reinstatement_StayOrderPath, "Reinstatement", "person-slash", "COReinstatementStayOrder"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_ApprovalCopyPath))
-                        docList.Add(("Reinstatement Approval Order", Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement", "person-check"));
+                        docList.Add(("Reinstatement Approval Order", Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement", "person-check", "COReinstatementApprovalCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_StayComplianceFilePath))
-                        docList.Add(("Stay Compliance Document", Model.CO_StayComplianceFilePath, "Compliance", "check-all"));
+                        docList.Add(("Stay Compliance Document", Model.CO_StayComplianceFilePath, "Compliance", "check-all", "COStayComplianceFile"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_Claimant_PetitionCopyPath))
-                        docList.Add(("Claimant WP Petition Copy", Model.CO_Claimant_PetitionCopyPath, "Claimant Litigation", "person-exclamation"));
+                        docList.Add(("Claimant WP Petition Copy", Model.CO_Claimant_PetitionCopyPath, "Claimant Litigation", "person-exclamation", "COClaimantPetitionCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_Service_PetitionCopyPath))
-                        docList.Add(("Service Matter Petition Copy", Model.CO_Service_PetitionCopyPath, "Service Matter", "file-earmark-text"));
+                        docList.Add(("Service Matter Petition Copy", Model.CO_Service_PetitionCopyPath, "Service Matter", "file-earmark-text", "COServicePetitionCopy"));
                     if (!string.IsNullOrWhiteSpace(Model.CO_Service_ApprovalCopyPath))
-                        docList.Add(("Service Matter Approval Order", Model.CO_Service_ApprovalCopyPath, "Service Matter", "file-earmark-check"));
+                        docList.Add(("Service Matter Approval Order", Model.CO_Service_ApprovalCopyPath, "Service Matter", "file-earmark-check", "COServiceApprovalCopy"));
                 }
 
                 @if (docList.Any())
@@ -1232,20 +1232,31 @@
                                 <div class="row g-3">
                                     @foreach (var doc in docList)
                                     {
+                                        var safeTitle = (doc.Title ?? "Document").Replace("'", "\\'");
+                                        var safePath = (doc.Path ?? "").Replace("'", "\\'");
+                                        var safeCategory = (doc.Category ?? "Labour Document").Replace("'", "\\'");
                                         <div class="col-md-6 col-12">
-                                            <div class="p-3 rounded-3 border bg-light d-flex align-items-center justify-content-between h-100">
-                                                <div class="d-flex align-items-center gap-3 overflow-hidden me-2">
+                                            <div class="p-3 rounded-3 border bg-light d-flex align-items-center justify-content-between h-100 flex-wrap gap-2">
+                                                <div class="d-flex align-items-center gap-3 overflow-hidden me-2" style="min-width: 200px;">
                                                     <span class="badge bg-danger-subtle text-danger p-2 fs-5 rounded-3">
-                                                        <i class="bi bi-{doc.Icon}"></i>
+                                                        <i class="bi bi-@doc.Icon"></i>
                                                     </span>
                                                     <div class="overflow-hidden">
-                                                        <div class="fw-bold text-dark text-truncate" style="font-size:0.83rem;">@doc.Title</div>
-                                                        <small class="text-muted d-block" style="font-size:0.72rem;">Category: @doc.Category</small>
+                                                        <div class="fw-bold text-dark text-truncate" style="font-size:0.83rem;" title="@doc.Title">@doc.Title</div>
+                                                        <small class="text-muted d-block text-truncate" style="font-size:0.72rem;">Category: @doc.Category</small>
                                                     </div>
                                                 </div>
-                                                <a href="@doc.Path" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold flex-shrink-0">
-                                                    <i class="bi bi-box-arrow-up-right me-1"></i> View
-                                                </a>
+                                                <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
+                                                    <a href="@doc.Path" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
+                                                        <i class="bi bi-box-arrow-up-right me-1"></i> View
+                                                    </a>
+                                                    <button type="button" 
+                                                            class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 fw-bold shadow-xs"
+                                                            onclick="openEditLabourDocModal('@doc.DocKey', null, null, null, '@safeTitle', '@safePath', '', '@safeCategory')"
+                                                            title="Edit or Re-upload document">
+                                                        <i class="bi bi-pencil-square me-1"></i> Edit / Reupload
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     }
@@ -1267,12 +1278,22 @@
                                 <div class="row g-2">
                                     @foreach (var rd in Model.ReinstatedDocuments)
                                     {
+                                        var safeRdTitle = (rd.DocumentName ?? "Reinstatement Document").Replace("'", "\\'");
+                                        var safeRdPath = (rd.DocumentPath ?? "").Replace("'", "\\'");
                                         <div class="col-md-6 col-12">
-                                            <div class="p-2 rounded-3 border bg-white d-flex align-items-center justify-content-between">
-                                                <span class="small text-dark fw-semibold text-truncate">@(rd.DocumentName ?? "Reinstatement Document")</span>
-                                                <a href="@(rd.DocumentPath ?? "#")" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1">
-                                                    <i class="bi bi-eye me-1"></i> View
-                                                </a>
+                                            <div class="p-2 rounded-3 border bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                                <span class="small text-dark fw-semibold text-truncate" style="max-width: 60%;" title="@(rd.DocumentName ?? "Reinstatement Document")">@(rd.DocumentName ?? "Reinstatement Document")</span>
+                                                <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
+                                                    <a href="@(rd.DocumentPath ?? "#")" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1">
+                                                        <i class="bi bi-eye me-1"></i> View
+                                                    </a>
+                                                    <button type="button" 
+                                                            class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 py-1 fw-bold shadow-xs"
+                                                            onclick="openEditLabourDocModal('ReinstatedDocument', @rd.DocumentID, null, null, '@safeRdTitle', '@safeRdPath', '', 'Reinstatement Attachment')"
+                                                            title="Edit or Re-upload document">
+                                                        <i class="bi bi-pencil-square me-1"></i> Edit / Reupload
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     }
@@ -1323,7 +1344,161 @@
     </div><!-- /.lcp-content -->
 </div><!-- /.lcp-wrapper -->
 
+<!-- Modal: Edit / Re-upload Labour Case Document -->
+<div class="modal fade" id="editLabourDocModal" tabindex="-1" aria-labelledby="editLabourDocModalLabel" aria-hidden="true" style="z-index: 1070;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-warning text-dark py-3 px-4">
+                <div class="d-flex align-items-center">
+                    <div class="bg-dark text-warning rounded-circle p-2 me-2.5 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="bi bi-pencil-square fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="modal-title fw-bold mb-0 text-dark" id="editLabourDocModalLabel">Edit / Re-upload Document</h6>
+                        <small class="text-dark-50 extra-small">Labour Persistent Vault &amp; ACID Data Integrity</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formEditLabourCaseDoc" enctype="multipart/form-data">
+                <input type="hidden" name="caseId" value="@Model.CaseID" />
+                <input type="hidden" name="docKey" id="editLabourDocKey" />
+                <input type="hidden" name="documentId" id="editLabourDocumentId" />
+                <input type="hidden" name="arisingId" id="editLabourArisingId" />
+                <input type="hidden" name="arisingField" id="editLabourArisingField" />
+                <input type="hidden" name="existingPath" id="editLabourExistingPath" />
+                <input type="hidden" name="cnrNumber" id="editLabourCnrNumber" />
+                <input type="hidden" name="orderDate" id="editLabourOrderDate" />
+
+                <div class="modal-body p-3 p-md-4">
+                    <!-- Current Document Info Card -->
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <span class="badge bg-secondary-subtle text-secondary border extra-small fw-semibold" id="editLabourDocCategoryBadge">Category</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill extra-small px-2 py-0.5">
+                                <i class="bi bi-shield-check me-1"></i>Vault Target
+                            </span>
+                        </div>
+                        <div class="fw-bold text-dark small text-truncate" id="editLabourDocCurrentTitle">Document Title</div>
+                        <small class="text-muted extra-small font-monospace text-truncate d-block mt-0.5" id="editLabourDocCurrentFile">
+                            <i class="bi bi-file-earmark me-1"></i>filename.pdf
+                        </small>
+                    </div>
+
+                    <!-- Editable Title -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Document Name / Title</label>
+                        <input type="text" name="documentTitle" id="editLabourDocTitleInput" class="form-control form-control-sm rounded-pill px-3" placeholder="Enter document title" />
+                    </div>
+
+                    <!-- Editable Remarks -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Remarks / Reason for Reupload</label>
+                        <textarea name="remarks" id="editLabourDocRemarksInput" class="form-control form-control-sm rounded-3 p-2" rows="2" placeholder="e.g. Certified copy obtained from labour court, updated order copy..."></textarea>
+                    </div>
+
+                    <!-- Reupload File Picker -->
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">
+                            Select Replacement File <span class="text-muted fw-normal extra-small">(Optional: leave blank to only update title/remarks)</span>
+                        </label>
+                        <input type="file" name="documentFile" id="editLabourDocFileInput" class="form-control form-control-sm rounded-pill" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                        <small class="text-muted extra-small d-block mt-1">
+                            <i class="bi bi-info-circle me-1"></i>Replacement file will be securely written to <code>uploads_vault</code> and old files safely archived/cleaned.
+                        </small>
+                    </div>
+
+                    <div id="editLabourDocStatusMsg" class="small fw-bold text-center mt-2 d-none"></div>
+                </div>
+
+                <div class="modal-footer bg-light px-3 py-2 border-top d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-4 shadow-sm" id="btnSubmitEditLabourDoc" onclick="submitEditLabourDoc()">
+                        <i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+function openEditLabourDocModal(docKey, docId, arisingId, arisingField, title, path, remarks, category, cnr, orderDate) {
+    document.getElementById('editLabourDocKey').value = docKey || '';
+    document.getElementById('editLabourDocumentId').value = docId || '';
+    document.getElementById('editLabourArisingId').value = arisingId || '';
+    document.getElementById('editLabourArisingField').value = arisingField || '';
+    document.getElementById('editLabourExistingPath').value = path || '';
+    document.getElementById('editLabourCnrNumber').value = cnr || '';
+    document.getElementById('editLabourOrderDate').value = orderDate || '';
+
+    document.getElementById('editLabourDocCategoryBadge').textContent = category || 'Labour Document';
+    document.getElementById('editLabourDocCurrentTitle').textContent = title || 'Document';
+    document.getElementById('editLabourDocCurrentFile').textContent = path ? path.split('/').pop().split('\\').pop() : 'No file attached';
+    document.getElementById('editLabourDocTitleInput').value = title || '';
+    document.getElementById('editLabourDocRemarksInput').value = remarks || '';
+    document.getElementById('editLabourDocFileInput').value = '';
+
+    var statusDiv = document.getElementById('editLabourDocStatusMsg');
+    if (statusDiv) {
+        statusDiv.classList.add('d-none');
+        statusDiv.innerHTML = '';
+    }
+
+    var editModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editLabourDocModal'));
+    editModal.show();
+}
+
+function submitEditLabourDoc() {
+    var form = document.getElementById('formEditLabourCaseDoc');
+    var btn = document.getElementById('btnSubmitEditLabourDoc');
+    var statusDiv = document.getElementById('editLabourDocStatusMsg');
+
+    if (!form || !btn) return;
+
+    var formData = new FormData(form);
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Securing in Vault...';
+
+    if (statusDiv) {
+        statusDiv.className = 'small fw-bold text-primary text-center mt-2';
+        statusDiv.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Executing transaction and storing in persistent vault...';
+        statusDiv.classList.remove('d-none');
+    }
+
+    fetch('/Labour/UpdateOrReuploadLabourDocument', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+        if (data.success) {
+            if (statusDiv) {
+                statusDiv.className = 'small fw-bold text-success text-center mt-2';
+                statusDiv.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + (data.message || 'Updated successfully!');
+            }
+            setTimeout(function () {
+                location.reload();
+            }, 1000);
+        } else {
+            if (statusDiv) {
+                statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+                statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ' + (data.message || 'Operation failed.');
+            }
+        }
+    })
+    .catch(function (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+        if (statusDiv) {
+            statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+            statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Error: ' + err.message;
+        }
+    });
+}
+
 (function () {
     // Robust tab switcher — isolated to this partial
     document.querySelectorAll('.lcp-tab-btn').forEach(function (btn) {

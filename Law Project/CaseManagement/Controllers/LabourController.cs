@@ -3772,6 +3772,114 @@ namespace MVCCaseManagement.Controllers
         }
 
         [HttpPost]
+        public async Task<IActionResult> UpdateOrReuploadLabourDocument(
+            int caseId,
+            string docKey,
+            int? documentId,
+            int? arisingId,
+            string? arisingField,
+            string? documentTitle,
+            string? remarks,
+            string? existingPath,
+            string? cnrNumber,
+            DateTime? orderDate,
+            IFormFile? documentFile)
+        {
+            try
+            {
+                if (caseId <= 0 || string.IsNullOrWhiteSpace(docKey))
+                {
+                    return Json(new { success = false, message = "Invalid case ID or document key." });
+                }
+
+                if (!CanAccessLabourCase(caseId, out var labourCase) || labourCase == null)
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot modify documents for another division's case." });
+                }
+
+                string? newSavedPath = null;
+                if (documentFile != null && documentFile.Length > 0)
+                {
+                    string subFolder = docKey switch
+                    {
+                        "ClaimPetition" => "Labour/ClaimPetitions",
+                        "AgainstPunishmentCopy" => "Labour/PunishmentOrders",
+                        "DEHistorySheet" => "Labour/HistorySheets",
+                        "JudgmentCopy" or "JudgmentCopy2" => "Labour/Judgments",
+                        "LokAdalatDocument" => "Labour/LokAdalat",
+                        "COClosedDocument" => "Labour/Closures",
+                        "COWPStayOrder" or "COWAStayOrder" => "Labour/HighCourtStays",
+                        "COWPJudgmentCopy" => "Labour/HighCourtJudgments",
+                        "COReinstatementStayOrder" => "Labour/Reinstatements",
+                        "COReinstatementApprovalCopy" => "Labour/Reinstatements",
+                        "COStayComplianceFile" => "Labour/Compliances",
+                        "COClaimantPetitionCopy" => "Labour/ClaimantPetitions",
+                        "COServicePetitionCopy" or "COServiceApprovalCopy" => "Labour/ServiceMatters",
+                        "ReinstatedDocument" => "Labour/ReinstatedDocuments",
+                        "ArisingApplicationDoc" => "Labour/ArisingApplications",
+                        "ECourtsOrder" => "Labour/eCourtsOrders",
+                        _ => "Labour/CaseDocuments"
+                    };
+
+                    if (_storageService != null)
+                    {
+                        newSavedPath = await _storageService.SaveFileAsync(documentFile, subFolder, existingPath);
+                    }
+                    else
+                    {
+                        newSavedPath = SaveFile(documentFile, subFolder);
+                    }
+
+                    if (string.IsNullOrEmpty(newSavedPath))
+                    {
+                        return Json(new { success = false, message = "Failed to store replacement document in the persistent vault." });
+                    }
+                }
+
+                int? currentUserId = null;
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdClaim, out int uid)) currentUserId = uid;
+
+                bool updated = _labourRepo.UpdateOrReuploadLabourDocument(
+                    caseId,
+                    docKey,
+                    documentId,
+                    arisingId,
+                    arisingField,
+                    documentTitle,
+                    remarks,
+                    newSavedPath,
+                    cnrNumber,
+                    orderDate,
+                    currentUserId);
+
+                if (!updated)
+                {
+                    return Json(new { success = false, message = "Database update failed to commit." });
+                }
+
+                string finalPath = newSavedPath ?? existingPath ?? "";
+                string actionDesc = newSavedPath != null 
+                    ? $"Re-uploaded and secured in vault: {docKey} (File: {Path.GetFileName(finalPath)})" 
+                    : $"Updated document metadata: {docKey} (Title: {documentTitle}, Remarks: {remarks})";
+
+                _ = _activityLogger.LogSubEntityActionAsync("LABOUR", caseId, $"Labour #{caseId}", "DOCUMENT_UPDATED", actionDesc);
+
+                return Json(new 
+                { 
+                    success = true, 
+                    message = newSavedPath != null ? "Document successfully re-uploaded and secured in persistent vault." : "Document details updated successfully.",
+                    path = finalPath,
+                    isReuploaded = newSavedPath != null
+                });
+            }
+            catch (Exception ex)
+            {
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
+        }
+
+        [HttpPost]
         public IActionResult AddArisingPayment(int arisingId, decimal amount, DateTime paymentDate, string? chequeNumber, DateTime? chequeDate, string? remarks)
         {
             try
