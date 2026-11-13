@@ -455,7 +455,7 @@ namespace MVCCaseManagement.Controllers
             ViewBag.Advocates = _masterRepo.GetAllAdvocates();
 
             // Pre-select Division in Model
-            var model = new MVCCaseViewModel { DivisionID = divisionId };
+            var model = new MVCCaseViewModel { DivisionID = divisionId, CaseType = string.Empty };
             return View(model);
         }
 

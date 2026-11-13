@@ -58,7 +58,7 @@ namespace MVCCaseManagement.Models
         [Required(ErrorMessage = "Case Type is required")]
         [Display(Name = "Case Type")]
         [StringLength(50)]
-        public string CaseType { get; set; } = "Pending";
+        public string CaseType { get; set; } = string.Empty;
 
         public int StatusID { get; set; } = 1; // Auto Pending
 
