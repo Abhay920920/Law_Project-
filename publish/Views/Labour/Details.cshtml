@@ -736,7 +736,7 @@
 
     <div class="row g-4 d-print-none">
         <!-- Main Column -->
-        <div class="col-lg-8">
+        <div class="@(Model.CO_IsWorkmanReinstated == true ? "col-lg-8" : "col-12")">
             @if (isServiceMatter)
             {
                 <!-- Prayer / Subject Matter Card for Service Matter -->
@@ -2371,13 +2371,10 @@
             }
         </div>
 
-        <!-- Sidebar Column -->
-        <div class="col-lg-4">
-
-
-
-            @if (Model.CO_IsWorkmanReinstated == true)
-            {
+        @if (Model.CO_IsWorkmanReinstated == true)
+        {
+            <!-- Sidebar Column: Compliance Status -->
+            <div class="col-lg-4">
                 <div class="card border-0 shadow-sm mb-4 rounded-4 overflow-hidden">
                     <div class="card-header bg-success text-white py-3 border-bottom-0">
                         <h6 class="mb-0 fw-bold"><i class="bi bi-person-check-fill me-2"></i>Compliance Status</h6>
@@ -2436,244 +2433,8 @@
                         }
                     </div>
                 </div>
-            }
-
-            <!-- Documents quick-links & Digital Dossier -->
-            @{
-                string closureLabel = "Closure Document";
-                if ((Model.CO_ActionTaken ?? "").ToUpper().Contains("CLOSED") || (Model.CO_ActionTaken ?? "").ToUpper().Contains("APPROVED"))
-                {
-                    closureLabel = "Approval Copy";
-                }
-
-                // Normalizes any raw relative path to a guaranteed root-relative URL for 100% reliable browser resolution
-                string NormalizeDocUrl(string? raw)
-                {
-                    if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
-                    string trimmed = raw.Trim().Replace('\\', '/');
-                    if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                    {
-                        return trimmed;
-                    }
-                    trimmed = trimmed.TrimStart('~').TrimStart('/');
-                    return "/" + trimmed;
-                }
-
-                var allLabourDocs = new List<MVCCaseManagement.Models.CaseDocumentItemViewModel>();
-
-                void AddLabourDoc(string? path, string title, string category, string icon, string color, string docKey, int? docId = null, int? arisingId = null, string? arisingField = null, DateTime? date = null, string? remarks = null, string? cnr = null, string? orderNo = null, bool isECourts = false)
-                {
-                    if (string.IsNullOrWhiteSpace(path)) return;
-                    string norm = NormalizeDocUrl(path);
-                    bool onDisk = FileStorage.FileExists(path);
-                    allLabourDocs.Add(new MVCCaseManagement.Models.CaseDocumentItemViewModel
-                    {
-                        DocumentId = docId,
-                        DocKey = docKey,
-                        Title = title,
-                        Category = category,
-                        RawPath = path,
-                        NormalizedUrl = norm,
-                        FileName = System.IO.Path.GetFileName(norm),
-                        Extension = System.IO.Path.GetExtension(norm),
-                        Icon = icon,
-                        Color = color,
-                        Date = date,
-                        Remarks = remarks,
-                        IsAvailableOnDisk = onDisk,
-                        IsFromECourts = isECourts,
-                        CnrNumber = cnr,
-                        OrderNo = orderNo,
-                        OrderDate = date,
-                        IsEditable = true
-                    });
-                }
-
-                // 1. Standard Case & High Court Writ Documents
-                AddLabourDoc(Model.JudgmentCopyPath, "Labour Court Judgment Copy", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger", "JudgmentCopy");
-                AddLabourDoc(Model.JudgmentCopyPath2, "Judgment Copy 2", "Tribunal Judgment", "bi-file-earmark-pdf-fill", "danger", "JudgmentCopy2");
-                AddLabourDoc(Model.CO_WP_JudgmentCopyPath, "High Court WP Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary", "COWPJudgmentCopy");
-                AddLabourDoc(Model.Against_PunishmentCopyPath, "Punishment Order Copy", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger", "AgainstPunishmentCopy");
-                AddLabourDoc(Model.DE_HistorySheetPath, "DE History Sheet", "Disciplinary Enquiry", "bi-file-earmark-medical-fill", "secondary", "DEHistorySheet");
-                AddLabourDoc(Model.CO_WP_StayOrderPath, "High Court WP Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary", "COWPStayOrder");
-                AddLabourDoc(Model.CO_WA_StayOrderPath, "High Court WA Stay Order", "High Court Stay", "bi-shield-slash-fill", "primary", "COWAStayOrder");
-                AddLabourDoc(Model.CO_Claimant_PetitionCopyPath, "Claimant Writ Petition", "High Court Petition", "bi-file-earmark-text-fill", "info", "COClaimantPetitionCopy");
-                AddLabourDoc(Model.CO_Service_PetitionCopyPath, "Service Matter Petition", "Service Matter", "bi-file-earmark-text", "secondary", "COServicePetitionCopy");
-                AddLabourDoc(Model.CO_Service_ApprovalCopyPath, "Service Approval Copy", "Central Office Order", "bi-award-fill", "success", "COServiceApprovalCopy");
-                AddLabourDoc(Model.CO_ClosedDocumentPath, closureLabel, "Case Closure", "bi-file-earmark-check-fill", "success", "COClosedDocument");
-                AddLabourDoc(Model.CO_StayComplianceFilePath, "Stay Compliance Document", "Court Compliance", "bi-envelope-check-fill", "info", "COStayComplianceFile");
-                AddLabourDoc(Model.CO_Reinstatement_StayOrderPath, "Reinstatement Stay Order", "Stay Order", "bi-shield-slash-fill", "warning", "COReinstatementStayOrder");
-                AddLabourDoc(Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement Approval Copy", "Central Office Order", "bi-award-fill", "success", "COReinstatementApprovalCopy");
-                AddLabourDoc(Model.LokAdalatDocumentPath, "Lok Adalat Settlement Doc", "Lok Adalat Award", "bi-handshake-fill", "success", "LokAdalatDocument");
-                AddLabourDoc(Model.ClaimPetitionPath, "Claim Petition Copy", "Claimant Filing", "bi-card-heading", "secondary", "ClaimPetition");
-
-                // 2. User-Uploaded Supplementary Documents (LABOUR_REINSTATED_DOCUMENTS)
-                if (Model.ReinstatedDocuments != null && Model.ReinstatedDocuments.Any())
-                {
-                    foreach (var uDoc in Model.ReinstatedDocuments)
-                    {
-                        AddLabourDoc(uDoc.DocumentPath, uDoc.DocumentName, "User Attachment", "bi-file-earmark-text-fill", "primary", "ReinstatedDocument", docId: uDoc.DocumentID, date: uDoc.UploadedDate);
-                    }
-                }
-
-                // 3. Connected Arising Applications Documents (LABOUR_ARISING_APPLICATIONS)
-                var linkedArisingList = ViewBag.LinkedArisingApplications as List<MVCCaseManagement.Models.ArisingApplication>;
-                if (linkedArisingList != null && linkedArisingList.Any())
-                {
-                    foreach (var arising in linkedArisingList)
-                    {
-                        string appPrefix = $"App #{arising.ArisingID} ({arising.CaseNumber ?? "Arising"})";
-                        AddLabourDoc(arising.JudgmentCopyPath, $"{appPrefix} Judgment Copy", "Arising App Order", "bi-file-earmark-pdf-fill", "warning", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "JudgmentCopy");
-                        AddLabourDoc(arising.ClaimPetitionPath, $"{appPrefix} Claim Petition", "Arising App Filing", "bi-file-earmark-text", "secondary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "ClaimPetition");
-                        AddLabourDoc(arising.LokAdalatDocumentPath, $"{appPrefix} Lok Adalat Settlement", "Arising App Settlement", "bi-handshake-fill", "success", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "LokAdalatDocument");
-                        AddLabourDoc(arising.DE_HistorySheetPath, $"{appPrefix} History Sheet", "Arising App Record", "bi-file-earmark-medical", "secondary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "DEHistorySheet");
-                        AddLabourDoc(arising.CO_WP_JudgmentCopyPath, $"{appPrefix} WP Judgment Copy", "Arising High Court", "bi-file-earmark-pdf-fill", "primary", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "COWPJudgmentCopy");
-                    }
-                }
-
-                // 4. Synced e-Courts Orders from CASE_ORDERS
-                var labourCaseOrders = ViewBag.CaseOrders as List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)>;
-                if (labourCaseOrders != null && labourCaseOrders.Any())
-                {
-                    foreach (var co in labourCaseOrders)
-                    {
-                        string oPath = !string.IsNullOrWhiteSpace(co.LocalPdfPath) ? co.LocalPdfPath : (co.ExternalUrl ?? "");
-                        string dtStr = co.OrderDate.HasValue ? co.OrderDate.Value.ToString("dd-MMM-yyyy") : "Order";
-                        string oTitle = $"eCourts {co.OrderType} ({dtStr})";
-                        AddLabourDoc(oPath, oTitle, "eCourts Order", "bi-file-earmark-pdf-fill", "info", "ECourtsOrder", date: co.OrderDate, cnr: co.Cnr, isECourts: true);
-                    }
-                }
-
-                var availableDocs = allLabourDocs;
-            }
-            <div class="card border-0 shadow-sm mb-4 rounded-4 overflow-hidden">
-                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                    <div class="d-flex align-items-center">
-                        <i class="bi bi-paperclip me-2 text-primary fs-5"></i>
-                        <div>
-                            <h6 class="mb-0 fw-bold text-dark">Case Documents &amp; Uploaded Files</h6>
-                            <small class="text-muted extra-small">Digital awards, high court orders, arising files, and persistent vault records</small>
-                        </div>
-                    </div>
-                    <div class="d-flex align-items-center gap-2">
-                        @if (availableDocs.Any())
-                        {
-                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 font-monospace">
-                                @availableDocs.Count Document@(availableDocs.Count == 1 ? "" : "s")
-                            </span>
-                        }
-                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" data-bs-toggle="collapse" data-bs-target="#uploadCaseDocCollapse" aria-expanded="false">
-                            <i class="bi bi-plus-circle me-1"></i> Upload Document
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Collapsible Upload Form -->
-                <div class="collapse border-bottom bg-light p-3" id="uploadCaseDocCollapse">
-                    <h6 class="small fw-bold text-primary mb-2"><i class="bi bi-cloud-upload me-1"></i> Upload Document with Remark (Persistent Vault)</h6>
-                    <form id="formUploadCaseDoc" enctype="multipart/form-data">
-                        <input type="hidden" name="caseId" value="@Model.CaseID" />
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold mb-1">Document Name / Title <span class="text-danger">*</span></label>
-                            <input type="text" name="documentName" id="txtCaseDocName" class="form-control form-control-sm rounded-pill px-3" placeholder="e.g. Counter Statement / Opinion / Order Copy" required />
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold mb-1">Remark / Description</label>
-                            <input type="text" name="remarks" id="txtCaseDocRemark" class="form-control form-control-sm rounded-pill px-3" placeholder="Enter remarks for this document..." />
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold mb-1">Select File <span class="text-danger">*</span></label>
-                            <input type="file" name="documentFile" id="fileCaseDoc" class="form-control form-control-sm rounded-pill" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
-                        </div>
-                        <div class="d-flex justify-content-end gap-2">
-                            <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-toggle="collapse" data-bs-target="#uploadCaseDocCollapse">Cancel</button>
-                            <button type="button" onclick="submitCaseDocument()" id="btnSubmitCaseDoc" class="btn btn-sm btn-primary rounded-pill px-4 fw-bold">
-                                <i class="bi bi-upload me-1"></i> Upload to Vault
-                            </button>
-                        </div>
-                        <div id="caseDocUploadStatus" class="mt-2 small fw-bold text-center d-none"></div>
-                    </form>
-                </div>
-
-                <div class="list-group list-group-flush">
-                    @if (availableDocs.Any())
-                    {
-                        @foreach (var doc in availableDocs)
-                        {
-                            var safeDocPath = (doc.NormalizedUrl ?? "").Replace("'", "\\'");
-                            var safeDocTitle = (doc.Title ?? "Case Document").Replace("'", "\\'");
-                            <div class="list-group-item d-flex justify-content-between align-items-center py-2.5 px-3 border-light hover-bg-light transition-all">
-                                <div class="d-flex align-items-center me-2 text-truncate">
-                                    <div class="bg-@doc.Color-subtle text-@doc.Color rounded-3 p-2 me-2.5 flex-shrink-0 d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
-                                        <i class="bi @doc.Icon fs-5"></i>
-                                    </div>
-                                    <div class="text-truncate">
-                                        <div class="d-flex align-items-center gap-1.5 flex-wrap">
-                                            <span class="badge bg-@doc.Color-subtle text-@doc.Color border border-@doc.Color-subtle extra-small fw-semibold">@doc.Category</span>
-                                            @if (doc.IsAvailableOnDisk)
-                                            {
-                                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill extra-small px-2 py-0.5" title="Physical file verified in uploads_vault">
-                                                    <i class="bi bi-shield-check me-0.5"></i>Vault Verified
-                                                </span>
-                                            }
-                                            else if (doc.IsFromECourts)
-                                            {
-                                                <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill extra-small px-2 py-0.5" title="Available via eCourts Live Gateway">
-                                                    <i class="bi bi-cloud-arrow-down me-0.5"></i>eCourts Gateway
-                                                </span>
-                                            }
-                                        </div>
-                                        <span class="fw-bold text-dark small d-block text-truncate mt-0.5" title="@doc.Title">@doc.Title</span>
-                                        <small class="text-muted xs font-monospace d-block text-truncate">
-                                            <i class="bi bi-file-earmark me-1"></i>@doc.FileName
-                                            @if (doc.Date.HasValue)
-                                            {
-                                                <span> &bull; @doc.Date.Value.ToString("dd-MMM-yyyy")</span>
-                                            }
-                                        </small>
-                                        @if (!string.IsNullOrWhiteSpace(doc.Remarks))
-                                        {
-                                            <small class="text-secondary xs d-block text-truncate">
-                                                <i class="bi bi-chat-left-text me-1"></i>@doc.Remarks
-                                            </small>
-                                        }
-                                    </div>
-                                </div>
-                                <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
-                                    <button type="button" onclick="openOrderInModal('@safeDocPath', '@safeDocTitle', '@(activeCnrNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-1 fw-bold shadow-xs d-inline-flex align-items-center" style="font-size: 0.75rem;" title="View Document in Modal">
-                                        <i class="bi bi-eye me-1"></i>View
-                                    </button>
-                                    <a href="@doc.NormalizedUrl" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" style="font-size: 0.75rem;" title="Open in New Tab / Download">
-                                        <i class="bi bi-box-arrow-up-right"></i>
-                                    </a>
-                                    @if (doc.IsEditable)
-                                    {
-                                        var safeRemarks = (doc.Remarks ?? "").Replace("'", "\\'");
-                                        var safeCategory = (doc.Category ?? "").Replace("'", "\\'");
-                                        var safeCnr = (doc.CnrNumber ?? "").Replace("'", "\\'");
-                                        var orderDtStr = doc.Date.HasValue ? doc.Date.Value.ToString("yyyy-MM-dd") : "";
-                                        <button type="button" 
-                                                class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 py-1 fw-bold shadow-xs"
-                                                style="font-size: 0.75rem;"
-                                                onclick="openEditLabourDocModal('@doc.DocKey', @(doc.DocumentId.HasValue ? doc.DocumentId.Value.ToString() : "null"), null, null, '@safeDocTitle', '@safeDocPath', '@safeRemarks', '@safeCategory', '@safeCnr', '@orderDtStr')"
-                                                title="Edit or Re-upload document">
-                                            <i class="bi bi-pencil-square me-1"></i>Edit / Reupload
-                                        </button>
-                                    }
-                                </div>
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        <div class="p-4 text-center text-muted small">
-                            <i class="bi bi-folder2-open display-6 d-block text-muted opacity-50 mb-2"></i>
-                            No documents uploaded yet. Click <strong>Upload Document</strong> above to add files directly to the persistent vault.
-                        </div>
-                    }
-                </div>
             </div>
-        </div>
+        }
     </div>
 
     <!-- CASE NOTINGS SECTION (Central Office & Legal Officers only - Hidden for Division logins) -->

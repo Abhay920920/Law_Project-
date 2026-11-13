@@ -1,4 +1,4 @@
-﻿@model MVCCaseManagement.Models.LabourCase
+@model MVCCaseManagement.Models.LabourCase
 @using Microsoft.AspNetCore.Html
 @functions {
     // Renders a single field row — label on left, value on right
@@ -83,6 +83,40 @@
     bool showEP = !isServiceMatter;
 
     // Build tab list dynamically
+    int totalDocCount = 0;
+    if (!string.IsNullOrWhiteSpace(Model.ClaimPetitionPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.Against_PunishmentCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.DE_HistorySheetPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath2)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.LokAdalatDocumentPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_ClosedDocumentPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_WP_StayOrderPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_WP_JudgmentCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_WA_StayOrderPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_StayOrderPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_ApprovalCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_StayComplianceFilePath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_Claimant_PetitionCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_Service_PetitionCopyPath)) totalDocCount++;
+    if (!string.IsNullOrWhiteSpace(Model.CO_Service_ApprovalCopyPath)) totalDocCount++;
+    if (Model.ReinstatedDocuments != null) totalDocCount += Model.ReinstatedDocuments.Count;
+    if (ViewBag.LinkedArisingApplications is List<MVCCaseManagement.Models.ArisingApplication> arList)
+    {
+        foreach (var a in arList)
+        {
+            if (!string.IsNullOrWhiteSpace(a.JudgmentCopyPath)) totalDocCount++;
+            if (!string.IsNullOrWhiteSpace(a.ClaimPetitionPath)) totalDocCount++;
+            if (!string.IsNullOrWhiteSpace(a.LokAdalatDocumentPath)) totalDocCount++;
+            if (!string.IsNullOrWhiteSpace(a.DE_HistorySheetPath)) totalDocCount++;
+            if (!string.IsNullOrWhiteSpace(a.CO_WP_JudgmentCopyPath)) totalDocCount++;
+        }
+    }
+    if (ViewBag.CaseOrders is List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)> coOrders)
+    {
+        totalDocCount += coOrders.Count(co => !string.IsNullOrWhiteSpace(co.LocalPdfPath) || !string.IsNullOrWhiteSpace(co.ExternalUrl));
+    }
+
     var tabs = new List<(string Id, string Label, string Icon)> {
         ("tab-basic", "Overview & Registration", "info-circle-fill")
     };
@@ -339,6 +373,10 @@
             <button class="lcp-tab-btn @(id == "tab-basic" ? "active" : "")"
                     data-lcp-tab="@id" role="tab" aria-selected="@(id == "tab-basic" ? "true" : "false")">
                 <i class="bi bi-@icon"></i> @label
+                @if (id == "tab-docs" && totalDocCount > 0)
+                {
+                    <span class="badge bg-warning text-dark rounded-pill ms-1 font-monospace px-2 py-0.5" style="font-size:0.7rem;">@totalDocCount</span>
+                }
             </button>
         }
     </div>
@@ -1185,56 +1223,127 @@
         <div class="lcp-pane" id="tab-docs">
             <div class="row g-3">
                 @{
-                    var docList = new List<(string Title, string? Path, string Category, string Icon, string DocKey)>();
-                    if (!string.IsNullOrWhiteSpace(Model.ClaimPetitionPath))
-                        docList.Add(("Claim Petition (Workman)", Model.ClaimPetitionPath, "Dispute Initiation", "file-earmark-person", "ClaimPetition"));
-                    if (!string.IsNullOrWhiteSpace(Model.Against_PunishmentCopyPath))
-                        docList.Add(("Departmental Punishment Order", Model.Against_PunishmentCopyPath, "DE Proceedings", "file-earmark-x", "AgainstPunishmentCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.DE_HistorySheetPath))
-                        docList.Add(("DE History Sheet Document", Model.DE_HistorySheetPath, "DE Proceedings", "file-earmark-medical", "DEHistorySheet"));
-                    if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath))
-                        docList.Add(("Labour Court Judgment (Copy 1)", Model.JudgmentCopyPath, "Court Judgment", "award", "JudgmentCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.JudgmentCopyPath2))
-                        docList.Add(("Labour Court Judgment (Copy 2)", Model.JudgmentCopyPath2, "Court Judgment", "award", "JudgmentCopy2"));
-                    if (!string.IsNullOrWhiteSpace(Model.LokAdalatDocumentPath))
-                        docList.Add(("Lok Adalat Settlement Award", Model.LokAdalatDocumentPath, "Settlement", "person-handshake", "LokAdalatDocument"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_ClosedDocumentPath))
-                        docList.Add(("Central Office Sanction / Closure Order", Model.CO_ClosedDocumentPath, "Central Office Sanction", "shield-check", "COClosedDocument"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_WP_StayOrderPath))
-                        docList.Add(("High Court WP Stay Order", Model.CO_WP_StayOrderPath, "High Court Litigation", "bank", "COWPStayOrder"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_WP_JudgmentCopyPath))
-                        docList.Add(("High Court WP Final Judgment", Model.CO_WP_JudgmentCopyPath, "High Court Litigation", "bank", "COWPJudgmentCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_WA_StayOrderPath))
-                        docList.Add(("High Court WA Stay Order", Model.CO_WA_StayOrderPath, "High Court Litigation", "bank2", "COWAStayOrder"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_StayOrderPath))
-                        docList.Add(("Reinstatement Stay Order", Model.CO_Reinstatement_StayOrderPath, "Reinstatement", "person-slash", "COReinstatementStayOrder"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_Reinstatement_ApprovalCopyPath))
-                        docList.Add(("Reinstatement Approval Order", Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement", "person-check", "COReinstatementApprovalCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_StayComplianceFilePath))
-                        docList.Add(("Stay Compliance Document", Model.CO_StayComplianceFilePath, "Compliance", "check-all", "COStayComplianceFile"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_Claimant_PetitionCopyPath))
-                        docList.Add(("Claimant WP Petition Copy", Model.CO_Claimant_PetitionCopyPath, "Claimant Litigation", "person-exclamation", "COClaimantPetitionCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_Service_PetitionCopyPath))
-                        docList.Add(("Service Matter Petition Copy", Model.CO_Service_PetitionCopyPath, "Service Matter", "file-earmark-text", "COServicePetitionCopy"));
-                    if (!string.IsNullOrWhiteSpace(Model.CO_Service_ApprovalCopyPath))
-                        docList.Add(("Service Matter Approval Order", Model.CO_Service_ApprovalCopyPath, "Service Matter", "file-earmark-check", "COServiceApprovalCopy"));
+                    var docList = new List<(string Title, string? Path, string Category, string Icon, string DocKey, int? DocId, int? ArisingId, string? ArisingField, string? Remarks, DateTime? OrderDate, string? Cnr)>();
+
+                    void AddDoc(string title, string? path, string category, string icon, string docKey, int? docId = null, int? arisingId = null, string? arisingField = null, string? remarks = null, DateTime? orderDate = null, string? cnr = null)
+                    {
+                        if (string.IsNullOrWhiteSpace(path)) return;
+                        docList.Add((title, path, category, icon, docKey, docId, arisingId, arisingField, remarks, orderDate, cnr));
+                    }
+
+                    // 1. Standard Case & High Court Writ Documents
+                    AddDoc("Claim Petition (Workman)", Model.ClaimPetitionPath, "Dispute Initiation", "file-earmark-person", "ClaimPetition");
+                    AddDoc("Departmental Punishment Order", Model.Against_PunishmentCopyPath, "DE Proceedings", "file-earmark-x", "AgainstPunishmentCopy", orderDate: Model.Against_PunishmentDate);
+                    AddDoc("DE History Sheet Document", Model.DE_HistorySheetPath, "DE Proceedings", "file-earmark-medical", "DEHistorySheet");
+                    AddDoc("Labour Court Judgment (Copy 1)", Model.JudgmentCopyPath, "Court Judgment", "award", "JudgmentCopy", orderDate: Model.DisposalDate);
+                    AddDoc("Labour Court Judgment (Copy 2)", Model.JudgmentCopyPath2, "Court Judgment", "award", "JudgmentCopy2", orderDate: Model.DisposalDate);
+                    AddDoc("Lok Adalat Settlement Award", Model.LokAdalatDocumentPath, "Settlement", "person-handshake", "LokAdalatDocument", orderDate: Model.LokAdalat_Date);
+                    AddDoc("Central Office Sanction / Closure Order", Model.CO_ClosedDocumentPath, "Central Office Sanction", "shield-check", "COClosedDocument", orderDate: Model.CO_ApprovalDate);
+                    AddDoc("High Court WP Stay Order", Model.CO_WP_StayOrderPath, "High Court Litigation", "bank", "COWPStayOrder", orderDate: Model.CO_WP_StayDate);
+                    AddDoc("High Court WP Final Judgment", Model.CO_WP_JudgmentCopyPath, "High Court Litigation", "bank", "COWPJudgmentCopy", orderDate: Model.CO_Disposal_Date);
+                    AddDoc("High Court WA Stay Order", Model.CO_WA_StayOrderPath, "High Court Litigation", "bank2", "COWAStayOrder", orderDate: Model.CO_WA_StayDate);
+                    AddDoc("Reinstatement Stay Order", Model.CO_Reinstatement_StayOrderPath, "Reinstatement", "person-slash", "COReinstatementStayOrder", orderDate: Model.CO_Reinstatement_StayDate);
+                    AddDoc("Reinstatement Approval Order", Model.CO_Reinstatement_ApprovalCopyPath, "Reinstatement", "person-check", "COReinstatementApprovalCopy", orderDate: Model.CO_ReinstatementApprovalDate);
+                    AddDoc("Stay Compliance Document", Model.CO_StayComplianceFilePath, "Compliance", "check-all", "COStayComplianceFile", orderDate: Model.CO_StayComplianceDate);
+                    AddDoc("Claimant WP Petition Copy", Model.CO_Claimant_PetitionCopyPath, "Claimant Litigation", "person-exclamation", "COClaimantPetitionCopy");
+                    AddDoc("Service Matter Petition Copy", Model.CO_Service_PetitionCopyPath, "Service Matter", "file-earmark-text", "COServicePetitionCopy");
+                    AddDoc("Service Matter Approval Order", Model.CO_Service_ApprovalCopyPath, "Service Matter", "file-earmark-check", "COServiceApprovalCopy", orderDate: Model.CO_Service_ApprovalDate);
+
+                    // 2. Connected Arising Applications Documents
+                    var linkedArisingAppsList = ViewBag.LinkedArisingApplications as List<MVCCaseManagement.Models.ArisingApplication>;
+                    if (linkedArisingAppsList != null && linkedArisingAppsList.Any())
+                    {
+                        foreach (var arising in linkedArisingAppsList)
+                        {
+                            string appPrefix = $"App #{arising.ArisingID} ({arising.CaseNumber ?? "Arising"})";
+                            AddDoc($"{appPrefix} Judgment Copy", arising.JudgmentCopyPath, "Arising App Order", "award", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "JudgmentCopy");
+                            AddDoc($"{appPrefix} Claim Petition", arising.ClaimPetitionPath, "Arising App Filing", "file-earmark-text", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "ClaimPetition");
+                            AddDoc($"{appPrefix} Lok Adalat Settlement", arising.LokAdalatDocumentPath, "Arising App Settlement", "person-handshake", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "LokAdalatDocument");
+                            AddDoc($"{appPrefix} History Sheet", arising.DE_HistorySheetPath, "Arising App Record", "file-earmark-medical", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "DEHistorySheet");
+                            AddDoc($"{appPrefix} WP Judgment Copy", arising.CO_WP_JudgmentCopyPath, "Arising High Court", "bank", "ArisingApplicationDoc", arisingId: arising.ArisingID, arisingField: "COWPJudgmentCopy");
+                        }
+                    }
+
+                    // 3. Synced e-Courts Orders from CASE_ORDERS
+                    var labourOrdersList = ViewBag.CaseOrders as List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)>;
+                    if (labourOrdersList != null && labourOrdersList.Any())
+                    {
+                        foreach (var co in labourOrdersList)
+                        {
+                            string oPath = !string.IsNullOrWhiteSpace(co.LocalPdfPath) ? co.LocalPdfPath : (co.ExternalUrl ?? "");
+                            if (!string.IsNullOrWhiteSpace(oPath))
+                            {
+                                string dtStr = co.OrderDate.HasValue ? co.OrderDate.Value.ToString("dd-MMM-yyyy") : "Order";
+                                string oTitle = $"eCourts {co.OrderType} ({dtStr})";
+                                AddDoc(oTitle, oPath, "eCourts Order", "file-earmark-pdf", "ECourtsOrder", orderDate: co.OrderDate, cnr: co.Cnr);
+                            }
+                        }
+                    }
                 }
 
-                @if (docList.Any())
-                {
-                    <div class="col-12">
-                        <div class="lcp-card">
-                            <div class="lcp-card-header">
+                <div class="col-12">
+                    <div class="lcp-card">
+                        <div class="lcp-card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div class="d-flex align-items-center">
                                 <span class="lcp-card-icon"><i class="bi bi-folder2-open"></i></span>
                                 <span class="lcp-card-title">Consolidated Case Documents &amp; Uploaded Orders</span>
+                                @if (docList.Any())
+                                {
+                                    <span class="badge bg-primary-subtle text-primary rounded-pill ms-2 font-monospace px-2 py-0.5" style="font-size:0.75rem;">
+                                        @docList.Count Doc@(docList.Count == 1 ? "" : "s")
+                                    </span>
+                                }
                             </div>
-                            <div class="lcp-card-body p-3">
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-bold" data-bs-toggle="collapse" data-bs-target="#uploadCaseDocCollapse" aria-expanded="false">
+                                    <i class="bi bi-plus-circle me-1"></i> Upload Document
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Collapsible Upload Form inside Modal Tab -->
+                        <div class="collapse border-bottom bg-light p-3 border-top" id="uploadCaseDocCollapse">
+                            <h6 class="small fw-bold text-primary mb-2"><i class="bi bi-cloud-upload me-1"></i> Upload Document with Remark (Persistent Vault)</h6>
+                            <form id="formUploadCaseDoc" enctype="multipart/form-data">
+                                <input type="hidden" name="caseId" value="@Model.CaseID" />
+                                <div class="row g-2">
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold mb-1">Document Name / Title <span class="text-danger">*</span></label>
+                                        <input type="text" name="documentName" id="txtCaseDocName" class="form-control form-control-sm rounded-pill px-3" placeholder="e.g. Counter Statement / Opinion / Order Copy" required />
+                                    </div>
+                                    <div class="col-md-6 mb-2">
+                                        <label class="form-label small fw-bold mb-1">Remark / Description</label>
+                                        <input type="text" name="remarks" id="txtCaseDocRemark" class="form-control form-control-sm rounded-pill px-3" placeholder="Enter remarks for this document..." />
+                                    </div>
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label small fw-bold mb-1">Select File <span class="text-danger">*</span></label>
+                                        <input type="file" name="documentFile" id="fileCaseDoc" class="form-control form-control-sm rounded-pill" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-end gap-2 mt-2">
+                                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-toggle="collapse" data-bs-target="#uploadCaseDocCollapse">Cancel</button>
+                                    <button type="button" onclick="submitCaseDocument()" id="btnSubmitCaseDoc" class="btn btn-sm btn-primary rounded-pill px-4 fw-bold">
+                                        <i class="bi bi-upload me-1"></i> Upload to Vault
+                                    </button>
+                                </div>
+                                <div id="caseDocUploadStatus" class="mt-2 small fw-bold text-center d-none"></div>
+                            </form>
+                        </div>
+
+                        <div class="lcp-card-body p-3">
+                            @if (docList.Any())
+                            {
                                 <div class="row g-3">
                                     @foreach (var doc in docList)
                                     {
                                         var safeTitle = (doc.Title ?? "Document").Replace("'", "\\'");
                                         var safePath = (doc.Path ?? "").Replace("'", "\\'");
                                         var safeCategory = (doc.Category ?? "Labour Document").Replace("'", "\\'");
+                                        var safeRemarks = (doc.Remarks ?? "").Replace("'", "\\'");
+                                        var safeCnr = (doc.Cnr ?? "").Replace("'", "\\'");
+                                        var orderDtStr = doc.OrderDate.HasValue ? doc.OrderDate.Value.ToString("yyyy-MM-dd") : "";
+                                        var fileName = System.IO.Path.GetFileName(doc.Path ?? "");
+
                                         <div class="col-md-6 col-12">
                                             <div class="p-3 rounded-3 border bg-light d-flex align-items-center justify-content-between h-100 flex-wrap gap-2">
                                                 <div class="d-flex align-items-center gap-3 overflow-hidden me-2" style="min-width: 200px;">
@@ -1242,29 +1351,55 @@
                                                         <i class="bi bi-@doc.Icon"></i>
                                                     </span>
                                                     <div class="overflow-hidden">
-                                                        <div class="fw-bold text-dark text-truncate" style="font-size:0.83rem;" title="@doc.Title">@doc.Title</div>
-                                                        <small class="text-muted d-block text-truncate" style="font-size:0.72rem;">Category: @doc.Category</small>
+                                                        <div class="d-flex align-items-center gap-1.5 flex-wrap">
+                                                            <span class="badge bg-secondary-subtle text-secondary border extra-small fw-semibold">@doc.Category</span>
+                                                        </div>
+                                                        <div class="fw-bold text-dark text-truncate mt-0.5" style="font-size:0.83rem;" title="@doc.Title">@doc.Title</div>
+                                                        <small class="text-muted font-monospace d-block text-truncate" style="font-size:0.72rem;">
+                                                            <i class="bi bi-file-earmark me-1"></i>@fileName
+                                                            @if (doc.OrderDate.HasValue)
+                                                            {
+                                                                <span> &bull; @doc.OrderDate.Value.ToString("dd-MMM-yyyy")</span>
+                                                            }
+                                                        </small>
+                                                        @if (!string.IsNullOrWhiteSpace(doc.Remarks))
+                                                        {
+                                                            <small class="text-secondary d-block text-truncate" style="font-size:0.72rem;">
+                                                                <i class="bi bi-chat-left-text me-1"></i>@doc.Remarks
+                                                            </small>
+                                                        }
                                                     </div>
                                                 </div>
                                                 <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
-                                                    <a href="@doc.Path" target="_blank" class="btn btn-sm btn-outline-danger rounded-pill px-3 fw-bold">
-                                                        <i class="bi bi-box-arrow-up-right me-1"></i> View
+                                                    <button type="button" onclick="openOrderInModal('@safePath', '@safeTitle', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-1 fw-bold shadow-xs d-inline-flex align-items-center" style="font-size: 0.75rem;" title="View Document in Modal">
+                                                        <i class="bi bi-eye me-1"></i>View
+                                                    </button>
+                                                    <a href="@doc.Path" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" style="font-size: 0.75rem;" title="Open in New Tab / Download">
+                                                        <i class="bi bi-box-arrow-up-right"></i>
                                                     </a>
                                                     <button type="button" 
-                                                            class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 fw-bold shadow-xs"
-                                                            onclick="openEditLabourDocModal('@doc.DocKey', null, null, null, '@safeTitle', '@safePath', '', '@safeCategory')"
+                                                            class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 py-1 fw-bold shadow-xs"
+                                                            style="font-size: 0.75rem;"
+                                                            onclick="openEditLabourDocModal('@doc.DocKey', @(doc.DocId.HasValue ? doc.DocId.Value.ToString() : "null"), @(doc.ArisingId.HasValue ? doc.ArisingId.Value.ToString() : "null"), @(doc.ArisingField != null ? $"'{doc.ArisingField}'" : "null"), '@safeTitle', '@safePath', '@safeRemarks', '@safeCategory', '@safeCnr', '@orderDtStr')"
                                                             title="Edit or Re-upload document">
-                                                        <i class="bi bi-pencil-square me-1"></i> Edit / Reupload
+                                                        <i class="bi bi-pencil-square me-1"></i>Edit / Reupload
                                                     </button>
                                                 </div>
                                             </div>
                                         </div>
                                     }
                                 </div>
-                            </div>
+                            }
+                            else
+                            {
+                                <div class="p-4 text-center text-muted small">
+                                    <i class="bi bi-folder2-open display-6 d-block text-muted opacity-50 mb-2"></i>
+                                    No documents uploaded yet. Click <strong>Upload Document</strong> above to add files directly to the persistent vault.
+                                </div>
+                            }
                         </div>
                     </div>
-                }
+                </div>
 
                 @if (Model.ReinstatedDocuments != null && Model.ReinstatedDocuments.Any())
                 {
@@ -1328,16 +1463,7 @@
                     </div>
                 }
 
-                @if (!docList.Any() && (Model.ReinstatedDocuments == null || !Model.ReinstatedDocuments.Any()) && (Model.EnclosedDocuments == null || !Model.EnclosedDocuments.Any()))
-                {
-                    <div class="col-12">
-                        <div class="lcp-empty-notice">
-                            <i class="bi bi-folder-x fs-2 text-secondary d-block mb-2"></i>
-                            <h6 class="fw-bold text-dark">No Uploaded Documents Available</h6>
-                            <p class="small text-muted mb-0">There are currently no electronic order copies or PDF files attached to this case record.</p>
-                        </div>
-                    </div>
-                }
+
             </div>
         </div>
 
