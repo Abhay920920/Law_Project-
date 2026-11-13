@@ -107,23 +107,9 @@
                     <div class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">Real-time Analytics</div>
                 </div>
                 <div class="row g-3">
-                    <!-- No Action Taken / Sent to CO -->
-                    <div class="col-md-6 col-lg-3">
-                        <a href="@(isCO ? "/Labour/CaseList?status=NoActionTaken" : "/Labour/CaseList?status=SentToCO")" class="text-decoration-none">
-                            <div class="pulse-stat-card bg-pulse-indigo">
-                                <div class="bg-shape"></div>
-                                <i class="bi bi-clock-history icon-left"></i>
-                                <div class="content-wrapper">
-                                    <div class="label">@(isCO ? "No Action Taken" : "Sent to CO")</div>
-                                    <div class="value">@(isCO ? (stats?.NoActionTakenCount ?? 0) : (stats?.SentToCOCount ?? 0))</div>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-
                     @if (!isCO)
                     {
-                        <!-- Pending Cases (For Division/LO) -->
+                        <!-- 1. Pending Cases (For Division/LO) -->
                         <div class="col-md-6 col-lg-3">
                             <a href="@Url.Action("CaseList", "Labour", new { status = "Pending" })" class="text-decoration-none">
                                 <div class="pulse-stat-card bg-pulse-amber">
@@ -138,7 +124,21 @@
                         </div>
                     }
 
-                    <!-- Pending before CLO/LO -->
+                    <!-- 2. No Action Taken / Sent to CO -->
+                    <div class="col-md-6 col-lg-3">
+                        <a href="@(isCO ? "/Labour/CaseList?status=NoActionTaken" : "/Labour/CaseList?status=SentToCO")" class="text-decoration-none">
+                            <div class="pulse-stat-card bg-pulse-indigo">
+                                <div class="bg-shape"></div>
+                                <i class="bi bi-clock-history icon-left"></i>
+                                <div class="content-wrapper">
+                                    <div class="label">@(isCO ? "No Action Taken" : "Sent to CO")</div>
+                                    <div class="value">@(isCO ? (stats?.NoActionTakenCount ?? 0) : (stats?.SentToCOCount ?? 0))</div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- 3. Pending before CLO/LO -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@Url.Action("CaseList", "Labour", new { status = "PendingDecision" })" class="text-decoration-none">
                             <div class="pulse-stat-card bg-pulse-emerald">
@@ -152,7 +152,7 @@
                         </a>
                     </div>
 
-                    <!-- Pending before Competent Authority -->
+                    <!-- 4. Pending before Competent Authority -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@Url.Action("CaseList", "Labour", new { status = "PendingCompetentAuthority" })" class="text-decoration-none">
                             <div class="pulse-stat-card bg-pulse-rose">
@@ -166,21 +166,7 @@
                         </a>
                     </div>
 
-                    <!-- SLP Pending -->
-                    <div class="col-md-6 col-lg-3">
-                        <a href="@Url.Action("CaseList", "Labour", new { status = "SLPPending" })" class="text-decoration-none">
-                            <div class="pulse-stat-card bg-pulse-violet">
-                                <div class="bg-shape"></div>
-                                <i class="bi bi-bank icon-left"></i>
-                                <div class="content-wrapper">
-                                    <div class="label">SLP Pending</div>
-                                    <div class="value">@(stats?.SLPPendingCount ?? 0)</div>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-
-                    <!-- Writ Appeals by Petitioner/Claimant -->
+                    <!-- 5. Writ Appeals by Petitioner/Claimant -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@Url.Action("CaseList", "Labour", new { status = "WritAppealsClaimant" })" class="text-decoration-none">
                             <div class="pulse-stat-card bg-pulse-cyan">
@@ -194,7 +180,7 @@
                         </a>
                     </div>
 
-                    <!-- Writ Petition by Claimant/Petitioner -->
+                    <!-- 6. Writ Petition by Claimant/Petitioner -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@Url.Action("CaseList", "Labour", new { status = "WritPetitionClaimant" })" class="text-decoration-none">
                             <div class="pulse-stat-card bg-pulse-orange">
@@ -208,7 +194,7 @@
                         </a>
                     </div>
 
-                    <!-- Arising Applications -->
+                    <!-- 7. Arising Applications -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@(isCO ? Url.Action("ArisingApplication", "Labour") : Url.Action("CaseList", "Labour", new { status = "ArisingApplication" }))" class="text-decoration-none">
                             <div class="pulse-stat-card bg-pulse-pink">
@@ -222,7 +208,21 @@
                         </a>
                     </div>
 
-                    <!-- Service/Commercial Matters (Visible for both CO and Divisions) -->
+                    <!-- 8. SLP Pending -->
+                    <div class="col-md-6 col-lg-3">
+                        <a href="@Url.Action("CaseList", "Labour", new { status = "SLPPending" })" class="text-decoration-none">
+                            <div class="pulse-stat-card bg-pulse-violet">
+                                <div class="bg-shape"></div>
+                                <i class="bi bi-bank icon-left"></i>
+                                <div class="content-wrapper">
+                                    <div class="label">SLP Pending</div>
+                                    <div class="value">@(stats?.SLPPendingCount ?? 0)</div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+
+                    <!-- 9. Service/Commercial Matters (Visible for both CO and Divisions) -->
                     <div class="col-md-6 col-lg-3">
                         <a href="@Url.Action("ServiceMatters", "Labour")" class="text-decoration-none" title="View Service Matters entered by Central Office">
                             <div class="pulse-stat-card bg-pulse-dark">
