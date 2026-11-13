@@ -1,16 +1,20 @@
 @model IEnumerable<MVCCaseManagement.Models.LabourCase>
+@{
+    var caseCount = Model?.Count() ?? 0;
+    DateTime today = DateTime.Today;
+    DateTime tomorrow = today.AddDays(1);
+}
 
-<div class="table-responsive">
+<div class="table-responsive" data-hearings-count="@caseCount">
     <table class="table table-hover align-middle mb-0">
-        <thead class="bg-light">
-            <tr>
-                <th class="ps-4">Case No</th>
-                <th>Petitioner</th>
-                <th>Case Type</th>
-                <th>Court</th>
-                <th>Status</th>
-                <th>Next Hearing</th>
-                <th class="text-end pe-4">Actions</th>
+        <thead style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
+            <tr class="text-uppercase text-secondary" style="font-size: 0.75rem; letter-spacing: 0.5px; font-weight: 700;">
+                <th class="ps-4 py-3" style="width: 22%;">Case No. &amp; Type</th>
+                <th class="py-3" style="width: 22%;">Workman / Petitioner</th>
+                <th class="py-3" style="width: 22%;">Court / Tribunal</th>
+                <th class="py-3" style="width: 14%;">Scheduled Hearing</th>
+                <th class="py-3" style="width: 10%;">Status</th>
+                <th class="text-end pe-4 py-3" style="width: 10%;">Actions</th>
             </tr>
         </thead>
         <tbody>
@@ -19,66 +23,92 @@
                 foreach (var item in Model)
                 {
                     <tr>
-                        <td class="ps-4 fw-bold text-dark">@item.CaseNumber / @item.CaseYear</td>
-                        <td>
-                            <div class="d-flex flex-column">
-                                <span class="fw-medium">@item.PetitionerName</span>
-                                <small class="text-muted">@item.Designation</small>
-                            </div>
-                        </td>
-                        <td>
-                            <span class="badge bg-light text-dark border">@item.CaseType</span>
-                        </td>
-                        <td>@item.CourtName</td>
-                        <td>
-                            @if (item.CaseStatus == "Pending")
-                            {
-                                <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
-                            }
-                            else if (item.CaseStatus == "Disposed")
-                            {
-                                <span class="badge bg-success-subtle text-success-emphasis">Disposed</span>
-                            }
-                            else
-                            {
-                                <span class="badge bg-secondary-subtle text-secondary-emphasis">@item.CaseStatus</span>
-                            }
-                        </td>
-                        <td>
-                            @if (item.NextHearingDate.HasValue)
-                            {
-                                <small class="d-block text-primary fw-bold">@item.NextHearingDate.Value.ToShortDateString()</small>
-                            }
-                            else
-                            {
-                                <small class="text-muted">-</small>
-                            }
-                        </td>
-                        <td class="text-end pe-4">
-                            <div class="btn-group">
+                        <td class="ps-4 py-3">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="fw-bold text-dark font-monospace" style="font-size: 0.95rem;">@item.CaseNumber / @item.CaseYear</span>
                                 @if (item.IsArisingApplication)
                                 {
-                                    <a href="@Url.Action("DetailsArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
-                                        <i class="bi bi-eye-fill"></i>
-                                    </a>
-                                    @if (!(ViewBag.IsCentralOffice ?? false))
-                                    {
-                                        <a href="@Url.Action("EditArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
-                                            <i class="bi bi-pencil-fill"></i>
-                                        </a>
-                                    }
+                                    <span class="badge bg-warning-subtle text-dark border border-warning-subtle small px-2 py-1"><i class="bi bi-diagram-3 me-1"></i>Arising</span>
+                                }
+                            </div>
+                            <div class="mt-1">
+                                <span class="badge bg-light text-secondary border small px-2 py-0">@(string.IsNullOrWhiteSpace(item.CaseType) ? "Labour Case" : item.CaseType)</span>
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            <div class="d-flex flex-column">
+                                <span class="fw-bold text-dark">@(string.IsNullOrWhiteSpace(item.PetitionerName) ? "-" : item.PetitionerName)</span>
+                                <small class="text-muted"><i class="bi bi-person-badge me-1"></i>@(string.IsNullOrWhiteSpace(item.Designation) ? "Workman" : item.Designation)</small>
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            <div class="text-secondary fw-semibold small">
+                                <i class="bi bi-bank2 me-1 text-primary opacity-75"></i>@(string.IsNullOrWhiteSpace(item.CourtName) ? "-" : item.CourtName)
+                            </div>
+                        </td>
+                        <td class="py-3">
+                            @if (item.NextHearingDate.HasValue)
+                            {
+                                var hDate = item.NextHearingDate.Value.Date;
+                                if (hDate == today)
+                                {
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fw-bold">
+                                        <i class="bi bi-exclamation-circle-fill me-1"></i>TODAY
+                                    </span>
+                                    <div class="text-danger small mt-1 fw-semibold">@item.NextHearingDate.Value.ToString("dd MMM yyyy")</div>
+                                }
+                                else if (hDate == tomorrow)
+                                {
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1 fw-bold">
+                                        <i class="bi bi-clock-history me-1"></i>TOMORROW
+                                    </span>
+                                    <div class="text-secondary small mt-1 fw-semibold">@item.NextHearingDate.Value.ToString("dd MMM yyyy")</div>
                                 }
                                 else
                                 {
-                                    <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-info rounded-circle me-1" title="View Details">
-                                        <i class="bi bi-eye-fill"></i>
+                                    <span class="badge bg-light text-dark border px-2 py-1">
+                                        <i class="bi bi-calendar-event text-primary me-1"></i>@item.NextHearingDate.Value.ToString("dd MMM yyyy")
+                                    </span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted small">-</span>
+                            }
+                        </td>
+                        <td class="py-3">
+                            @if (string.Equals(item.CaseStatus, "Pending", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+                            }
+                            else if (string.Equals(item.CaseStatus, "Disposed", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary-emphasis border px-2 py-1">@item.CaseStatus</span>
+                            }
+                        </td>
+                        <td class="text-end pe-4 py-3">
+                            <div class="d-inline-flex gap-1">
+                                @if (item.IsArisingApplication)
+                                {
+                                    <a href="@Url.Action("DetailsArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Details">
+                                        <i class="bi bi-eye-fill me-1"></i>View
                                     </a>
-                                    @if (!(ViewBag.IsCentralOffice ?? false))
-                                    {
-                                        <a href="@Url.Action("Edit", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-circle" title="Edit">
-                                            <i class="bi bi-pencil-fill"></i>
-                                        </a>
-                                    }
+                                    <a href="@Url.Action("EditArisingApplication", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-secondary rounded-circle shadow-none" title="Edit Application">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <a href="@Url.Action("Details", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-none" title="View Details">
+                                        <i class="bi bi-eye-fill me-1"></i>View
+                                    </a>
+                                    <a href="@Url.Action("Edit", "Labour", new { id = item.CaseID })" class="btn btn-sm btn-outline-secondary rounded-circle shadow-none" title="Edit Case">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </a>
                                 }
                             </div>
                         </td>
@@ -88,9 +118,17 @@
             else
             {
                 <tr>
-                    <td colspan="7" class="text-center py-5 text-muted">
-                        <i class="bi bi-calendar-x fs-1 d-block mb-3"></i>
-                        No scheduled hearings found for this date.
+                    <td colspan="6" class="text-center py-5">
+                        <div class="py-3">
+                            <div class="bg-light rounded-circle d-inline-flex p-3 mb-3 text-muted">
+                                <i class="bi bi-calendar-check fs-1 text-primary opacity-50"></i>
+                            </div>
+                            <h6 class="fw-bold text-dark mb-1">No Scheduled Hearings</h6>
+                            <p class="text-muted small mb-3">No court hearings are scheduled for your division on the selected date(s).</p>
+                            <a href="@Url.Action("CaseList", "Labour", new { status = "Pending" })" class="btn btn-sm btn-outline-primary rounded-pill px-4 shadow-sm">
+                                <i class="bi bi-list-task me-1"></i>View All Division Pending Cases
+                            </a>
+                        </div>
                     </td>
                 </tr>
             }

@@ -240,34 +240,49 @@
         </div>
     </div>
     
-    <!-- Scheduled Hearings (Modernized) -->
-    <div class="card border-0 shadow-sm h-100">
-        <div class="card-header bg-white py-3">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="d-flex align-items-center gap-3">
-                    <span class="fs-5 fw-bold text-primary"><i class="bi bi-calendar-check me-2"></i>Scheduled Hearings</span>
-                </div>
-                <div class="d-flex gap-2">
-                    <div class="input-group input-group-sm">
-                        <span class="input-group-text bg-light border-0 text-muted small">FROM</span>
-                        <input type="date" id="hearingDateFrom" class="form-control border-light bg-light" value="@ViewBag.SelectedDate" />
-                        <span class="input-group-text bg-light border-0 text-muted small">TO</span>
-                        <input type="date" id="hearingDateTo" class="form-control border-light bg-light" value="@ViewBag.SelectedDate" />
-                        <button class="btn btn-primary px-3" id="btnFilterHearings"><i class="bi bi-search"></i></button>
+    @if (!isCO)
+    {
+        <!-- Scheduled Hearings (Division Only - Modernized Official NWKRTC Interface) -->
+        <div class="card border-0 shadow-sm rounded-3 overflow-hidden mb-4">
+            <div class="card-header bg-white py-3 border-bottom">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <span class="fs-5 fw-bold text-primary d-flex align-items-center">
+                            <i class="bi bi-calendar2-week-fill me-2 text-primary"></i>Scheduled Court Hearings
+                        </span>
+                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 small fw-semibold">
+                            <i class="bi bi-geo-alt-fill me-1"></i>@(ViewBag.DivisionName ?? "Division") Division
+                        </span>
+                        <span class="badge bg-light text-secondary border px-2 py-1 small fw-bold" id="hearingsCountBadge">
+                            @(((IEnumerable<MVCCaseManagement.Models.LabourCase>)ViewBag.RecentCases)?.Count() ?? 0) Hearings
+                        </span>
+                    </div>
+                    <div class="d-flex align-items-center flex-wrap gap-2 ms-auto">
+                        <!-- Quick Range Buttons -->
+                        <div class="btn-group btn-group-sm shadow-none" role="group" aria-label="Quick Filter">
+                            <button type="button" class="btn btn-outline-primary active btn-quick-filter" data-range="today">Today</button>
+                            <button type="button" class="btn btn-outline-primary btn-quick-filter" data-range="tomorrow">Tomorrow</button>
+                            <button type="button" class="btn btn-outline-primary btn-quick-filter" data-range="week">Next 7 Days</button>
+                        </div>
+                        <!-- Date Range Picker -->
+                        <div class="input-group input-group-sm" style="max-width: 380px;">
+                            <span class="input-group-text bg-light border-end-0 text-muted small fw-semibold">FROM</span>
+                            <input type="date" id="hearingDateFrom" class="form-control border-start-0 border-end-0 bg-light" value="@ViewBag.SelectedDate" />
+                            <span class="input-group-text bg-light border-end-0 border-start-0 text-muted small fw-semibold">TO</span>
+                            <input type="date" id="hearingDateTo" class="form-control border-start-0 bg-light" value="@ViewBag.SelectedDate" />
+                            <button class="btn btn-primary px-3" id="btnFilterHearings" title="Search Hearings"><i class="bi bi-search"></i></button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        
-        <div class="card-body p-3">
-            <div class="d-flex justify-content-end mb-3">
-                <span class="badge rounded-pill bg-primary px-3 py-2 shadow-sm" id="dateDisplayIndicator">TODAY</span>
-            </div>
-            <div id="recentCasesContainer" class="transition-all">
-                @await Html.PartialAsync("_LabourDashboardHearings", (IEnumerable<MVCCaseManagement.Models.LabourCase>)ViewBag.RecentCases)
+            
+            <div class="card-body p-0">
+                <div id="recentCasesContainer" class="transition-all">
+                    @await Html.PartialAsync("_LabourDashboardHearings", (IEnumerable<MVCCaseManagement.Models.LabourCase>)ViewBag.RecentCases)
+                </div>
             </div>
         </div>
-    </div>
+    }
 </div>
 
 <style>
@@ -391,35 +406,6 @@
     <script>
         $(document).ready(function() {
 
-            function filterHearings() {
-                const fromDate = $('#hearingDateFrom').val();
-                const toDate = $('#hearingDateTo').val();
-                
-                if (!fromDate) return;
-
-                $('#recentCasesContainer').css('opacity', '0.5');
-                
-                const today = new Date().toISOString().split('T')[0];
-                if (fromDate === today && toDate === today) {
-                    $('#dateDisplayIndicator').text('TODAY').removeClass('bg-secondary').addClass('bg-primary');
-                } else if (fromDate === toDate) {
-                    const d = new Date(fromDate);
-                    $('#dateDisplayIndicator').text(d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })).removeClass('bg-primary').addClass('bg-secondary');
-                } else {
-                    const dFrom = new Date(fromDate);
-                    const dTo = new Date(toDate);
-                    const formatted = dFrom.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' - ' + dTo.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-                    $('#dateDisplayIndicator').text(formatted).removeClass('bg-primary').addClass('bg-secondary');
-                }
-
-                $.get('/Labour/GetCasesByDate', { date: fromDate, endDate: toDate }, function(data) {
-                    $('#recentCasesContainer').html(data).css('opacity', '1');
-                }).fail(function() {
-                    $('#recentCasesContainer').css('opacity', '1');
-                    alert('Error fetching cases.');
-                });
-            }
-
             // Live Clock
             function updateClock() {
                 const now = new Date();
@@ -441,19 +427,96 @@
             }
             updateGreeting();
 
-            $('#btnFilterHearings').on('click', filterHearings);
-            $('#hearingDateFrom, #hearingDateTo').on('keypress', function(e) { if (e.which === 13) filterHearings(); });
-            $('#hearingDateFrom').on('change', function() {
-                const fromDate = $(this).val();
-                if ($('#hearingDateTo').val() < fromDate) $('#hearingDateTo').val(fromDate);
-            });
+            @if (!isCO)
+            {
+                <text>
+                function updateCountBadge() {
+                    const count = $('#recentCasesContainer .table-responsive').data('hearings-count');
+                    if (count !== undefined) {
+                        $('#hearingsCountBadge').text(count + (count === 1 ? ' Hearing' : ' Hearings'));
+                    }
+                }
+
+                function filterHearings(customFrom, customTo) {
+                    const fromDate = customFrom || $('#hearingDateFrom').val();
+                    const toDate = customTo || $('#hearingDateTo').val();
+                    
+                    if (!fromDate) return;
+
+                    $('#recentCasesContainer').css('opacity', '0.5');
+
+                    $.get('/Labour/GetCasesByDate', { date: fromDate, endDate: toDate }, function(data) {
+                        $('#recentCasesContainer').html(data).css('opacity', '1');
+                        updateCountBadge();
+                    }).fail(function() {
+                        $('#recentCasesContainer').css('opacity', '1');
+                        alert('Error fetching scheduled hearings.');
+                    });
+                }
+
+                // Format Date to YYYY-MM-DD in local time
+                function toLocalIsoDate(d) {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                }
+
+                $('.btn-quick-filter').on('click', function() {
+                    $('.btn-quick-filter').removeClass('active');
+                    $(this).addClass('active');
+
+                    const range = $(this).data('range');
+                    const now = new Date();
+                    let fromStr = toLocalIsoDate(now);
+                    let toStr = fromStr;
+
+                    if (range === 'tomorrow') {
+                        const tomorrow = new Date();
+                        tomorrow.setDate(now.getDate() + 1);
+                        fromStr = toLocalIsoDate(tomorrow);
+                        toStr = fromStr;
+                    } else if (range === 'week') {
+                        const nextWeek = new Date();
+                        nextWeek.setDate(now.getDate() + 7);
+                        toStr = toLocalIsoDate(nextWeek);
+                    }
+
+                    $('#hearingDateFrom').val(fromStr);
+                    $('#hearingDateTo').val(toStr);
+                    filterHearings(fromStr, toStr);
+                });
+
+                $('#btnFilterHearings').on('click', function() {
+                    $('.btn-quick-filter').removeClass('active');
+                    filterHearings();
+                });
+
+                $('#hearingDateFrom, #hearingDateTo').on('keypress', function(e) {
+                    if (e.which === 13) {
+                        $('.btn-quick-filter').removeClass('active');
+                        filterHearings();
+                    }
+                });
+
+                $('#hearingDateFrom').on('change', function() {
+                    $('.btn-quick-filter').removeClass('active');
+                    const fromDate = $(this).val();
+                    if (fromDate > $('#hearingDateTo').val()) $('#hearingDateTo').val(fromDate);
+                });
+
+                $('#hearingDateTo').on('change', function() {
+                    $('.btn-quick-filter').removeClass('active');
+                });
+                </text>
+            }
         });
 
-    function dismissTransfer(caseId, btnElement) {
-        var alertEl = $(btnElement).closest('.alert');
-        alertEl.fadeOut(200, function() { $(this).remove(); });
-        $.post('/Labour/DismissTransferNotification', { caseId: caseId });
-    }
+        function dismissTransfer(caseId, btnElement) {
+            var alertEl = $(btnElement).closest('.alert');
+            alertEl.fadeOut(200, function() { $(this).remove(); });
+            $.post('/Labour/DismissTransferNotification', { caseId: caseId });
+        }
 
         function dismissReinstatement(caseId, btnElement) {
             $.post('/Labour/DismissReinstatementNotification', { caseId: caseId }, function(response) {

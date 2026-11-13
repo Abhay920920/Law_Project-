@@ -177,44 +177,47 @@ namespace MVCCaseManagement.Controllers
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
             
             var stats = _labourRepo.GetDashboardStats(isCentralOffice ? 0 : divisionId);
-            
-            // Show today's cases by default
             ViewBag.Stats = stats;
+            ViewBag.IsCentralOffice = isCentralOffice;
+            ViewBag.DivisionName = User.FindFirst("DivisionName")?.Value ?? "Division";
             DateTime today = DateTime.Today;
             ViewBag.SelectedDate = today.ToString("yyyy-MM-dd");
-            var cases = _labourRepo.GetCasesByHearingDate(today, isCentralOffice ? 0 : divisionId).ToList();
-            var arising = _arisingRepo.GetByHearingDate(today, isCentralOffice ? 0 : divisionId).ToList();
-            
-            // Map Arising to LabourCase for dashboard display
-            foreach (var a in arising)
+
+            // Scheduled hearings are strictly restricted to Division dashboards
+            if (!isCentralOffice && divisionId > 0)
             {
-                cases.Add(new LabourCase
+                var cases = _labourRepo.GetCasesByHearingDate(today, divisionId).ToList();
+                var arising = _arisingRepo.GetByHearingDate(today, divisionId).ToList();
+                
+                // Map Arising to LabourCase for dashboard display
+                foreach (var a in arising)
                 {
-                    CaseID = a.ArisingID,
-                    CaseNumber = a.CaseNumber,
-                    CaseYear = a.CaseYear,
-                    PetitionerName = a.PetitionerName ?? "",
-                    Designation = a.Designation,
-                    CaseType = a.CaseType,
-                    CourtName = a.CourtName,
-                    CaseStatus = a.CaseStatus,
-                    NextHearingDate = a.NextHearingDate,
-                    IsArisingApplication = true
-                });
-            }
-            
-            var recentCases = cases.OrderBy(c => c.NextHearingDate).ToList();
-            
-            // Notification Logic for Labour Dashboard
-            if (!isCentralOffice && divisionId != 0)
-            {
+                    cases.Add(new LabourCase
+                    {
+                        CaseID = a.ArisingID,
+                        CaseNumber = a.CaseNumber,
+                        CaseYear = a.CaseYear,
+                        PetitionerName = a.PetitionerName ?? "",
+                        Designation = a.Designation,
+                        CaseType = a.CaseType,
+                        CourtName = a.CourtName,
+                        CaseStatus = a.CaseStatus,
+                        NextHearingDate = a.NextHearingDate,
+                        IsArisingApplication = true
+                    });
+                }
+                
+                ViewBag.RecentCases = cases.OrderBy(c => c.NextHearingDate).ToList();
+
+                // Notification Logic for Labour Dashboard
                 ViewBag.IncomingTransfers = _labourRepo.GetRecentTransfers(divisionId);
                 ViewBag.ReinstatementNotifications = _labourRepo.GetReinstatementNotifications(divisionId);
             }
+            else
+            {
+                ViewBag.RecentCases = Enumerable.Empty<LabourCase>();
+            }
 
-            ViewBag.Stats = stats;
-            ViewBag.IsCentralOffice = isCentralOffice;
-            ViewBag.RecentCases = recentCases; // Pass as ViewBag for flexibility with Partial
             return View(); // Don't pass model to View() as it expects different type potentially, or we switch to ViewModel
         }
 
@@ -236,8 +239,14 @@ namespace MVCCaseManagement.Controllers
             bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5";
             int divisionId = int.TryParse(divIdString, out int id) ? id : 0;
 
-            var casesList = _labourRepo.GetCasesByHearingDate(hearingDate, isCentralOffice ? 0 : divisionId, endDateParsed).ToList();
-            var arisingList = _arisingRepo.GetByHearingDate(hearingDate, isCentralOffice ? 0 : divisionId, endDateParsed).ToList();
+            // Multi-tenant security: Scheduled Hearings are strictly for Division logins
+            if (isCentralOffice || divisionId <= 0)
+            {
+                return PartialView("_LabourDashboardHearings", Enumerable.Empty<LabourCase>());
+            }
+
+            var casesList = _labourRepo.GetCasesByHearingDate(hearingDate, divisionId, endDateParsed).ToList();
+            var arisingList = _arisingRepo.GetByHearingDate(hearingDate, divisionId, endDateParsed).ToList();
 
             foreach (var a in arisingList)
             {
@@ -257,7 +266,7 @@ namespace MVCCaseManagement.Controllers
             }
 
             var combinedCases = casesList.OrderBy(c => c.NextHearingDate).ToList();
-
+            ViewBag.IsCentralOffice = false;
             return PartialView("_LabourDashboardHearings", combinedCases);
         }
 
