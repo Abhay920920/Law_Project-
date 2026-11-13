@@ -7,11 +7,12 @@
     bool isCO = ViewBag.IsCentralOffice ?? false;
     string curStatus = ViewBag.CurrentStatus?.ToString() ?? "";
     bool isNoAction = string.Equals(curStatus, "NoActionTaken", StringComparison.OrdinalIgnoreCase);
+    bool isSentToCO = string.Equals(curStatus, "SentToCO", StringComparison.OrdinalIgnoreCase);
     bool isWritPetitionClaimant = string.Equals(curStatus, "WritPetitionClaimant", StringComparison.OrdinalIgnoreCase);
     bool isPending = string.Equals(curStatus, "Pending", StringComparison.OrdinalIgnoreCase);
     bool isDivisionPending = !isCO && isPending;
-    bool showWaCol = !isNoAction && !isWritPetitionClaimant && !isDivisionPending;
-    bool showWpCol = !isNoAction && !isDivisionPending;
+    bool showWaCol = !isNoAction && !isSentToCO && !isWritPetitionClaimant && !isDivisionPending;
+    bool showWpCol = !isNoAction && !isSentToCO && !isDivisionPending;
     bool showECourtsCols = isDivisionPending;
 }
 
