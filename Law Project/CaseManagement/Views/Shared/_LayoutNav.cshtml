@@ -99,7 +99,7 @@
             <span>Labour Dashboard</span>
         </a>
 
-        @if (!isReadOnlyRole)
+        @if (!isReadOnlyRole && isCO_Layout)
         {
             <a class="nav-link @((currentController == "Labour" || currentController == "ECourts") && ViewContext.RouteData.Values["action"]?.ToString() == "HighCourtCauseList" ? "active" : "")" href="/ECourts/HighCourtCauseList">
                 <i class="bi bi-broadcast-pin text-danger"></i>
