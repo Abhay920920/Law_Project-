@@ -47,6 +47,7 @@ namespace MVCCaseManagement.DAL
         // Case Documents & e-Courts Orders
         List<MvcCaseDocument> GetCaseDocuments(int caseId);
         void AddCaseDocument(MvcCaseDocument doc);
+        bool UpdateOrReuploadCaseDocument(int caseId, string docKey, int? documentId, string? newTitle, string? newRemarks, string? newPath, string? cnr, string? orderNo, DateTime? orderDate, int? userId);
         List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)> GetCaseOrdersByCnrs(IEnumerable<string> cnrs);
     }
 }

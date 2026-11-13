@@ -4314,5 +4314,300 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
 
             return list;
         }
+
+        public bool UpdateOrReuploadCaseDocument(
+            int caseId,
+            string docKey,
+            int? documentId,
+            string? newTitle,
+            string? newRemarks,
+            string? newPath,
+            string? cnr,
+            string? orderNo,
+            DateTime? orderDate,
+            int? userId)
+        {
+            if (caseId <= 0 || string.IsNullOrWhiteSpace(docKey)) return false;
+
+            using var conn = _db.GetConnection();
+            conn.Open();
+            using var trans = conn.BeginTransaction();
+            try
+            {
+                switch (docKey)
+                {
+                    case "AdverseJudgment":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET AdverseJudgmentUploadPath = COALESCE(@NewPath, AdverseJudgmentUploadPath),
+                                    CertifiedCopyRemarks = COALESCE(@NewRemarks, CertifiedCopyRemarks)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, AdverseJudgmentUploadPath, CertifiedCopyRemarks)
+                                VALUES (@CaseID, @NewPath, @NewRemarks)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewRemarks", (object?)newRemarks ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "TR18Report":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET TR18UploadPath = COALESCE(@NewPath, TR18UploadPath),
+                                    TR18Remarks = COALESCE(@NewRemarks, TR18Remarks)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, TR18UploadPath, TR18Remarks)
+                                VALUES (@CaseID, @NewPath, @NewRemarks)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewRemarks", (object?)newRemarks ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "PunishmentOrder":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET PunishmentOrderUploadPath = COALESCE(@NewPath, PunishmentOrderUploadPath),
+                                    PunishmentRemarks = COALESCE(@NewRemarks, PunishmentRemarks)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, PunishmentOrderUploadPath, PunishmentRemarks)
+                                VALUES (@CaseID, @NewPath, @NewRemarks)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewRemarks", (object?)newRemarks ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "DelayApplication":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET DelayApplicationPath = COALESCE(@NewPath, DelayApplicationPath)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, DelayApplicationPath)
+                                VALUES (@CaseID, @NewPath)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "DelayCondonedOrder":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET DelayCondonedOrderPath = COALESCE(@NewPath, DelayCondonedOrderPath)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, DelayCondonedOrderPath)
+                                VALUES (@CaseID, @NewPath)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "SecurityReport":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET SecurityUploadPath = COALESCE(@NewPath, SecurityUploadPath)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, SecurityUploadPath)
+                                VALUES (@CaseID, @NewPath)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "GovIDProof":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET GovIDProofUploadPath = COALESCE(@NewPath, GovIDProofUploadPath)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, GovIDProofUploadPath)
+                                VALUES (@CaseID, @NewPath)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "AgeProof":
+                        using (var cmd = new SqlCommand(@"
+                            IF EXISTS (SELECT 1 FROM MVC_CASE_ADVERSE_DETAILS WHERE CaseID = @CaseID)
+                            BEGIN
+                                UPDATE MVC_CASE_ADVERSE_DETAILS 
+                                SET AgeProofUploadPath = COALESCE(@NewPath, AgeProofUploadPath)
+                                WHERE CaseID = @CaseID
+                            END
+                            ELSE
+                            BEGIN
+                                INSERT INTO MVC_CASE_ADVERSE_DETAILS (CaseID, AgeProofUploadPath)
+                                VALUES (@CaseID, @NewPath)
+                            END", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "FavorJudgment":
+                        using (var cmd = new SqlCommand(@"
+                            UPDATE MVC_CASES 
+                            SET FavorJudgmentPath = COALESCE(@NewPath, FavorJudgmentPath)
+                            WHERE CaseID = @CaseID", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "InterimOrder":
+                        using (var cmd = new SqlCommand(@"
+                            UPDATE MVC_CASES 
+                            SET InterimOrderFilePath = COALESCE(@NewPath, InterimOrderFilePath),
+                                HasInterimOrder = 1
+                            WHERE CaseID = @CaseID", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "AppealApprovalCopy":
+                    case "MFAJudgmentCopy":
+                    case "InitialAction1":
+                    case "InitialAction2":
+                    case "StayOrder1":
+                    case "StayOrder2":
+                    case "CorpMFAActionTaken":
+                    case "ClaimantSCJudgment":
+                    case "ComplianceLetter":
+                        string col = docKey switch
+                        {
+                            "AppealApprovalCopy" => "ApprovalCopyPath",
+                            "MFAJudgmentCopy" => "MFAJudgmentCopyPath",
+                            "InitialAction1" => "InitialActionPath1",
+                            "InitialAction2" => "InitialActionPath2",
+                            "StayOrder1" => "StayOrderPath1",
+                            "StayOrder2" => "StayOrderPath2",
+                            "CorpMFAActionTaken" => "CorpMFAActionTakenPath",
+                            "ClaimantSCJudgment" => "ClaimantSCJudgmentPath",
+                            "ComplianceLetter" => "ComplianceLetterPath",
+                            _ => "ApprovalCopyPath"
+                        };
+                        using (var cmd = new SqlCommand($@"
+                            UPDATE MVC_CASE_APPEALS 
+                            SET {col} = COALESCE(@NewPath, {col})
+                            WHERE CaseID = @CaseID", conn, trans))
+                        {
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "SupplementaryDoc":
+                        if (documentId.HasValue && documentId.Value > 0)
+                        {
+                            using var cmd = new SqlCommand(@"
+                                UPDATE MVC_CASE_DOCUMENTS 
+                                SET DocumentName = COALESCE(@DocumentName, DocumentName),
+                                    Remarks = COALESCE(@Remarks, Remarks),
+                                    DocumentPath = COALESCE(@NewPath, DocumentPath),
+                                    UploadedDate = GETDATE()
+                                WHERE DocumentID = @DocumentID AND CaseID = @CaseID", conn, trans);
+                            cmd.Parameters.Add(new SqlParameter("@DocumentID", documentId.Value));
+                            cmd.Parameters.Add(new SqlParameter("@CaseID", caseId));
+                            cmd.Parameters.Add(new SqlParameter("@DocumentName", (object?)newTitle ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@Remarks", (object?)newRemarks ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    case "ECourtsOrder":
+                        if (!string.IsNullOrWhiteSpace(cnr))
+                        {
+                            string cleanCnr = cnr.Trim().Replace("-", "").Replace(" ", "").ToUpperInvariant();
+                            using var cmd = new SqlCommand(@"
+                                UPDATE CASE_ORDERS 
+                                SET LocalPdfPath = COALESCE(@NewPath, LocalPdfPath)
+                                WHERE UPPER(REPLACE(REPLACE(CNRNumber, '-', ''), ' ', '')) = @Cnr
+                                  AND (@OrderDate IS NULL OR CAST(OrderDate AS DATE) = CAST(@OrderDate AS DATE))", conn, trans);
+                            cmd.Parameters.Add(new SqlParameter("@Cnr", cleanCnr));
+                            cmd.Parameters.Add(new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value));
+                            cmd.Parameters.Add(new SqlParameter("@OrderDate", (object?)orderDate ?? DBNull.Value));
+                            cmd.ExecuteNonQuery();
+                        }
+                        break;
+
+                    default:
+                        throw new ArgumentException($"Unsupported document key: {docKey}");
+                }
+
+                trans.Commit();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                trans.Rollback();
+                Console.WriteLine($"Error updating/reuploading document for CaseID {caseId}, DocKey {docKey}: {ex.Message}");
+                throw;
+            }
+        }
     }
 }

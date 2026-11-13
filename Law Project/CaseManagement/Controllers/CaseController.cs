@@ -969,6 +969,124 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
+        [HttpPost]
+        public async Task<IActionResult> UpdateOrReuploadCaseDocument(
+            int caseId,
+            string docKey,
+            int? documentId,
+            string? documentTitle,
+            string? remarks,
+            string? existingPath,
+            string? cnrNumber,
+            string? orderNo,
+            DateTime? orderDate,
+            IFormFile? documentFile)
+        {
+            try
+            {
+                if (caseId <= 0 || string.IsNullOrWhiteSpace(docKey))
+                {
+                    return Json(new { success = false, message = "Invalid case ID or document key." });
+                }
+
+                var kase = _caseRepo.GetCaseById(caseId);
+                if (kase == null)
+                {
+                    return Json(new { success = false, message = "Case not found." });
+                }
+
+                var divIdString = User.FindFirst("DivisionID")?.Value;
+                var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+                bool isCentral = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                                 || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                                 || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+                int userDivId = int.TryParse(divIdString, out int parsedDiv) ? parsedDiv : -1;
+
+                if (!isCentral && kase.DivisionID != userDivId)
+                {
+                    return Json(new { success = false, message = "Access Denied: You cannot modify documents for another division's case." });
+                }
+
+                string? newSavedPath = null;
+                if (documentFile != null && documentFile.Length > 0)
+                {
+                    string subFolder = docKey switch
+                    {
+                        "AdverseJudgment" => "cases/AdverseJudgments",
+                        "FavorJudgment" => "cases/FavorJudgments",
+                        "InterimOrder" => "cases/InterimOrders",
+                        "TR18Report" => "cases/TR18Reports",
+                        "PunishmentOrder" => "cases/PunishmentOrders",
+                        "DelayApplication" => "cases/DelayApplications",
+                        "DelayCondonedOrder" => "cases/DelayOrders",
+                        "SecurityReport" => "cases/SecurityReports",
+                        "GovIDProof" => "cases/GovIDProofs",
+                        "AgeProof" => "cases/AgeProofs",
+                        "AppealApprovalCopy" => "appeals/approval",
+                        "MFAJudgmentCopy" => "appeals/judgments",
+                        "StayOrder1" or "StayOrder2" => "appeals/stays",
+                        "ECourtsOrder" => "cases/eCourtsOrders",
+                        _ => "cases/CaseDocuments"
+                    };
+
+                    if (_storageService != null)
+                    {
+                        newSavedPath = await _storageService.SaveFileAsync(documentFile, subFolder, existingPath);
+                    }
+                    else
+                    {
+                        newSavedPath = SaveFile(documentFile, "cases");
+                    }
+
+                    if (string.IsNullOrEmpty(newSavedPath))
+                    {
+                        return Json(new { success = false, message = "Failed to store replacement document in the persistent vault." });
+                    }
+                }
+
+                int? currentUserId = null;
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (int.TryParse(userIdClaim, out int uid)) currentUserId = uid;
+
+                bool updated = _caseRepo.UpdateOrReuploadCaseDocument(
+                    caseId,
+                    docKey,
+                    documentId,
+                    documentTitle,
+                    remarks,
+                    newSavedPath,
+                    cnrNumber,
+                    orderNo,
+                    orderDate,
+                    currentUserId);
+
+                if (!updated)
+                {
+                    return Json(new { success = false, message = "Database update failed to commit." });
+                }
+
+                string finalPath = newSavedPath ?? existingPath ?? "";
+                string actionDesc = newSavedPath != null 
+                    ? $"Re-uploaded and secured in vault: {docKey} (File: {Path.GetFileName(finalPath)})" 
+                    : $"Updated document metadata: {docKey} (Title: {documentTitle}, Remarks: {remarks})";
+
+                _ = _activityLogger.LogSubEntityActionAsync("MVC", caseId, $"MVC #{kase.MVCNo}/{kase.MVCYear}", "DOCUMENT_UPDATED", actionDesc);
+
+                return Json(new 
+                { 
+                    success = true, 
+                    message = newSavedPath != null ? "Document successfully re-uploaded and secured in persistent vault." : "Document details updated successfully.",
+                    path = finalPath,
+                    isReuploaded = newSavedPath != null
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating/reuploading document for CaseID {CaseID}, Key {DocKey}", caseId, docKey);
+                return Json(new { success = false, message = "Error: " + ex.Message });
+            }
+        }
+
         [HttpGet]
         public async Task<IActionResult> RemindBackDetails(int id)
         {

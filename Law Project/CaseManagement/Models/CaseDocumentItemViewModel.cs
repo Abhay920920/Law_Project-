@@ -9,6 +9,7 @@ namespace MVCCaseManagement.Models
     public class CaseDocumentItemViewModel
     {
         public int? DocumentId { get; set; }
+        public string DocKey { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string Category { get; set; } = "Case Document";
         public string RawPath { get; set; } = string.Empty;
@@ -25,6 +26,8 @@ namespace MVCCaseManagement.Models
         public bool IsFromECourts { get; set; } = false;
         public string? CnrNumber { get; set; }
         public string? OrderNo { get; set; }
+        public DateTime? OrderDate { get; set; }
+        public bool IsEditable { get; set; } = true;
     }
 
     /// <summary>

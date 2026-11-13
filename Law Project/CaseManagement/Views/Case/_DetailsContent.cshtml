@@ -3057,13 +3057,15 @@
 
     var mvcDocs = new List<MVCCaseManagement.Models.CaseDocumentItemViewModel>();
 
-    void AddMvcDoc(string? path, string title, string category, string icon, string color, DateTime? date = null, string? remarks = null, string? cnr = null, string? orderNo = null, bool isECourts = false)
+    void AddMvcDoc(string? path, string title, string category, string icon, string color, string docKey, int? docId = null, DateTime? date = null, string? remarks = null, string? cnr = null, string? orderNo = null, bool isECourts = false)
     {
         if (string.IsNullOrWhiteSpace(path)) return;
         string norm = NormalizeDocUrl(path);
         bool onDisk = FileStorage.FileExists(path);
         mvcDocs.Add(new MVCCaseManagement.Models.CaseDocumentItemViewModel
         {
+            DocumentId = docId,
+            DocKey = docKey,
             Title = title,
             Category = category,
             RawPath = path,
@@ -3077,37 +3079,39 @@
             IsAvailableOnDisk = onDisk,
             IsFromECourts = isECourts,
             CnrNumber = cnr,
-            OrderNo = orderNo
+            OrderNo = orderNo,
+            OrderDate = date,
+            IsEditable = true
         });
     }
 
     // 1. Standard Case & Appeal Documents
-    AddMvcDoc(Model.AdverseAward?.AdverseJudgmentUploadPath, "MACT Adverse Award / Judgment", "Tribunal Award", "bi-file-earmark-pdf-fill", "danger");
-    AddMvcDoc(Model.FavorJudgmentPath, "In-Favor Award / Judgment", "Tribunal Judgment", "bi-file-earmark-check-fill", "success");
-    AddMvcDoc(Model.InterimOrderFilePath, "Interim Court Order", "Tribunal Order", "bi-file-earmark-text-fill", "warning");
-    AddMvcDoc(Model.AdverseAward?.TR18UploadPath, "TR-18 Accident Report", "Police / Corp Record", "bi-file-earmark-medical-fill", "primary");
-    AddMvcDoc(Model.AdverseAward?.PunishmentOrderUploadPath, "Driver Punishment Order", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger");
-    AddMvcDoc(Model.AdverseAward?.DelayApplicationPath, "Delay Condonation Application (IA)", "Interim Application", "bi-file-earmark-text", "warning");
-    AddMvcDoc(Model.AdverseAward?.DelayCondonedOrderPath, "Delay Condonation Order", "Tribunal Order", "bi-file-earmark-check", "success");
-    AddMvcDoc(Model.AdverseAward?.SecurityUploadPath, "Security Investigation Report", "Security Dossier", "bi-shield-check", "info");
-    AddMvcDoc(Model.AdverseAward?.GovIDProofUploadPath, "Government ID Proof", "Claimant Proof", "bi-card-heading", "secondary");
-    AddMvcDoc(Model.AdverseAward?.AgeProofUploadPath, "Victim Age Proof", "Claimant Proof", "bi-person-badge", "secondary");
-    AddMvcDoc(Model.LinkedAppeal?.ApprovalCopyPath, "MD Sanction / Approval Order", "Central Office Order", "bi-award-fill", "success");
-    AddMvcDoc(Model.LinkedAppeal?.MFAJudgmentCopyPath, "High Court MFA Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary");
-    AddMvcDoc(Model.LinkedAppeal?.InitialActionPath1, "Legal Noting Sheet 1", "Central Office Noting", "bi-file-text-fill", "secondary");
-    AddMvcDoc(Model.LinkedAppeal?.InitialActionPath2, "Legal Noting Sheet 2", "Central Office Noting", "bi-file-text-fill", "secondary");
-    AddMvcDoc(Model.LinkedAppeal?.StayOrderPath1, "High Court Stay Order Copy 1", "High Court Stay", "bi-shield-slash-fill", "primary");
-    AddMvcDoc(Model.LinkedAppeal?.StayOrderPath2, "High Court Stay Order Copy 2", "High Court Stay", "bi-shield-slash-fill", "primary");
-    AddMvcDoc(Model.LinkedAppeal?.CorpMFAActionTakenPath, "Corporation MFA Action Taken", "High Court Compliance", "bi-file-earmark-check-fill", "info");
-    AddMvcDoc(Model.LinkedAppeal?.ClaimantSCJudgmentPath, "Supreme Court Judgment", "Apex Court Ruling", "bi-bank2", "danger");
-    AddMvcDoc(Model.LinkedAppeal?.ComplianceLetterPath, "Final Compliance Letter", "Court Compliance", "bi-envelope-check-fill", "success");
+    AddMvcDoc(Model.AdverseAward?.AdverseJudgmentUploadPath, "MACT Adverse Award / Judgment", "Tribunal Award", "bi-file-earmark-pdf-fill", "danger", "AdverseJudgment", remarks: Model.AdverseAward?.CertifiedCopyRemarks);
+    AddMvcDoc(Model.FavorJudgmentPath, "In-Favor Award / Judgment", "Tribunal Judgment", "bi-file-earmark-check-fill", "success", "FavorJudgment");
+    AddMvcDoc(Model.InterimOrderFilePath, "Interim Court Order", "Tribunal Order", "bi-file-earmark-text-fill", "warning", "InterimOrder");
+    AddMvcDoc(Model.AdverseAward?.TR18UploadPath, "TR-18 Accident Report", "Police / Corp Record", "bi-file-earmark-medical-fill", "primary", "TR18Report", remarks: Model.AdverseAward?.TR18Remarks);
+    AddMvcDoc(Model.AdverseAward?.PunishmentOrderUploadPath, "Driver Punishment Order", "Disciplinary Action", "bi-file-earmark-ruled-fill", "danger", "PunishmentOrder", remarks: Model.AdverseAward?.PunishmentRemarks);
+    AddMvcDoc(Model.AdverseAward?.DelayApplicationPath, "Delay Condonation Application (IA)", "Interim Application", "bi-file-earmark-text", "warning", "DelayApplication");
+    AddMvcDoc(Model.AdverseAward?.DelayCondonedOrderPath, "Delay Condonation Order", "Tribunal Order", "bi-file-earmark-check", "success", "DelayCondonedOrder");
+    AddMvcDoc(Model.AdverseAward?.SecurityUploadPath, "Security Investigation Report", "Security Dossier", "bi-shield-check", "info", "SecurityReport");
+    AddMvcDoc(Model.AdverseAward?.GovIDProofUploadPath, "Government ID Proof", "Claimant Proof", "bi-card-heading", "secondary", "GovIDProof");
+    AddMvcDoc(Model.AdverseAward?.AgeProofUploadPath, "Victim Age Proof", "Claimant Proof", "bi-person-badge", "secondary", "AgeProof");
+    AddMvcDoc(Model.LinkedAppeal?.ApprovalCopyPath, "MD Sanction / Approval Order", "Central Office Order", "bi-award-fill", "success", "AppealApprovalCopy");
+    AddMvcDoc(Model.LinkedAppeal?.MFAJudgmentCopyPath, "High Court MFA Judgment", "High Court Order", "bi-file-earmark-pdf-fill", "primary", "MFAJudgmentCopy");
+    AddMvcDoc(Model.LinkedAppeal?.InitialActionPath1, "Legal Noting Sheet 1", "Central Office Noting", "bi-file-text-fill", "secondary", "InitialAction1");
+    AddMvcDoc(Model.LinkedAppeal?.InitialActionPath2, "Legal Noting Sheet 2", "Central Office Noting", "bi-file-text-fill", "secondary", "InitialAction2");
+    AddMvcDoc(Model.LinkedAppeal?.StayOrderPath1, "High Court Stay Order Copy 1", "High Court Stay", "bi-shield-slash-fill", "primary", "StayOrder1");
+    AddMvcDoc(Model.LinkedAppeal?.StayOrderPath2, "High Court Stay Order Copy 2", "High Court Stay", "bi-shield-slash-fill", "primary", "StayOrder2");
+    AddMvcDoc(Model.LinkedAppeal?.CorpMFAActionTakenPath, "Corporation MFA Action Taken", "High Court Compliance", "bi-file-earmark-check-fill", "info", "CorpMFAActionTaken");
+    AddMvcDoc(Model.LinkedAppeal?.ClaimantSCJudgmentPath, "Supreme Court Judgment", "Apex Court Ruling", "bi-bank2", "danger", "ClaimantSCJudgment");
+    AddMvcDoc(Model.LinkedAppeal?.ComplianceLetterPath, "Final Compliance Letter", "Court Compliance", "bi-envelope-check-fill", "success", "ComplianceLetter");
 
     // 2. User-Uploaded Supplementary Case Documents (MVC_CASE_DOCUMENTS)
     if (Model.UploadedDocuments != null && Model.UploadedDocuments.Any())
     {
         foreach (var uDoc in Model.UploadedDocuments)
         {
-            AddMvcDoc(uDoc.DocumentPath, uDoc.DocumentName, "User Attachment", "bi-file-earmark-text-fill", "primary", uDoc.UploadedDate, uDoc.Remarks);
+            AddMvcDoc(uDoc.DocumentPath, uDoc.DocumentName, "User Attachment", "bi-file-earmark-text-fill", "primary", "SupplementaryDoc", docId: uDoc.DocumentID, date: uDoc.UploadedDate, remarks: uDoc.Remarks);
         }
     }
 
@@ -3120,7 +3124,7 @@
             string oPath = !string.IsNullOrWhiteSpace(co.LocalPdfPath) ? co.LocalPdfPath : (co.ExternalUrl ?? "");
             string dtStr = co.OrderDate.HasValue ? co.OrderDate.Value.ToString("dd-MMM-yyyy") : "Order";
             string oTitle = $"eCourts {co.OrderType} ({dtStr})";
-            AddMvcDoc(oPath, oTitle, "eCourts Order", "bi-file-earmark-pdf-fill", "info", co.OrderDate, null, co.Cnr, null, isECourts: true);
+            AddMvcDoc(oPath, oTitle, "eCourts Order", "bi-file-earmark-pdf-fill", "info", "ECourtsOrder", date: co.OrderDate, cnr: co.Cnr, isECourts: true);
         }
     }
 
@@ -5757,13 +5761,27 @@
                                                                     }
                                                                 </div>
                                                             </div>
-                                                            <div class="d-flex align-items-center justify-content-end gap-1 pt-1.5 border-top border-secondary-subtle">
+                                                            <div class="d-flex align-items-center justify-content-end gap-1.5 pt-2 border-top border-secondary-subtle flex-wrap">
                                                                 <button type="button" onclick="openOrderInModal('@safeDocPath', '@safeDocTitle', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-xs btn-outline-@doc.Color rounded-pill px-2.5 py-1 fw-bold shadow-xs" title="View in Modal Viewer">
                                                                     <i class="bi bi-eye me-1"></i>View
                                                                 </button>
                                                                 <a href="@doc.NormalizedUrl" target="_blank" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" title="Open in New Tab / Download">
                                                                     <i class="bi bi-box-arrow-up-right"></i>
                                                                 </a>
+                                                                @if (doc.IsEditable)
+                                                                {
+                                                                    var safeRemarks = (doc.Remarks ?? "").Replace("'", "\\'");
+                                                                    var safeCategory = (doc.Category ?? "").Replace("'", "\\'");
+                                                                    var safeCnr = (doc.CnrNumber ?? "").Replace("'", "\\'");
+                                                                    var safeOrderNo = (doc.OrderNo ?? "").Replace("'", "\\'");
+                                                                    var orderDtStr = doc.OrderDate.HasValue ? doc.OrderDate.Value.ToString("yyyy-MM-dd") : "";
+                                                                    <button type="button" 
+                                                                            class="btn btn-xs btn-outline-warning rounded-pill px-2.5 py-1 fw-bold shadow-xs text-dark"
+                                                                            onclick="openEditMvcDocModal('@doc.DocKey', @(doc.DocumentId.HasValue ? doc.DocumentId.Value.ToString() : "null"), '@safeDocTitle', '@safeDocPath', '@safeRemarks', '@safeCategory', '@safeCnr', '@safeOrderNo', '@orderDtStr')"
+                                                                            title="Edit document title/remarks or re-upload replacement file to vault">
+                                                                        <i class="bi bi-pencil-square me-1"></i>Edit / Reupload
+                                                                    </button>
+                                                                }
                                                             </div>
                                                         </div>
                                                     </div>
@@ -6774,7 +6792,159 @@
 </div>
 }
 
+<!-- Modal: Edit / Re-upload MVC Case Document -->
+<div class="modal fade" id="editMvcDocModal" tabindex="-1" aria-labelledby="editMvcDocModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-warning text-dark py-3 px-4">
+                <div class="d-flex align-items-center">
+                    <div class="bg-dark text-warning rounded-circle p-2 me-2.5 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="bi bi-pencil-square fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="modal-title fw-bold mb-0 text-dark" id="editMvcDocModalLabel">Edit / Re-upload Document</h6>
+                        <small class="text-dark-50 extra-small">Persistent Vault Storage &amp; ACID Data Integrity</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formEditMvcCaseDoc" enctype="multipart/form-data">
+                <input type="hidden" name="caseId" value="@Model.CaseID" />
+                <input type="hidden" name="docKey" id="editDocKey" />
+                <input type="hidden" name="documentId" id="editDocumentId" />
+                <input type="hidden" name="existingPath" id="editExistingPath" />
+                <input type="hidden" name="cnrNumber" id="editCnrNumber" />
+                <input type="hidden" name="orderNo" id="editOrderNo" />
+                <input type="hidden" name="orderDate" id="editOrderDate" />
+
+                <div class="modal-body p-3 p-md-4">
+                    <!-- Current Document Info Card -->
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <span class="badge bg-secondary-subtle text-secondary border extra-small fw-semibold" id="editDocCategoryBadge">Category</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill extra-small px-2 py-0.5">
+                                <i class="bi bi-shield-check me-1"></i>Vault Target
+                            </span>
+                        </div>
+                        <div class="fw-bold text-dark small text-truncate" id="editDocCurrentTitle">Document Title</div>
+                        <small class="text-muted extra-small font-monospace text-truncate d-block mt-0.5" id="editDocCurrentFile">
+                            <i class="bi bi-file-earmark me-1"></i>filename.pdf
+                        </small>
+                    </div>
+
+                    <!-- Editable Title -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Document Name / Title</label>
+                        <input type="text" name="documentTitle" id="editDocTitleInput" class="form-control form-control-sm rounded-pill px-3" placeholder="Enter document title" />
+                    </div>
+
+                    <!-- Editable Remarks -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Remarks / Reason for Reupload</label>
+                        <textarea name="remarks" id="editDocRemarksInput" class="form-control form-control-sm rounded-3 p-2" rows="2" placeholder="e.g. Certified copy obtained from court, updated appeal order, corrected discrepancy..."></textarea>
+                    </div>
+
+                    <!-- Reupload File Picker -->
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">
+                            Select Replacement File <span class="text-muted fw-normal extra-small">(Optional: leave blank to only update title/remarks)</span>
+                        </label>
+                        <input type="file" name="documentFile" id="editDocFileInput" class="form-control form-control-sm rounded-pill" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" />
+                        <small class="text-muted extra-small d-block mt-1">
+                            <i class="bi bi-info-circle me-1"></i>New files are automatically validated, stored in <code>uploads_vault</code>, and safely replace older versions.
+                        </small>
+                    </div>
+
+                    <div id="editDocStatusMsg" class="small fw-bold text-center mt-2 d-none"></div>
+                </div>
+
+                <div class="modal-footer bg-light px-3 py-2 border-top d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-4 shadow-sm" id="btnSubmitEditDoc" onclick="submitEditMvcDoc()">
+                        <i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script>
+// Open Edit / Re-upload Modal for MVC Documents
+function openEditMvcDocModal(docKey, docId, title, path, remarks, category, cnr, orderNo, orderDate) {
+    document.getElementById('editDocKey').value = docKey || '';
+    document.getElementById('editDocumentId').value = docId || '';
+    document.getElementById('editExistingPath').value = path || '';
+    document.getElementById('editCnrNumber').value = cnr || '';
+    document.getElementById('editOrderNo').value = orderNo || '';
+    document.getElementById('editOrderDate').value = orderDate || '';
+
+    document.getElementById('editDocCategoryBadge').textContent = category || 'Case Document';
+    document.getElementById('editDocCurrentTitle').textContent = title || 'Document';
+    document.getElementById('editDocCurrentFile').textContent = path ? path.split('/').pop().split('\\').pop() : 'No file attached';
+    document.getElementById('editDocTitleInput').value = title || '';
+    document.getElementById('editDocRemarksInput').value = remarks || '';
+    document.getElementById('editDocFileInput').value = '';
+
+    var statusDiv = document.getElementById('editDocStatusMsg');
+    if (statusDiv) {
+        statusDiv.classList.add('d-none');
+        statusDiv.innerHTML = '';
+    }
+
+    var editModal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editMvcDocModal'));
+    editModal.show();
+}
+
+function submitEditMvcDoc() {
+    var form = document.getElementById('formEditMvcCaseDoc');
+    var btn = document.getElementById('btnSubmitEditDoc');
+    var statusDiv = document.getElementById('editDocStatusMsg');
+
+    if (!form || !btn) return;
+
+    var formData = new FormData(form);
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Securing in Vault...';
+
+    if (statusDiv) {
+        statusDiv.className = 'small fw-bold text-primary text-center mt-2';
+        statusDiv.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Executing transaction and storing in persistent vault...';
+        statusDiv.classList.remove('d-none');
+    }
+
+    fetch('/Case/UpdateOrReuploadCaseDocument', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+        if (data.success) {
+            if (statusDiv) {
+                statusDiv.className = 'small fw-bold text-success text-center mt-2';
+                statusDiv.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + (data.message || 'Updated successfully!');
+            }
+            setTimeout(function () {
+                location.reload();
+            }, 1000);
+        } else {
+            if (statusDiv) {
+                statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+                statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ' + (data.message || 'Operation failed.');
+            }
+        }
+    })
+    .catch(function (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+        if (statusDiv) {
+            statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+            statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Error: ' + err.message;
+        }
+    });
+}
 // Safe bridge to ecourts-details.js fetchLiveMfaDetails
 function syncMfaDetails(appealId, isAuto) {
     if (typeof fetchLiveMfaDetails === 'function') {
