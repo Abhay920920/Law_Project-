@@ -167,6 +167,7 @@
                         }
                     </div>
 
+                    <!-- Row 3: Stay Details - Stay Granted, Stay Compliance, Stay Vacate Filed (All 3 in same row) -->
                     <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary text-uppercase">Stay Granted?</label>
                         <select class="form-select border-start border-4 border-warning" asp-for="CO_Service_StayGranted" id="serviceStayGranted">
@@ -175,50 +176,46 @@
                         </select>
                     </div>
 
-                    <!-- Stay Vacate Filed -->
-                    <div class="col-md-4" id="stayVacateSection" style="display:none;">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary text-uppercase">Stay Compliance?</label>
+                        <select class="form-select border-start border-4 border-info" asp-for="CO_Service_StayCompliance" id="serviceStayCompliance">
+                            <option value="false">NO</option>
+                            <option value="true">YES</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary text-uppercase">Stay Vacate Filed?</label>
-                        <select class="form-select" asp-for="CO_Service_StayVacateFiled" id="serviceStayVacate">
+                        <select class="form-select border-start border-4 border-secondary" asp-for="CO_Service_StayVacateFiled" id="serviceStayVacate">
                             <option value="false">NO</option>
                             <option value="true">YES</option>
                         </select>
                     </div>
                     
-                    <!-- Stay Compliance - Shows only when Stay Vacate Filed = YES -->
-                    <div id="stayComplianceSection" style="display:none;" class="row g-3 mt-1 col-12 border-top pt-3">
+                    <!-- Stay Compliance Approval Details - Shows when Stay Compliance = YES -->
+                    <div id="stayApprovalSection" style="display:none;" class="row g-3 mt-1 col-12 border-top pt-3">
                         <div class="col-12">
-                            <h6 class="text-primary fw-bold"><i class="bi bi-check-circle me-2"></i>Stay Compliance Details</h6>
+                            <h6 class="text-primary fw-bold mb-0"><i class="bi bi-check-circle me-2"></i>Stay Compliance / Approval Details</h6>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-bold small text-secondary text-uppercase">Stay Compliance?</label>
-                            <select class="form-select" asp-for="CO_Service_StayCompliance" id="serviceStayCompliance">
-                                <option value="false">NO</option>
-                                <option value="true">YES</option>
-                            </select>
+                            <label class="form-label fw-bold small text-secondary text-uppercase">Approval Outward No</label>
+                            <input type="text" class="form-control" asp-for="CO_Service_ApprovalOutwardNo" />
                         </div>
-                        
-                        <!-- Approval Details - Shows only when Stay Compliance = YES -->
-                        <div id="stayApprovalSection" style="display:none;" class="row g-3 mt-1 col-12">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold small text-secondary text-uppercase">Approval Outward No</label>
-                                <input type="text" class="form-control" asp-for="CO_Service_ApprovalOutwardNo" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold small text-secondary text-uppercase">Approval Date</label>
-                                <input type="date" class="form-control" asp-for="CO_Service_ApprovalDate" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold small text-secondary text-uppercase mb-2"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Approval Copy (PDF)</label>
-                                <input type="file" class="form-control form-control-sm" asp-for="CO_Service_ApprovalCopyFile" accept=".pdf" />
-                                @if (!string.IsNullOrEmpty(Model.CO_Service_ApprovalCopyPath))
-                                {
-                                    <div class="mt-2">
-                                        <a href="@Model.CO_Service_ApprovalCopyPath" target="_blank" class="btn btn-sm btn-outline-primary shadow-sm">
-                                            <i class="bi bi-file-earmark-pdf"></i> View Current Approval Copy
-                                        </a>
-                                    </div>
-                                }
-                            </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary text-uppercase">Approval Date</label>
+                            <input type="date" class="form-control" asp-for="CO_Service_ApprovalDate" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary text-uppercase mb-2"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Approval Copy (PDF)</label>
+                            <input type="file" class="form-control form-control-sm" asp-for="CO_Service_ApprovalCopyFile" accept=".pdf" />
+                            @if (!string.IsNullOrEmpty(Model.CO_Service_ApprovalCopyPath))
+                            {
+                                <div class="mt-2">
+                                    <a href="@Model.CO_Service_ApprovalCopyPath" target="_blank" class="btn btn-sm btn-outline-primary shadow-sm">
+                                        <i class="bi bi-file-earmark-pdf"></i> View Current Approval Copy
+                                    </a>
+                                </div>
+                            }
                         </div>
                     </div>
                     
@@ -616,20 +613,7 @@
             $('#serviceActionTaken').change(toggleAction);
             toggleAction();
             
-            // Stay Granted toggle
-            function toggleStayGranted() {
-                if ($('#serviceStayGranted').val() === 'true') {
-                    $('#stayComplianceSection').slideDown();
-                    $('#stayVacateSection').slideDown();
-                } else {
-                    $('#stayComplianceSection').slideUp();
-                    $('#stayVacateSection').slideUp();
-                }
-            }
-            $('#serviceStayGranted').change(toggleStayGranted);
-            toggleStayGranted();
-            
-            // Stay Compliance toggle
+            // Stay Compliance toggle (shows Approval Details when Stay Compliance = YES)
             function toggleStayApproval() {
                 if ($('#serviceStayCompliance').val() === 'true') {
                     $('#stayApprovalSection').slideDown();
