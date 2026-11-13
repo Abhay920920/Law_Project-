@@ -2177,19 +2177,7 @@
                 </div>
             </div>
             }
-            @if (!isServiceMatter && Model.CaseStatus == "Disposed")
-            {
-                <div class="card border-0 shadow-sm mb-4">
-                    <div class="card-header bg-white py-3 border-bottom">
-                         <h6 class="mb-0 fw-bold text-success"><i class="bi bi-award me-2"></i>Award &amp; Remarks</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="p-3 bg-light rounded italic small">
-                             @(Model.FavorRemark ?? Model.AwardDetails ?? "No specific award details recorded.")
-                        </div>
-                    </div>
-                </div>
-            }
+
 
             @if (!isServiceMatter)
             {
