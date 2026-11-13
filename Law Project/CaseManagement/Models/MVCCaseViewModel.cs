@@ -32,6 +32,7 @@ namespace MVCCaseManagement.Models
         public int MACTID { get; set; } = 0;
         public string? MACTName { get; set; }
 
+        [Required(ErrorMessage = "Vehicle Number is required")]
         [Display(Name = "Vehicle Number")]
         [StringLength(20)]
         [RegularExpression(@"^(?=(?:.*\d){4,}).+$", ErrorMessage = "Vehicle number must contain at least 4 digits")]
@@ -44,10 +45,12 @@ namespace MVCCaseManagement.Models
         [StringLength(20)]
         public string? VehicleType { get; set; } = "Corporation"; // Default
         
+        [Required(ErrorMessage = "Petition filed under is required")]
         [Display(Name = "Petition Filed Under")]
         [StringLength(100)]
         public string? PetitionFiledFor { get; set; }
 
+        [Required(ErrorMessage = "Date of Accident is required")]
         [DataType(DataType.Date)]
         [Display(Name = "Date of Accident")]
         public DateTime? AccidentDate { get; set; }
@@ -58,13 +61,14 @@ namespace MVCCaseManagement.Models
         [Required(ErrorMessage = "Case Type is required")]
         [Display(Name = "Case Type")]
         [StringLength(50)]
-        public string CaseType { get; set; } = string.Empty;
+        public string? CaseType { get; set; } = null;
 
         public int StatusID { get; set; } = 1; // Auto Pending
 
         // eCourts NAPIX Fields
+        [Required(ErrorMessage = "16-Digit CNR Number is required")]
         [Display(Name = "16-Digit CNR Number")]
-        [StringLength(16)]
+        [StringLength(16, MinimumLength = 16, ErrorMessage = "CNR Number must be exactly 16 characters")]
         public string? CNRNumber { get; set; }
 
         [Display(Name = "eCourts Establishment Code")]
@@ -101,6 +105,7 @@ namespace MVCCaseManagement.Models
         public List<PetitionerViewModel> Petitioners { get; set; } = new();
 
         // SECTION C: NATURE OF CLAIM
+        [Required(ErrorMessage = "Claim Type is required")]
         [Display(Name = "Claim Type")]
         [StringLength(50)]
         public string? ClaimType { get; set; }
@@ -114,12 +119,16 @@ namespace MVCCaseManagement.Models
 
         [Display(Name = "Advocate Name")]
         public int? AdvocateID { get; set; }
+
+        [Required(ErrorMessage = "Advocate Name is required")]
         public string? AdvocateName { get; set; }
 
+        [Required(ErrorMessage = "Entrustment Number is required")]
         [Display(Name = "Entrustment Number")]
         [StringLength(50)]
         public string? EntrustmentNo { get; set; }
 
+        [Required(ErrorMessage = "Entrustment Date is required")]
         [DataType(DataType.Date)]
         [Display(Name = "Entrustment Date")]
         public DateTime? EntrustmentDate { get; set; }
@@ -436,6 +445,14 @@ namespace MVCCaseManagement.Models
         [Display(Name = "Treated Doctor")]
         public bool TreatedDocFlag { get; set; }
         
+        private bool _hasRwEvidence;
+        [Display(Name = "Corporation Evidence Available / Examined?")]
+        public bool HasRWEvidence
+        {
+            get => _hasRwEvidence || !string.IsNullOrWhiteSpace(RWType) || (RWNames != null && RWNames.Count > 0);
+            set => _hasRwEvidence = value;
+        }
+
         [Display(Name = "RW Type")]
         public string? RWType { get; set; } // Driver, Conductor, Others
         public List<string> RWNames { get; set; } = new();

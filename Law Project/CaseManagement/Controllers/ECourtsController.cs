@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -7518,6 +7518,12 @@ namespace MVCCaseManagement.Controllers
                     using var localConn = _db.GetConnection();
                     var candidatePaths = new List<string?>();
 
+                    // 0. If explicit document URL was requested in query string, make it priority #1
+                    if (!string.IsNullOrWhiteSpace(decodedUrl) && !decodedUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        candidatePaths.Add(decodedUrl);
+                    }
+
                     // 1. Check CASE_ORDERS table for any locally uploaded signed order PDFs for this CNR
                     if (!string.IsNullOrWhiteSpace(targetCnr))
                     {
@@ -7549,6 +7555,27 @@ namespace MVCCaseManagement.Controllers
                         else if (tLower.Contains("petition") || tLower.Contains("claim"))
                         {
                             candidatePaths.Add(Convert.ToString(labourCase.ClaimPetitionPath));
+                        }
+                        else if (tLower.Contains("punishment") || tLower.Contains("disciplinary") || tLower.Contains("against") || tLower.Contains("de proceedings"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.Against_PunishmentCopyPath));
+                        }
+                        else if (tLower.Contains("history") || tLower.Contains("sheet"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.DE_HistorySheetPath));
+                        }
+                        else if (tLower.Contains("lok adalat") || tLower.Contains("settlement"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.LokAdalatDocumentPath));
+                        }
+                        else if (tLower.Contains("closure") || tLower.Contains("sanction") || tLower.Contains("closed"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_ClosedDocumentPath));
+                        }
+                        else if (tLower.Contains("reinstatement"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_Reinstatement_ApprovalCopyPath));
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_Reinstatement_StayOrderPath));
                         }
                         else if (tLower.Contains("labour") || tLower.Contains("award"))
                         {
@@ -8604,6 +8631,10 @@ namespace MVCCaseManagement.Controllers
                     if (labourCase != null)
                     {
                         var candidatePaths = new List<string?>();
+                        if (!string.IsNullOrWhiteSpace(pdfPath) && !pdfPath.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidatePaths.Add(pdfPath);
+                        }
                         string tLower = (title ?? "").ToLowerInvariant();
                         if (tLower.Contains("stay"))
                         {
@@ -8615,6 +8646,31 @@ namespace MVCCaseManagement.Controllers
                         {
                             candidatePaths.Add(Convert.ToString(labourCase.CO_WP_JudgmentCopyPath));
                             candidatePaths.Add(Convert.ToString(labourCase.JudgmentCopyPath));
+                        }
+                        else if (tLower.Contains("petition") || tLower.Contains("claim"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.ClaimPetitionPath));
+                        }
+                        else if (tLower.Contains("punishment") || tLower.Contains("disciplinary") || tLower.Contains("against") || tLower.Contains("de proceedings"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.Against_PunishmentCopyPath));
+                        }
+                        else if (tLower.Contains("history") || tLower.Contains("sheet"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.DE_HistorySheetPath));
+                        }
+                        else if (tLower.Contains("lok adalat") || tLower.Contains("settlement"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.LokAdalatDocumentPath));
+                        }
+                        else if (tLower.Contains("closure") || tLower.Contains("sanction") || tLower.Contains("closed"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_ClosedDocumentPath));
+                        }
+                        else if (tLower.Contains("reinstatement"))
+                        {
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_Reinstatement_ApprovalCopyPath));
+                            candidatePaths.Add(Convert.ToString(labourCase.CO_Reinstatement_StayOrderPath));
                         }
                         else
                         {

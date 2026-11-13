@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.MVCCaseViewModel
+﻿@model MVCCaseManagement.Models.MVCCaseViewModel
 @{
     ViewData["Title"] = "Digital MVC Case File";
     ViewData["HidePageHeader"] = true;
@@ -31,7 +31,7 @@
                 </div>
                 <div>
                     <h3 class="mb-0 fw-bold text-dark">Digital Case Registration</h3>
-                    <p class="text-muted mb-0 small"><i class="bi bi-info-circle me-1"></i> Section-A is mandatory for file initialization.</p>
+                    <p class="text-muted mb-0 small"><i class="bi bi-info-circle me-1"></i> Fields marked with red asterisk (<span class="text-danger fw-bold">*</span>) are mandatory and must be entered before registration.</p>
                 </div>
                 <div class="ms-auto">
                     <button type="submit" class="btn btn-primary btn-lg shadow-sm">
@@ -51,9 +51,9 @@
                     <h6 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-fingerprint me-2"></i>1. CASE IDENTIFICATION</h6>
                     <div class="row g-4 mb-4">
                         <div class="col-md-6">
-                            <label asp-for="CaseType" class="form-label fw-bold text-primary text-uppercase">Case Type</label>
-                            <select asp-for="CaseType" class="form-select border-primary" required>
-                                <option value="">-- Choose Case Type --</option>
+                            <label asp-for="CaseType" class="form-label fw-bold text-primary text-uppercase">Case Type <span class="text-danger">*</span></label>
+                            <select asp-for="CaseType" id="CaseType" class="form-select border-primary" required autocomplete="off">
+                                <option value="" selected>-- Choose Case Type --</option>
                                 <option value="Pending">Pending</option>
                                 <option value="Disposed">Disposed</option>
                                 <option value="DNP">DNP (Dismissed For Non-Prosecution)</option>
@@ -68,12 +68,12 @@
                             <span asp-validation-for="DivisionID" class="text-danger small"></span>
                         </div>
                         <div class="col-md-6">
-                            <label asp-for="MVCNo" class="form-label text-uppercase"></label>
+                            <label asp-for="MVCNo" class="form-label fw-bold text-uppercase">MVC No <span class="text-danger">*</span></label>
                             <input asp-for="MVCNo" class="form-control border-primary-subtle" placeholder="e.g. 550" required />
                             <span asp-validation-for="MVCNo" class="text-danger small"></span>
                         </div>
                         <div class="col-md-6">
-                            <label asp-for="MVCYear" class="form-label text-uppercase"></label>
+                            <label asp-for="MVCYear" class="form-label fw-bold text-uppercase">MVC Year <span class="text-danger">*</span></label>
                             <input asp-for="MVCYear" class="form-control border-primary-subtle" type="number" value="@DateTime.Now.Year" required />
                             <span asp-validation-for="MVCYear" class="text-danger small"></span>
                         </div>
@@ -90,13 +90,14 @@
                                 </div>
                                 <div class="row g-2 align-items-end">
                                     <div class="col-md-8">
-                                        <label for="mvc-cnr-number" class="form-label small font-weight-bold">16-Digit CNR Number</label>
+                                        <label for="mvc-cnr-number" class="form-label small fw-bold text-uppercase">16-Digit CNR Number <span class="text-danger">*</span></label>
                                         <div class="input-group input-group-sm">
-                                            <input asp-for="CNRNumber" id="mvc-cnr-number" class="form-control font-monospace" placeholder="16-Digit CNR (e.g. KADW220012342020)" oninput="onCnrInputChange(this.value)" onchange="onCnrInputChange(this.value)" />
+                                            <input asp-for="CNRNumber" id="mvc-cnr-number" class="form-control font-monospace" placeholder="16-Digit CNR (e.g. KADW220012342020)" required minlength="16" maxlength="16" pattern="^[A-Za-z0-9]{16}$" oninput="onCnrInputChange(this.value)" onchange="onCnrInputChange(this.value)" />
                                             <button type="button" class="btn btn-primary" onclick="triggerMvcCnrDiscovery()">
                                                 <i class="bi bi-cloud-arrow-down-fill me-1"></i> Fetch Live Details
                                             </button>
                                         </div>
+                                        <span asp-validation-for="CNRNumber" class="text-danger small"></span>
                                     </div>
                                     <div class="col-md-4">
                                         <small class="text-muted d-block"><i class="bi bi-info-circle me-1"></i>Enter 16-digit CNR to auto-fetch & sync with live eCourts portal</small>
@@ -116,7 +117,7 @@
                              </div>
                         </div>
                         <div class="col-md-6 mb-2">
-                            <label for="PetitionFiledForSelect" class="form-label d-block fw-bold text-secondary small text-uppercase">Petition filed under</label>
+                            <label for="PetitionFiledForSelect" class="form-label d-block fw-bold text-secondary small text-uppercase">Petition filed under <span class="text-danger">*</span></label>
                             <div class="input-group">
                                 <select id="PetitionFiledForSelect" class="form-select flex-grow-1 others-dropdown" 
                                         data-others-target="PetitionFiledForManual" 
@@ -132,9 +133,10 @@
                                        placeholder="Type custom section" style="display:none; flex-grow: 2;" />
                                 <input type="hidden" asp-for="PetitionFiledFor" id="PetitionFiledForHidden" />
                             </div>
+                            <span asp-validation-for="PetitionFiledFor" class="text-danger small"></span>
                         </div>
                         <div class="col-md-6">
-                            <label asp-for="VehicleNo" class="form-label text-uppercase"></label>
+                            <label asp-for="VehicleNo" class="form-label fw-bold text-uppercase">Vehicle Number <span class="text-danger">*</span></label>
                             <input asp-for="VehicleNo" class="form-control" id="vehicleNoInput" placeholder="KA-XX-F-XXXX" required pattern="^KA-\d{2}-F-\d{4}$" />
                             <span asp-validation-for="VehicleNo" class="text-danger small"></span>
                             <div class="form-text small" id="vehicleHint">Pattern: KA-XX-F-XXXX</div>
@@ -151,8 +153,9 @@
                         </div>
 
                         <div class="col-md-6">
-                            <label asp-for="AccidentDate" class="form-label text-uppercase"></label>
+                            <label asp-for="AccidentDate" class="form-label fw-bold text-uppercase">Date of Accident <span class="text-danger">*</span></label>
                             <input asp-for="AccidentDate" class="form-control" type="date" required />
+                            <span asp-validation-for="AccidentDate" class="text-danger small"></span>
                         </div>
 
                     </div>
@@ -192,7 +195,7 @@
                         <h6 class="fw-bold text-secondary mb-3 small text-uppercase"><i class="bi bi-shield-exclamation me-2"></i>Nature of Claim</h6>
                         <div class="row g-3 mb-4">
                             <div class="col-md-6">
-                                <label asp-for="ClaimType" class="form-label text-uppercase"></label>
+                                <label asp-for="ClaimType" class="form-label fw-bold text-uppercase">Claim Type <span class="text-danger">*</span></label>
                                 <select asp-for="ClaimType" class="form-select" required>
                                     <option value="">-- Choose Type --</option>
                                     <option value="Injury">Injury</option>
@@ -202,6 +205,7 @@
                                     <option value="Animal Injured">Animal Injured</option>
                                     <option value="Animal death">Animal death</option>
                                 </select>
+                                <span asp-validation-for="ClaimType" class="text-danger small"></span>
                             </div>
                             <div class="col-md-6">
                                 <label asp-for="AdverseAward.ClaimPetitionDate" class="form-label text-uppercase">Date of Claim Petition</label>
@@ -222,11 +226,11 @@
                                 </div>
                             </div>
                             <div class="col-md-8">
-                                <label asp-for="AdvocateName" class="form-label text-uppercase"></label>
+                                <label asp-for="AdvocateName" class="form-label fw-bold text-uppercase">Advocate Name <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <select id="AdvocateSelect" class="form-select flex-grow-1 others-dropdown" 
                                             data-others-target="AdvocateManualEntry" 
-                                            data-others-hidden="AdvocateNameHidden">
+                                            data-others-hidden="AdvocateNameHidden" required>
                                         <option value="">-- Loading Advocates... --</option>
                                     </select>
                                     <input type="text" id="AdvocateManualEntry" class="form-control others-manual" 
@@ -237,12 +241,14 @@
                                 <span asp-validation-for="AdvocateName" class="text-danger small"></span>
                             </div>
                             <div class="col-md-6">
-                                <label asp-for="EntrustmentNo" class="form-label text-uppercase"></label>
+                                <label asp-for="EntrustmentNo" class="form-label fw-bold text-uppercase">Entrustment Number <span class="text-danger">*</span></label>
                                 <input asp-for="EntrustmentNo" class="form-control" required />
+                                <span asp-validation-for="EntrustmentNo" class="text-danger small"></span>
                             </div>
                             <div class="col-md-6">
-                                <label asp-for="EntrustmentDate" class="form-label text-uppercase"></label>
+                                <label asp-for="EntrustmentDate" class="form-label fw-bold text-uppercase">Entrustment Date <span class="text-danger">*</span></label>
                                 <input asp-for="EntrustmentDate" class="form-control" type="date" required />
+                                <span asp-validation-for="EntrustmentDate" class="text-danger small"></span>
                             </div>
                         </div>
 
@@ -549,19 +555,12 @@
 
                     <!-- PART 4: DISPOSAL STATUS -->
                     <h6 class="fw-bold text-primary mb-3 border-bottom pb-2"><i class="bi bi-shield-lock-fill me-2"></i>4. DISPOSAL STATUS (INTERNAL ONLY)</h6>
-                    <div class="alert alert-danger bg-white border-danger-subtle d-flex align-items-center mb-4">
-                        <i class="bi bi-shield-lock-fill fs-4 me-3 text-danger"></i>
-                        <div class="small text-dark">
-                            <strong>Terminal Action:</strong> Closing a case file is irreversible and locks all previous entries.
-                        </div>
-                    </div>
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
-                            <label asp-for="DisposalStatus" class="form-label text-uppercase"></label>
+                            <label asp-for="DisposalStatus" class="form-label text-uppercase"></label> <span id="disposal-ecourts-badge"></span>
                             <select asp-for="DisposalStatus" class="form-select">
                                 <option value="">-- Choose Status --</option>
                                 <option value="Disposed">Disposed</option>
-                                <option value="DNP">DNP</option>
                             </select>
                         </div>
                         <div class="col-md-6">
@@ -674,85 +673,117 @@
                                             <h6 class="fw-bold text-primary mb-0"><i class="bi bi-shield-check me-2"></i>C. EVIDENCE DETAILS</h6>
                                         </div>
                                         <div class="card-body p-4">
-                                            <div class="row g-3 mb-4">
-                                        <!-- 1. Petitioner Evidence -->
-                                        <div class="col-md-12">
-                                            <h6 class="small fw-bold text-secondary text-uppercase mb-2">1. Petitioner Evidence</h6>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <span class="form-label d-block small fw-bold text-uppercase">PW Name(s)</span>
-                                            <div id="pwList">
-                                                @for (int i = 0; i < Model.AdverseAward.PetitionerPWNames.Count; i++)
-                                                {
-                                                    <div class="input-group input-group-sm mb-2">
-                                                        <input asp-for="AdverseAward.PetitionerPWNames[i]" class="form-control" placeholder="Enter Name" required aria-label="Petitioner PW Name" />
-                                                        <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>
+                                            <div class="row g-4 mb-4">
+                                                <!-- 1. Petitioner Evidence -->
+                                                <div class="col-md-4">
+                                                    <div class="border rounded p-3 bg-light h-100 shadow-sm">
+                                                        <h6 class="small fw-bold text-secondary text-uppercase mb-3 pb-2 border-bottom">1. Petitioner Evidence</h6>
+                                                        <span class="form-label d-block small fw-bold text-uppercase">PW Name(s)</span>
+                                                        <div id="pwList">
+                                                            @for (int i = 0; i < Model.AdverseAward.PetitionerPWNames.Count; i++)
+                                                            {
+                                                                <div class="input-group input-group-sm mb-2">
+                                                                    <input asp-for="AdverseAward.PetitionerPWNames[i]" class="form-control" placeholder="Enter Name" required aria-label="Petitioner PW Name" />
+                                                                    <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addDynamicInput('pwList', 'AdverseAward.PetitionerPWNames')">
+                                                            <i class="bi bi-plus"></i> Add PW
+                                                        </button>
                                                     </div>
-                                                }
+                                                </div>
+
+                                                <!-- 2. Doctor Evidence details -->
+                                                <div class="col-md-4">
+                                                    <div class="border rounded p-3 bg-light h-100 shadow-sm">
+                                                        <h6 class="small fw-bold text-secondary text-uppercase mb-3 pb-2 border-bottom">2. Doctor Evidence details</h6>
+                                                        <span class="form-label d-block small fw-bold text-uppercase">Doctor Evidence Available / Examined?</span>
+                                                        <div class="d-flex gap-4 mt-2 mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio" value="true" asp-for="AdverseAward.TreatedDocFlag" id="docEvidenceYes">
+                                                                <label class="form-check-label" for="docEvidenceYes">Yes</label>
+                                                            </div>
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio" value="false" asp-for="AdverseAward.TreatedDocFlag" id="docEvidenceNo" checked>
+                                                                <label class="form-check-label" for="docEvidenceNo">No</label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div id="doctorEvidenceContainer" style="display: none;">
+                                                            <span class="form-label d-block small fw-bold text-uppercase mb-2">Doctor PW name & status</span>
+                                                            <div id="docList">
+                                                                @for (int i = 0; i < Model.AdverseAward.Doctors.Count; i++)
+                                                                {
+                                                                    <div class="border p-2 mb-2 rounded bg-white doctor-item shadow-xs">
+                                                                        <div class="input-group input-group-sm mb-2">
+                                                                            <span class="input-group-text bg-light text-muted"><i class="bi bi-person-fill"></i></span>
+                                                                            <input asp-for="AdverseAward.Doctors[i].DoctorName" class="form-control" placeholder="Enter Doctor Name" required aria-label="Doctor Name" />
+                                                                            <button type="button" class="btn btn-outline-danger" onclick="removeDoctorItem(this)" title="Remove Doctor">
+                                                                                <i class="bi bi-trash"></i>
+                                                                            </button>
+                                                                        </div>
+                                                                        <div class="d-flex align-items-center justify-content-between px-1">
+                                                                            <span class="small text-secondary fw-bold text-uppercase" style="font-size: 0.72rem;">
+                                                                                Treated Doctor?
+                                                                            </span>
+                                                                            <div class="d-flex gap-3 align-items-center">
+                                                                                <div class="form-check mb-0">
+                                                                                    <input class="form-check-input" type="radio" asp-for="AdverseAward.Doctors[i].IsTreated" value="true" id="treatedYes_@i">
+                                                                                    <label class="form-check-label small fw-semibold" for="treatedYes_@i" style="cursor: pointer;">Yes</label>
+                                                                                </div>
+                                                                                <div class="form-check mb-0">
+                                                                                    <input class="form-check-input" type="radio" asp-for="AdverseAward.Doctors[i].IsTreated" value="false" id="treatedNo_@i">
+                                                                                    <label class="form-check-label small fw-semibold" for="treatedNo_@i" style="cursor: pointer;">No</label>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                }
+                                                            </div>
+                                                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addDoctorInput()">
+                                                                <i class="bi bi-plus"></i> Add Doctor
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- 3. Corporation Evidence details -->
+                                                <div class="col-md-4">
+                                                    <div class="border rounded p-3 bg-light h-100 shadow-sm">
+                                                        <h6 class="small fw-bold text-secondary text-uppercase mb-3 pb-2 border-bottom">3. Corporation Evidence details</h6>
+                                                        <span class="form-label d-block small fw-bold text-uppercase">Corporation Evidence Available / Examined?</span>
+                                                        <div class="d-flex gap-4 mt-2 mb-3">
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio" value="true" asp-for="AdverseAward.HasRWEvidence" id="hasRwYes">
+                                                                <label class="form-check-label" for="hasRwYes">Yes</label>
+                                                            </div>
+                                                            <div class="form-check">
+                                                                <input class="form-check-input" type="radio" value="false" asp-for="AdverseAward.HasRWEvidence" id="hasRwNo" checked>
+                                                                <label class="form-check-label" for="hasRwNo">No</label>
+                                                            </div>
+                                                        </div>
+
+                                                        <div id="corpEvidenceContainer" style="display: none;">
+                                                            <label asp-for="AdverseAward.RWType" class="form-label d-block small fw-bold text-uppercase">RW Type</label>
+                                                            <select asp-for="AdverseAward.RWType" id="rwTypeSelect" class="form-select form-select-sm mb-2">
+                                                                <option value="" selected>-- Choose Type --</option>
+                                                                <option value="Driver">Driver</option>
+                                                                <option value="Conductor">Conductor</option>
+                                                                <option value="DcumC">DcumC</option>
+                                                                <option value="Others">Others</option>
+                                                            </select>
+                                                            <div id="rwList"></div>
+                                                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addRWInput()">
+                                                                <i class="bi bi-plus"></i> Add RW Name
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addDynamicInput('pwList', 'AdverseAward.PetitionerPWNames')">
-                                                <i class="bi bi-plus"></i> Add PW
-                                            </button>
-                                        </div>
 
-                                        <!-- 2. Medical Evidence -->
-                                        <div class="col-md-12">
-                                            <h6 class="small fw-bold text-secondary text-uppercase mb-2">2. Medical Evidence</h6>
-                                        </div>
-                                         <div class="col-md-8 mb-3">
-                                             <span class="form-label d-block small fw-bold text-uppercase">Doctor PW name and treatment status</span>
-                                             <div id="docList">
-                                                 @for (int i = 0; i < Model.AdverseAward.Doctors.Count; i++)
-                                                 {
-                                                     <div class="border p-2 mb-2 rounded bg-light">
-                                                         <div class="row g-2 align-items-center">
-                                                             <div class="col-md-6">
-                                                                 <input asp-for="AdverseAward.Doctors[i].DoctorName" class="form-control form-control-sm" placeholder="Doctor Name" required aria-label="Doctor Name" />
-                                                             </div>
-                                                             <div class="col-md-4">
-                                                                 <div class="d-flex gap-2">
-                                                                     <div class="form-check">
-                                                                         <input class="form-check-input" type="radio" asp-for="AdverseAward.Doctors[i].IsTreated" value="true" id="treatedYes_@i">
-                                                                         <label class="form-check-label small" for="treatedYes_@i">Yes</label>
-                                                                     </div>
-                                                                     <div class="form-check">
-                                                                         <input class="form-check-input" type="radio" asp-for="AdverseAward.Doctors[i].IsTreated" value="false" id="treatedNo_@i">
-                                                                         <label class="form-check-label small" for="treatedNo_@i">No</label>
-                                                                     </div>
-                                                                 </div>
-                                                             </div>
-                                                             <div class="col-md-2 text-end">
-                                                                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.border').remove()"><i class="bi bi-x"></i></button>
-                                                             </div>
-                                                         </div>
-                                                     </div>
-                                                 }
-                                             </div>
-                                             <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addDoctorInput()">
-                                                 <i class="bi bi-plus"></i> Add Doctor
-                                             </button>
-                                         </div>
-
-                                        <!-- 3. Corporation Evidence -->
-                                        <div class="col-md-12">
-                                            <h6 class="small fw-bold text-secondary text-uppercase mb-2">3. Corporation Evidence</h6>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label asp-for="AdverseAward.RWType" class="form-label d-block small fw-bold text-uppercase">RW Type</label>
-                                            <select asp-for="AdverseAward.RWType" id="rwTypeSelect" class="form-select mb-2">
-                                                <option value="" selected>-- Choose Type --</option>
-                                                <option value="Driver">Driver</option>
-                                                <option value="Conductor">Conductor</option>
-                                                <option value="DcumC">DcumC</option>
-                                                <option value="Others">Others</option>
-                                            </select>
-                                            <div id="rwList"></div>
-                                            <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addRWInput()">
-                                                <i class="bi bi-plus"></i> Add RW Name
-                                            </button>
-                                        </div>
-
-                                        <!-- 4. Internal Remarks -->
+                                            <div class="row g-4">
+                                                <!-- 4. Internal Remarks -->
                                         <div class="col-md-12">
                                             <h6 class="small fw-bold text-secondary text-uppercase mb-2">4. Internal Remarks</h6>
                                         </div>
@@ -1546,6 +1577,68 @@
     <partial name="_ValidationScriptsPartial" />
     <script>
         $(document).ready(function () {
+            @if (string.IsNullOrEmpty(Model.CaseType))
+            {
+                <text>$("#CaseType").val("");</text>
+            }
+
+            // Enforce all 11 compulsory fields on form submission
+            $('#caseEntryForm').on('submit', function (e) {
+                // Ensure hidden fields for 'Others' dropdowns are synced
+                var petVal = $('#PetitionFiledForSelect').val();
+                if (petVal === 'Others' || petVal === 'other') {
+                    $('#PetitionFiledForHidden').val($('#PetitionFiledForManual').val());
+                } else if (petVal) {
+                    $('#PetitionFiledForHidden').val(petVal);
+                }
+
+                var advVal = $('#AdvocateSelect').val();
+                if (advVal === 'Others' || advVal === 'other') {
+                    $('#AdvocateNameHidden').val($('#AdvocateManualEntry').val());
+                } else if (advVal) {
+                    $('#AdvocateNameHidden').val(advVal);
+                }
+
+                const requiredFields = [
+                    { id: '#CaseType', name: 'Case Type', focus: '#CaseType' },
+                    { id: '#MVCNo', name: 'MVC No', focus: '#MVCNo' },
+                    { id: '#MVCYear', name: 'MVC Year', focus: '#MVCYear' },
+                    { id: '#mvc-cnr-number', name: '16-Digit CNR Number', minLen: 16, focus: '#mvc-cnr-number' },
+                    { 
+                        id: '#PetitionFiledForHidden', 
+                        name: 'Petition filed under', 
+                        focus: ($('#PetitionFiledForSelect').val() === 'Others' ? '#PetitionFiledForManual' : '#PetitionFiledForSelect') 
+                    },
+                    { id: '#vehicleNoInput', name: 'Vehicle Number', focus: '#vehicleNoInput' },
+                    { id: '#AccidentDate', name: 'Date of Accident', focus: '#AccidentDate' },
+                    { id: '#ClaimType', name: 'Claim Type', focus: '#ClaimType' },
+                    { 
+                        id: '#AdvocateNameHidden', 
+                        name: 'Advocate Name', 
+                        focus: ($('#AdvocateSelect').val() === 'Others' ? '#AdvocateManualEntry' : '#AdvocateSelect') 
+                    },
+                    { id: '#EntrustmentNo', name: 'Entrustment Number', focus: '#EntrustmentNo' },
+                    { id: '#EntrustmentDate', name: 'Entrustment Date', focus: '#EntrustmentDate' }
+                ];
+
+                for (let i = 0; i < requiredFields.length; i++) {
+                    let field = requiredFields[i];
+                    let val = $(field.id).val();
+                    if (!val || val.toString().trim() === '') {
+                        e.preventDefault();
+                        alert('Mandatory Field Required:\n\nPlease enter or select "' + field.name + '" before registering the case.');
+                        $(field.focus).focus();
+                        return false;
+                    }
+                    if (field.minLen && val.toString().trim().length !== field.minLen) {
+                        e.preventDefault();
+                        alert('Validation Error:\n\n"' + field.name + '" must be exactly ' + field.minLen + ' characters.');
+                        $(field.focus).focus();
+                        return false;
+                    }
+                }
+            });
+
             let petIndex = @Model.Petitioners.Count;
             let caseIndex = @Model.ConnectedCases.Count;
             // advConnIndex is defined globally below
@@ -2175,50 +2268,92 @@
 
         function addDoctorInput() {
             const container = document.getElementById('docList');
+            if (!container) return;
+            const currentIdx = $('#docList .doctor-item').length;
             const div = document.createElement('div');
-            div.className = 'border p-2 mb-2 rounded bg-light';
+            div.className = 'border p-2 mb-2 rounded bg-white doctor-item shadow-xs';
             div.innerHTML = `
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-6">
-                        <input name="AdverseAward.Doctors[${counter['docList']}].DoctorName" class="form-control form-control-sm" placeholder="Doctor Name" required />
-                    </div>
-                    <div class="col-md-4">
-                        <div class="d-flex gap-2">
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="AdverseAward.Doctors[${counter['docList']}].IsTreated" value="true" id="treatedYes_${counter['docList']}">
-                                <label class="form-check-label small" for="treatedYes_${counter['docList']}">Yes</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="AdverseAward.Doctors[${counter['docList']}].IsTreated" value="false" id="treatedNo_${counter['docList']}" checked>
-                                <label class="form-check-label small" for="treatedNo_${counter['docList']}">No</label>
-                            </div>
+                <div class="input-group input-group-sm mb-2">
+                    <span class="input-group-text bg-light text-muted"><i class="bi bi-person-fill"></i></span>
+                    <input name="AdverseAward.Doctors[${currentIdx}].DoctorName" class="form-control" placeholder="Enter Doctor Name" required aria-label="Doctor Name" />
+                    <button type="button" class="btn btn-outline-danger" onclick="removeDoctorItem(this)" title="Remove Doctor">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+                <div class="d-flex align-items-center justify-content-between px-1">
+                    <span class="small text-secondary fw-bold text-uppercase" style="font-size: 0.72rem;">
+                        Treated Doctor?
+                    </span>
+                    <div class="d-flex gap-3 align-items-center">
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="radio" name="AdverseAward.Doctors[${currentIdx}].IsTreated" value="true" id="treatedYes_${currentIdx}">
+                            <label class="form-check-label small fw-semibold" for="treatedYes_${currentIdx}" style="cursor: pointer;">Yes</label>
                         </div>
-                    </div>
-                    <div class="col-md-2 text-end">
-                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.border').remove()"><i class="bi bi-x"></i></button>
+                        <div class="form-check mb-0">
+                            <input class="form-check-input" type="radio" name="AdverseAward.Doctors[${currentIdx}].IsTreated" value="false" id="treatedNo_${currentIdx}" checked>
+                            <label class="form-check-label small fw-semibold" for="treatedNo_${currentIdx}" style="cursor: pointer;">No</label>
+                        </div>
                     </div>
                 </div>
             `;
             container.appendChild(div);
-            counter['docList']++;
+            reindexDoctors();
+        }
+
+        function removeDoctorItem(btn) {
+            $(btn).closest('.doctor-item').remove();
+            reindexDoctors();
+        }
+
+        function reindexDoctors() {
+            $('#docList .doctor-item').each(function(idx) {
+                $(this).find('input[name*="DoctorName"]').attr('name', `AdverseAward.Doctors[${idx}].DoctorName`);
+                $(this).find('input[type="radio"]').each(function() {
+                    $(this).attr('name', `AdverseAward.Doctors[${idx}].IsTreated`);
+                    const isYes = $(this).val() === 'true';
+                    const newId = isYes ? `treatedYes_${idx}` : `treatedNo_${idx}`;
+                    $(this).attr('id', newId);
+                    $(this).next('label').attr('for', newId);
+                });
+            });
+            if (typeof counter !== 'undefined' && counter) {
+                counter['docList'] = $('#docList .doctor-item').length;
+            }
         }
 
         function addRWInput() {
             const container = document.getElementById('rwList');
+            if (!container) return;
             const showDesignation = $('#rwTypeSelect').val() === 'Others';
+            const currentIdx = $('#rwList .rw-item').length;
             
             const div = document.createElement('div');
-            div.className = 'input-group input-group-sm mb-2';
+            div.className = 'input-group input-group-sm mb-2 rw-item';
             
             div.innerHTML = `
-                <input name="AdverseAward.RWNames[${counter['rwList']}]" class="form-control" placeholder="Name" aria-label="RW Name" required />
+                <input name="AdverseAward.RWNames[${currentIdx}]" class="form-control" placeholder="Name" aria-label="RW Name" required />
                 <div class="rw-designation-container" style="display: ${showDesignation ? 'block' : 'none'}; width: 40%">
-                    <input name="AdverseAward.RWDesignations[${counter['rwList']}]" class="form-control" placeholder="Designation" aria-label="RW Designation" />
+                    <input name="AdverseAward.RWDesignations[${currentIdx}]" class="form-control" placeholder="Designation" aria-label="RW Designation" />
                 </div>
-                <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.remove()"><i class="bi bi-x"></i></button>
+                <button type="button" class="btn btn-outline-danger" onclick="removeRWItem(this)"><i class="bi bi-x"></i></button>
             `;
             container.appendChild(div);
-            counter['rwList']++;
+            reindexRWs();
+        }
+
+        function removeRWItem(btn) {
+            $(btn).closest('.rw-item').remove();
+            reindexRWs();
+        }
+
+        function reindexRWs() {
+            $('#rwList .rw-item').each(function(idx) {
+                $(this).find('input[name*="RWNames"]').attr('name', `AdverseAward.RWNames[${idx}]`);
+                $(this).find('input[name*="RWDesignations"]').attr('name', `AdverseAward.RWDesignations[${idx}]`);
+            });
+            if (typeof counter !== 'undefined' && counter) {
+                counter['rwList'] = $('#rwList .rw-item').length;
+            }
         }
 
         let advConnIndex = @Model.AdverseAward.ConnectedCases.Count;
@@ -2550,6 +2685,40 @@
             else $('#impleadReasonCol').slideUp();
         });
 
+        // Doctor Evidence Toggle Logic
+        function toggleDoctorEvidence() {
+            var hasDoctor = $('input[name="AdverseAward.TreatedDocFlag"]:checked').val() === "true";
+            if (hasDoctor) {
+                $('#doctorEvidenceContainer').slideDown();
+                $('#docList input[name*="DoctorName"]').prop('required', true);
+                if ($('#docList .doctor-item').length === 0) {
+                    addDoctorInput();
+                }
+            } else {
+                $('#doctorEvidenceContainer').slideUp();
+                $('#docList input[name*="DoctorName"]').prop('required', false);
+            }
+        }
+        $('input[name="AdverseAward.TreatedDocFlag"]').change(toggleDoctorEvidence);
+        toggleDoctorEvidence(); // Init on load
+
+        // Corporation Evidence Toggle Logic
+        function toggleCorpEvidence() {
+            var hasCorp = $('input[name="AdverseAward.HasRWEvidence"]:checked').val() === "true";
+            if (hasCorp) {
+                $('#corpEvidenceContainer').slideDown();
+                $('#rwList input[name*="RWNames"]').prop('required', true);
+                if ($('#rwList .rw-item').length === 0) {
+                    addRWInput();
+                }
+            } else {
+                $('#corpEvidenceContainer').slideUp();
+                $('#rwList input[name*="RWNames"]').prop('required', false);
+            }
+        }
+        $('input[name="AdverseAward.HasRWEvidence"]').change(toggleCorpEvidence);
+        toggleCorpEvidence(); // Init on load
+
     </script>
 
     <script>
@@ -2596,6 +2765,21 @@
             } catch (e) {
                 if (statusElem) statusElem.innerHTML = `<span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Linked CNR: ${cnrVal}</span>`;
             }
+        }
+
+        function formatToIsoDate(dStr) {
+            if (!dStr || dStr === 'Pending' || dStr === 'N/A' || dStr === 'Disposed') return '';
+            dStr = dStr.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dStr)) return dStr;
+            const parts = dStr.split(/[-/]/);
+            if (parts.length === 3) {
+                if (parts[2].length === 4) {
+                    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                } else if (parts[0].length === 4) {
+                    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                }
+            }
+            return '';
         }
 
         function populateFormFromEcourtsData(data) {
@@ -2646,14 +2830,93 @@
             if (filingDate) {
                 const claimDateElem = document.querySelector('[name="AdverseAward.ClaimPetitionDate"]');
                 if (claimDateElem) {
-                    let formattedDate = filingDate;
-                    if (filingDate.includes('-')) {
-                        const parts = filingDate.split('-');
-                        if (parts.length === 3 && parts[2].length === 4) {
-                            formattedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                    let formattedDate = formatToIsoDate(filingDate);
+                    if (formattedDate) claimDateElem.value = formattedDate;
+                }
+            }
+
+            // 3. Auto-Population of Case Type & Disposal Status from eCourts NAPIX
+            const rawStatus = (data.case_status || '').trim().toLowerCase();
+            const rawStage = (data.stage || '').trim().toUpperCase();
+            const nextHearing = (data.next_hearing_date || '').trim().toLowerCase();
+            const decisionDate = (data.decision_date || '').trim();
+
+            const isDisposedInEcourts = 
+                rawStatus === 'disposed' || 
+                rawStatus === 'd' ||
+                rawStage.includes('DISPOSED') ||
+                nextHearing === 'disposed' ||
+                (decisionDate && decisionDate !== 'pending' && decisionDate !== 'n/a' && decisionDate.length >= 8);
+
+            const disposalSelect = document.getElementById('DisposalStatus') || document.querySelector('[name="DisposalStatus"]');
+            const caseTypeSelect = document.getElementById('CaseType') || document.querySelector('[name="CaseType"]');
+            const badgeElem = document.getElementById('disposal-ecourts-badge');
+
+            if (isDisposedInEcourts) {
+                // A. Case is Disposed in Court
+                if (disposalSelect) {
+                    $(disposalSelect).val('Disposed').trigger('change');
+                }
+                if (caseTypeSelect && (!caseTypeSelect.value || caseTypeSelect.value === '' || caseTypeSelect.dataset.autoFilled === "true")) {
+                    $(caseTypeSelect).val('Disposed').trigger('change');
+                    caseTypeSelect.dataset.autoFilled = "true";
+                }
+
+                // Format & Populate Closure / Award Date
+                const isoDecisionDate = formatToIsoDate(decisionDate);
+                if (isoDecisionDate) {
+                    const closureDateElem = document.querySelector('[name="ClosureDate"]');
+                    if (closureDateElem && (!closureDateElem.value || closureDateElem.dataset.autoFilled === "true")) {
+                        closureDateElem.value = isoDecisionDate;
+                        closureDateElem.dataset.autoFilled = "true";
+                    }
+
+                    const awardDateElem = document.querySelector('[name="AdverseAward.AwardDate"]');
+                    if (awardDateElem && (!awardDateElem.value || awardDateElem.dataset.autoFilled === "true")) {
+                        awardDateElem.value = isoDecisionDate;
+                        awardDateElem.dataset.autoFilled = "true";
+                    }
+                }
+
+                // Auto-Populate Nature of Disposal into Remarks
+                let natureOfDisp = (data.nature_of_disposal || '').trim();
+                if (natureOfDisp) {
+                    const remarksElem = document.querySelector('[name="DisposalRemarks"]');
+                    if (remarksElem && (!remarksElem.value || remarksElem.dataset.autoFilled === "true")) {
+                        remarksElem.value = `eCourts Disposal Nature: ${natureOfDisp}`;
+                        remarksElem.dataset.autoFilled = "true";
+                    }
+
+                    // Smart Result Suggestion (Favor vs Against)
+                    const dispUpper = natureOfDisp.toUpperCase();
+                    const resultSelect = document.getElementById('disposalResultSelect');
+                    if (resultSelect && (!resultSelect.value || resultSelect.value === '' || resultSelect.dataset.autoFilled === "true")) {
+                        if (dispUpper.includes('DISMISSED') || dispUpper.includes('REJECTED')) {
+                            $(resultSelect).val('Favor').trigger('change');
+                            resultSelect.dataset.autoFilled = "true";
+                        } else if (dispUpper.includes('ALLOWED') || dispUpper.includes('AWARDED') || dispUpper.includes('DECREED')) {
+                            $(resultSelect).val('Against').trigger('change');
+                            resultSelect.dataset.autoFilled = "true";
                         }
                     }
-                    claimDateElem.value = formattedDate;
+                }
+
+                // Visual Feedback Badge
+                if (badgeElem) {
+                    badgeElem.innerHTML = `<span class="badge bg-danger ms-2 shadow-sm"><i class="bi bi-shield-check me-1"></i> eCourts: Disposed ${decisionDate && decisionDate !== 'Pending' ? '(' + decisionDate + ')' : ''}</span>`;
+                }
+            } else {
+                // B. Case is Pending in Court
+                if (disposalSelect && (!disposalSelect.value || disposalSelect.value === 'Disposed')) {
+                    $(disposalSelect).val('').trigger('change');
+                }
+                if (caseTypeSelect && (!caseTypeSelect.value || caseTypeSelect.value === '' || caseTypeSelect.dataset.autoFilled === "true")) {
+                    $(caseTypeSelect).val('Pending').trigger('change');
+                    caseTypeSelect.dataset.autoFilled = "true";
+                }
+                if (badgeElem) {
+                    const nxt = data.next_hearing_date && data.next_hearing_date !== 'Disposed' && data.next_hearing_date !== 'Pending' ? data.next_hearing_date : '';
+                    badgeElem.innerHTML = `<span class="badge bg-success ms-2 shadow-sm"><i class="bi bi-hourglass-split me-1"></i> eCourts: Pending ${nxt ? '(Next: ' + nxt + ')' : ''}</span>`;
                 }
             }
         }
