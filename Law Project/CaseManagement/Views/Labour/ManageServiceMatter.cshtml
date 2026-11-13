@@ -135,7 +135,7 @@
                         <label class="form-label fw-bold small text-secondary text-uppercase">Entrustment Date</label>
                         <input type="date" class="form-control" asp-for="CO_Service_EntrustmentDate" />
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary text-uppercase">Advocate Name</label>
                         <select class="form-select" asp-for="CO_Service_AppealAdvocate">
                             <option value="">SELECT ADVOCATE...</option>
@@ -149,12 +149,13 @@
                         </select>
                     </div>
 
-                    <div class="col-md-6">
-                        <label class="form-label font-monospace fw-bold small text-primary text-uppercase">PRAYER / SUBJECT MATTER</label>
-                        <textarea class="form-control" asp-for="CO_Service_Prayer" rows="4" placeholder="ENTER BRIEF DESCRIPTION OF PRAYER / RELIEF SOUGHT"></textarea>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary text-uppercase">Prayer / Subject Matter</label>
+                        <textarea class="form-control" asp-for="CO_Service_Prayer" rows="1" placeholder="ENTER BRIEF DESCRIPTION OF PRAYER / RELIEF SOUGHT" style="min-height: 38px; resize: vertical;"></textarea>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label fw-bold small text-muted text-uppercase mb-2"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Petition Copy (PDF)</label>
+
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold small text-secondary text-uppercase"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Petition Copy (PDF)</label>
                         <input type="file" class="form-control" asp-for="CO_Service_PetitionCopyFile" accept=".pdf" />
                         @if (!string.IsNullOrEmpty(Model.CO_Service_PetitionCopyPath))
                         {
@@ -165,19 +166,12 @@
                             </div>
                         }
                     </div>
+
                     <div class="col-md-4">
                         <label class="form-label fw-bold small text-secondary text-uppercase">Stay Granted?</label>
                         <select class="form-select border-start border-4 border-warning" asp-for="CO_Service_StayGranted" id="serviceStayGranted">
                             <option value="false">NO</option>
                             <option value="true">YES</option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold small text-secondary text-uppercase">Current Status</label>
-                        <select class="form-select border-start border-4 border-info" asp-for="CO_Service_Status" id="serviceCaseStatus">
-                            <option value="PENDING">PENDING</option>
-                            <option value="DISPOSED">DISPOSED</option>
                         </select>
                     </div>
 
@@ -214,7 +208,7 @@
                                 <input type="date" class="form-control" asp-for="CO_Service_ApprovalDate" />
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label fw-bold small text-muted text-uppercase mb-2"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Approval Copy (PDF)</label>
+                                <label class="form-label fw-bold small text-secondary text-uppercase mb-2"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Approval Copy (PDF)</label>
                                 <input type="file" class="form-control form-control-sm" asp-for="CO_Service_ApprovalCopyFile" accept=".pdf" />
                                 @if (!string.IsNullOrEmpty(Model.CO_Service_ApprovalCopyPath))
                                 {
@@ -228,6 +222,18 @@
                         </div>
                     </div>
                     
+                    <!-- Current Status placed at last -->
+                    <div class="col-12 border-top pt-3">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold small text-secondary text-uppercase">Current Status</label>
+                                <select class="form-select border-start border-4 border-info" asp-for="CO_Service_Status" id="serviceCaseStatus">
+                                    <option value="PENDING">PENDING</option>
+                                    <option value="DISPOSED">DISPOSED</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Disposed Sub-section -->
                     <div id="serviceDisposalSection" style="display:none;" class="row g-3 mt-1 col-12 border-top pt-3">
@@ -244,6 +250,18 @@
                                 <option value="APPEAL">APPEAL</option>
                                 <option value="CLOSE">CLOSE</option>
                             </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-bold small text-secondary text-uppercase"><i class="bi bi-file-earmark-arrow-up me-1"></i> Upload Final Judgment / Order (PDF)</label>
+                            <input type="file" class="form-control" asp-for="JudgmentCopyFile" accept=".pdf" />
+                            @if (!string.IsNullOrEmpty(Model.JudgmentCopyPath))
+                            {
+                                <div class="mt-2">
+                                    <a href="@Model.JudgmentCopyPath" target="_blank" class="btn btn-sm btn-outline-primary shadow-sm">
+                                        <i class="bi bi-file-earmark-pdf"></i> View Current Judgment
+                                    </a>
+                                </div>
+                            }
                         </div>
 
                         <!-- Action: CLOSE Sub-section -->
@@ -562,27 +580,6 @@
             </div>
         </div>
 
-        <div class="card shadow-sm border-0 mb-4">
-             <div class="card-header bg-light border-bottom fw-bold text-primary">
-                 Files / Attachments
-             </div>
-             <div class="card-body">
-                 <div class="row g-3">
-                     <div class="col-md-12">
-                         <label class="form-label fw-bold">Upload Final Judgment / Order (PDF)</label>
-                         <input type="file" class="form-control" asp-for="JudgmentCopyFile" accept=".pdf" />
-                         @if (!string.IsNullOrEmpty(Model.JudgmentCopyPath))
-                         {
-                             <div class="mt-2">
-                                 <a href="@Model.JudgmentCopyPath" target="_blank" class="btn btn-sm btn-outline-primary">
-                                     <i class="bi bi-file-earmark-pdf"></i> View Current Judgment
-                                 </a>
-                             </div>
-                         }
-                     </div>
-                 </div>
-             </div>
-         </div>
 
         <div class="d-flex text-center justify-content-center">
             <button type="submit" class="btn btn-primary rounded-pill px-5 shadow-sm fw-bold">SAVE DETAILS</button>
