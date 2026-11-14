@@ -1419,14 +1419,18 @@
                                             <div class="p-2 rounded-3 border bg-white d-flex align-items-center justify-content-between flex-wrap gap-2">
                                                 <span class="small text-dark fw-semibold text-truncate" style="max-width: 60%;" title="@(rd.DocumentName ?? "Reinstatement Document")">@(rd.DocumentName ?? "Reinstatement Document")</span>
                                                 <div class="d-flex align-items-center gap-1.5 flex-shrink-0 flex-wrap">
-                                                    <a href="@(rd.DocumentPath ?? "#")" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1">
-                                                        <i class="bi bi-eye me-1"></i> View
+                                                    <button type="button" onclick="openOrderInModal('@safeRdPath', '@safeRdTitle', '@(Model.CNRNumber ?? "")', '', @Model.CaseID, '')" class="btn btn-sm btn-outline-primary rounded-pill px-2.5 py-1 fw-bold shadow-xs d-inline-flex align-items-center" style="font-size: 0.75rem;" title="View Document in Modal">
+                                                        <i class="bi bi-eye me-1"></i>View
+                                                    </button>
+                                                    <a href="@(rd.DocumentPath ?? "#")" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 shadow-xs" style="font-size: 0.75rem;" title="Open in New Tab / Download">
+                                                        <i class="bi bi-box-arrow-up-right"></i>
                                                     </a>
                                                     <button type="button" 
                                                             class="btn btn-sm btn-outline-warning text-dark rounded-pill px-2.5 py-1 fw-bold shadow-xs"
+                                                            style="font-size: 0.75rem;"
                                                             onclick="openEditLabourDocModal('ReinstatedDocument', @rd.DocumentID, null, null, '@safeRdTitle', '@safeRdPath', '', 'Reinstatement Attachment')"
                                                             title="Edit or Re-upload document">
-                                                        <i class="bi bi-pencil-square me-1"></i> Edit / Reupload
+                                                        <i class="bi bi-pencil-square me-1"></i>Edit / Reupload
                                                     </button>
                                                 </div>
                                             </div>

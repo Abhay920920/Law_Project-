@@ -7359,6 +7359,12 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
+            bool isExplicitUploadedDoc = !string.IsNullOrWhiteSpace(localCandidatePath) &&
+                (localCandidatePath.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase) ||
+                 localCandidatePath.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase) ||
+                 localCandidatePath.Contains("/uploads/", StringComparison.OrdinalIgnoreCase) ||
+                 (Path.HasExtension(localCandidatePath) && !localCandidatePath.EndsWith(".php", StringComparison.OrdinalIgnoreCase)));
+
             if (!string.IsNullOrWhiteSpace(localCandidatePath))
             {
                 try
@@ -7399,6 +7405,20 @@ namespace MVCCaseManagement.Controllers
                     }
                 }
                 catch { }
+
+                // Zero-trust document boundary: If an explicit case document file was requested (e.g. Punishment Order, DE History, Reinstatement Doc)
+                // and is not located on physical disk, STOP HERE! Never hijack or silently substitute an unrelated court judgment/order!
+                if (isExplicitUploadedDoc)
+                {
+                    bool isLabourModule = norm.Equals("Labour", StringComparison.OrdinalIgnoreCase);
+                    string missingDocTitle = !string.IsNullOrWhiteSpace(title) ? title : "Case Document";
+                    string docFileName = Path.GetFileName(localCandidatePath);
+                    int qIdx = docFileName.IndexOf('?');
+                    if (qIdx >= 0) docFileName = docFileName.Substring(0, qIdx);
+
+                    _logger.LogWarning("[ViewOrderPdf] Explicit case document '{Title}' ({FileName}) not found in storage vault at {Path}", missingDocTitle, docFileName, localCandidatePath);
+                    return Content(GetDocumentFileNotFoundHtml(missingDocTitle, docFileName, localCandidatePath, targetCnr, caseId, isLabourModule), "text/html; charset=utf-8");
+                }
             }
 
             // 0. Direct NAPIX gateway via ECourtsNapixService (encrypted AES call)
@@ -8442,6 +8462,68 @@ namespace MVCCaseManagement.Controllers
 </html>";
 
             return Content(unavailableHtml, "text/html; charset=utf-8");
+        }
+
+        private static string GetDocumentFileNotFoundHtml(string docTitle, string fileName, string rawPath, string cnr, int? caseId, bool isLabour)
+        {
+            string encodedTitle = System.Net.WebUtility.HtmlEncode(docTitle);
+            string encodedFile = System.Net.WebUtility.HtmlEncode(fileName);
+            string encodedPath = System.Net.WebUtility.HtmlEncode(rawPath);
+            string encodedCnr = System.Net.WebUtility.HtmlEncode(cnr ?? "");
+
+            return $@"<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Document Not Found - {encodedTitle}</title>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'>
+    <link href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css' rel='stylesheet'>
+    <style>
+        body {{ background-color: #0f172a; color: #f8fafc; font-family: 'Public Sans', system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 1.5rem; }}
+        .notice-card {{ background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 2.5rem; max-width: 600px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.3); text-align: center; }}
+        .meta-box {{ background: rgba(15,23,42,0.6); border: 1px solid #334155; border-radius: 10px; padding: 1.1rem; text-align: left; margin: 1.25rem 0; font-size: 0.85rem; }}
+        .meta-box .label {{ color: #94a3b8; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }}
+        .meta-box .val {{ color: #f1f5f9; font-weight: 600; word-break: break-all; margin-top: 2px; }}
+    </style>
+</head>
+<body>
+    <div class='notice-card'>
+        <div class='mb-3'>
+            <i class='bi bi-file-earmark-lock text-warning' style='font-size: 3.5rem;'></i>
+        </div>
+        <h5 class='fw-bold text-white mb-2'>Physical File Not In Storage Vault</h5>
+        <p class='text-secondary small mb-3'>
+            This document is properly recorded in the database, but the physical PDF file was not found in the local file storage vault.
+        </p>
+
+        <div class='meta-box'>
+            <div class='mb-2.5'>
+                <div class='label'>Document Title</div>
+                <div class='val text-info'>{encodedTitle}</div>
+            </div>
+            <div class='mb-2.5'>
+                <div class='label'>Expected File Name</div>
+                <div class='val font-monospace'>{encodedFile}</div>
+            </div>
+            <div class='mb-0'>
+                <div class='label'>Database Stored Path</div>
+                <div class='val text-muted small font-monospace'>{encodedPath}</div>
+            </div>
+        </div>
+
+        <div class='alert alert-secondary text-start p-2.5 small mb-4' style='background: rgba(255,255,255,0.04); border-color: #334155; color: #cbd5e1; font-size: 0.8rem;'>
+            <i class='bi bi-info-circle text-info me-1'></i> <strong>Note:</strong> If you are testing on <code>localhost</code>, documents uploaded on the live server reside on <code>law.itnwkrtc.in</code>. You can view this file directly on the production portal or click <strong>Edit / Reupload</strong> to attach the document to this vault.
+        </div>
+
+        <div class='d-flex justify-content-center gap-2'>
+            <button type='button' onclick='window.parent?.bootstrap?.Modal?.getInstance(window.parent?.document?.getElementById(""ecourtsOrderModal""))?.hide()' class='btn btn-outline-secondary rounded-pill px-4 fw-bold'>
+                <i class='bi bi-x-lg me-1'></i> Close Viewer
+            </button>
+        </div>
+    </div>
+</body>
+</html>";
         }
 
         // POST: /ECourts/UploadOrderPdf

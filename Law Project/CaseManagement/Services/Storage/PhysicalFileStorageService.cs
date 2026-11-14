@@ -176,6 +176,40 @@ namespace MVCCaseManagement.Services.Storage
                         }
                     }
 
+                    // Check common folder spelling and alias variants
+                    if (cleanPath.Contains("judgements", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt1 = Path.Combine(root, cleanPath.Replace("judgements", "judgments", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt1)) return alt1;
+                        string alt1Up = Path.Combine(root, "uploads", cleanPath.Replace("judgements", "judgments", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt1Up)) return alt1Up;
+                    }
+                    else if (cleanPath.Contains("judgments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt2 = Path.Combine(root, cleanPath.Replace("judgments", "judgements", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt2)) return alt2;
+                        string alt2Up = Path.Combine(root, "uploads", cleanPath.Replace("judgments", "judgements", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt2Up)) return alt2Up;
+                    }
+
+                    if (cleanPath.Contains("appeal_docs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt3 = Path.Combine(root, cleanPath.Replace("appeal_docs", "appeals", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt3)) return alt3;
+                    }
+
+                    if (cleanPath.Contains(@"Labour\ClaimPetitions", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt4 = Path.Combine(root, cleanPath.Replace(@"Labour\ClaimPetitions", "claims", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt4)) return alt4;
+                    }
+
+                    if (cleanPath.Contains(@"cases\AdverseJudgments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt5 = Path.Combine(root, cleanPath.Replace(@"cases\AdverseJudgments", "cases", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt5)) return alt5;
+                    }
+
                     // Check flat file in root (e.g., root\file.pdf)
                     if (!string.IsNullOrEmpty(fileName))
                     {
