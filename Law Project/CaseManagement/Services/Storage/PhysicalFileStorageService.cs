@@ -134,19 +134,48 @@ namespace MVCCaseManagement.Services.Storage
             TryAddRoot(_vaultRootPath);
             if (!string.IsNullOrEmpty(_env.ContentRootPath))
             {
+                // Immediate local roots in application folder
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "uploads_vault"));
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "uploads"));
-                TryAddRoot(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
-                TryAddRoot(Path.Combine(_env.ContentRootPath, "..", "uploads"));
+                TryAddRoot(Path.Combine(_env.ContentRootPath, "wwwroot", "uploads"));
+                TryAddRoot(Path.Combine(_env.ContentRootPath, "wwwroot", "uploads_vault"));
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads"));
+
+                // Dynamic parent traversal: Walk up parents to discover main domain folders
+                // Handles: C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in -> C:\inetpub\vhosts\itnwkrtc.in
+                // Handles: C:\inetpub\vhosts\itnwkrtc.in\subdomains\law.itnwkrtc.in -> C:\inetpub\vhosts\itnwkrtc.in
+                try
+                {
+                    var currentDir = new DirectoryInfo(_env.ContentRootPath);
+                    var parent = currentDir.Parent;
+                    int depth = 0;
+                    while (parent != null && depth < 3)
+                    {
+                        TryAddRoot(Path.Combine(parent.FullName, "uploads_vault"));
+                        TryAddRoot(Path.Combine(parent.FullName, "httpdocs", "uploads_vault"));
+                        TryAddRoot(Path.Combine(parent.FullName, "httpdocs", "uploads"));
+                        TryAddRoot(Path.Combine(parent.FullName, "uploads"));
+                        parent = parent.Parent;
+                        depth++;
+                    }
+                }
+                catch { }
             }
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault");
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\httpdocs\uploads_vault");
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads");
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads_vault");
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
-            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
+
+            // Known Plesk IIS absolute hosting paths across drives C:, D:, E:
+            foreach (var drive in new[] { "C", "D", "E" })
+            {
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\httpdocs\uploads_vault");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads");
+                TryAddRoot($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads_vault");
+            }
+
             if (!string.IsNullOrEmpty(_env.WebRootPath))
             {
                 TryAddRoot(Path.Combine(_env.WebRootPath, "uploads"));
@@ -215,6 +244,30 @@ namespace MVCCaseManagement.Services.Storage
                     {
                         string alt5 = Path.Combine(root, cleanPath.Replace(@"cases\AdverseJudgments", "cases", StringComparison.OrdinalIgnoreCase));
                         if (File.Exists(alt5)) return alt5;
+                    }
+
+                    if (cleanPath.Contains("punishments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt6 = Path.Combine(root, cleanPath.Replace("punishments", @"Labour\Punishments", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt6)) return alt6;
+                    }
+
+                    if (cleanPath.Contains("history_sheets", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt7 = Path.Combine(root, cleanPath.Replace("history_sheets", @"Labour\HistorySheets", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt7)) return alt7;
+                    }
+
+                    if (cleanPath.Contains(@"Labour\ReinstatementDocuments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt8 = Path.Combine(root, cleanPath.Replace(@"Labour\ReinstatementDocuments", "Labour", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt8)) return alt8;
+                    }
+
+                    if (cleanPath.Contains(@"Labour\CaseDocuments", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string alt9 = Path.Combine(root, cleanPath.Replace(@"Labour\CaseDocuments", "Labour", StringComparison.OrdinalIgnoreCase));
+                        if (File.Exists(alt9)) return alt9;
                     }
 
                     // Check flat file in root (e.g., root\file.pdf)
@@ -298,12 +351,13 @@ namespace MVCCaseManagement.Services.Storage
                         ? Path.GetFullPath(configuredPath)
                         : Path.GetFullPath(Path.Combine(_env.ContentRootPath ?? Directory.GetCurrentDirectory(), configuredPath));
 
-                    // If configured path exists and contains any items, prefer it immediately
-                    if (Directory.Exists(resolvedConfig) && Directory.EnumerateFileSystemEntries(resolvedConfig).Any())
+                    // If configured path is explicitly set by admin or tests, ensure it exists and prefer it immediately
+                    if (!Directory.Exists(resolvedConfig))
                     {
-                        _logger.LogInformation("Initialized File Vault using populated configured path: {VaultPath}", resolvedConfig);
-                        return resolvedConfig;
+                        Directory.CreateDirectory(resolvedConfig);
                     }
+                    _logger.LogInformation("Initialized File Vault using configured path: {VaultPath}", resolvedConfig);
+                    return resolvedConfig;
                 }
                 catch (Exception ex)
                 {
@@ -311,119 +365,106 @@ namespace MVCCaseManagement.Services.Storage
                 }
             }
 
-            // 2. Plesk domain vault: ContentRootPath\uploads_vault or explicit domain path
-            try
+            // 2. Probing candidate list across Plesk main domain, sibling roots, and local directories
+            var candidateVaults = new List<string>();
+
+            void AddCandidate(string? path)
             {
-                string pleskLawDomainVault = @"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault";
-                if (Directory.Exists(pleskLawDomainVault) && Directory.EnumerateFileSystemEntries(pleskLawDomainVault).Any())
-                {
-                    _logger.LogInformation("Initialized File Vault using populated Plesk law.itnwkrtc.in domain root: {VaultPath}", pleskLawDomainVault);
-                    return pleskLawDomainVault;
-                }
-
-                if (!string.IsNullOrEmpty(_env.ContentRootPath))
-                {
-                    string contentRootVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "uploads_vault"));
-                    if (Directory.Exists(contentRootVault) && Directory.EnumerateFileSystemEntries(contentRootVault).Any())
-                    {
-                        _logger.LogInformation("Initialized File Vault using populated ContentRoot uploads_vault: {VaultPath}", contentRootVault);
-                        return contentRootVault;
-                    }
-
-                    string httpdocsSubVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
-                    if (Directory.Exists(httpdocsSubVault) && Directory.EnumerateFileSystemEntries(httpdocsSubVault).Any())
-                    {
-                        _logger.LogInformation("Initialized File Vault using populated ContentRoot httpdocs uploads_vault: {VaultPath}", httpdocsSubVault);
-                        return httpdocsSubVault;
-                    }
-                }
-            }
-            catch { }
-
-            // 3. Explicit Plesk httpdocs path: C:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault
-            try
-            {
-                string pleskHttpdocsVault = @"C:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault";
-                if (Directory.Exists(pleskHttpdocsVault) && Directory.EnumerateFileSystemEntries(pleskHttpdocsVault).Any())
-                {
-                    _logger.LogInformation("Initialized File Vault using populated Plesk httpdocs root: {VaultPath}", pleskHttpdocsVault);
-                    return pleskHttpdocsVault;
-                }
-            }
-            catch { }
-
-            // 4. Standard Plesk external vault: C:\inetpub\vhosts\itnwkrtc.in\uploads_vault (if populated)
-            try
-            {
-                string pleskCommonVault = @"C:\inetpub\vhosts\itnwkrtc.in\uploads_vault";
-                if (Directory.Exists(pleskCommonVault) && Directory.EnumerateFileSystemEntries(pleskCommonVault).Any())
-                {
-                    _logger.LogInformation("Initialized File Vault using populated Plesk external root: {VaultPath}", pleskCommonVault);
-                    return pleskCommonVault;
-                }
-            }
-            catch { }
-
-            // 5. Sibling directory ../uploads_vault relative to ContentRootPath (if populated)
-            try
-            {
-                if (!string.IsNullOrEmpty(_env.ContentRootPath))
-                {
-                    string siblingVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
-                    if (Directory.Exists(siblingVault) && Directory.EnumerateFileSystemEntries(siblingVault).Any())
-                    {
-                        _logger.LogInformation("Initialized File Vault using populated sibling external root: {VaultPath}", siblingVault);
-                        return siblingVault;
-                    }
-                }
-            }
-            catch { }
-
-            // 6. If none were populated yet, honor configured path if explicitly given
-            if (!string.IsNullOrWhiteSpace(configuredPath))
-            {
+                if (string.IsNullOrWhiteSpace(path)) return;
                 try
                 {
-                    string resolvedConfig = Path.IsPathRooted(configuredPath)
-                        ? Path.GetFullPath(configuredPath)
-                        : Path.GetFullPath(Path.Combine(_env.ContentRootPath ?? Directory.GetCurrentDirectory(), configuredPath));
-
-                    if (!Directory.Exists(resolvedConfig)) Directory.CreateDirectory(resolvedConfig);
-                    _logger.LogInformation("Initialized File Vault using configured path: {VaultPath}", resolvedConfig);
-                    return resolvedConfig;
+                    string full = Path.GetFullPath(path);
+                    if (!candidateVaults.Contains(full, StringComparer.OrdinalIgnoreCase))
+                    {
+                        candidateVaults.Add(full);
+                    }
                 }
                 catch { }
             }
 
-            // 7. Check if ContentRootPath\uploads_vault exists (even if currently empty)
+            // Main domain sibling roots from ContentRootPath
             if (!string.IsNullOrEmpty(_env.ContentRootPath))
             {
-                string httpdocsVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "uploads_vault"));
-                if (Directory.Exists(httpdocsVault))
+                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
+                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "httpdocs", "uploads_vault"));
+                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "httpdocs", "uploads"));
+                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "uploads"));
+
+                // Dynamic parent traversal: Walk up parents to discover main domain folders
+                try
                 {
-                    return httpdocsVault;
+                    var currentDir = new DirectoryInfo(_env.ContentRootPath);
+                    var parent = currentDir.Parent;
+                    int depth = 0;
+                    while (parent != null && depth < 3)
+                    {
+                        AddCandidate(Path.Combine(parent.FullName, "uploads_vault"));
+                        AddCandidate(Path.Combine(parent.FullName, "httpdocs", "uploads_vault"));
+                        AddCandidate(Path.Combine(parent.FullName, "httpdocs", "uploads"));
+                        AddCandidate(Path.Combine(parent.FullName, "uploads"));
+                        parent = parent.Parent;
+                        depth++;
+                    }
                 }
+                catch { }
+
+                // Local subdomain vault
+                AddCandidate(Path.Combine(_env.ContentRootPath, "uploads_vault"));
+                AddCandidate(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
             }
 
-            // 8. Plesk root detection
-            if (Directory.Exists(@"C:\inetpub\vhosts\itnwkrtc.in"))
+            // Known Plesk IIS absolute hosting paths across drives C:, D:, E:
+            foreach (var drive in new[] { "C", "D", "E" })
             {
-                string pleskHttpdocs = @"C:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault";
-                if (Directory.Exists(pleskHttpdocs)) return pleskHttpdocs;
-
-                string pleskCommon = @"C:\inetpub\vhosts\itnwkrtc.in\uploads_vault";
-                if (!Directory.Exists(pleskCommon)) Directory.CreateDirectory(pleskCommon);
-                return pleskCommon;
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads");
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads");
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault");
+                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\httpdocs\uploads_vault");
             }
 
-            // 9. Sibling directory fallback
+            // Pass 1: Select first candidate that exists and is populated with files or directories
+            foreach (var candidate in candidateVaults)
+            {
+                try
+                {
+                    if (Directory.Exists(candidate) && Directory.EnumerateFileSystemEntries(candidate).Any())
+                    {
+                        _logger.LogInformation("Initialized File Vault using populated vault: {VaultPath}", candidate);
+                        return candidate;
+                    }
+                }
+                catch { }
+            }
+
+            // Pass 2: Select first candidate that exists on disk (even if empty, preferring main domain root)
+            foreach (var candidate in candidateVaults)
+            {
+                try
+                {
+                    if (Directory.Exists(candidate))
+                    {
+                        _logger.LogInformation("Initialized File Vault using existing vault directory: {VaultPath}", candidate);
+                        return candidate;
+                    }
+                }
+                catch { }
+            }
+
+            // Pass 3: Create primary main domain sibling vault if parent is accessible, or local fallback
             try
             {
                 if (!string.IsNullOrEmpty(_env.ContentRootPath))
                 {
                     string siblingVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
-                    if (!Directory.Exists(siblingVault)) Directory.CreateDirectory(siblingVault);
-                    return siblingVault;
+                    string? parentDir = Path.GetDirectoryName(siblingVault);
+                    if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
+                    {
+                        if (!Directory.Exists(siblingVault)) Directory.CreateDirectory(siblingVault);
+                        _logger.LogInformation("Created and initialized File Vault in main domain sibling root: {VaultPath}", siblingVault);
+                        return siblingVault;
+                    }
                 }
             }
             catch { }
