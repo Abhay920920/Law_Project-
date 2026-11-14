@@ -171,7 +171,7 @@
                         <i class="bi bi-shield-check me-2"></i> Action
                     </a>
                 }
-                else
+                else if (!isServiceMatter)
                 {
                     <!-- Central Office Action -->
                     <a href="@Url.Action("Action", "Labour", new { id = targetActionId })" class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center">
@@ -180,11 +180,11 @@
                 }
             }
 
-            @if (Model.CaseType == "Service Matter")
+            @if (isServiceMatter)
             {
                 if (ViewBag.CanEdit == true && ViewBag.IsCentralOffice == true && !User.IsInRole("CLO") && !User.IsInRole("Dy CLO") && !User.IsInRole("DyCLO") && !User.IsInRole("LO") && !User.IsInRole("MD"))
                 {
-                    <a href="@Url.Action("ManageServiceMatter", "Labour", new { id = Model.ServiceID ?? Model.CaseID })" class="btn btn-outline-warning shadow-sm rounded-pill px-3 py-2 fw-bold d-inline-flex align-items-center">
+                    <a href="@Url.Action("ManageServiceMatter", "Labour", new { id = Model.ServiceID ?? Model.CaseID })" class="btn btn-warning shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center">
                         <i class="bi bi-pencil-square me-2"></i> Update / Manage Service Matter
                     </a>
                 }
