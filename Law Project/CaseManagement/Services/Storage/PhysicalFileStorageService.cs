@@ -130,14 +130,21 @@ namespace MVCCaseManagement.Services.Storage
                 catch { }
             }
 
-            // Priority roots
+            // Priority roots across hosting environments (Plesk IIS, local dev, published root)
             TryAddRoot(_vaultRootPath);
             if (!string.IsNullOrEmpty(_env.ContentRootPath))
             {
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "uploads_vault"));
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "uploads"));
                 TryAddRoot(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
+                TryAddRoot(Path.Combine(_env.ContentRootPath, "..", "uploads"));
+                TryAddRoot(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
+                TryAddRoot(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads"));
             }
+            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault");
+            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\httpdocs\uploads_vault");
+            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads");
+            TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\wwwroot\uploads_vault");
             TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
             TryAddRoot(@"C:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
             if (!string.IsNullOrEmpty(_env.WebRootPath))
@@ -304,16 +311,30 @@ namespace MVCCaseManagement.Services.Storage
                 }
             }
 
-            // 2. Plesk httpdocs vault: ContentRootPath\uploads_vault (as uploaded via Plesk File Manager in httpdocs)
+            // 2. Plesk domain vault: ContentRootPath\uploads_vault or explicit domain path
             try
             {
+                string pleskLawDomainVault = @"C:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault";
+                if (Directory.Exists(pleskLawDomainVault) && Directory.EnumerateFileSystemEntries(pleskLawDomainVault).Any())
+                {
+                    _logger.LogInformation("Initialized File Vault using populated Plesk law.itnwkrtc.in domain root: {VaultPath}", pleskLawDomainVault);
+                    return pleskLawDomainVault;
+                }
+
                 if (!string.IsNullOrEmpty(_env.ContentRootPath))
                 {
-                    string httpdocsVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "uploads_vault"));
-                    if (Directory.Exists(httpdocsVault) && Directory.EnumerateFileSystemEntries(httpdocsVault).Any())
+                    string contentRootVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "uploads_vault"));
+                    if (Directory.Exists(contentRootVault) && Directory.EnumerateFileSystemEntries(contentRootVault).Any())
                     {
-                        _logger.LogInformation("Initialized File Vault using populated ContentRoot uploads_vault: {VaultPath}", httpdocsVault);
-                        return httpdocsVault;
+                        _logger.LogInformation("Initialized File Vault using populated ContentRoot uploads_vault: {VaultPath}", contentRootVault);
+                        return contentRootVault;
+                    }
+
+                    string httpdocsSubVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
+                    if (Directory.Exists(httpdocsSubVault) && Directory.EnumerateFileSystemEntries(httpdocsSubVault).Any())
+                    {
+                        _logger.LogInformation("Initialized File Vault using populated ContentRoot httpdocs uploads_vault: {VaultPath}", httpdocsSubVault);
+                        return httpdocsSubVault;
                     }
                 }
             }
