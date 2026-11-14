@@ -1001,5 +1001,55 @@ namespace MVCCaseManagement.DAL
                 }
             }
         }
+
+        public bool UpdateCNR(int caseId, string? cnrNumber, string? estCode = null, int? modifiedBy = null)
+        {
+            string sql = @"
+                UPDATE OTHER_CASES
+                SET CNRNumber = @CNRNumber,
+                    EstCode = COALESCE(@EstCode, EstCode),
+                    ModifiedBy = COALESCE(@ModifiedBy, ModifiedBy),
+                    ModifiedDate = GETDATE()
+                WHERE CaseID = @CaseID;";
+
+            var parameters = new[]
+            {
+                new SqlParameter("@CaseID", caseId),
+                new SqlParameter("@CNRNumber", (object?)cnrNumber ?? DBNull.Value),
+                new SqlParameter("@EstCode", (object?)estCode ?? DBNull.Value),
+                new SqlParameter("@ModifiedBy", (object?)modifiedBy ?? DBNull.Value)
+            };
+
+            return _db.ExecuteNonQuery(sql, parameters) > 0;
+        }
+
+        public bool UpdateDocumentPath(int caseId, string docKey, string? newPath, int? modifiedBy = null)
+        {
+            string targetColumn = docKey switch
+            {
+                "InterimOrder" or "InterimOrderFilePath" => "InterimOrderFilePath",
+                "FinalJudgment" or "FinalJudgmentFilePath" => "FinalJudgmentFilePath",
+                "AppealJudgment" or "AppealJudgmentCopy" or "AppealJudgmentCopyPath" => "AppealJudgmentCopyPath",
+                _ => ""
+            };
+
+            if (string.IsNullOrEmpty(targetColumn)) return false;
+
+            string sql = $@"
+                UPDATE OTHER_CASES
+                SET {targetColumn} = @NewPath,
+                    ModifiedBy = COALESCE(@ModifiedBy, ModifiedBy),
+                    ModifiedDate = GETDATE()
+                WHERE CaseID = @CaseID;";
+
+            var parameters = new[]
+            {
+                new SqlParameter("@CaseID", caseId),
+                new SqlParameter("@NewPath", (object?)newPath ?? DBNull.Value),
+                new SqlParameter("@ModifiedBy", (object?)modifiedBy ?? DBNull.Value)
+            };
+
+            return _db.ExecuteNonQuery(sql, parameters) > 0;
+        }
     }
 }

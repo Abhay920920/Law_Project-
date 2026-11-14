@@ -1,4 +1,7 @@
 @model MVCCaseManagement.Models.OtherCourtsCase
+@inject MVCCaseManagement.DAL.IMasterRepository MasterRepo
+@inject MVCCaseManagement.Services.Storage.IFileStorageService FileStorage
+
 @{
     Layout = "~/Views/Shared/_OtherCourtsLayout.cshtml";
     string courtName = Model.CaseType switch {
@@ -8,749 +11,1779 @@
         "LAC" => "Land Acquisition Case",
         "OS" => (Model.LitigantType == "Corporation" ? "O.S (Corporation Filed)" : "O.S (Claimant Filed)"),
         "ECA" => "ECA Case",
-        _ => Model.CaseType
+        _ => Model.CaseType ?? "Other Courts"
     };
-    ViewData["Title"] = $"{courtName} Details - {Model.CaseNumber}";
+
+    ViewData["Title"] = $"{courtName} Details - {(string.IsNullOrEmpty(Model.CaseNumber) ? "Pending" : Model.CaseNumber)}";
     ViewBag.ActiveCourt = Model.CaseType;
     ViewBag.LitigantType = Model.LitigantType;
+
+    string displayCaseNo = !string.IsNullOrWhiteSpace(Model.CaseNumber) ? Model.CaseNumber : "N/A";
+    int? displayCaseYear = Model.CaseYear.HasValue && Model.CaseYear > 0 ? Model.CaseYear : null;
+
+    string printDivisionName = !string.IsNullOrWhiteSpace(Model.DivisionName)
+        ? Model.DivisionName
+        : (Model.DivisionID == 0 || Model.DivisionID == 5 
+            ? "Central Office" 
+            : (MasterRepo.GetAllDivisions().FirstOrDefault(d => d.DivisionID == Model.DivisionID)?.DivisionNameEnglish ?? "Central Office"));
+
+    bool isDisposed = Model.DisposalStatus == "DISPOSED" || Model.DisposalStatus == "DNP" || Model.DisposalStatus == "Decreed" || Model.ClosureDate.HasValue;
+    bool isFavor = string.Equals(Model.Result, "FAVOR", StringComparison.OrdinalIgnoreCase);
+    bool isAgainst = string.Equals(Model.Result, "AGAINST", StringComparison.OrdinalIgnoreCase);
+
+    var caseOrdersList = ViewBag.CaseOrders as List<(string Cnr, DateTime? OrderDate, string OrderType, string? LocalPdfPath, string? ExternalUrl)>;
 }
 
-<div class="container-fluid fade-in">
-    <!-- Header Section -->
-    <div class="glass-header shadow-sm mb-4 d-print-none">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <div class="d-flex align-items-center gap-2 mb-1">
-                    <span class="badge bg-primary text-white rounded-pill px-3 py-1 fw-bold" style="font-size: 0.75rem;">@Model.CaseType</span>
-                    <h4 class="fw-bold text-dark mb-0">
-                        @(string.IsNullOrEmpty(Model.CaseNumber) ? "Case No. Not Filed" : $"{Model.CaseNumber} / {Model.CaseYear}")
-                    </h4>
-                </div>
-                <p class="text-secondary small mb-0">
-                    <strong>@courtName</strong> | @Model.Court | Registered: @Model.CreatedDate.ToString("dd-MM-yyyy")
-                </p>
-            </div>
-            <div class="d-flex gap-2 align-items-center">
-                @{
-                    var otherDivId = User.FindFirst("DivisionID")?.Value;
-                    bool isOtherAICentral = otherDivId == "0" || otherDivId == "5";
-                    bool isOtherAIRole = User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("CLO") || User.IsInRole("MD");
-                }
-                @if (isOtherAICentral && isOtherAIRole)
+<!-- ======================================================= -->
+<!-- 1. OFFICIAL LEGAL CASE DOSSIER PRINT VIEW (PRINT-ONLY) -->
+<!-- ======================================================= -->
+<div id="print-view" class="d-none d-print-block" style="font-family: 'Times New Roman', serif; font-size: 11pt;">
+    <div class="text-center mb-3 fw-bold">
+        <h5 class="mb-0 text-uppercase">@(OrgService.GetCurrentSettings().OrganizationNameEnglish.ToUpper())</h5>
+        <h6 class="mb-0 text-uppercase">@(printDivisionName.ToUpper()) DIVISION, @(printDivisionName.ToUpper()) (LAW SECTION)</h6>
+        <div class="mt-1 small"><u>OFFICIAL CASE DOSSIER &amp; PROCEEDINGS REPORT: @courtName.ToUpper()</u></div>
+        <hr class="mt-2 mb-3" style="border-top: 2px solid #000;" />
+    </div>
+
+    <table class="table table-bordered border-dark print-table" style="font-size: 10.5pt;">
+        <tbody>
+            <tr><td style="width: 6%;"><strong>1</strong></td><td style="width: 44%;">Name of the Division</td><td style="width: 50%;">@printDivisionName</td></tr>
+            <tr><td><strong>2</strong></td><td>Case Category &amp; Nature</td><td>@courtName — @(string.IsNullOrEmpty(Model.CaseNature) ? "Standard Civil / Special Suit" : Model.CaseNature)</td></tr>
+            <tr><td><strong>3</strong></td><td>Case Number &amp; Year</td><td>@(Model.CaseType) No. @displayCaseNo / @(displayCaseYear?.ToString() ?? "N/A")</td></tr>
+            @if (!string.IsNullOrEmpty(Model.CNRNumber))
+            {
+                <tr class="table-light"><td><strong>3a</strong></td><td>e-Courts 16-Digit Alphanumeric CNR</td><td class="font-monospace fw-bold">@Model.CNRNumber</td></tr>
+            }
+            <tr><td><strong>4</strong></td><td>Court Name &amp; Bench</td><td>@(string.IsNullOrEmpty(Model.Court) ? "District / Civil Court" : Model.Court)</td></tr>
+            <tr><td><strong>5</strong></td><td>Litigant Status / Suit Type</td><td>@(Model.LitigantType == "Corporation" ? "Corporation is Plaintiff / Petitioner" : "Corporation is Defendant / Respondent")</td></tr>
+            <tr><td><strong>6</strong></td><td>Date of Incident / Accident (if any)</td><td>@(Model.DateOfAccident?.ToString("dd-MM-yyyy") ?? "N/A")</td></tr>
+            <tr><td><strong>7</strong></td><td>Vehicle Involved &amp; Details</td><td>@(Model.IsVehicleInvolved == "yes" ? $"Yes — Vehicle No: {Model.VehicleNumber} ({Model.VehicleType})" : "No Vehicle Involved")</td></tr>
+            <tr>
+                <td><strong>8</strong></td>
+                <td>Petitioner(s) / Claimant(s)</td>
+                <td>
+                    @if (Model.Petitioners != null && Model.Petitioners.Any())
+                    {
+                        @for (int i = 0; i < Model.Petitioners.Count; i++)
+                        {
+                            <div>@(i + 1)) @Model.Petitioners[i].Name @(!string.IsNullOrEmpty(Model.Petitioners[i].Remark) ? $"({Model.Petitioners[i].Remark})" : "")</div>
+                        }
+                    }
+                    else
+                    {
+                        <div>@(string.IsNullOrEmpty(Model.PetitionerName) ? (Model.LitigantType == "Corporation" ? OrgService.GetCurrentSettings().OrganizationNameEnglish : "Claimant") : Model.PetitionerName)</div>
+                    }
+                </td>
+            </tr>
+            <tr>
+                <td><strong>9</strong></td>
+                <td>Respondent(s) / Defendant(s)</td>
+                <td>
+                    @if (Model.Respondents != null && Model.Respondents.Any())
+                    {
+                        @for (int i = 0; i < Model.Respondents.Count; i++)
+                        {
+                            <div>@(i + 1)) @Model.Respondents[i].Name @(!string.IsNullOrEmpty(Model.Respondents[i].Remark) ? $"({Model.Respondents[i].Remark})" : "")</div>
+                        }
+                    }
+                    else
+                    {
+                        <div>@(string.IsNullOrEmpty(Model.RespondentName) ? (Model.LitigantType == "Corporation" ? "Opposite Party" : OrgService.GetCurrentSettings().OrganizationNameEnglish) : Model.RespondentName)</div>
+                    }
+                </td>
+            </tr>
+            <tr><td><strong>10</strong></td><td>Total Claim Amount / Valuation</td><td>@(Model.ClaimAmount.HasValue ? $"Rs. {Model.ClaimAmount.Value:N2}" : "As per Plaint / N/A")</td></tr>
+            <tr><td><strong>11</strong></td><td>Relief Sought / Manner of Incident</td><td><div class="white-space-pre-line">@(!string.IsNullOrEmpty(Model.ClaimDetails) ? Model.ClaimDetails : (!string.IsNullOrEmpty(Model.MannerOfIncident) ? Model.MannerOfIncident : "Refer Case File Records"))</div></td></tr>
+            <tr><td><strong>12</strong></td><td>Whether Document / Records Sent</td><td>@(Model.DocumentSent == "Yes" ? $"YES (No: {Model.InitialOutwardNumber ?? "-"}; Dt: {Model.InitialOutwardDate?.ToString("dd-MM-yyyy") ?? "-"})" : "NO")</td></tr>
+            <tr><td><strong>13</strong></td><td>Whether Written Statement / Objections Filed</td><td>@(Model.IsObjectionFiled == "Yes" || Model.ObjectionVerified == "Yes" ? $"YES (No: {Model.ObjectionOutwardNumber ?? "-"}; Dt: {Model.ObjectionFiledDate?.ToString("dd-MM-yyyy") ?? "-"})" : "NO / PENDING")</td></tr>
+            <tr><td><strong>14</strong></td><td>Interim Order / Injunction Granted</td><td>@(Model.InterimOrder == "Yes" ? "YES — Interim Order in Force" : "NO")</td></tr>
+            <tr><td><strong>15</strong></td><td>Witnesses / Evidence by Corporation</td><td>@(Model.CorpEvidence != null && Model.CorpEvidence.Any() ? string.Join("; ", Model.CorpEvidence.Select(e => $"{e.Name} ({e.Designation})")) : (Model.EvidenceFiled == "Yes" ? "YES" : "NO"))</td></tr>
+            <tr><td><strong>16</strong></td><td>Opposite Party Evidence Recorded</td><td>@(Model.RespondentEvidence != null && Model.RespondentEvidence.Any() ? string.Join("; ", Model.RespondentEvidence.Select(e => e.Name)) : "N/A")</td></tr>
+            <tr><td><strong>17</strong></td><td>Assigned Advocate for Corporation</td><td>@(string.IsNullOrEmpty(Model.AdvocateName) ? "Not Assigned" : $"{Model.AdvocateName} (Entrustment: {Model.EntrustmentNumber ?? "N/A"}; Dt: {Model.EntrustmentDate?.ToString("dd-MM-yyyy") ?? "N/A"})")</td></tr>
+            <tr><td><strong>18</strong></td><td>Current Case Stage / Trial Status</td><td>@(string.IsNullOrEmpty(Model.CaseStage) ? (Model.CaseStatus ?? "Active Trial") : Model.CaseStage)</td></tr>
+            <tr><td><strong>19</strong></td><td>Judicial Finding / Final Outcome</td><td>@(isDisposed ? $"{Model.DisposalStatus} — Result: {Model.Result ?? "N/A"}" : "PENDING")</td></tr>
+            <tr><td><strong>20</strong></td><td>Date of Final Order / Decree</td><td>@(Model.ClosureDate?.ToString("dd-MM-yyyy") ?? "N/A")</td></tr>
+            <tr><td><strong>21</strong></td><td>Award / Decree Summary</td><td><div class="white-space-pre-line">@(!string.IsNullOrEmpty(Model.AwardDetails) ? Model.AwardDetails : (!string.IsNullOrEmpty(Model.ClosureRemark) ? Model.ClosureRemark : "N/A"))</div></td></tr>
+            <tr><td><strong>22</strong></td><td>Certified Copy (CC) Received Details</td><td>Applied: @(Model.CopyAppliedOn?.ToString("dd-MM-yyyy") ?? "—"); Ready: @(Model.CopyReadyOn?.ToString("dd-MM-yyyy") ?? "—"); Received at Div: @(Model.CopyReceivedAtDivision?.ToString("dd-MM-yyyy") ?? "—")</td></tr>
+            <tr><td><strong>23</strong></td><td>Opinion of Advocate</td><td><div class="white-space-pre-line">@(Model.AdvocateOpinion ?? "N/A")</div></td></tr>
+            <tr><td><strong>24</strong></td><td>Opinion of Law Officer &amp; DC Decision</td><td><div class="white-space-pre-line">LO: @(Model.LawOfficerOpinion ?? "N/A") | DC: @(Model.DCFinalDecision ?? "N/A")</div></td></tr>
+            <tr><td><strong>25</strong></td><td>Appeal Details (if filed in Higher Court)</td><td>@(string.IsNullOrEmpty(Model.AppealNumber) ? "No Appeal Recorded" : $"Appeal No: {Model.AppealNumber}/{Model.AppealYear}; Court: {Model.CourtAppellateAuth}; Advocate: {Model.AppealAdvocateName}; Status: {Model.AppealForwardingStatus}")</td></tr>
+        </tbody>
+    </table>
+
+    <div class="row mt-4 pt-4 print-sig-block">
+        <div class="col-6 text-center">
+            <p class="fw-bold mb-0">Law Officer</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @printDivisionName Division</p>
+        </div>
+        <div class="col-6 text-center">
+            <p class="fw-bold mb-0">Divisional Controller</p>
+            <p class="small">@(OrgService.GetCurrentSettings().OrganizationShortName), @printDivisionName Division</p>
+        </div>
+    </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- 2. INTERACTIVE SCREEN DOSSIER VIEW (DISPLAY-ONLY)         -->
+<!-- ======================================================== -->
+<div class="container-fluid py-3 py-md-4 fade-in details-page-container d-print-none">
+
+    <!-- Top Action Header & Breadcrumbs -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-3 mb-md-4 d-print-none details-page-header">
+        <div>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb mb-1">
+                    <li class="breadcrumb-item"><a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = Model.CaseType, litigantType = Model.LitigantType })" class="text-decoration-none small text-muted">Other Courts</a></li>
+                    <li class="breadcrumb-item"><span class="small text-muted">@courtName</span></li>
+                    <li class="breadcrumb-item active small">Case Details</li>
+                </ol>
+            </nav>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h2 class="fw-bold text-primary mb-0 details-case-title">
+                    <i class="bi bi-file-earmark-text me-2"></i>@displayCaseNo / @(displayCaseYear?.ToString() ?? "-")
+                    <span class="fs-6 fw-normal text-muted ms-1">(@courtName)</span>
+                </h2>
+                @if (isDisposed)
                 {
-                    <a href="/NyayaPatha?caseType=OtherCourts&caseId=@Model.CaseID" class="btn btn-outline-primary rounded-pill px-3 shadow-sm fw-semibold" title="Analyze with Nyaya Patha AI">
-                        <i class="bi bi-robot me-1 text-primary"></i> Nyaya Patha AI
-                    </a>
+                    <span class="badge @(isFavor ? "bg-success" : (isAgainst ? "bg-danger" : "bg-primary")) px-2.5 py-1 fs-6 rounded-pill shadow-xs">
+                        <i class="bi @(isFavor ? "bi-check-circle" : "bi-exclamation-octagon") me-1"></i>@(Model.Result ?? Model.DisposalStatus ?? "Disposed")
+                    </span>
                 }
-                <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = Model.CaseID })" class="btn btn-warning rounded-pill px-4 shadow-sm fw-bold">
-                    <i class="bi bi-pencil-square me-1"></i> Edit Case
+                else
+                {
+                    <span class="badge bg-warning text-dark px-2.5 py-1 fs-6 rounded-pill shadow-xs">
+                        <i class="bi bi-clock-history me-1"></i>@(string.IsNullOrEmpty(Model.CaseStatus) ? "Active Trial" : Model.CaseStatus)
+                    </span>
+                }
+                <span class="badge @(Model.LitigantType == "Corporation" ? "bg-info text-white" : "bg-secondary text-white") px-2.5 py-1 fs-6 rounded-pill shadow-xs">
+                    <i class="bi bi-shield-shaded me-1"></i>@(Model.LitigantType == "Corporation" ? "Corp. Plaintiff" : "Claimant Plaintiff")
+                </span>
+                @if (!string.IsNullOrEmpty(Model.CNRNumber))
+                {
+                    <span class="badge bg-light text-dark border font-monospace fs-6 px-2.5 py-1 rounded-pill shadow-xs">
+                        <i class="bi bi-broadcast text-primary me-1"></i>@Model.CNRNumber
+                    </span>
+                }
+            </div>
+            <small class="text-muted d-block mt-1">
+                Division: <strong class="text-dark">@printDivisionName</strong> &nbsp;|&nbsp;
+                Court: <strong class="text-dark">@(string.IsNullOrEmpty(Model.Court) ? "Not Specified" : Model.Court)</strong> &nbsp;|&nbsp;
+                Registered: <span class="text-dark">@Model.CreatedDate.ToString("dd-MM-yyyy")</span>
+            </small>
+        </div>
+
+        <!-- Action Header Buttons -->
+        <div class="d-flex align-items-center flex-wrap gap-2 w-100 w-md-auto details-header-actions">
+            @{
+                var otherDivId = User.FindFirst("DivisionID")?.Value;
+                bool isOtherAICentral = otherDivId == "0" || otherDivId == "5";
+                bool isOtherAIRole = User.IsInRole("Dy CLO") || User.IsInRole("DyCLO") || User.IsInRole("CLO") || User.IsInRole("MD");
+            }
+            @if (isOtherAICentral && isOtherAIRole)
+            {
+                <a href="/NyayaPatha?caseType=OtherCourts&caseId=@Model.CaseID" class="btn btn-outline-primary shadow-sm rounded-pill px-3 py-2 fw-semibold d-inline-flex align-items-center" title="Analyze with Nyaya Patha AI">
+                    <i class="bi bi-robot me-1.5 text-primary"></i> Nyaya Patha AI
                 </a>
-                <button onclick="window.print()" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm">
-                    <i class="bi bi-printer me-1"></i> Print Dossier
-                </button>
-                <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = Model.CaseType, litigantType = Model.LitigantType })" class="btn btn-light rounded-pill px-3 shadow-sm border">
-                    <i class="bi bi-arrow-left me-1"></i> Back to Registry
+            }
+            @if (ViewBag.CanEdit == true)
+            {
+                <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = Model.CaseID })" class="btn btn-primary shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center">
+                    <i class="bi bi-pencil-square me-2"></i> Edit Case
                 </a>
+            }
+            <button type="button" class="btn btn-outline-primary shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center" data-bs-toggle="modal" data-bs-target="#otherCourtsFullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-general-nav')).show(); }, 150);">
+                <i class="bi bi-info-circle me-2"></i> View More Details
+            </button>
+            <button onclick="window.print()" class="btn btn-outline-secondary shadow-sm rounded-pill px-4 py-2 fw-bold d-inline-flex align-items-center" title="Print Official Case Dossier">
+                <i class="bi bi-printer me-2"></i> Print Dossier
+            </button>
+            <a href="@Url.Action("OtherCourtsCaseList", "Home", new { activeCourt = Model.CaseType, litigantType = Model.LitigantType })" class="btn btn-light shadow-sm rounded-pill px-3 py-2 fw-semibold border d-inline-flex align-items-center">
+                <i class="bi bi-arrow-left me-1.5"></i> Back to Registry
+            </a>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 3. THE 4 EXECUTIVE SUMMARY KPI CARDS                      -->
+    <!-- ======================================================== -->
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-2 g-md-3 mb-4 summary-cards-row">
+
+        <!-- Card 1: Basic & Incident Info -->
+        <div class="col">
+            <div class="card border-0 shadow-sm h-100 bg-primary text-white rounded-3 overflow-hidden position-relative">
+                <div class="card-body p-3 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-white text-opacity-75 text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:0.5px;">Basic &amp; Incident Info</span>
+                            <i class="bi bi-info-circle-fill text-white text-opacity-75 fs-5"></i>
+                        </div>
+                        <div class="fs-6 fw-bold mb-1 text-truncate" title="@Model.Court">
+                            @(string.IsNullOrEmpty(Model.Court) ? "Court Not Specified" : Model.Court)
+                        </div>
+                        <div class="small fw-semibold text-white text-opacity-90">
+                            Nature: <span class="badge bg-white text-primary fw-bold">@(string.IsNullOrEmpty(Model.CaseNature) ? "Civil Suit" : Model.CaseNature)</span>
+                        </div>
+                        @if (Model.DateOfAccident.HasValue)
+                        {
+                            <div class="extra-small text-white text-opacity-75 mt-1">
+                                <i class="bi bi-calendar2-event me-1"></i>Incident: @Model.DateOfAccident.Value.ToString("dd-MM-yyyy")
+                            </div>
+                        }
+                        @if (Model.IsVehicleInvolved == "yes")
+                        {
+                            <div class="extra-small text-white text-opacity-90 mt-1">
+                                <i class="bi bi-truck me-1"></i>Vehicle: <span class="badge bg-dark text-white font-monospace">@(string.IsNullOrEmpty(Model.VehicleNumber) ? "Yes" : Model.VehicleNumber)</span>
+                            </div>
+                        }
+                    </div>
+                    @if (Model.ClaimAmount.HasValue && Model.ClaimAmount > 0)
+                    {
+                        <div class="extra-small text-white text-opacity-90 border-top border-white border-opacity-25 pt-1 mt-2">
+                            Valuation / Claim: <strong>₹ @Model.ClaimAmount.Value.ToString("N2")</strong>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Outcome & Judicial Award -->
+        <div class="col">
+            @{
+                string outcomeBgClass = isAgainst ? "bg-danger text-white" : (isFavor ? "bg-success text-white" : "bg-warning text-dark");
+            }
+            <div class="card border-0 shadow-sm h-100 @outcomeBgClass rounded-3 overflow-hidden position-relative">
+                <div class="card-body p-3 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="@(isAgainst || isFavor ? "text-white text-opacity-75" : "text-dark text-opacity-75") text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:0.5px;">Judicial Outcome &amp; Award</span>
+                            <i class="bi @(isAgainst ? "bi-exclamation-octagon-fill text-white" : (isFavor ? "bi-award-fill text-white" : "bi-hourglass-split text-dark")) fs-5"></i>
+                        </div>
+                        <div class="fs-5 fw-bold mb-1">
+                            @(isDisposed ? (Model.Result ?? Model.DisposalStatus ?? "Disposed") : (Model.CaseStatus ?? "Trial Active"))
+                        </div>
+                        @if (isDisposed)
+                        {
+                            <div class="small fw-semibold @(isAgainst || isFavor ? "text-white text-opacity-90" : "text-dark text-opacity-90")">
+                                Decree: <span class="badge @(isAgainst || isFavor ? "bg-white text-dark" : "bg-dark text-white") fw-bold">@(Model.DisposalStatus ?? "CLOSED")</span>
+                            </div>
+                            @if (Model.ClosureDate.HasValue)
+                            {
+                                <div class="extra-small @(isAgainst || isFavor ? "text-white text-opacity-75" : "text-dark text-opacity-75") mt-1">
+                                    <i class="bi bi-calendar-check me-1"></i>Date: @Model.ClosureDate.Value.ToString("dd-MM-yyyy")
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="small fw-semibold text-dark text-opacity-90">
+                                Stage: <span class="badge bg-dark text-white">@(string.IsNullOrEmpty(Model.CaseStage) ? "Trial Stage" : Model.CaseStage)</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-1 mt-2 pt-1 border-top @(isAgainst || isFavor ? "border-white border-opacity-25" : "border-dark border-opacity-25")">
+                        @if (!string.IsNullOrEmpty(Model.FinalJudgmentFilePath))
+                        {
+                            <button type="button" onclick="openOrderInModal('@Model.FinalJudgmentFilePath', 'Final Judgment Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-sm btn-light fw-bold rounded-pill px-2.5 py-0 shadow-xs" style="font-size: 0.75rem;" title="View Final Judgment Copy">
+                                <i class="bi bi-file-earmark-pdf me-1"></i>View Judgment
+                            </button>
+                        }
+                        <button type="button" class="btn btn-sm @(isAgainst || isFavor ? "btn-light text-dark" : "btn-dark text-white") fw-semibold px-2 py-0 rounded-pill shadow-xs" data-bs-toggle="modal" data-bs-target="#otherCourtsFullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-cc-nav')).show(); }, 150);" style="font-size: 0.75rem;">
+                            <i class="bi bi-journal-text me-1"></i>CC Details
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Division & Legal Action -->
+        <div class="col">
+            <div class="card border-0 shadow-sm h-100 bg-light text-dark border rounded-3 overflow-hidden position-relative">
+                <div class="card-body p-3 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="text-secondary text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:0.5px;">Division &amp; Legal Action</span>
+                            <i class="bi bi-building-check text-primary fs-5"></i>
+                        </div>
+                        <div class="fs-6 fw-bold mb-1 text-truncate">
+                            @(string.IsNullOrEmpty(Model.AdvocateName) ? "Advocate Pending" : Model.AdvocateName)
+                        </div>
+                        <div class="small fw-semibold text-muted">
+                            Objection: <span class="badge @(Model.IsObjectionFiled == "Yes" || Model.ObjectionVerified == "Yes" ? "bg-success-subtle text-success border border-success-subtle" : "bg-secondary-subtle text-dark border")">@(Model.IsObjectionFiled == "Yes" || Model.ObjectionVerified == "Yes" ? "Filed" : "Pending")</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(Model.FinalForwardingStatus))
+                        {
+                            <div class="extra-small text-muted mt-1">
+                                Forwarding: <span class="badge bg-secondary-subtle text-secondary border">@Model.FinalForwardingStatus</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-secondary-subtle">
+                        <span class="extra-small text-truncate text-muted" style="max-width: 75%;">
+                            @(string.IsNullOrEmpty(Model.OutwardNumber) ? "Legal section file" : $"Outward: {Model.OutwardNumber}")
+                        </span>
+                        <button type="button" class="btn btn-link p-0 text-primary text-decoration-none extra-small fw-bold" data-bs-toggle="modal" data-bs-target="#otherCourtsFullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-opinions-nav')).show(); }, 150);" title="View Legal Opinions">
+                            Opinions <i class="bi bi-arrow-right-short"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 4: Higher Court & Appeals -->
+        <div class="col">
+            @{
+                bool hasAppeal = !string.IsNullOrEmpty(Model.AppealNumber);
+            }
+            <div class="card border-0 shadow-sm h-100 @(hasAppeal ? "bg-info text-white" : "bg-light text-dark border") rounded-3 overflow-hidden position-relative">
+                <div class="card-body p-3 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="@(hasAppeal ? "text-white text-opacity-75" : "text-secondary") text-uppercase fw-bold" style="font-size:0.7rem; letter-spacing:0.5px;">Higher Court &amp; Appeal</span>
+                            <i class="bi bi-bank @(hasAppeal ? "text-white text-opacity-75" : "text-secondary") fs-5"></i>
+                        </div>
+                        <div class="fs-6 fw-bold mb-1 text-truncate">
+                            @(hasAppeal ? $"Appeal {Model.AppealNumber} / {Model.AppealYear}" : "No Appeal Filed")
+                        </div>
+                        <div class="small fw-semibold @(hasAppeal ? "text-white text-opacity-90" : "text-muted")">
+                            Status: <span class="badge @(hasAppeal ? "bg-white text-info" : "bg-secondary-subtle text-secondary border") fw-bold">@(hasAppeal ? (Model.AppealForwardingStatus ?? "Appeal Active") : "Lower Court Only")</span>
+                        </div>
+                        @if (hasAppeal && !string.IsNullOrEmpty(Model.CourtAppellateAuth))
+                        {
+                            <div class="extra-small @(hasAppeal ? "text-white text-opacity-75" : "text-muted") mt-1 text-truncate">
+                                <i class="bi bi-geo-alt me-1"></i>@Model.CourtAppellateAuth
+                            </div>
+                        }
+                    </div>
+
+                    @if (hasAppeal)
+                    {
+                        <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top border-white border-opacity-25">
+                            @if (!string.IsNullOrEmpty(Model.AppealJudgmentCopyPath))
+                            {
+                                <button type="button" onclick="openOrderInModal('@Model.AppealJudgmentCopyPath', 'Appeal Judgment Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-sm btn-light text-info fw-bold rounded-pill px-2 py-0 shadow-xs" style="font-size: 0.75rem;">
+                                    <i class="bi bi-file-earmark-pdf me-1"></i>Appeal Copy
+                                </button>
+                            }
+                            <button type="button" class="btn btn-link p-0 text-white text-decoration-none extra-small fw-bold ms-auto" data-bs-toggle="modal" data-bs-target="#otherCourtsFullDetailsModal" onclick="setTimeout(function(){ bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-appeal-nav')).show(); }, 150);" title="View Appeal Details">
+                                Details <i class="bi bi-arrow-right-short"></i>
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="extra-small text-muted border-top pt-1 mt-2">
+                            <i class="bi bi-info-circle me-1"></i>Proceedings at trial court level
+                        </div>
+                    }
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="row g-4">
-        <!-- Left Column: Case Information & Parties -->
-        <div class="col-lg-8">
-            <!-- Basic Information Card -->
-            <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                    <h6 class="fw-bold mb-0 text-dark">
-                        <i class="bi bi-info-circle text-primary me-2"></i>Basic Case Information
-                    </h6>
-                </div>
-                <div class="p-4">
-                    <div class="row g-4">
-                        <div class="col-md-6">
-                            <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">Case Number &amp; Year</label>
-                            <p class="fw-bold text-dark mb-0 fs-5">@(string.IsNullOrEmpty(Model.CaseNumber) ? "NOT FILED" : $"{Model.CaseNumber} / {Model.CaseYear}")</p>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">Court Name</label>
-                            <p class="fw-bold text-dark mb-0 fs-5">@Model.Court</p>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">Nature of Case</label>
-                            <p class="text-dark mb-0 fw-semibold">@(string.IsNullOrEmpty(Model.CaseNature) ? "Standard Civil Suit" : Model.CaseNature)</p>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">Current Stage</label>
-                            <div>
-                                <span class="badge bg-primary bg-opacity-10 text-primary border border-primary border-opacity-25 px-3 py-1 rounded-pill fw-bold">
-                                    @(string.IsNullOrEmpty(Model.CaseStage) ? "Trial Stage" : Model.CaseStage)
-                                </span>
-                            </div>
-                        </div>
-                        @if (!string.IsNullOrEmpty(Model.ClaimDetails))
-                        {
-                            <div class="col-12">
-                                <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">Claim Details / Relief Sought</label>
-                                <div class="bg-light p-3 rounded-3 border text-dark">@Model.ClaimDetails</div>
-                            </div>
-                        }
-                    </div>
-                </div>
+    <!-- ======================================================== -->
+    <!-- 4. PLEADINGS & DEFENSE STATUS DECK                       -->
+    <!-- ======================================================== -->
+    <div class="card shadow-sm border-0 mb-4 rounded-3 overflow-hidden" id="pleadingsDefenseStatusCard">
+        <div class="card-header bg-white py-2.5 px-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-file-earmark-check text-primary fs-5 me-2"></i>
+                <h6 class="mb-0 fw-bold text-dark">Pleadings &amp; Defense Status</h6>
             </div>
-
-            <!-- Parties Involved Card -->
-            <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                    <h6 class="fw-bold mb-0 text-dark">
-                        <i class="bi bi-people text-primary me-2"></i>Parties Involved
-                    </h6>
-                </div>
-                <div class="p-4">
-                    <div class="row g-4">
-                        <div class="col-md-6">
-                            <div class="p-3 bg-light rounded-3 border h-100">
-                                <label class="small text-muted text-uppercase fw-bold d-block mb-2">Petitioner / Claimant</label>
-                                @if (Model.Petitioners != null && Model.Petitioners.Any())
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-light text-dark border px-2.5 py-1 extra-small">
+                    <i class="bi bi-calendar-event text-primary me-1"></i>Next Hearing: <strong class="@(Model.NextDateOfHearing == DateTime.Today ? "text-danger" : "text-primary")">@(Model.NextDateOfHearing.HasValue ? Model.NextDateOfHearing.Value.ToString("dd-MM-yyyy") : "—")</strong>
+                </span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2.5 py-1 extra-small">
+                    <i class="bi bi-diagram-3 me-1"></i>Stage: <strong>@(!string.IsNullOrEmpty(Model.CaseStage) ? Model.CaseStage : (Model.CaseStatus ?? "Trial"))</strong>
+                </span>
+            </div>
+        </div>
+        <div class="card-body p-3 bg-light bg-opacity-25">
+            <div class="row g-3">
+                <!-- 1. Document Sent -->
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="p-3 bg-white rounded-3 border h-100 shadow-xs d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted fw-semibold small text-uppercase" style="letter-spacing: 0.5px; font-size: 0.72rem;">Document Sent</span>
+                                <i class="bi bi-send text-primary opacity-75 fs-5"></i>
+                            </div>
+                            <div>
+                                @if (Model.DocumentSent == "Yes")
                                 {
-                                    @foreach (var pet in Model.Petitioners)
-                                    {
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="bi bi-person-circle text-primary me-2 fs-5"></i>
-                                            <div>
-                                                <div class="fw-bold small text-dark">@pet.Name</div>
-                                                @if (!string.IsNullOrEmpty(pet.Remark)) { <div class="text-muted small">@pet.Remark</div> }
-                                            </div>
-                                        </div>
-                                    }
-                                }
-                                else if (Model.LitigantType == "Claimant" && Model.Respondents != null && Model.Respondents.Any())
-                                {
-                                    @foreach (var pet in Model.Respondents)
-                                    {
-                                        <div class="d-flex align-items-center mb-2">
-                                            <i class="bi bi-person-circle text-primary me-2 fs-5"></i>
-                                            <div>
-                                                <div class="fw-bold small text-dark">@pet.Name</div>
-                                                @if (!string.IsNullOrEmpty(pet.Remark)) { <div class="text-muted small">@pet.Remark</div> }
-                                            </div>
-                                        </div>
-                                    }
-                                }
-                                else if (Model.LitigantType == "Corporation")
-                                {
-                                    <div class="fw-bold text-dark fs-6">
-                                        <i class="bi bi-building text-primary me-2"></i>
-                                        @(Model.DivisionName ?? OrgService.GetCurrentSettings().OrganizationNameEnglish)
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-6">
+                                        <i class="bi bi-check-circle me-1"></i>Yes, Sent
+                                    </span>
+                                    <div class="small mt-2 text-dark">
+                                        <div><span class="text-muted">Outward No:</span> <strong class="font-monospace text-primary">@(string.IsNullOrEmpty(Model.InitialOutwardNumber) ? "—" : Model.InitialOutwardNumber)</strong></div>
+                                        @if (Model.InitialOutwardDate.HasValue)
+                                        {
+                                            <div class="text-muted extra-small mt-1"><i class="bi bi-calendar-date me-1"></i>Date: @Model.InitialOutwardDate.Value.ToString("dd-MM-yyyy")</div>
+                                        }
                                     </div>
-                                    <div class="text-muted small mt-1">Corporation (Plaintiff / Petitioner)</div>
                                 }
                                 else
                                 {
-                                    <div class="fw-bold text-dark fs-6">@(string.IsNullOrEmpty(Model.PetitionerName) ? "Claimant" : Model.PetitionerName)</div>
-                                    @if (!string.IsNullOrEmpty(Model.PetitionerRelationship))
-                                    {
-                                        <small class="text-muted d-block">Relationship: @Model.PetitionerRelationship</small>
-                                    }
+                                    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1 fs-6">
+                                        <i class="bi bi-x-circle me-1"></i>No
+                                    </span>
+                                    <div class="text-muted extra-small mt-2">Documents not yet dispatched</div>
                                 }
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="p-3 bg-light rounded-3 border h-100">
-                                <label class="small text-muted text-uppercase fw-bold d-block mb-2">Respondent / Defendant</label>
-                                @if (Model.LitigantType == "Corporation")
+                    </div>
+                </div>
+
+                <!-- 2. Written Statement / Objection Filed -->
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="p-3 bg-white rounded-3 border h-100 shadow-xs d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted fw-semibold small text-uppercase" style="letter-spacing: 0.5px; font-size: 0.72rem;">WS / Objection</span>
+                                <i class="bi bi-shield-check text-primary opacity-75 fs-5"></i>
+                            </div>
+                            <div>
+                                @if (Model.IsObjectionFiled == "Yes" || Model.ObjectionVerified == "Yes")
                                 {
-                                    @if (Model.Respondents != null && Model.Respondents.Any())
-                                    {
-                                        @foreach (var resp in Model.Respondents)
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-6">
+                                        <i class="bi bi-check2-circle me-1"></i>Yes, Filed
+                                    </span>
+                                    <div class="small mt-2 text-dark">
+                                        @if (!string.IsNullOrEmpty(Model.ObjectionOutwardNumber))
                                         {
-                                            <div class="d-flex align-items-center mb-2">
-                                                <i class="bi bi-person-circle text-secondary me-2 fs-5"></i>
-                                                <div>
-                                                    <div class="fw-bold small text-dark">@resp.Name</div>
-                                                    @if (!string.IsNullOrEmpty(resp.Remark)) { <div class="text-muted small">@resp.Remark</div> }
-                                                </div>
+                                            <div><span class="text-muted">Outward:</span> <strong class="font-monospace text-primary">@Model.ObjectionOutwardNumber</strong></div>
+                                        }
+                                        @if (Model.ObjectionFiledDate.HasValue)
+                                        {
+                                            <div class="text-muted extra-small mt-1"><i class="bi bi-calendar-date me-1"></i>Date: @Model.ObjectionFiledDate.Value.ToString("dd-MM-yyyy")</div>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1 fs-6">
+                                        <i class="bi bi-exclamation-circle me-1"></i>Not Filed
+                                    </span>
+                                    <div class="text-muted extra-small mt-2">Written statement / Objection pending</div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Evidence / Proof Filed -->
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="p-3 bg-white rounded-3 border h-100 shadow-xs d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted fw-semibold small text-uppercase" style="letter-spacing: 0.5px; font-size: 0.72rem;">Evidence / Proof</span>
+                                <i class="bi bi-file-earmark-person text-primary opacity-75 fs-5"></i>
+                            </div>
+                            <div>
+                                @if (Model.EvidenceFiled == "Yes" || (Model.CorpEvidence != null && Model.CorpEvidence.Any()))
+                                {
+                                    <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-6">
+                                        <i class="bi bi-check2 me-1"></i>Yes, Recorded
+                                    </span>
+                                    <div class="text-success extra-small mt-2">
+                                        <i class="bi bi-people-fill me-1"></i>@(Model.CorpEvidence?.Count ?? 0) Corporation Witness(es)
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1 fs-6">
+                                        <i class="bi bi-dash-circle me-1"></i>No
+                                    </span>
+                                    <div class="text-muted extra-small mt-2">Evidence not yet filed</div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Interim Order / Injunction -->
+                <div class="col-12 col-sm-6 col-xl-3">
+                    <div class="p-3 bg-white rounded-3 border h-100 shadow-xs d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="text-muted fw-semibold small text-uppercase" style="letter-spacing: 0.5px; font-size: 0.72rem;">Interim Order / Stay</span>
+                                <i class="bi bi-shield-slash text-warning opacity-75 fs-5"></i>
+                            </div>
+                            <div>
+                                @if (Model.InterimOrder == "Yes")
+                                {
+                                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1 fs-6">
+                                        <i class="bi bi-shield-exclamation me-1"></i>Interim Order Granted
+                                    </span>
+                                    @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
+                                    {
+                                        <div class="mt-2">
+                                            <button type="button" onclick="openOrderInModal('@Model.InterimOrderFilePath', 'Interim Order Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-0 extra-small">
+                                                <i class="bi bi-file-earmark-pdf me-1"></i>View Order Copy
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge bg-light text-muted border px-2 py-1 fs-6">
+                                        <i class="bi bi-dash-circle me-1"></i>None Granted
+                                    </span>
+                                    <div class="text-muted extra-small mt-2">No active interim injunction</div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- 5. ECOURTS NAPIX LIVE GATEWAY CARD                       -->
+    <!-- ======================================================== -->
+    <div class="card border-info shadow-sm mb-4 rounded-3 overflow-hidden d-print-none" id="ecourtsNapixMainCard">
+        <div class="card-header bg-info bg-opacity-10 border-info border-opacity-25 d-flex flex-wrap justify-content-between align-items-center py-2 px-3 gap-2"
+             style="cursor: pointer;"
+             data-bs-toggle="collapse"
+             data-bs-target="#collapseCaseNapixSection"
+             aria-expanded="false"
+             aria-controls="collapseCaseNapixSection"
+             id="headerCaseNapixSection"
+             title="Click to expand/collapse live eCourts NAPIX details">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-broadcast text-info fs-5 me-2"></i>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h6 class="mb-0 fw-bold text-dark">eCourts NAPIX Live Gateway Status (District &amp; Higher Courts)</h6>
+                        <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill extra-small px-2 py-0">
+                            <i class="bi bi-hand-index-thumb me-1"></i>Click to open
+                        </span>
+                    </div>
+                    <small class="text-muted extra-small">Live judicial case tracking via NAPIX / NJDG National Judicial Gateway</small>
+                </div>
+            </div>
+            <div class="d-flex flex-wrap align-items-center gap-2 w-100 w-lg-auto justify-content-between justify-content-lg-end mt-1 mt-lg-0">
+                <div id="details-cnr-badge" class="d-flex flex-wrap align-items-center gap-2" onclick="event.stopPropagation();">
+                    @if (!string.IsNullOrEmpty(Model.CNRNumber))
+                    {
+                        <span id="live-cnr-badge-span" class="badge bg-success font-monospace fs-6 px-3 py-2 shadow-sm d-inline-flex align-items-center text-nowrap">
+                            <i class="bi bi-broadcast me-1"></i> CNR: @Model.CNRNumber
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" title="Copy CNR Number" onclick="event.stopPropagation(); navigator.clipboard.writeText('@Model.CNRNumber'); alert('CNR Number copied to clipboard: @Model.CNRNumber');">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs" onclick="event.stopPropagation(); openUpdateCnrModal()">
+                            <i class="bi bi-pencil-square me-1"></i>Update CNR
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 py-1 fw-bold shadow-xs" id="btnRefreshCaseLive" onclick="event.stopPropagation(); triggerFetchOtherCourtsLiveStatus()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status
+                        </button>
+                    }
+                    else
+                    {
+                        <span id="live-cnr-badge-span" class="badge bg-warning text-dark px-3 py-2">
+                            <i class="bi bi-exclamation-triangle-fill me-1"></i> CNR Not Linked
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 fw-bold shadow-xs" onclick="event.stopPropagation(); openUpdateCnrModal()">
+                            <i class="bi bi-pencil-square me-1"></i>Update CNR
+                        </button>
+                    }
+                </div>
+                <button type="button" class="btn btn-sm btn-info text-white rounded-pill px-3 py-1 fw-bold shadow-xs d-inline-flex align-items-center gap-1"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#collapseCaseNapixSection"
+                        aria-expanded="false"
+                        aria-controls="collapseCaseNapixSection"
+                        id="btnToggleCaseNapixSection"
+                        onclick="event.stopPropagation();">
+                    <i class="bi bi-chevron-down" id="iconToggleCaseNapix"></i>
+                    <span id="textToggleCaseNapix">View NAPIX Details</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="collapse" id="collapseCaseNapixSection">
+            <div class="card-body bg-light p-3">
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Court Hall / Room</small>
+                        <div class="fs-6 fw-bold text-dark" id="live-court-no">
+                            @(!string.IsNullOrWhiteSpace(Model.ECourtsCourtNo) ? Model.ECourtsCourtNo : "—")
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Presiding Judge</small>
+                        <div class="fw-semibold text-secondary text-truncate" id="live-judge" title="@Model.ECourtsJudge">
+                            @(!string.IsNullOrWhiteSpace(Model.ECourtsJudge) ? Model.ECourtsJudge : "—")
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Next Hearing Date</small>
+                        <div class="fs-6 fw-bold text-primary" id="live-next-date">
+                            @(Model.NextDateOfHearing.HasValue ? Model.NextDateOfHearing.Value.ToString("dd-MM-yyyy") : "—")
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Stage (eCourts)</small>
+                        <div class="fw-bold text-dark" id="live-stage">
+                            @(!string.IsNullOrWhiteSpace(Model.ECourtsStage) ? Model.ECourtsStage : (!string.IsNullOrWhiteSpace(Model.CaseStage) ? Model.CaseStage : "—"))
+                        </div>
+                    </div>
+
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Case Status</small>
+                        <div class="fw-semibold text-dark" id="live-case-status">
+                            @(!string.IsNullOrWhiteSpace(Model.PendDispStatus) ? (Model.PendDispStatus == "D" ? "Disposed" : "Pending") : (Model.CaseStatus ?? "Active"))
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Establishment</small>
+                        <div class="fw-semibold text-dark text-truncate" id="live-est-name">
+                            @(!string.IsNullOrWhiteSpace(Model.EstName) ? Model.EstName : (Model.Court ?? "—"))
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Petitioner / Plaintiff</small>
+                        <div class="fw-semibold text-dark text-truncate" id="live-petitioner" title="@Model.PetitionerName">
+                            @(string.IsNullOrEmpty(Model.PetitionerName) ? (Model.LitigantType == "Corporation" ? OrgService.GetCurrentSettings().OrganizationShortName : "Plaintiff") : Model.PetitionerName)
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <small class="text-muted text-uppercase fw-bold d-block" style="font-size:.7rem">Assigned Advocate</small>
+                        <div class="fw-semibold text-dark text-truncate" id="live-advocate">
+                            @(!string.IsNullOrWhiteSpace(Model.AdvocateName) ? Model.AdvocateName : "—")
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(Model.CNRNumber))
+                    {
+                        <!-- Sub-Tabs for Orders & Hearing History -->
+                        <div class="col-12 border-top mt-2 pt-3">
+                            <ul class="nav nav-pills mb-3 gap-2 mobile-nav-tabs-scroll flex-nowrap" id="ecourtsOtherTab" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active btn-sm py-1 px-3 fw-bold" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders-pane" type="button" role="tab">
+                                        <i class="bi bi-file-earmark-pdf-fill me-1"></i> Court Orders &amp; Judgments 
+                                        <span class="badge bg-light text-danger ms-1" id="orders-count-badge">@(caseOrdersList?.Count ?? 0) Files</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link btn-sm py-1 px-3 fw-bold" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-pane" type="button" role="tab">
+                                        <i class="bi bi-clock-history me-1"></i> Case Hearing History 
+                                        <span class="badge bg-light text-dark ms-1" id="history-count-badge">0 Hearings</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link btn-sm py-1 px-3 fw-bold" id="ia-tab" data-bs-toggle="tab" data-bs-target="#ia-pane" type="button" role="tab">
+                                        <i class="bi bi-file-earmark-text me-1"></i> IA Applications 
+                                        <span class="badge bg-light text-primary ms-1" id="ia-count-badge">0 IAs</span>
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link btn-sm py-1 px-3 fw-bold" id="fulldata-tab" data-bs-toggle="tab" data-bs-target="#fulldata-pane" type="button" role="tab">
+                                        <i class="bi bi-card-text me-1"></i> Full eCourts Payload
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content" id="ecourtsOtherTabContent">
+                                <!-- Orders Pane -->
+                                <div class="tab-pane fade show active" id="orders-pane" role="tabpanel">
+                                    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-2 gap-2">
+                                        <small class="text-muted"><i class="bi bi-shield-check text-success me-1"></i>Verified Court Orders &amp; Judgments fetched via eCourts Gateway</small>
+                                        <div class="d-flex gap-2">
+                                            <a href="/ECourts/DownloadAllOrdersZip?cnr=@Model.CNRNumber" class="btn btn-sm btn-outline-danger rounded-pill shadow-sm fw-semibold" title="Download all orders in a single ZIP">
+                                                <i class="bi bi-file-earmark-zip-fill me-1"></i> Download All Orders (ZIP)
+                                            </a>
+                                        </div>
+                                    </div>
+
+                                    <div id="live-orders-container">
+                                        @if (caseOrdersList != null && caseOrdersList.Any())
+                                        {
+                                            <div class="table-responsive rounded border bg-white shadow-xs">
+                                                <table class="table table-sm table-hover mb-0">
+                                                    <thead class="table-light">
+                                                        <tr>
+                                                            <th style="width: 5%;">#</th>
+                                                            <th style="width: 25%;">Order Date</th>
+                                                            <th style="width: 45%;">Order / Judgment Description</th>
+                                                            <th class="text-end" style="width: 25%;">Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @{ int oIdx = 0; }
+                                                        @foreach (var ord in caseOrdersList)
+                                                        {
+                                                            oIdx++;
+                                                            string oPath = !string.IsNullOrWhiteSpace(ord.LocalPdfPath) ? ord.LocalPdfPath : (ord.ExternalUrl ?? "");
+                                                            <tr>
+                                                                <td class="fw-bold">@oIdx</td>
+                                                                <td>@(ord.OrderDate.HasValue ? ord.OrderDate.Value.ToString("dd-MMM-yyyy") : "—")</td>
+                                                                <td class="fw-semibold text-dark">
+                                                                    <i class="bi bi-file-earmark-pdf-fill text-danger me-1"></i>@ord.OrderType
+                                                                </td>
+                                                                <td class="text-end">
+                                                                    @if (!string.IsNullOrEmpty(oPath))
+                                                                    {
+                                                                        <button type="button" onclick="openOrderInModal('@oPath', '@ord.OrderType', '@ord.Cnr', '@(ord.OrderDate?.ToString("dd-MM-yyyy") ?? "")', @Model.CaseID)" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-0">
+                                                                            <i class="bi bi-eye-fill me-1"></i>View PDF
+                                                                        </button>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                                <i class="bi bi-file-earmark-pdf text-primary fs-5 d-block mb-1"></i>
+                                                Click <strong>Fetch Live Status</strong> above to query court servers and download verified order copies.
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                <!-- History Pane -->
+                                <div class="tab-pane fade" id="history-pane" role="tabpanel">
+                                    <div id="live-history-container">
+                                        <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                            <i class="bi bi-clock-history text-secondary fs-5 d-block mb-1"></i>
+                                            Click <strong>Fetch Live Status</strong> to view the complete case hearing history.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- IA Pane -->
+                                <div class="tab-pane fade" id="ia-pane" role="tabpanel">
+                                    <div id="live-ia-container">
+                                        <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                            <i class="bi bi-file-earmark-text text-secondary fs-5 d-block mb-1"></i>
+                                            Click <strong>Fetch Live Status</strong> to view interim applications.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Full Payload Pane -->
+                                <div class="tab-pane fade" id="fulldata-pane" role="tabpanel">
+                                    <div id="live-fulldata-container">
+                                        <div class="text-muted small py-4 text-center rounded border bg-white shadow-xs">
+                                            <i class="bi bi-card-text text-secondary fs-5 d-block mb-1"></i>
+                                            Click <strong>Fetch Live Status</strong> to view full eCourts response payload.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="col-12 border-top mt-2 pt-3">
+                            <div class="card border-primary border-opacity-25 bg-white shadow-sm rounded-3 p-4 text-center">
+                                <h5 class="fw-bold text-dark mb-2">Connect This Case to Live e-Courts Gateway</h5>
+                                <p class="text-muted small mb-3 mx-auto" style="max-width: 600px;">
+                                    The 16-character CNR Number is not linked yet. Link the CNR to automatically track hearings, court halls, judges, and download verified orders directly.
+                                </p>
+                                <div class="d-flex justify-content-center gap-2">
+                                    <button type="button" class="btn btn-primary rounded-pill px-4 py-2 fw-semibold shadow-sm" onclick="autoLinkCnrInline(@Model.CaseID, 'OtherCourts')">
+                                        <i class="bi bi-search me-1.5"></i> Auto-Discover &amp; Link CNR
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary rounded-pill px-4 py-2 fw-semibold shadow-sm" onclick="openUpdateCnrModal()">
+                                        <i class="bi bi-pencil-square me-1.5"></i> Enter CNR Manually
+                                    </button>
+                                </div>
+                                <div id="autolink-status-msg" class="mt-2"></div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="col-12 border-top pt-2 d-flex justify-content-between align-items-center">
+                        <small class="text-muted" id="live-sync-msg">
+                            @if (Model.LastNapixSyncAt.HasValue)
+                            {
+                                <span class="text-success"><i class="bi bi-check-circle-fill me-1"></i> Synced: @Model.LastNapixSyncAt.Value.ToString("dd MMM yyyy, hh:mm tt") (@(Model.LastNapixSyncStatus ?? "Success"))</span>
+                            }
+                            else
+                            {
+                                <span><i class="bi bi-arrow-repeat me-1"></i> Ready for e-Courts synchronization</span>
+                            }
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ======================================================== -->
+<!-- 6. A-Z COMPREHENSIVE MASTER MODAL (8 SUB-TABS)           -->
+<!-- ======================================================== -->
+<div class="modal fade" id="otherCourtsFullDetailsModal" tabindex="-1" aria-labelledby="otherCourtsFullDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down" style="max-width: min(96vw, 1300px);">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px; overflow: hidden;">
+            
+            <!-- Modal Header -->
+            <div class="modal-header border-0 py-3 px-4" style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);">
+                <div class="d-flex flex-column">
+                    <h5 class="modal-title fw-bold text-white mb-0" id="otherCourtsFullDetailsModalLabel">
+                        <i class="bi bi-folder2-open me-2 opacity-75"></i>Comprehensive A-Z Case Dossier: @courtName (@displayCaseNo/@(displayCaseYear?.ToString() ?? "-"))
+                    </h5>
+                    <small class="text-white opacity-75 mt-1" style="font-size: 0.78rem;">
+                        <i class="bi bi-geo-alt me-1"></i>@printDivisionName Division &nbsp;|&nbsp;
+                        <i class="bi bi-bank me-1"></i>@(string.IsNullOrEmpty(Model.Court) ? "Court Not Specified" : Model.Court)
+                        @if (!string.IsNullOrEmpty(Model.CNRNumber))
+                        {
+                            <span>&nbsp;|&nbsp;<i class="bi bi-broadcast me-1"></i>CNR: @Model.CNRNumber</span>
+                        }
+                    </small>
+                </div>
+                <button type="button" class="btn-close btn-close-white ms-auto" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="modal-body p-3 p-md-4" style="background-color: #f8fafc;">
+                <!-- Navigation Tabs -->
+                <ul class="nav nav-pills gap-2 mb-3 p-2 rounded-3 border bg-white shadow-sm flex-wrap" id="otherCourtsTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold small py-2 px-3 rounded-2" id="tab-general-nav" data-bs-toggle="pill" data-bs-target="#tab-general-content" type="button" role="tab">
+                            <i class="bi bi-info-circle-fill me-1 text-primary"></i> General &amp; Incident
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-parties-nav" data-bs-toggle="pill" data-bs-target="#tab-parties-content" type="button" role="tab">
+                            <i class="bi bi-people-fill me-1 text-indigo"></i> Parties &amp; Advocates
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-pleadings-nav" data-bs-toggle="pill" data-bs-target="#tab-pleadings-content" type="button" role="tab">
+                            <i class="bi bi-shield-check me-1 text-info"></i> Pleadings &amp; Defense
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-evidence-nav" data-bs-toggle="pill" data-bs-target="#tab-evidence-content" type="button" role="tab">
+                            <i class="bi bi-journal-check me-1 text-secondary"></i> Evidence &amp; Proof
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-cc-nav" data-bs-toggle="pill" data-bs-target="#tab-cc-content" type="button" role="tab">
+                            <i class="bi bi-file-earmark-check me-1 text-success"></i> Certified Copy (CC)
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-opinions-nav" data-bs-toggle="pill" data-bs-target="#tab-opinions-content" type="button" role="tab">
+                            <i class="bi bi-chat-quote-fill me-1 text-warning"></i> Opinions &amp; Decisions
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-appeal-nav" data-bs-toggle="pill" data-bs-target="#tab-appeal-content" type="button" role="tab">
+                            <i class="bi bi-bank me-1 text-danger"></i> Higher Court Appeals
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold small py-2 px-3 rounded-2" id="tab-documents-nav" data-bs-toggle="pill" data-bs-target="#tab-documents-content" type="button" role="tab">
+                            <i class="bi bi-folder-check me-1 text-dark"></i> Documents &amp; Vault
+                        </button>
+                    </li>
+                </ul>
+
+                <!-- Tabs Content -->
+                <div class="tab-content" id="otherCourtsTabsContent">
+                    
+                    <!-- TAB 1: General & Incident -->
+                    <div class="tab-pane fade show active" id="tab-general-content" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-building me-1"></i>Court &amp; Suit Particulars</h6>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Court Name</span>
+                                        <strong class="text-dark small">@(string.IsNullOrEmpty(Model.Court) ? "—" : Model.Court)</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Case Type / Class</span>
+                                        <span class="badge bg-primary">@courtName</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Nature of Suit</span>
+                                        <span class="fw-semibold text-dark small">@(string.IsNullOrEmpty(Model.CaseNature) ? "Standard Civil Suit" : Model.CaseNature)</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Filing / Pending Status</span>
+                                        <span class="fw-semibold text-dark small">@(Model.IsPendingForFiling ? "Pending for Filing" : "Filed in Court")</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Valuation / Claim</span>
+                                        <strong class="text-success small">@(Model.ClaimAmount.HasValue ? $"₹ {Model.ClaimAmount.Value:N2}" : "—")</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-truck me-1"></i>Incident &amp; Vehicle Particulars</h6>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Date of Incident</span>
+                                        <strong class="text-dark small">@(Model.DateOfAccident?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                    </div>
+                                    <div class="d-flex justify-content-between mb-2">
+                                        <span class="text-muted small">Vehicle Involved?</span>
+                                        <span class="badge @(Model.IsVehicleInvolved == "yes" ? "bg-primary" : "bg-secondary")">@(Model.IsVehicleInvolved?.ToUpper() ?? "NO")</span>
+                                    </div>
+                                    @if (Model.IsVehicleInvolved == "yes")
+                                    {
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted small">Vehicle Number</span>
+                                            <span class="badge bg-dark font-monospace">@Model.VehicleNumber</span>
+                                        </div>
+                                        <div class="d-flex justify-content-between mb-2">
+                                            <span class="text-muted small">Vehicle Type</span>
+                                            <span class="fw-semibold text-dark small">@Model.VehicleType</span>
+                                        </div>
+                                    }
+                                    <div class="d-flex justify-content-between">
+                                        <span class="text-muted small">Corporation Employee?</span>
+                                        <span class="badge @(Model.IsCorporationEmployee == "Yes" ? "bg-info text-dark" : "bg-light text-dark border")">@(Model.IsCorporationEmployee ?? "No")</span>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(Model.ClaimDetails) || !string.IsNullOrEmpty(Model.MannerOfIncident))
+                            {
+                                <div class="col-12">
+                                    <div class="p-3 bg-white rounded-3 border shadow-xs">
+                                        <h6 class="fw-bold text-dark border-bottom pb-2 mb-2">Relief Sought &amp; Manner of Incident</h6>
+                                        <div class="text-dark small white-space-pre-line">@(!string.IsNullOrEmpty(Model.ClaimDetails) ? Model.ClaimDetails : Model.MannerOfIncident)</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: Parties & Advocates -->
+                    <div class="tab-pane fade" id="tab-parties-content" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-person-fill me-1"></i>Petitioner(s) / Plaintiff(s)</h6>
+                                    @if (Model.Petitioners != null && Model.Petitioners.Any())
+                                    {
+                                        @foreach (var p in Model.Petitioners)
+                                        {
+                                            <div class="p-2 border rounded mb-2 bg-light">
+                                                <div class="fw-bold text-dark small">@p.Name</div>
+                                                @if (!string.IsNullOrEmpty(p.Remark)) { <small class="text-muted d-block">@p.Remark</small> }
                                             </div>
                                         }
                                     }
                                     else
                                     {
-                                        <div class="fw-bold text-dark fs-6">@(string.IsNullOrEmpty(Model.RespondentName) ? "Opposite Party" : Model.RespondentName)</div>
+                                        <div class="fw-bold text-dark small">@(string.IsNullOrEmpty(Model.PetitionerName) ? (Model.LitigantType == "Corporation" ? OrgService.GetCurrentSettings().OrganizationNameEnglish : "Plaintiff") : Model.PetitionerName)</div>
                                     }
-                                }
-                                else
-                                {
-                                    <div class="fw-bold text-dark fs-6">
-                                        <i class="bi bi-building text-secondary me-2"></i>
-                                        @(Model.DivisionName ?? OrgService.GetCurrentSettings().OrganizationNameEnglish)
-                                    </div>
-                                    <div class="text-muted small mt-1">Respondent: <strong>Corporation (@(OrgService.GetCurrentSettings().OrganizationShortName))</strong></div>
-                                    @if (!string.IsNullOrEmpty(Model.RespondentName) && Model.RespondentName != "NWKRTC / Corporation")
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-building me-1"></i>Respondent(s) / Defendant(s)</h6>
+                                    @if (Model.Respondents != null && Model.Respondents.Any())
                                     {
-                                        <div class="text-dark small mt-2 border-top pt-2">
-                                            <span class="text-muted">Named / Co-Respondent:</span> @Model.RespondentName
+                                        @foreach (var r in Model.Respondents)
+                                        {
+                                            <div class="p-2 border rounded mb-2 bg-light">
+                                                <div class="fw-bold text-dark small">@r.Name</div>
+                                                @if (!string.IsNullOrEmpty(r.Remark)) { <small class="text-muted d-block">@r.Remark</small> }
+                                            </div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <div class="fw-bold text-dark small">@(string.IsNullOrEmpty(Model.RespondentName) ? (Model.LitigantType == "Corporation" ? "Opposite Party" : OrgService.GetCurrentSettings().OrganizationNameEnglish) : Model.RespondentName)</div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="p-3 bg-white rounded-3 border shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-2"><i class="bi bi-briefcase-fill me-1"></i>Corporation Advocate Entrustment</h6>
+                                    <div class="row g-2 small">
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block">Advocate Name</span>
+                                            <strong class="text-dark">@(string.IsNullOrEmpty(Model.AdvocateName) ? "Not Assigned" : Model.AdvocateName)</strong>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block">Entrustment No</span>
+                                            <strong class="text-dark">@(Model.EntrustmentNumber ?? "—")</strong>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <span class="text-muted d-block">Entrustment Date</span>
+                                            <strong class="text-dark">@(Model.EntrustmentDate?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: Pleadings & Defense -->
+                    <div class="tab-pane fade" id="tab-pleadings-content" role="tabpanel">
+                        <div class="p-3 bg-white rounded-3 border shadow-xs">
+                            <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-shield-check me-1"></i>Pleadings &amp; Injunction Status</h6>
+                            <div class="row g-3 small">
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Records Sent Outward No</span>
+                                    <strong class="text-dark">@(Model.InitialOutwardNumber ?? "—")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Records Sent Date</span>
+                                    <strong class="text-dark">@(Model.InitialOutwardDate?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Written Statement Filed</span>
+                                    <span class="badge @(Model.IsObjectionFiled == "Yes" ? "bg-success" : "bg-danger")">@(Model.IsObjectionFiled == "Yes" ? "YES" : "NO")</span>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">WS Outward No &amp; Date</span>
+                                    <strong class="text-dark">@(Model.ObjectionOutwardNumber ?? "—") (@(Model.ObjectionFiledDate?.ToString("dd-MM-yyyy") ?? "—"))</strong>
+                                </div>
+                                <div class="col-md-8">
+                                    <span class="text-muted d-block">Objection / Defense Remarks</span>
+                                    <div class="p-2 bg-light rounded text-dark">@(string.IsNullOrEmpty(Model.ObjectionRemarks) ? "None recorded" : Model.ObjectionRemarks)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: Evidence & Witnesses -->
+                    <div class="tab-pane fade" id="tab-evidence-content" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-people me-1"></i>Corporation Witnesses</h6>
+                                    @if (Model.CorpEvidence != null && Model.CorpEvidence.Any())
+                                    {
+                                        <div class="list-group list-group-flush border rounded-3 overflow-hidden">
+                                            @foreach (var ev in Model.CorpEvidence)
+                                            {
+                                                <div class="list-group-item bg-light p-2 px-3 d-flex justify-content-between align-items-center">
+                                                    <span class="fw-bold small text-dark">@ev.Name</span>
+                                                    <span class="badge bg-secondary-subtle text-dark border small">@(string.IsNullOrEmpty(ev.Designation) ? "Officer" : ev.Designation)</span>
+                                                </div>
+                                            }
                                         </div>
                                     }
+                                    else
+                                    {
+                                        <div class="text-muted small">No Corporation witnesses recorded.</div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-person-lines-fill me-1"></i>Opposite Party Evidence</h6>
+                                    @if (Model.RespondentEvidence != null && Model.RespondentEvidence.Any())
+                                    {
+                                        <div class="list-group list-group-flush border rounded-3 overflow-hidden">
+                                            @foreach (var ev in Model.RespondentEvidence)
+                                            {
+                                                <div class="list-group-item bg-light p-2 px-3 d-flex justify-content-between align-items-center">
+                                                    <span class="fw-bold small text-dark">@ev.Name</span>
+                                                    <span class="text-muted small">@(string.IsNullOrEmpty(ev.Remark) ? "—" : ev.Remark)</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="text-muted small">No opposite evidence recorded.</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 5: Certified Copy (CC) -->
+                    <div class="tab-pane fade" id="tab-cc-content" role="tabpanel">
+                        <div class="p-3 bg-white rounded-3 border shadow-xs">
+                            <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-file-earmark-check me-1"></i>Certified Copy (CC) Tracking Details</h6>
+                            <div class="row g-3 small">
+                                <div class="col-6 col-md-3">
+                                    <span class="text-muted d-block">Disposed On</span>
+                                    <strong class="text-dark">@(Model.CopyDisposedOn?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <span class="text-muted d-block">Applied On</span>
+                                    <strong class="text-dark">@(Model.CopyAppliedOn?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <span class="text-muted d-block">Ready On</span>
+                                    <strong class="text-dark">@(Model.CopyReadyOn?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <span class="text-muted d-block">Delivered On</span>
+                                    <strong class="text-dark">@(Model.CopyDeliveredOn?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-6 col-md-3">
+                                    <span class="text-muted d-block">Received at Division</span>
+                                    <strong class="text-dark">@(Model.CopyReceivedAtDivision?.ToString("dd-MM-yyyy") ?? "—")</strong>
+                                </div>
+                                <div class="col-12">
+                                    <span class="text-muted d-block">Delay / Special Remarks</span>
+                                    <div class="p-2 bg-light rounded text-dark">@(string.IsNullOrEmpty(Model.CertifiedCopyRemarks) ? "No remarks" : Model.CertifiedCopyRemarks)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 6: Opinions & Decisions -->
+                    <div class="tab-pane fade" id="tab-opinions-content" role="tabpanel">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-2"><i class="bi bi-briefcase me-1"></i>Advocate's Opinion</h6>
+                                    <div class="text-dark small white-space-pre-line">@(string.IsNullOrEmpty(Model.AdvocateOpinion) ? "No opinion recorded" : Model.AdvocateOpinion)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-2"><i class="bi bi-shield me-1"></i>Law Officer's Opinion</h6>
+                                    <div class="text-dark small white-space-pre-line">@(string.IsNullOrEmpty(Model.LawOfficerOpinion) ? "No opinion recorded" : Model.LawOfficerOpinion)</div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
+                                    <h6 class="fw-bold text-primary border-bottom pb-2 mb-2"><i class="bi bi-check2-circle me-1"></i>DC's Final Decision</h6>
+                                    <div class="text-dark small white-space-pre-line">@(string.IsNullOrEmpty(Model.DCFinalDecision) ? "No decision recorded" : Model.DCFinalDecision)</div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="p-3 bg-white rounded-3 border shadow-xs d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="text-muted small d-block">Forwarding to Central Office</span>
+                                        <span class="badge bg-secondary rounded-pill px-3 py-1">@(Model.FinalForwardingStatus ?? "Pending at Division")</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(Model.OutwardNumber))
+                                    {
+                                        <div>
+                                            <span class="text-muted small d-block">CO Outward No &amp; Date</span>
+                                            <strong class="text-dark small">@Model.OutwardNumber (@(Model.OutwardDate?.ToString("dd-MM-yyyy") ?? "—"))</strong>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 7: Higher Court Appeals -->
+                    <div class="tab-pane fade" id="tab-appeal-content" role="tabpanel">
+                        <div class="p-3 bg-white rounded-3 border shadow-xs">
+                            <h6 class="fw-bold text-primary border-bottom pb-2 mb-3"><i class="bi bi-bank me-1"></i>Appellate Proceedings</h6>
+                            <div class="row g-3 small">
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Appeal Number &amp; Year</span>
+                                    <strong class="text-dark fs-6">@(string.IsNullOrEmpty(Model.AppealNumber) ? "Not Filed" : $"{Model.AppealNumber} / {Model.AppealYear}")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Appellate Authority / Court</span>
+                                    <strong class="text-dark">@(Model.CourtAppellateAuth ?? "—")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Appeal Advocate</span>
+                                    <strong class="text-dark">@(Model.AppealAdvocateName ?? "—")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Compliance Amount</span>
+                                    <strong class="text-success">@(Model.AppealComplianceAmount.HasValue ? $"₹ {Model.AppealComplianceAmount.Value:N2}" : "—")</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Cheque Number &amp; Date</span>
+                                    <strong class="text-dark">@(Model.AppealChequeNumber ?? "—") (@(Model.AppealChequeDate?.ToString("dd-MM-yyyy") ?? "—"))</strong>
+                                </div>
+                                <div class="col-md-4">
+                                    <span class="text-muted d-block">Appeal Status</span>
+                                    <span class="badge bg-secondary">@(Model.AppealForwardingStatus ?? "Pending")</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(Model.AppealAwardDetails))
+                                {
+                                    <div class="col-12">
+                                        <span class="text-muted d-block">Appeal Findings / Remarks</span>
+                                        <div class="p-2 bg-light rounded text-dark">@Model.AppealAwardDetails</div>
+                                    </div>
                                 }
                             </div>
                         </div>
                     </div>
+
+                    <!-- TAB 8: Documents & Vault -->
+                    <div class="tab-pane fade" id="tab-documents-content" role="tabpanel">
+                        <div class="p-3 bg-white rounded-3 border shadow-xs">
+                            <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
+                                <h6 class="fw-bold text-primary mb-0"><i class="bi bi-folder-check me-1"></i>Persistent Document Vault (uploads_vault/other_courts)</h6>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill extra-small">
+                                    <i class="bi bi-shield-check me-1"></i>Zero Fallback Isolation
+                                </span>
+                            </div>
+
+                            <div class="row g-3">
+                                <!-- 1. Interim Order Document -->
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded-3 border bg-light h-100 d-flex flex-column justify-content-between">
+                                        <div>
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="bi bi-file-earmark-text text-warning fs-5 me-2"></i>
+                                                <strong class="small text-dark">Interim Order Copy</strong>
+                                            </div>
+                                            <small class="text-muted d-block text-truncate">@(string.IsNullOrEmpty(Model.InterimOrderFilePath) ? "No file uploaded" : Model.InterimOrderFilePath.Split('/').Last())</small>
+                                        </div>
+                                        <div class="d-flex gap-2 mt-3">
+                                            @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
+                                            {
+                                                <button type="button" onclick="openOrderInModal('@Model.InterimOrderFilePath', 'Interim Order Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 flex-fill">
+                                                    <i class="bi bi-eye-fill me-1"></i>View
+                                                </button>
+                                            }
+                                            <button type="button" onclick="openEditOtherCourtsDocModal('InterimOrderFilePath', 'Interim Order Copy', '@(Model.InterimOrderFilePath ?? "")', 'Interim Order Injunction')" class="btn btn-sm btn-outline-warning rounded-pill px-3 py-1 flex-fill">
+                                                <i class="bi bi-upload me-1"></i>Re-upload
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 2. Final Judgment Document -->
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded-3 border bg-light h-100 d-flex flex-column justify-content-between">
+                                        <div>
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="bi bi-file-earmark-pdf text-success fs-5 me-2"></i>
+                                                <strong class="small text-dark">Final Judgment Order</strong>
+                                            </div>
+                                            <small class="text-muted d-block text-truncate">@(string.IsNullOrEmpty(Model.FinalJudgmentFilePath) ? "No file uploaded" : Model.FinalJudgmentFilePath.Split('/').Last())</small>
+                                        </div>
+                                        <div class="d-flex gap-2 mt-3">
+                                            @if (!string.IsNullOrEmpty(Model.FinalJudgmentFilePath))
+                                            {
+                                                <button type="button" onclick="openOrderInModal('@Model.FinalJudgmentFilePath', 'Final Judgment Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 flex-fill">
+                                                    <i class="bi bi-eye-fill me-1"></i>View
+                                                </button>
+                                            }
+                                            <button type="button" onclick="openEditOtherCourtsDocModal('FinalJudgmentFilePath', 'Final Judgment Order', '@(Model.FinalJudgmentFilePath ?? "")', 'Final Order / Decree')" class="btn btn-sm btn-outline-warning rounded-pill px-3 py-1 flex-fill">
+                                                <i class="bi bi-upload me-1"></i>Re-upload
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 3. Appeal Judgment Document -->
+                                <div class="col-md-4">
+                                    <div class="p-3 rounded-3 border bg-light h-100 d-flex flex-column justify-content-between">
+                                        <div>
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="bi bi-file-earmark-ruled text-primary fs-5 me-2"></i>
+                                                <strong class="small text-dark">Appeal Judgment Copy</strong>
+                                            </div>
+                                            <small class="text-muted d-block text-truncate">@(string.IsNullOrEmpty(Model.AppealJudgmentCopyPath) ? "No file uploaded" : Model.AppealJudgmentCopyPath.Split('/').Last())</small>
+                                        </div>
+                                        <div class="d-flex gap-2 mt-3">
+                                            @if (!string.IsNullOrEmpty(Model.AppealJudgmentCopyPath))
+                                            {
+                                                <button type="button" onclick="openOrderInModal('@Model.AppealJudgmentCopyPath', 'Appeal Judgment Copy', '@(Model.CNRNumber ?? "")', '@courtName', @Model.CaseID)" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 flex-fill">
+                                                    <i class="bi bi-eye-fill me-1"></i>View
+                                                </button>
+                                            }
+                                            <button type="button" onclick="openEditOtherCourtsDocModal('AppealJudgmentCopyPath', 'Appeal Judgment Copy', '@(Model.AppealJudgmentCopyPath ?? "")', 'Higher Court Appeal')" class="btn btn-sm btn-outline-warning rounded-pill px-3 py-1 flex-fill">
+                                                <i class="bi bi-upload me-1"></i>Re-upload
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @if (Model.EnclosedDocuments != null && Model.EnclosedDocuments.Any())
+                            {
+                                <div class="mt-4 pt-3 border-top">
+                                    <h6 class="fw-bold text-dark mb-2">Enclosed Case Documents</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-striped align-middle mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Document Name</th>
+                                                    <th class="text-end">Pages</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var doc in Model.EnclosedDocuments)
+                                                {
+                                                    <tr>
+                                                        <td class="fw-bold text-dark small"><i class="bi bi-file-earmark-text text-secondary me-2"></i>@doc.DocName</td>
+                                                        <td class="text-end text-muted small">@(doc.PageCount.HasValue ? doc.PageCount.ToString() : "-")</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
-            <!-- Incident & Vehicle Details (if applicable) -->
-            @if (Model.CaseType == "ECA" || Model.IsVehicleInvolved == "yes" || Model.DateOfAccident.HasValue || Model.ClaimAmount.HasValue)
-            {
-                <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="bi bi-truck text-warning me-2"></i>Incident &amp; Vehicle Details
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Vehicle Involved?</label>
-                                <span class="badge @(Model.IsVehicleInvolved == "yes" ? "bg-primary" : "bg-secondary") rounded-pill px-3 py-1">
-                                    @(Model.IsVehicleInvolved?.ToUpper() ?? "NO")
-                                </span>
-                            </div>
-                            @if (Model.IsVehicleInvolved == "yes")
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Vehicle Number</label>
-                                    <span class="fw-bold text-dark">@(string.IsNullOrEmpty(Model.VehicleNumber) ? "-" : Model.VehicleNumber)</span>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Vehicle Type</label>
-                                    <span class="text-dark">@(string.IsNullOrEmpty(Model.VehicleType) ? "-" : Model.VehicleType)</span>
-                                </div>
-                            }
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Date of Incident</label>
-                                <span class="fw-bold text-dark">@(Model.DateOfAccident?.ToString("dd-MM-yyyy") ?? "-")</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Claim Amount</label>
-                                <span class="fw-bold text-success fs-6">@(Model.ClaimAmount.HasValue ? $"₹ {Model.ClaimAmount.Value:N2}" : "-")</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Corp Employee?</label>
-                                <span class="badge @(Model.IsCorporationEmployee == "Yes" ? "bg-info text-dark" : "bg-light text-dark border") rounded-pill px-3 py-1">
-                                    @(Model.IsCorporationEmployee ?? "No")
-                                </span>
-                            </div>
-                            @if (!string.IsNullOrEmpty(Model.MannerOfIncident))
-                            {
-                                <div class="col-12">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Manner of Incident</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.MannerOfIncident</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Evidence Details (if recorded) -->
-            @if ((Model.RespondentEvidence != null && Model.RespondentEvidence.Any()) || (Model.CorpEvidence != null && Model.CorpEvidence.Any()) || Model.IsObjectionFiled == "Yes" || !string.IsNullOrEmpty(Model.ObjectionRemarks))
-            {
-                <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="bi bi-journal-check text-info me-2"></i>Evidence &amp; Objections
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-4">
-                            @if (Model.RespondentEvidence != null && Model.RespondentEvidence.Any())
-                            {
-                                <div class="col-md-6">
-                                    <label class="small text-muted text-uppercase fw-bold d-block mb-2">Opposite Party Evidence</label>
-                                    <div class="list-group list-group-flush border rounded-3 overflow-hidden">
-                                        @foreach (var ev in Model.RespondentEvidence)
-                                        {
-                                            <div class="list-group-item bg-light p-2 px-3 d-flex justify-content-between align-items-center">
-                                                <span class="fw-bold small text-dark">@ev.Name</span>
-                                                <span class="text-muted small">@(string.IsNullOrEmpty(ev.Remark) ? "-" : ev.Remark)</span>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
-                            @if (Model.CorpEvidence != null && Model.CorpEvidence.Any())
-                            {
-                                <div class="col-md-6">
-                                    <label class="small text-muted text-uppercase fw-bold d-block mb-2">Corporation Witnesses / Evidence</label>
-                                    <div class="list-group list-group-flush border rounded-3 overflow-hidden">
-                                        @foreach (var ev in Model.CorpEvidence)
-                                        {
-                                            <div class="list-group-item bg-light p-2 px-3 d-flex justify-content-between align-items-center">
-                                                <span class="fw-bold small text-dark">@ev.Name</span>
-                                                <span class="badge bg-secondary-subtle text-dark border small">@(string.IsNullOrEmpty(ev.Designation) ? "-" : ev.Designation)</span>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.ObjectionRemarks))
-                            {
-                                <div class="col-12">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Objection / Written Statement Remarks</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.ObjectionRemarks</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Certified Copy Tracking (if recorded) -->
-            @if (Model.CopyAppliedOn.HasValue || Model.CopyReadyOn.HasValue || Model.CopyDeliveredOn.HasValue || Model.CopyReceivedAtDivision.HasValue || !string.IsNullOrEmpty(Model.CertifiedCopyRemarks))
-            {
-                <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="bi bi-file-earmark-check text-success me-2"></i>Certified Copy (CC) Details
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Applied On</label>
-                                <span class="fw-bold text-dark">@(Model.CopyAppliedOn?.ToString("dd-MM-yyyy") ?? "-")</span>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Ready On</label>
-                                <span class="fw-bold text-dark">@(Model.CopyReadyOn?.ToString("dd-MM-yyyy") ?? "-")</span>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Delivered On</label>
-                                <span class="fw-bold text-dark">@(Model.CopyDeliveredOn?.ToString("dd-MM-yyyy") ?? "-")</span>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Received at Division</label>
-                                <span class="fw-bold text-dark">@(Model.CopyReceivedAtDivision?.ToString("dd-MM-yyyy") ?? "-")</span>
-                            </div>
-                            @if (!string.IsNullOrEmpty(Model.CertifiedCopyRemarks))
-                            {
-                                <div class="col-12">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Certified Copy Remarks</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.CertifiedCopyRemarks</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Opinions & Decision Section (if recorded) -->
-            @if (!string.IsNullOrEmpty(Model.AdvocateOpinion) || !string.IsNullOrEmpty(Model.LawOfficerOpinion) || !string.IsNullOrEmpty(Model.DCFinalDecision) || !string.IsNullOrEmpty(Model.FinalForwardingStatus))
-            {
-                <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="bi bi-chat-left-text text-secondary me-2"></i>Legal Opinions &amp; Decisions
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-3">
-                            @if (!string.IsNullOrEmpty(Model.AdvocateOpinion))
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Advocate's Opinion</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.AdvocateOpinion</div>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.LawOfficerOpinion))
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Law Officer's Opinion</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.LawOfficerOpinion</div>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.DCFinalDecision))
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">DC's Final Decision</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark small">@Model.DCFinalDecision</div>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.FinalForwardingStatus))
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Forwarding Status</label>
-                                    <span class="badge bg-secondary rounded-pill px-3 py-1">@Model.FinalForwardingStatus</span>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.OutwardNumber))
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">CO Outward No &amp; Date</label>
-                                    <span class="fw-bold text-dark">@Model.OutwardNumber (@(Model.OutwardDate?.ToString("dd-MM-yyyy") ?? "-"))</span>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Appeal Details (if recorded) -->
-            @if (!string.IsNullOrEmpty(Model.AppealNumber) || Model.AppealComplianceAmount.HasValue || !string.IsNullOrEmpty(Model.AppealJudgmentCopyPath))
-            {
-                <div class="glass-card shadow-sm mb-4 border-start border-4 border-primary overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-primary bg-opacity-10">
-                        <h6 class="fw-bold mb-0 text-primary">
-                            <i class="bi bi-box-arrow-up-right me-2"></i>Appeal Details
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Appeal Number &amp; Year</label>
-                                <span class="fw-bold text-dark fs-6">@Model.AppealNumber / @Model.AppealYear</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Appellate Court</label>
-                                <span class="text-dark">@(string.IsNullOrEmpty(Model.CourtAppellateAuth) ? "-" : Model.CourtAppellateAuth)</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Appeal Advocate</label>
-                                <span class="text-dark">@(string.IsNullOrEmpty(Model.AppealAdvocateName) ? "-" : Model.AppealAdvocateName)</span>
-                            </div>
-                            @if (Model.AppealComplianceAmount.HasValue)
-                            {
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Compliance Amount</label>
-                                    <span class="fw-bold text-success">₹ @Model.AppealComplianceAmount.Value.ToString("N2")</span>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Cheque No &amp; Date</label>
-                                    <span class="text-dark">@(Model.AppealChequeNumber ?? "-") (@(Model.AppealChequeDate?.ToString("dd-MM-yyyy") ?? "-"))</span>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.AppealJudgmentCopyPath))
-                            {
-                                <div class="col-12 mt-2">
-                                    <a href="@Model.AppealJudgmentCopyPath" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill px-4">
-                                        <i class="bi bi-file-earmark-pdf-fill me-2"></i>View Appeal Judgment Copy
-                                    </a>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Enclosed Documents (if recorded) -->
-            @if (Model.EnclosedDocuments != null && Model.EnclosedDocuments.Any())
-            {
-                <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                        <h6 class="fw-bold mb-0 text-dark">
-                            <i class="bi bi-paperclip text-dark me-2"></i>Enclosed Case Documents
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-striped align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>Document Name</th>
-                                        <th class="text-end">Pages</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var doc in Model.EnclosedDocuments)
-                                    {
-                                        <tr>
-                                            <td class="fw-bold text-dark small"><i class="bi bi-file-earmark-text text-secondary me-2"></i>@doc.DocName</td>
-                                            <td class="text-end text-muted small">@(doc.PageCount.HasValue ? doc.PageCount.ToString() : "-")</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            }
-
-            <!-- Disposal & Final Outcome (if closed) -->
-            @if (Model.DisposalStatus == "DISPOSED" || Model.DisposalStatus == "DNP" || Model.DisposalStatus == "Decreed" || Model.ClosureDate.HasValue)
-            {
-                <div class="glass-card shadow-sm mb-4 border-start border-4 border-success overflow-hidden">
-                    <div class="p-3 px-4 border-bottom bg-success bg-opacity-10">
-                        <h6 class="fw-bold mb-0 text-success">
-                            <i class="bi bi-check-circle-fill me-2"></i>Disposal &amp; Final Outcome
-                        </h6>
-                    </div>
-                    <div class="p-4">
-                        <div class="row g-4">
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Disposal Status</label>
-                                <span class="badge bg-success px-3 py-1 rounded-pill">@(Model.DisposalStatus ?? "DISPOSED")</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Judicial Result</label>
-                                <span class="badge @(Model.Result == "FAVOR" ? "bg-success" : "bg-danger") px-3 py-1 rounded-pill">@(Model.Result ?? "DISPOSED")</span>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="small text-muted text-uppercase fw-bold d-block">Closure Date</label>
-                                <p class="fw-bold text-dark mb-0">@(Model.ClosureDate?.ToString("dd-MM-yyyy") ?? "-")</p>
-                            </div>
-                            @if (!string.IsNullOrEmpty(Model.ClosureRemark))
-                            {
-                                <div class="col-12">
-                                    <label class="small text-muted text-uppercase fw-bold d-block">Award Summary / Remarks</label>
-                                    <div class="bg-light p-3 rounded-3 border text-dark">@Model.ClosureRemark</div>
-                                </div>
-                            }
-                            @if (!string.IsNullOrEmpty(Model.FinalJudgmentFilePath))
-                            {
-                                <div class="col-12">
-                                    <a href="@Model.FinalJudgmentFilePath" target="_blank" class="btn btn-outline-success btn-sm rounded-pill px-4">
-                                        <i class="bi bi-file-earmark-pdf-fill me-2"></i>View Final Judgment Order
-                                    </a>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
+            <!-- Modal Footer -->
+            <div class="modal-footer border-0 px-4 py-2" style="background: #f1f5f9;">
+                <small class="text-muted me-auto" style="font-size: 0.75rem;">
+                    <i class="bi bi-shield-check me-1 text-primary"></i>@(OrgService.GetCurrentSettings().OrganizationShortName) Law Management System &bull; Verified Data Integrity
+                </small>
+                <button type="button" class="btn btn-outline-primary rounded-pill px-4 py-2 fw-semibold" onclick="window.print()">
+                    <i class="bi bi-printer me-1"></i> Print Case Dossier
+                </button>
+                <button type="button" class="btn btn-secondary rounded-pill px-4 py-2" data-bs-dismiss="modal">
+                    Close
+                </button>
+            </div>
         </div>
+    </div>
+</div>
 
-        <!-- Right Column: Status Card, Counsel & Progress -->
-        <div class="col-lg-4">
-            <!-- Status Card -->
-            <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                <div class="p-4 text-white text-center" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;">
-                    <span class="badge bg-warning text-dark px-3 py-1 rounded-pill fw-bold mb-2">@Model.CaseType</span>
-                    <div class="display-6 fw-bold mb-0">@(string.IsNullOrEmpty(Model.CaseStatus) ? "Active" : Model.CaseStatus)</div>
-                    <p class="mb-0 text-white-50 small mt-1">Current File Status</p>
-                </div>
-                <div class="p-4">
-                    <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
-                        <span class="text-muted small">Next Hearing</span>
-                        <span class="fw-bold @(Model.NextDateOfHearing == DateTime.Today ? "text-danger" : "text-dark")">
-                            @(Model.NextDateOfHearing?.ToString("dd MMM yyyy") ?? "Not Scheduled")
-                        </span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
-                        <span class="text-muted small">Advocate</span>
-                        <span class="fw-bold text-dark">@(string.IsNullOrEmpty(Model.AdvocateName) ? "Not Assigned" : Model.AdvocateName)</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
-                        <span class="text-muted small">Entrustment No.</span>
-                        <span class="fw-bold text-dark">@(string.IsNullOrEmpty(Model.EntrustmentNumber) ? "-" : Model.EntrustmentNumber)</span>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <span class="text-muted small">Entrustment Date</span>
-                        <span class="fw-bold text-dark">@(Model.EntrustmentDate?.ToString("dd-MM-yyyy") ?? "-")</span>
-                    </div>
-                </div>
+<!-- ======================================================== -->
+<!-- 7. INTERACTIVE MODALS (UPDATE CNR, PDF VIEWER, RE-UPLOAD) -->
+<!-- ======================================================== -->
+
+<!-- UPDATE CNR NUMBER MODAL -->
+<div class="modal fade" id="updateCnrModal" tabindex="-1" aria-labelledby="updateCnrModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-fullscreen-sm-down">
+        <div class="modal-content border-0 shadow-lg rounded-4">
+            <div class="modal-header bg-primary text-white py-3 px-4">
+                <h5 class="modal-title fw-bold" id="updateCnrModalLabel">
+                    <i class="bi bi-broadcast me-2"></i>Update eCourts 16-Digit CNR Number
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-
-            <!-- Procedural Milestones Card -->
-            <div class="glass-card shadow-sm mb-4 overflow-hidden">
-                <div class="p-3 px-4 border-bottom bg-light bg-opacity-50">
-                    <h6 class="fw-bold mb-0 text-dark">
-                        <i class="bi bi-check2-square text-primary me-2"></i>Procedural Milestones
-                    </h6>
+            <div class="modal-body p-4">
+                <div class="alert alert-info py-2 px-3 small mb-3 border-0 bg-info-subtle text-info-emphasis rounded-3">
+                    <i class="bi bi-info-circle-fill me-1"></i> Linking a valid 16-digit CNR Number enables real-time eCourts Gateway status synchronization, automated hearing tracking, and order retrieval.
                 </div>
-                <div class="p-4">
-                    <ul class="list-group list-group-flush small">
-                        <li class="list-group-item px-0 d-flex justify-content-between align-items-center bg-transparent">
-                            <span>Document / Records Sent</span>
-                            <span class="badge @(Model.DocumentSent == "Yes" ? "bg-success" : "bg-light text-dark border") rounded-pill">@(Model.DocumentSent ?? "No")</span>
-                        </li>
-                        <li class="list-group-item px-0 d-flex justify-content-between align-items-center bg-transparent">
-                            <span>Written Statement / Objection</span>
-                            <span class="badge @(Model.ObjectionVerified == "Yes" ? "bg-success" : "bg-light text-dark border") rounded-pill">@(Model.ObjectionVerified ?? "No")</span>
-                        </li>
-                        <li class="list-group-item px-0 d-flex justify-content-between align-items-center bg-transparent">
-                            <span>Evidence / Proof Filed</span>
-                            <span class="badge @(Model.EvidenceFiled == "Yes" ? "bg-success" : "bg-light text-dark border") rounded-pill">@(Model.EvidenceFiled ?? "No")</span>
-                        </li>
-                        <li class="list-group-item px-0 d-flex justify-content-between align-items-center bg-transparent">
-                            <span>Interim Order Granted</span>
-                            <span class="badge @(Model.InterimOrder == "Yes" ? "bg-info text-dark" : "bg-light text-dark border") rounded-pill">@(Model.InterimOrder ?? "No")</span>
-                        </li>
-                    </ul>
-                    @if (!string.IsNullOrEmpty(Model.InterimOrderFilePath))
-                    {
-                        <a href="@Model.InterimOrderFilePath" target="_blank" class="btn btn-outline-primary btn-sm w-100 rounded-pill mt-3 shadow-sm">
-                            <i class="bi bi-file-earmark-text-fill me-2"></i>View Interim Order Copy
-                        </a>
-                    }
-                </div>
-            </div>
-
-            <!-- e-Courts Live Gateway Integration Card -->
-            <div class="glass-card shadow-sm mb-4 border-start border-4 border-primary overflow-hidden">
-                <div class="p-3 px-4 border-bottom bg-light bg-opacity-75 d-flex justify-content-between align-items-center">
-                    <h6 class="fw-bold mb-0 text-dark">
-                        <i class="bi bi-bank2 text-primary me-2"></i>e-Courts Live Gateway
-                    </h6>
-                    @if (Model.LastNapixSyncAt.HasValue)
-                    {
-                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill xsmall">
-                            <i class="bi bi-check-circle-fill me-1"></i>Synced
-                        </span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-secondary-subtle text-secondary border rounded-pill xsmall">
-                            Unsynced
-                        </span>
-                    }
-                </div>
-                <div class="p-4">
+                <form id="updateCnrForm" onsubmit="event.preventDefault(); submitUpdateCnr();">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="updateCnrCaseId" value="@Model.CaseID" />
                     <div class="mb-3">
-                        <label class="text-muted text-uppercase fw-bold small" style="font-size: 0.72rem;">16-Digit CNR Number</label>
-                        @if (!string.IsNullOrWhiteSpace(Model.CNRNumber))
-                        {
-                            <div class="d-flex align-items-center justify-content-between bg-light p-2 rounded border">
-                                <span class="fw-bold font-monospace text-primary fs-6">@Model.CNRNumber</span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary border-0 py-0" title="Copy CNR" onclick="navigator.clipboard.writeText('@Model.CNRNumber'); alert('CNR copied to clipboard');">
-                                    <i class="bi bi-clipboard"></i>
-                                </button>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="text-muted small fst-italic bg-light p-2 rounded border">No CNR linked yet</div>
-                        }
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <label for="txtNewCnrNumber" class="form-label fw-bold text-secondary small text-uppercase mb-0">16-Digit CNR Number</label>
+                            <span id="cnrCharCount" class="badge bg-secondary font-monospace">0 / 16 chars</span>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="txtNewCnrNumber" class="form-control font-monospace fs-6 text-uppercase" 
+                                   maxlength="16" placeholder="e.g. KADW200035312025" 
+                                   value="@Model.CNRNumber" oninput="onCnrInputChange(this)" />
+                        </div>
+                        <div class="form-text small text-muted mt-1" id="cnrHelperText">
+                            Format: 6-char establishment code + 6-digit case number + 4-digit year (e.g. <code>KADW200035312025</code> or <code>KAHC010012342024</code>)
+                        </div>
+                        <div id="verifyCnrResult" class="mt-2" style="display:none;"></div>
                     </div>
-
-                    @if (!string.IsNullOrWhiteSpace(Model.CNRNumber))
-                    {
-                        <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
-                            <span class="text-muted small">eCourts Status</span>
-                            <span class="fw-bold @(Model.PendDispStatus == "D" ? "text-success" : "text-primary") small">
-                                @(Model.PendDispStatus == "D" ? "Disposed" : (Model.PendDispStatus == "P" ? "Pending" : (Model.LastNapixSyncStatus ?? "Active")))
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
-                            <span class="text-muted small">eCourts Stage</span>
-                            <span class="fw-semibold text-dark small text-end" style="max-width: 180px;">
-                                @(string.IsNullOrEmpty(Model.ECourtsStage) ? "-" : Model.ECourtsStage)
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
-                            <span class="text-muted small">Court / Hall No</span>
-                            <span class="fw-semibold text-dark small text-end">
-                                @(string.IsNullOrEmpty(Model.ECourtsCourtNo) ? "-" : Model.ECourtsCourtNo)
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
-                            <span class="text-muted small">Presiding Judge</span>
-                            <span class="fw-semibold text-dark small text-end text-truncate" style="max-width: 180px;" title="@Model.ECourtsJudge">
-                                @(string.IsNullOrEmpty(Model.ECourtsJudge) ? "-" : Model.ECourtsJudge)
-                            </span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3 pb-2 border-bottom">
-                            <span class="text-muted small">Last Sync Time</span>
-                            <span class="text-muted small">
-                                @(Model.LastNapixSyncAt?.ToString("dd MMM yyyy, hh:mm tt") ?? "Never")
-                            </span>
-                        </div>
-
-                        <div id="syncStatusMsg" class="mb-2 small"></div>
-
-                        <button type="button" id="btnSyncECourts" class="btn btn-primary w-100 rounded-pill shadow-sm fw-bold"
-                                data-caseid="@Model.CaseID" data-cnr="@Model.CNRNumber">
-                            <i class="bi bi-arrow-repeat me-1"></i> Sync Live with e-Courts
-                        </button>
-                    }
-                    else
-                    {
-                        <a href="@Url.Action("OtherCourtsCaseEdit", "Home", new { id = Model.CaseID })" class="btn btn-outline-primary btn-sm w-100 rounded-pill">
-                            <i class="bi bi-pencil me-1"></i> Link CNR Number in Edit Case
-                        </a>
-                    }
+                </form>
+            </div>
+            <div class="modal-footer bg-light px-3 px-sm-4 py-3 border-top d-flex justify-content-between gap-2">
+                <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3" onclick="unlinkCnrNumber()">
+                    <i class="bi bi-trash3 me-1"></i> Unlink CNR
+                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" id="btnSaveCnr" onclick="submitUpdateCnr()">
+                        <i class="bi bi-check2-circle me-1"></i> Save &amp; Link CNR
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- IN-MODAL SECURE PDF PREVIEW VIEWER -->
+<div class="modal fade" id="ecourtsOrderModal" tabindex="-1" aria-labelledby="ecourtsOrderModalLabel" aria-hidden="true" style="z-index: 1070;">
+    <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width: 92vw; height: 92vh;">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden" style="height: 100%;">
+            <div class="modal-header bg-dark text-white py-2 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-file-earmark-pdf-fill text-danger fs-5"></i>
+                    <div>
+                        <h6 class="modal-title fw-bold mb-0 text-white" id="ecourtsOrderModalLabel">Court Document / Order Preview</h6>
+                        <small class="text-white text-opacity-75 extra-small" id="ecourtsOrderModalSub">—</small>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <a href="#" id="btnDownloadOrderExternal" target="_blank" class="btn btn-sm btn-outline-light rounded-pill px-3 py-1">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Open in New Tab
+                    </a>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 position-relative" style="height: calc(100% - 50px); background: #525659;">
+                <div id="orderModalLoading" class="position-absolute top-50 start-50 translate-middle text-white text-center">
+                    <div class="spinner-border text-primary mb-2" role="status"></div>
+                    <div class="small fw-semibold">Loading verified court document...</div>
+                </div>
+                <iframe id="orderModalIframe" src="" style="width:100%; height:100%; border:none;" onload="document.getElementById('orderModalLoading').style.display='none';"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RE-UPLOAD / EDIT OTHER COURTS DOCUMENT MODAL -->
+<div class="modal fade" id="editOtherCourtsDocModal" tabindex="-1" aria-labelledby="editOtherCourtsDocModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+            <div class="modal-header bg-warning text-dark py-3 px-4">
+                <div class="d-flex align-items-center">
+                    <div class="bg-dark text-warning rounded-circle p-2 me-2.5 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                        <i class="bi bi-pencil-square fs-5"></i>
+                    </div>
+                    <div>
+                        <h6 class="modal-title fw-bold mb-0 text-dark" id="editOtherCourtsDocModalLabel">Edit / Re-upload Document</h6>
+                        <small class="text-dark-50 extra-small">Persistent Vault Storage (uploads_vault/other_courts)</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="formEditOtherCourtsDoc" enctype="multipart/form-data">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="caseId" value="@Model.CaseID" />
+                <input type="hidden" name="docKey" id="editDocKey" />
+
+                <div class="modal-body p-3 p-md-4">
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="d-flex align-items-center justify-content-between mb-1">
+                            <span class="badge bg-secondary-subtle text-secondary border extra-small fw-semibold" id="editDocCategoryBadge">Category</span>
+                            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill extra-small px-2 py-0.5">
+                                <i class="bi bi-shield-check me-1"></i>Vault Target
+                            </span>
+                        </div>
+                        <div class="fw-bold text-dark small text-truncate" id="editDocCurrentTitle">Document Title</div>
+                        <small class="text-muted extra-small font-monospace text-truncate d-block mt-0.5" id="editDocCurrentFile">
+                            <i class="bi bi-file-earmark me-1"></i>filename.pdf
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Document Name / Title</label>
+                        <input type="text" name="documentTitle" id="editDocTitleInput" class="form-control form-control-sm rounded-pill px-3" placeholder="Enter document title" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold mb-1">Remarks / Reason for Re-upload</label>
+                        <textarea name="remarks" id="editDocRemarksInput" class="form-control form-control-sm rounded-3 p-2" rows="2" placeholder="e.g. Certified copy received from court, updated decree..."></textarea>
+                    </div>
+
+                    <div class="mb-2">
+                        <label class="form-label small fw-bold mb-1">
+                            Select Replacement File <span class="text-danger">*</span>
+                        </label>
+                        <input type="file" name="documentFile" id="editDocFileInput" class="form-control form-control-sm rounded-pill" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required />
+                        <small class="text-muted extra-small d-block mt-1">
+                            <i class="bi bi-info-circle me-1"></i>Files are automatically validated and stored in <code>uploads_vault/other_courts</code>.
+                        </small>
+                    </div>
+
+                    <div id="editDocStatusMsg" class="small fw-bold text-center mt-2 d-none"></div>
+                </div>
+
+                <div class="modal-footer bg-light px-3 py-2 border-top d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-sm btn-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-4 shadow-sm" id="btnSubmitEditDoc" onclick="submitEditOtherCourtsDoc()">
+                        <i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <style>
+    .bg-info-subtle { background-color: #cff4fc !important; color: #055160 !important; }
+    .bg-secondary-subtle { background-color: #f8f9fa !important; color: #6c757d !important; }
+    .bg-primary-subtle { background-color: #cfe2ff !important; color: #084298 !important; }
+    .bg-warning-subtle { background-color: #fff3cd !important; color: #664d03 !important; }
+    .bg-success-subtle { background-color: #d1e7dd !important; color: #0f5132 !important; }
+    .bg-danger-subtle { background-color: #f8d7da !important; color: #842029 !important; }
+    .extra-small { font-size: 0.75rem; }
+    .white-space-pre-line { white-space: pre-line; }
+    .shadow-xs { box-shadow: 0 1px 3px rgba(0,0,0,0.06) !important; }
+
+    .mobile-nav-tabs-scroll {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: #cbd5e1 #f8fafc !important;
+        padding-bottom: 6px !important;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar {
+        height: 5px !important;
+    }
+    .mobile-nav-tabs-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+
     @@media print {
         .d-print-none { display: none !important; }
-        .glass-card { border: 1px solid #ccc !important; box-shadow: none !important; }
+        .d-print-block { display: block !important; }
+        body { background: #fff !important; font-size: 11pt !important; }
+        .print-table td, .print-table th { padding: 4px 8px !important; }
     }
 </style>
 
 @section Scripts {
     <script>
-        $(document).ready(function() {
-            $('#btnSyncECourts').on('click', function(e) {
-                e.preventDefault();
-                var $btn = $(this);
-                var caseId = $btn.data('caseid');
-                var cnr = $btn.data('cnr');
-                var $msg = $('#syncStatusMsg');
+        function openOrderInModal(pdfUrl, title, cnr, orderDate, caseId) {
+            if (!pdfUrl) return;
+            var modalEl = document.getElementById('ecourtsOrderModal');
+            var iframe = document.getElementById('orderModalIframe');
+            var titleEl = document.getElementById('ecourtsOrderModalLabel');
+            var subEl = document.getElementById('ecourtsOrderModalSub');
+            var extBtn = document.getElementById('btnDownloadOrderExternal');
+            var loader = document.getElementById('orderModalLoading');
 
-                if (!cnr) return;
+            if (!modalEl || !iframe) return;
 
-                var origHtml = $btn.html();
-                $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Queueing Sync...');
-                $msg.html('<span class="text-info"><i class="bi bi-hourglass-split me-1"></i> Requesting e-Courts gateway...</span>');
+            var viewerUrl = '/ECourts/ViewOrderPdf?url=' + encodeURIComponent(pdfUrl) + '&caseId=' + (caseId || 0) + '&title=' + encodeURIComponent(title || 'Order');
 
-                var formData = new FormData();
-                formData.append('caseId', caseId);
-                formData.append('cnrNumber', cnr);
-                formData.append('module', 'OtherCourts');
+            titleEl.textContent = title || 'Court Order / Document';
+            subEl.textContent = (cnr ? 'CNR: ' + cnr : '') + (orderDate ? ' | Date: ' + orderDate : '');
+            extBtn.href = viewerUrl;
 
-                fetch('/ECourts/QueueCaseSync', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(r => r.json())
-                .then(data => {
-                    if (!data.success) {
-                        $msg.html('<span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> ' + (data.message || 'Failed') + '</span>');
-                        $btn.prop('disabled', false).html(origHtml);
-                        return;
+            loader.style.display = 'block';
+            iframe.src = viewerUrl;
+
+            var bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            bsModal.show();
+        }
+
+        function openUpdateCnrModal() {
+            var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('updateCnrModal'));
+            var input = document.getElementById('txtNewCnrNumber');
+            if (input) onCnrInputChange(input);
+            modal.show();
+        }
+
+        function onCnrInputChange(el) {
+            var val = (el.value || '').trim();
+            var counter = document.getElementById('cnrCharCount');
+            if (counter) {
+                counter.textContent = val.length + ' / 16 chars';
+                if (val.length === 16) {
+                    counter.className = 'badge bg-success font-monospace';
+                } else {
+                    counter.className = 'badge bg-secondary font-monospace';
+                }
+            }
+        }
+
+        function submitUpdateCnr() {
+            var caseId = document.getElementById('updateCnrCaseId').value;
+            var cnr = document.getElementById('txtNewCnrNumber').value.trim();
+            var btn = document.getElementById('btnSaveCnr');
+
+            if (cnr && cnr.length !== 16) {
+                alert('CNR Number must be exactly 16 characters (e.g. KADW200035312025).');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+
+            var token = document.querySelector('#updateCnrForm input[name="__RequestVerificationToken"]').value;
+
+            var formData = new FormData();
+            formData.append('caseId', caseId);
+            formData.append('cnrNumber', cnr);
+            formData.append('__RequestVerificationToken', token);
+
+            fetch('/Home/UpdateCnr', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Link CNR';
+                if (data.success) {
+                    alert(data.message || 'CNR Number updated successfully!');
+                    location.reload();
+                } else {
+                    alert(data.message || 'Failed to update CNR Number.');
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Link CNR';
+                alert('Network error: ' + err);
+            });
+        }
+
+        function unlinkCnrNumber() {
+            if (!confirm('Are you sure you want to unlink the CNR Number from this case?')) return;
+            document.getElementById('txtNewCnrNumber').value = '';
+            submitUpdateCnr();
+        }
+
+        function openEditOtherCourtsDocModal(docKey, title, currentPath, category) {
+            document.getElementById('editDocKey').value = docKey || '';
+            document.getElementById('editDocCategoryBadge').textContent = category || 'Other Courts Document';
+            document.getElementById('editDocCurrentTitle').textContent = title || 'Document';
+            document.getElementById('editDocCurrentFile').textContent = currentPath ? currentPath.split('/').pop().split('\\').pop() : 'No file attached';
+            document.getElementById('editDocTitleInput').value = title || '';
+            document.getElementById('editDocRemarksInput').value = '';
+            document.getElementById('editDocFileInput').value = '';
+
+            var statusDiv = document.getElementById('editDocStatusMsg');
+            if (statusDiv) {
+                statusDiv.classList.add('d-none');
+                statusDiv.innerHTML = '';
+            }
+
+            var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('editOtherCourtsDocModal'));
+            modal.show();
+        }
+
+        function submitEditOtherCourtsDoc() {
+            var form = document.getElementById('formEditOtherCourtsDoc');
+            var btn = document.getElementById('btnSubmitEditDoc');
+            var statusDiv = document.getElementById('editDocStatusMsg');
+            var fileInput = document.getElementById('editDocFileInput');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Please select a replacement file.');
+                return;
+            }
+
+            var formData = new FormData(form);
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Securing in Vault...';
+
+            if (statusDiv) {
+                statusDiv.className = 'small fw-bold text-primary text-center mt-2';
+                statusDiv.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Storing in persistent vault...';
+                statusDiv.classList.remove('d-none');
+            }
+
+            fetch('/Home/UpdateOrReuploadOtherCourtsDocument', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+                if (data.success) {
+                    if (statusDiv) {
+                        statusDiv.className = 'small fw-bold text-success text-center mt-2';
+                        statusDiv.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> ' + (data.message || 'Updated successfully!');
                     }
+                    setTimeout(function() { location.reload(); }, 900);
+                } else {
+                    if (statusDiv) {
+                        statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+                        statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> ' + (data.message || 'Failed.');
+                    }
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save &amp; Secure in Vault';
+                if (statusDiv) {
+                    statusDiv.className = 'small fw-bold text-danger text-center mt-2';
+                    statusDiv.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-1"></i> Error: ' + err;
+                }
+            });
+        }
 
-                    $msg.html('<span class="text-primary"><span class="spinner-border spinner-border-sm me-1"></span> Sync in progress...</span>');
+        function triggerFetchOtherCourtsLiveStatus() {
+            var caseId = @Model.CaseID;
+            var cnr = '@(Model.CNRNumber ?? "")';
+            if (!cnr) return;
 
-                    var queueId = data.queueId;
+            var btn = document.getElementById('btnRefreshCaseLive');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Fetching...';
+            }
+
+            var formData = new FormData();
+            formData.append('caseId', caseId);
+            formData.append('cnrNumber', cnr);
+            formData.append('module', 'OtherCourts');
+
+            fetch('/ECourts/QueueCaseSync', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.queueId) {
                     var pollCount = 0;
                     var timer = setInterval(function() {
                         pollCount++;
                         if (pollCount > 30) {
                             clearInterval(timer);
-                            $msg.html('<span class="text-warning"><i class="bi bi-clock-history me-1"></i> Sync taking longer than usual. Please refresh later.</span>');
-                            $btn.prop('disabled', false).html(origHtml);
+                            alert('Live sync queued. Please refresh in a moment.');
+                            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status'; }
                             return;
                         }
 
-                        fetch('/ECourts/GetQueueStatus?queueId=' + queueId + '&caseId=' + caseId + '&module=OtherCourts')
+                        fetch('/ECourts/GetQueueStatus?queueId=' + data.queueId + '&caseId=' + caseId + '&module=OtherCourts')
                         .then(res => res.json())
-                        .then(statusData => {
-                            if (statusData.status === 'Success') {
+                        .then(sData => {
+                            if (sData.status === 'Success') {
                                 clearInterval(timer);
-                                $msg.html('<span class="text-success fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Sync Completed Successfully!</span>');
-                                $btn.html('<i class="bi bi-check-circle-fill text-success"></i> Synced');
-                                setTimeout(function() { location.reload(); }, 800);
-                            } else if (statusData.status === 'Failed') {
+                                location.reload();
+                            } else if (sData.status === 'Failed') {
                                 clearInterval(timer);
-                                $msg.html('<span class="text-danger"><i class="bi bi-x-circle-fill me-1"></i> Failed: ' + (statusData.error || 'eCourts returned error') + '</span>');
-                                $btn.prop('disabled', false).html(origHtml);
+                                alert('eCourts Sync Failed: ' + (sData.error || 'eCourts returned error'));
+                                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status'; }
                             }
                         })
                         .catch(() => {
                             clearInterval(timer);
-                            $btn.prop('disabled', false).html(origHtml);
+                            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status'; }
                         });
                     }, 1200);
-                })
-                .catch(err => {
-                    $msg.html('<span class="text-danger"><i class="bi bi-exclamation-circle me-1"></i> Network error: ' + err + '</span>');
-                    $btn.prop('disabled', false).html(origHtml);
-                });
+                } else {
+                    alert(data.message || 'Could not queue live sync.');
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status'; }
+                }
+            })
+            .catch(err => {
+                alert('Network error: ' + err);
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Fetch Live Status'; }
             });
-        });
+        }
+
+        function autoLinkCnrInline(caseId, module) {
+            var statusDiv = document.getElementById('autolink-status-msg');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<span class="text-primary small fw-bold"><span class="spinner-border spinner-border-sm me-1"></span> Searching eCourts Gateway for CNR...</span>';
+            }
+
+            fetch('/ECourts/AutoDiscoverCNR?caseId=' + caseId + '&module=' + encodeURIComponent(module))
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.cnrNumber) {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span class="text-success small fw-bold"><i class="bi bi-check-circle-fill me-1"></i> Found &amp; Linked CNR: ' + data.cnrNumber + '!</span>';
+                    }
+                    setTimeout(function() { location.reload(); }, 1000);
+                } else {
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<span class="text-danger small fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> ' + (data.message || 'No matching CNR found. Please enter manually.') + '</span>';
+                    }
+                }
+            })
+            .catch(err => {
+                if (statusDiv) {
+                    statusDiv.innerHTML = '<span class="text-danger small fw-bold"><i class="bi bi-exclamation-triangle-fill me-1"></i> Error: ' + err + '</span>';
+                }
+            });
+        }
     </script>
 }

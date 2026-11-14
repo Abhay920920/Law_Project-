@@ -13,5 +13,7 @@ namespace MVCCaseManagement.DAL
         DashboardStatsViewModel GetDashboardStats(int divisionId, string caseType, string litigantType);
         bool DeleteCase(int caseId);
         bool UpdateLiveSyncInfo(int caseId, string cnr, string status, string? error, DateTime? nextDate, string? stage, string? courtNo, string? judge, string? pendDisp, string? estName);
+        bool UpdateCNR(int caseId, string? cnrNumber, string? estCode = null, int? modifiedBy = null);
+        bool UpdateDocumentPath(int caseId, string docKey, string? newPath, int? modifiedBy = null);
     }
 }

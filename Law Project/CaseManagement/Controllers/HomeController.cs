@@ -312,8 +312,115 @@ namespace MVCCaseManagement.Controllers
         {
             var model = _otherRepo.GetCaseById(id);
             if (model == null) return NotFound();
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                                   || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                                   || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : -1;
+            if (!isCentralOffice && model.DivisionID > 0 && model.DivisionID != userDivId)
+            {
+                return Forbid();
+            }
+
+            ViewBag.IsCentralOffice = isCentralOffice;
+            ViewBag.CanEdit = !User.IsInRole("Division Controller") && !User.IsInRole("DC");
+            ViewBag.Divisions = _masterRepo.GetAllDivisions();
+            ViewBag.Advocates = _masterRepo.GetAllAdvocates();
+
+            var activeCnrs = new List<string>();
+            if (!string.IsNullOrWhiteSpace(model.CNRNumber)) activeCnrs.Add(model.CNRNumber);
+            ViewBag.CaseOrders = _caseRepo.GetCaseOrdersByCnrs(activeCnrs);
             
             return View(model);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateCnr(int caseId, string? cnrNumber)
+        {
+            var model = _otherRepo.GetCaseById(caseId);
+            if (model == null) return NotFound(new { success = false, message = "Case not found." });
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                                   || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                                   || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : -1;
+            if (!isCentralOffice && model.DivisionID > 0 && model.DivisionID != userDivId)
+            {
+                return Forbid();
+            }
+
+            string cleanCnr = (cnrNumber ?? "").Trim().Replace("-", "").Replace(" ", "").ToUpperInvariant();
+            if (!string.IsNullOrEmpty(cleanCnr) && cleanCnr.Length != 16)
+            {
+                return Json(new { success = false, message = "CNR Number must be exactly 16 alphanumeric characters." });
+            }
+
+            int? userId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out int uId) ? uId : null;
+            string? estCode = cleanCnr.Length >= 6 ? cleanCnr.Substring(0, 6) : null;
+            bool updated = _otherRepo.UpdateCNR(caseId, string.IsNullOrEmpty(cleanCnr) ? null : cleanCnr, estCode, userId);
+
+            if (updated)
+            {
+                return Json(new { success = true, message = string.IsNullOrEmpty(cleanCnr) ? "CNR Number unlinked successfully." : "CNR Number linked and updated successfully." });
+            }
+            return Json(new { success = false, message = "Failed to update CNR Number in database." });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateOrReuploadOtherCourtsDocument(int caseId, string docKey, string? documentTitle, string? remarks, IFormFile? documentFile)
+        {
+            var model = _otherRepo.GetCaseById(caseId);
+            if (model == null) return NotFound(new { success = false, message = "Case not found." });
+
+            var divIdString = User.FindFirst("DivisionID")?.Value;
+            var roleUpper = (User.FindFirst(ClaimTypes.Role)?.Value ?? "").ToUpperInvariant();
+            bool isCentralOffice = string.IsNullOrEmpty(divIdString) || divIdString == "0" || divIdString == "5"
+                                   || roleUpper.Contains("MD") || roleUpper.Contains("CLO") || roleUpper.Contains("LO")
+                                   || roleUpper.Contains("ADMIN") || roleUpper.Contains("CENTRAL");
+            int userDivId = int.TryParse(divIdString, out int pId) ? pId : -1;
+            if (!isCentralOffice && model.DivisionID > 0 && model.DivisionID != userDivId)
+            {
+                return Forbid();
+            }
+
+            int? userId = int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out int uId) ? uId : null;
+            string? existingPath = docKey switch
+            {
+                "InterimOrder" or "InterimOrderFilePath" => model.InterimOrderFilePath,
+                "FinalJudgment" or "FinalJudgmentFilePath" => model.FinalJudgmentFilePath,
+                "AppealJudgment" or "AppealJudgmentCopy" or "AppealJudgmentCopyPath" => model.AppealJudgmentCopyPath,
+                _ => null
+            };
+
+            string subFolder = docKey switch
+            {
+                "InterimOrder" or "InterimOrderFilePath" => "other_courts",
+                "FinalJudgment" or "FinalJudgmentFilePath" => "other_courts_judgments",
+                "AppealJudgment" or "AppealJudgmentCopy" or "AppealJudgmentCopyPath" => "other_courts_appeals",
+                _ => "other_courts"
+            };
+
+            string? newSavedPath = null;
+            if (documentFile != null && documentFile.Length > 0)
+            {
+                newSavedPath = await SaveOtherCourtsFileAsync(documentFile, subFolder, existingPath);
+                _otherRepo.UpdateDocumentPath(caseId, docKey, newSavedPath, userId);
+            }
+
+            return Json(new { 
+                success = true, 
+                message = newSavedPath != null 
+                    ? "Document successfully uploaded and secured in persistent vault." 
+                    : "Document details saved successfully.",
+                filePath = newSavedPath ?? existingPath
+            });
         }
 
         public IActionResult OtherCourtsCaseEdit(int id)
