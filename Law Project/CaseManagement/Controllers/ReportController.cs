@@ -818,7 +818,11 @@ namespace MVCCaseManagement.Controllers
                                     THEN 1 ELSE 0 END) as EndingPending
                             FROM DIVISION_MASTER d
                             LEFT JOIN MVC_CASES c ON c.DivisionID = d.DivisionID
-                            LEFT JOIN MVC_CASE_ADVERSE_DETAILS ad ON ad.CaseID = c.CaseID
+                            LEFT JOIN (
+                                SELECT CaseID, MAX(AwardAmount) as AwardAmount, MAX(AwardDate) as AwardDate
+                                FROM MVC_CASE_ADVERSE_DETAILS
+                                GROUP BY CaseID
+                            ) ad ON ad.CaseID = c.CaseID
                             WHERE d.IsActive = 1 AND d.DivisionID NOT IN (0, 5)
                             GROUP BY d.DivisionID";
 
@@ -922,9 +926,15 @@ namespace MVCCaseManagement.Controllers
                         string outstandingQuery = @"
                             SELECT 
                                 c.DivisionID,
-                                SUM(ISNULL(ad.AwardAmount, 0) - ISNULL(paid.PaidTotal, 0)) as OutstandingBalance
+                                SUM(CASE WHEN ISNULL(ad.AwardAmount, 0) > ISNULL(paid.PaidTotal, 0) 
+                                         THEN ISNULL(ad.AwardAmount, 0) - ISNULL(paid.PaidTotal, 0) 
+                                         ELSE 0 END) as OutstandingBalance
                             FROM MVC_CASES c
-                            JOIN MVC_CASE_ADVERSE_DETAILS ad ON ad.CaseID = c.CaseID
+                            JOIN (
+                                SELECT CaseID, MAX(AwardAmount) as AwardAmount
+                                FROM MVC_CASE_ADVERSE_DETAILS
+                                GROUP BY CaseID
+                            ) ad ON ad.CaseID = c.CaseID
                             LEFT JOIN (
                                 SELECT CaseID, SUM(Amount) as PaidTotal
                                 FROM (

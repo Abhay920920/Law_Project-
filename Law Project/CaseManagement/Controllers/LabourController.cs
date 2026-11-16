@@ -326,6 +326,8 @@ namespace MVCCaseManagement.Controllers
 
                 ViewBag.CurrentPage = page;
                 ViewBag.TotalPages = (int)Math.Ceiling((double)arisingTotalCount / pageSize);
+                ViewBag.TotalCount = arisingTotalCount;
+                ViewBag.PageSize = pageSize;
                 ViewBag.CurrentSearch = search;
                 ViewBag.CurrentStatus = status;
                 ViewBag.IsCentralOffice = isCentralOffice;
@@ -338,6 +340,8 @@ namespace MVCCaseManagement.Controllers
 
             ViewBag.CurrentPage = page;
             ViewBag.TotalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+            ViewBag.TotalCount = totalCount;
+            ViewBag.PageSize = pageSize;
             ViewBag.CurrentSearch = search;
             ViewBag.CurrentStatus = status;
             ViewBag.IsCentralOffice = isCentralOffice;

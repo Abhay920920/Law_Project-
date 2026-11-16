@@ -2912,14 +2912,29 @@ namespace MVCCaseManagement.Controllers
 
                 var cases = (await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
                     SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
-                           RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           RelatedCaseID, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
                            NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
                            LastSyncedAt, CreatedDate, AddedBy, RawJson
                     FROM admin_Law.ECOURTS_TRACKED_CASES
                     WHERE RelatedModule = @norm
                     ORDER BY TrackedID DESC", new { norm })).ToList();
 
-                // Faithfully extract authentic case type, court name, bench ID, bench name, and causelist type directly from the live NAPI API payload (no hardcoding)
+                // Cross-reference DNP cases recorded in LABOUR_CASES
+                HashSet<string>? dnpLabourCaseNos = null;
+                HashSet<int>? dnpLabourCaseIds = null;
+                if (norm.Equals("Labour", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var dnpCases = (await conn.QueryAsync<(int? CaseID, string? CaseNo)>(
+                            "SELECT CaseID, CaseNo FROM admin_Law.LABOUR_CASES WHERE CaseStatus = 'DNP' OR DisposalMode = 'DNP'")).ToList();
+                        dnpLabourCaseNos = dnpCases.Where(x => !string.IsNullOrWhiteSpace(x.CaseNo)).Select(x => x.CaseNo!.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                        dnpLabourCaseIds = dnpCases.Where(x => x.CaseID.HasValue).Select(x => x.CaseID!.Value).ToHashSet();
+                    }
+                    catch { }
+                }
+
+                // Faithfully extract authentic case type, court name, bench ID, bench name, causelist type, and disposal details directly from the live NAPI API payload (no hardcoding)
                 foreach (var c in cases)
                 {
                     bool isHc = (c.CNRNumber != null && (c.CNRNumber.StartsWith("HC") || (c.CNRNumber.Length >= 4 && c.CNRNumber.Substring(2, 2) == "HC"))) ||
@@ -3023,8 +3038,80 @@ namespace MVCCaseManagement.Controllers
                                     c.NextHearingDate = pNext;
                                 }
                             }
+
+                            // Extract Nature of Disposal & Decision Date from eCourts payload
+                            string? dispNature = null;
+                            string? dispDate = null;
+                            if (target.TryGetProperty("nature_of_disposal", out var nd) && !string.IsNullOrWhiteSpace(nd.GetString()))
+                                dispNature = nd.GetString();
+                            else if (target.TryGetProperty("disp_name", out var dn) && !string.IsNullOrWhiteSpace(dn.GetString()))
+                                dispNature = dn.GetString();
+                            else if (target.TryGetProperty("disposal_nature", out var dn2) && !string.IsNullOrWhiteSpace(dn2.GetString()))
+                                dispNature = dn2.GetString();
+                            else if (root.TryGetProperty("data", out var dpDisp) && dpDisp.TryGetProperty("nature_of_disposal", out var ndData) && !string.IsNullOrWhiteSpace(ndData.GetString()))
+                                dispNature = ndData.GetString();
+                            else if (root.TryGetProperty("raw", out var rpDisp) && rpDisp.TryGetProperty("nature_of_disposal", out var ndRaw) && !string.IsNullOrWhiteSpace(ndRaw.GetString()))
+                                dispNature = ndRaw.GetString();
+
+                            if (target.TryGetProperty("date_of_decision", out var dod) && !string.IsNullOrWhiteSpace(dod.GetString()))
+                                dispDate = dod.GetString();
+                            else if (target.TryGetProperty("decision_date", out var dd) && !string.IsNullOrWhiteSpace(dd.GetString()))
+                                dispDate = dd.GetString();
+                            else if (target.TryGetProperty("disposal_date", out var ddate) && !string.IsNullOrWhiteSpace(ddate.GetString()))
+                                dispDate = ddate.GetString();
+
+                            if (!string.IsNullOrWhiteSpace(dispNature))
+                                c.NatureOfDisposal = dispNature.Trim();
+                            if (!string.IsNullOrWhiteSpace(dispDate))
+                                c.DisposalDate = dispDate.Trim();
                         }
                         catch { }
+                    }
+
+                    // Determine DNP & Disposal classification
+                    string nodLower = (c.NatureOfDisposal ?? string.Empty).ToLowerInvariant();
+                    string stageLower = (c.StagePurpose ?? string.Empty).ToLowerInvariant();
+                    string statusLower = (c.CaseStatus ?? string.Empty).ToLowerInvariant();
+
+                    bool isDnpDetected = statusLower.Equals("dnp", StringComparison.OrdinalIgnoreCase) ||
+                                         nodLower.Contains("non-prosecution") ||
+                                         nodLower.Contains("non prosecution") ||
+                                         nodLower.Contains("non compliance") ||
+                                         nodLower.Contains("non-compliance") ||
+                                         nodLower.Contains("office objection") ||
+                                         nodLower.Contains("default") ||
+                                         nodLower.Equals("dnp", StringComparison.OrdinalIgnoreCase) ||
+                                         (statusLower.Contains("dispos") && (stageLower.Contains("non-compliance of office") || stageLower.Contains("non prosecution")));
+
+                    if (!isDnpDetected && dnpLabourCaseNos != null && !string.IsNullOrWhiteSpace(c.CaseNumber) && dnpLabourCaseNos.Contains(c.CaseNumber.Trim()))
+                    {
+                        isDnpDetected = true;
+                        if (string.IsNullOrWhiteSpace(c.NatureOfDisposal)) c.NatureOfDisposal = "DNP (Dismissed for Non-Prosecution)";
+                    }
+                    if (!isDnpDetected && dnpLabourCaseIds != null && c.RelatedCaseID.HasValue && dnpLabourCaseIds.Contains(c.RelatedCaseID.Value))
+                    {
+                        isDnpDetected = true;
+                        if (string.IsNullOrWhiteSpace(c.NatureOfDisposal)) c.NatureOfDisposal = "DNP (Dismissed for Non-Prosecution)";
+                    }
+
+                    if (isDnpDetected)
+                    {
+                        c.IsDNP = true;
+                        c.CaseStatus = "DNP";
+                        if (string.IsNullOrWhiteSpace(c.NatureOfDisposal))
+                        {
+                            c.NatureOfDisposal = "Dismissed for Non-Prosecution";
+                        }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(c.NatureOfDisposal))
+                    {
+                        if (statusLower.Contains("dispos") || nodLower.Contains("dismiss") || nodLower.Contains("allow") || nodLower.Contains("dispos"))
+                        {
+                            if (string.IsNullOrWhiteSpace(c.CaseStatus) || c.CaseStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase))
+                            {
+                                c.CaseStatus = "Disposed";
+                            }
+                        }
                     }
 
                     if (string.IsNullOrWhiteSpace(c.CourtEstName))

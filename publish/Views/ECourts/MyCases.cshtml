@@ -504,8 +504,8 @@
         </div>
     </div>
 
-    <!-- KPI Summary Cards: 2x2 Grid on Mobile (<576px), 4 Columns on xl -->
-    <div class="row row-cols-2 row-cols-sm-2 row-cols-xl-4 g-2 g-md-3 mb-3 mb-md-4">
+    <!-- KPI Summary Cards: 5 Cards Grid -->
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-xl-5 g-2 g-md-3 mb-3 mb-md-4">
         <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('all')" title="Filter: All Cases">
             <div class="card border-0 shadow-sm border-start border-4 border-primary bg-white kpi-card-clean h-100">
                 <div class="card-body p-2.5 p-sm-3">
@@ -569,6 +569,22 @@
                 </div>
             </div>
         </div>
+
+        <div class="col" style="cursor: pointer;" onclick="quickFilterByCard('dnp')" title="Filter: DNP (Dismissed for Non-Prosecution / Default)">
+            <div class="card border-0 shadow-sm border-start border-4 border-danger bg-white kpi-card-clean h-100">
+                <div class="card-body p-2.5 p-sm-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted extra-small text-uppercase fw-bold">DNP</span>
+                            <h2 class="fw-bold text-danger mb-0 mt-0.5 fs-4 fs-sm-2" id="statDnpCases">0</h2>
+                        </div>
+                        <div class="bg-danger-subtle p-2 p-sm-3 rounded-3 text-danger">
+                            <i class="bi bi-x-octagon fs-4 fs-sm-3"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Main Content Card -->
@@ -604,6 +620,9 @@
 
                         <input type="radio" class="btn-check" name="statusFilter" id="filterDisposed" value="disposed" onchange="filterCasesTable()">
                         <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterDisposed">Disposed (<span id="countPillDisposed">0</span>)</label>
+
+                        <input type="radio" class="btn-check" name="statusFilter" id="filterDNP" value="dnp" onchange="filterCasesTable()">
+                        <label class="btn btn-sm rounded-pill px-2.5 px-sm-3 py-1.5 text-nowrap" for="filterDNP">DNP (<span id="countPillDNP">0</span>)</label>
                     </div>
 
                     <div class="d-flex align-items-center gap-1.5">
@@ -1162,7 +1181,7 @@
                     <button type="button" class="btn btn-sm btn-outline-light rounded-pill px-3" id="btnDossierRefreshLive" onclick="refreshCurrentDossierLive()">
                         <i class="bi bi-arrow-clockwise me-1"></i> Sync Live
                     </button>
-                    <button type="button" class="btn-close btn-close-white ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white ms-2" onclick="closeCaseDossier()" aria-label="Close"></button>
                 </div>
             </div>
 
@@ -1472,7 +1491,7 @@
                         <i class="bi bi-printer-fill"></i>
                         <span>Print Case Dossier</span>
                     </button>
-                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" onclick="closeCaseDossier()">Close</button>
                 </div>
             </div>
         </div>
@@ -1831,6 +1850,22 @@
         loadTrackedCases();
         checkNwkrtcDailyCauseListAlerts();
         initTableScrollSync();
+
+        // Global Modal Backdrop & Scroll Recovery Guard
+        // Ensures that closing any modal (Dossier, Cause List, Proceedings, Alerts) NEVER freezes the screen
+        document.addEventListener('hidden.bs.modal', function () {
+            setTimeout(() => {
+                const openModals = document.querySelectorAll('.modal.show');
+                if (openModals.length === 0) {
+                    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                    document.body.classList.remove('modal-open');
+                    document.body.style.removeProperty('overflow');
+                    document.body.style.removeProperty('padding-right');
+                } else {
+                    document.body.classList.add('modal-open');
+                }
+            }, 80);
+        });
     });
 
     // ==========================================
@@ -1892,6 +1927,29 @@
     }
 
     // ==========================================
+    // DNP & Disposal Classification Helpers
+    // ==========================================
+    function isCaseDnp(c) {
+        if (!c) return false;
+        if (c.isDNP === true) return true;
+        const st = (c.caseStatus || "").toLowerCase();
+        if (st === "dnp" || st.includes("non-prosecution") || st.includes("non prosecution")) return true;
+        const nod = (c.natureOfDisposal || "").toLowerCase();
+        if (nod.includes("non-prosecution") || nod.includes("non prosecution") || nod.includes("non compliance") || nod.includes("non-compliance") || nod.includes("office objection") || nod.includes("default") || nod === "dnp") return true;
+        const stage = (c.stagePurpose || "").toLowerCase();
+        if ((st.includes("dispos") || st.includes("dismiss")) && (stage.includes("non-compliance of office") || stage.includes("non prosecution"))) return true;
+        return false;
+    }
+
+    function isCaseDisposed(c) {
+        if (!c) return false;
+        if (isCaseDnp(c)) return false; // DNP has its own dedicated status category
+        const st = (c.caseStatus || "").toLowerCase();
+        const nod = (c.natureOfDisposal || "").toLowerCase();
+        return st.includes("dispos") || st.includes("dismiss") || st.includes("allowed") || nod.includes("dispos") || nod.includes("dismiss") || nod.includes("allow");
+    }
+
+    // ==========================================
     // Update Stats & Pill Counters
     // ==========================================
     function updateStatsCounters() {
@@ -1899,12 +1957,14 @@
         let upcoming = 0;
         let pending = 0;
         let disposed = 0;
+        let dnp = 0;
 
         const todayStr = new Date().toISOString().split('T')[0];
 
         allCasesData.forEach(c => {
-            const st = (c.caseStatus || "").toLowerCase();
-            if (st.includes("dispos") || st.includes("dismiss") || st.includes("allowed")) {
+            if (isCaseDnp(c)) {
+                dnp++;
+            } else if (isCaseDisposed(c)) {
                 disposed++;
             } else {
                 pending++;
@@ -1926,11 +1986,15 @@
         document.getElementById("statUpcomingHearings").innerText = upcoming;
         document.getElementById("statPendingCases").innerText = pending;
         document.getElementById("statDisposedCases").innerText = disposed;
+        const statDnpEl = document.getElementById("statDnpCases");
+        if (statDnpEl) statDnpEl.innerText = dnp;
 
         document.getElementById("countPillAll").innerText = total;
         document.getElementById("countPillUpcoming").innerText = upcoming;
         document.getElementById("countPillPending").innerText = pending;
         document.getElementById("countPillDisposed").innerText = disposed;
+        const countPillDnpEl = document.getElementById("countPillDNP");
+        if (countPillDnpEl) countPillDnpEl.innerText = dnp;
     }
 
     // ==========================================
@@ -1948,6 +2012,9 @@
             document.getElementById("filterPending").checked = true;
         } else if (cardType === 'disposed') {
             document.getElementById("filterDisposed").checked = true;
+        } else if (cardType === 'dnp') {
+            const filterDnpRadio = document.getElementById("filterDNP");
+            if (filterDnpRadio) filterDnpRadio.checked = true;
         } else {
             document.getElementById("filterAll").checked = true;
             clearHearingDateFilter();
@@ -2252,11 +2319,28 @@
         const isHc = (c.cnrNumber || "").startsWith("HC") || (c.cnrNumber && c.cnrNumber.length >= 4 && c.cnrNumber.substring(2, 4).toUpperCase() === "HC");
         const courtTierBadge = isHc ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small">High Court</span>` : `<span class="badge bg-secondary-subtle text-dark border extra-small">District / Lower</span>`;
 
-        const st = (c.caseStatus || "").toLowerCase();
-        const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
-        const statusBadge = isDisposed
-            ? `<span class="badge bg-success-subtle text-success border border-success extra-small"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`
-            : `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${escapeHtml(c.caseStatus || "—")}</span>`;
+        const isDnp = isCaseDnp(c);
+        const isDisposed = isCaseDisposed(c);
+        let statusBadge = "";
+        if (isDnp) {
+            const dnpTitle = escapeHtml(c.natureOfDisposal || "Dismissed for Non-Prosecution");
+            statusBadge = `
+                <span class="badge bg-danger-subtle text-danger border border-danger extra-small" title="${dnpTitle}">
+                    <i class="bi bi-x-octagon-fill me-1"></i>DNP
+                </span>
+                <div class="extra-small text-danger fw-semibold mt-0.5" style="max-width: 170px; line-height: 1.25;" title="${dnpTitle}">
+                    ${dnpTitle}
+                </div>`;
+        } else if (isDisposed) {
+            const dispTitle = escapeHtml(c.natureOfDisposal || "Disposed");
+            statusBadge = `
+                <span class="badge bg-success-subtle text-success border border-success extra-small" title="${dispTitle}">
+                    <i class="bi bi-check-circle-fill me-1"></i>Disposed
+                </span>
+                ${c.natureOfDisposal ? `<div class="extra-small text-success fw-semibold mt-0.5" style="max-width: 170px; line-height: 1.25;" title="${dispTitle}">${dispTitle}</div>` : ''}`;
+        } else {
+            statusBadge = `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${escapeHtml(c.caseStatus || "—")}</span>`;
+        }
 
         const todayStr = new Date().toISOString().split('T')[0];
 
@@ -2659,11 +2743,20 @@
             ? `<span class="badge bg-primary-subtle text-primary border border-primary extra-small">High Court</span>` 
             : `<span class="badge bg-secondary-subtle text-dark border extra-small">District / Lower</span>`;
 
-        const st = (c.caseStatus || "").toLowerCase();
-        const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
-        const statusBadge = isDisposed
-            ? `<span class="badge bg-success text-white extra-small"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`
-            : `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${escapeHtml(c.caseStatus || "—")}</span>`;
+        const isDnp = isCaseDnp(c);
+        const isDisposed = isCaseDisposed(c);
+        let statusBadge = "";
+        if (isDnp) {
+            const dnpTitle = escapeHtml(c.natureOfDisposal || "Dismissed for Non-Prosecution");
+            statusBadge = `
+                <span class="badge bg-danger text-white extra-small" title="${dnpTitle}">
+                    <i class="bi bi-x-octagon-fill me-1"></i>DNP
+                </span>`;
+        } else if (isDisposed) {
+            statusBadge = `<span class="badge bg-success text-white extra-small"><i class="bi bi-check-circle-fill me-1"></i>Disposed</span>`;
+        } else {
+            statusBadge = `<span class="badge bg-warning-subtle text-dark border border-warning extra-small"><i class="bi bi-hourglass-split me-1"></i>${escapeHtml(c.caseStatus || "—")}</span>`;
+        }
 
         const todayStr = new Date().toISOString().split('T')[0];
 
@@ -2947,7 +3040,7 @@
         const filtered = allCasesData.filter(c => {
             // Text search
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""} ${c.addedBy || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""} ${c.addedBy || ""} ${c.natureOfDisposal || ""} ${c.caseStatus || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
 
@@ -2958,11 +3051,12 @@
             }
 
             // Radio status filter
-            const st = (c.caseStatus || "").toLowerCase();
-            const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
+            const isDnp = isCaseDnp(c);
+            const isDisposed = isCaseDisposed(c);
 
+            if (selectedFilter === "dnp" && !isDnp) return false;
             if (selectedFilter === "disposed" && !isDisposed) return false;
-            if (selectedFilter === "pending" && isDisposed) return false;
+            if (selectedFilter === "pending" && (isDisposed || isDnp)) return false;
             if (selectedFilter === "upcoming") {
                 if (!c.nextHearingDate) return false;
                 const dt = new Date(c.nextHearingDate);
@@ -2983,9 +3077,9 @@
             }
 
             if (preset === "unscheduled") {
-                if (hDate || isDisposed) return false;
+                if (hDate || isDisposed || isDnp) return false;
             } else if (preset === "overdue") {
-                if (!hDate || hDate >= todayStr || isDisposed) return false;
+                if (!hDate || hDate >= todayStr || isDisposed || isDnp) return false;
             } else {
                 if (fromVal && (!hDate || hDate < fromVal)) return false;
                 if (toVal && (!hDate || hDate > toVal)) return false;
@@ -3095,11 +3189,9 @@
             workerNames.forEach((wName, gIdx) => {
                 const wCases = workerGroups[wName];
                 const gId = `wgroup_${gIdx}`;
-                const pendingCnt = wCases.filter(c => {
-                    const st = (c.caseStatus || "").toLowerCase();
-                    return !st.includes("dispos") && !st.includes("dismiss") && !st.includes("allowed");
-                }).length;
-                const disposedCnt = wCases.length - pendingCnt;
+                const pendingCnt = wCases.filter(c => !isCaseDisposed(c) && !isCaseDnp(c)).length;
+                const dnpCnt = wCases.filter(c => isCaseDnp(c)).length;
+                const disposedCnt = wCases.filter(c => isCaseDisposed(c)).length;
                 const todayCnt = wCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
 
                 groupHtml += `
@@ -3119,6 +3211,7 @@
                                 <span class="badge bg-warning-subtle text-dark border border-warning small py-1 px-2">
                                     <i class="bi bi-hourglass-split me-1 text-warning"></i>${pendingCnt} Pending
                                 </span>
+                                ${dnpCnt > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger small py-1 px-2"><i class="bi bi-x-octagon me-1"></i>${dnpCnt} DNP</span>` : ''}
                                 ${todayCnt > 0 ? `<span class="badge bg-danger text-white small py-1 px-2"><i class="bi bi-calendar-check me-1"></i>${todayCnt} Listed Today</span>` : ''}
                                 <span class="badge bg-success-subtle text-success border border-success small py-1 px-2">
                                     <i class="bi bi-check-circle me-1 text-success"></i>${disposedCnt} Disposed
@@ -3385,19 +3478,20 @@
                 if (w !== selectedWorker.toLowerCase()) return false;
             }
 
-            const st = (c.caseStatus || "").toLowerCase();
-            const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
+            const isDnp = isCaseDnp(c);
+            const isDisposed = isCaseDisposed(c);
+            if (selectedFilter === "dnp" && !isDnp) return false;
             if (selectedFilter === "disposed" && !isDisposed) return false;
-            if (selectedFilter === "pending" && isDisposed) return false;
+            if (selectedFilter === "pending" && (isDisposed || isDnp)) return false;
             if (selectedFilter === "upcoming") {
                 if (!c.nextHearingDate) return false;
                 if (c.nextHearingDate.split('T')[0] < todayStr) return false;
             }
             const hDate = c.nextHearingDate ? c.nextHearingDate.split('T')[0] : null;
             if (preset === "unscheduled") {
-                if (hDate) return false;
+                if (hDate || isDisposed || isDnp) return false;
             } else if (preset === "overdue") {
-                if (!hDate || hDate >= todayStr || isDisposed) return false;
+                if (!hDate || hDate >= todayStr || isDisposed || isDnp) return false;
             } else {
                 if (fromVal && (!hDate || hDate < fromVal)) return false;
                 if (toVal && (!hDate || hDate > toVal)) return false;
@@ -3441,10 +3535,10 @@
             const courtTier = isHc ? "High Court" : "District / Lower Court";
             const caseType = getDisplayCaseType(c);
             const caseNum = `${c.caseNumber || ""}${c.caseYear ? "/" + c.caseYear : ""}`;
-            const st = (c.caseStatus || "").toLowerCase();
-            const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
-            const statusText = isDisposed ? "DISPOSED" : (c.caseStatus || "PENDING");
-            const statusStyle = isDisposed ? "background-color: #dcfce7; color: #15803d; font-weight: bold;" : "background-color: #fef3c7; color: #b45309; font-weight: bold;";
+            const isDnp = isCaseDnp(c);
+            const isDisposed = isCaseDisposed(c);
+            const statusText = isDnp ? "DNP" : isDisposed ? "DISPOSED" : (c.caseStatus || "PENDING");
+            const statusStyle = isDnp ? "background-color: #fee2e2; color: #b91c1c; font-weight: bold;" : isDisposed ? "background-color: #dcfce7; color: #15803d; font-weight: bold;" : "background-color: #fef3c7; color: #b45309; font-weight: bold;";
 
             let hearingDateStr = "Date Awaited";
             if (c.nextHearingDate) {
@@ -3629,7 +3723,7 @@
                 `"${c.firstHearingDate || ""}"`,
                 `"${c.lastHearingDate || ""}"`,
                 `"${(c.lastProceeding || "").replace(/"/g, '""')}"`,
-                `"${(c.caseStatus || "").replace(/"/g, '""')}"`,
+                `"${(isCaseDnp(c) ? "DNP" : isCaseDisposed(c) ? "DISPOSED" : (c.caseStatus || "PENDING")).replace(/"/g, '""')}"`,
                 `"${(c.addedBy || "Central Office").replace(/"/g, '""')}"`,
                 `"${(c.lastSyncedAt || "").replace(/"/g, '""')}"`
             ].join(",");
@@ -3871,9 +3965,10 @@
         document.getElementById("dpModalCourtHall").innerText = c.courtEstablishmentName || c.courtEstName || "District / High Court";
         
         const statusEl = document.getElementById("dpModalStatus");
-        const statusText = (c.caseStatus || "PENDING").toUpperCase();
+        const isDnp = isCaseDnp(c);
+        const statusText = isDnp ? "DNP (NON-PROSECUTION)" : (c.caseStatus || "PENDING").toUpperCase();
         statusEl.innerText = statusText;
-        statusEl.className = (statusText.includes("DISP") || statusText.includes("DISMISS")) ? "badge bg-secondary" : "badge bg-success";
+        statusEl.className = isDnp ? "badge bg-danger" : (statusText.includes("DISP") || statusText.includes("DISMISS")) ? "badge bg-secondary" : "badge bg-success";
 
         document.getElementById("dpModalTitle").innerHTML = `<i class="bi bi-journal-text me-2 text-warning"></i>${escapeHtml(displayType)} ${escapeHtml(c.caseNumber || "")} — Daily Proceedings &amp; Hearing Analysis`;
         document.getElementById("dpModalParties").innerText = `${c.petitioner || "Petitioner"} vs ${c.respondent || "Respondent"}`;
@@ -4561,11 +4656,9 @@
     // ==========================================
     let currentRawJsonString = "";
 
-    async function openCaseDossier(trackedId) {
+    async function loadDossierContent(trackedId) {
+        if (!trackedId) return;
         currentDossierTrackedId = trackedId;
-        const modalEl = document.getElementById('myCaseDossierModal');
-        const modal = new bootstrap.Modal(modalEl);
-        modal.show();
 
         // Reset views
         document.getElementById("dossierModalTitle").innerText = "Loading Case Dossier...";
@@ -4594,6 +4687,35 @@
             const rawPre = document.getElementById("dossierRawJsonPre");
             if (rawPre) rawPre.innerText = "Failed to load dossier data.";
         }
+    }
+
+    async function openCaseDossier(trackedId) {
+        if (!trackedId) return;
+        currentDossierTrackedId = trackedId;
+        const modalEl = document.getElementById('myCaseDossierModal');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+        await loadDossierContent(trackedId);
+    }
+
+    function closeCaseDossier() {
+        const modalEl = document.getElementById('myCaseDossierModal');
+        if (modalEl) {
+            const modal = bootstrap.Modal.getInstance(modalEl) || bootstrap.Modal.getOrCreateInstance(modalEl);
+            if (modal) modal.hide();
+        }
+        // Force cleanup: remove any orphaned backdrops & unlock page scroll
+        setTimeout(() => {
+            const openModals = document.querySelectorAll('.modal.show');
+            if (openModals.length === 0) {
+                document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.removeProperty('overflow');
+                document.body.style.removeProperty('padding-right');
+            }
+        }, 150);
     }
 
     function populateDossierModal(dossier) {
@@ -5005,10 +5127,20 @@
 
     function openDossierFromQuickCauseList() {
         const quickModalEl = document.getElementById("quickCauseListModal");
-        const modalInstance = bootstrap.Modal.getInstance(quickModalEl);
-        if (modalInstance) modalInstance.hide();
-        if (currentQuickTrackedId) {
-            openCaseDossier(currentQuickTrackedId);
+        const targetId = currentQuickTrackedId;
+        if (quickModalEl) {
+            const modalInstance = bootstrap.Modal.getInstance(quickModalEl);
+            if (modalInstance) {
+                modalInstance.hide();
+                quickModalEl.addEventListener('hidden.bs.modal', function onQuickHidden() {
+                    quickModalEl.removeEventListener('hidden.bs.modal', onQuickHidden);
+                    if (targetId) openCaseDossier(targetId);
+                }, { once: true });
+                return;
+            }
+        }
+        if (targetId) {
+            openCaseDossier(targetId);
         }
     }
 
@@ -5219,15 +5351,18 @@
     async function refreshCurrentDossierLive() {
         if (!currentDossierTrackedId) return;
         const btn = document.getElementById("btnDossierRefreshLive");
-        btn.disabled = true;
-        btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing...`;
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Syncing...`;
+        }
 
         try {
             const res = await fetch(`/ECourts/RefreshTrackedCnr?trackedId=${currentDossierTrackedId}`, { method: "POST" });
             const json = await res.json();
             if (json.success) {
                 showToast("Synced", "Dossier refreshed with latest live eCourts data.", true);
-                openCaseDossier(currentDossierTrackedId);
+                // Refresh dossier content in place without re-triggering modal backdrop
+                await loadDossierContent(currentDossierTrackedId);
                 loadTrackedCases();
             } else {
                 showToast("Sync Error", json.message || "Failed to sync.", false);
@@ -5235,8 +5370,10 @@
         } catch (err) {
             showToast("Sync Error", "Network error.", false);
         } finally {
-            btn.disabled = false;
-            btn.innerHTML = `<i class="bi bi-arrow-clockwise me-1"></i> Sync Live`;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-arrow-clockwise me-1"></i> Sync Live`;
+            }
         }
     }
 
@@ -5705,19 +5842,20 @@
                     const w = (c.addedBy || "Central Office").trim().toLowerCase();
                     if (w !== selectedWorker.toLowerCase()) return false;
                 }
-                const st = (c.caseStatus || "").toLowerCase();
-                const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
+                const isDnp = isCaseDnp(c);
+                const isDisposed = isCaseDisposed(c);
+                if (selectedFilter === "dnp" && !isDnp) return false;
                 if (selectedFilter === "disposed" && !isDisposed) return false;
-                if (selectedFilter === "pending" && isDisposed) return false;
+                if (selectedFilter === "pending" && (isDisposed || isDnp)) return false;
                 if (selectedFilter === "upcoming") {
                     if (!c.nextHearingDate) return false;
                     if (c.nextHearingDate.split('T')[0] < todayStr) return false;
                 }
                 const hDate = c.nextHearingDate ? c.nextHearingDate.split('T')[0] : null;
                 if (preset === "unscheduled") {
-                    if (hDate) return false;
+                    if (hDate || isDisposed || isDnp) return false;
                 } else if (preset === "overdue") {
-                    if (!hDate || hDate >= todayStr || isDisposed) return false;
+                    if (!hDate || hDate >= todayStr || isDisposed || isDnp) return false;
                 } else {
                     if (fromVal && (!hDate || hDate < fromVal)) return false;
                     if (toVal && (!hDate || hDate > toVal)) return false;
@@ -5750,9 +5888,11 @@
         let statUpcoming = 0;
         let statPending = 0;
         let statDisposed = 0;
+        let statDnp = 0;
         casesToPrint.forEach(c => {
-            const st = (c.caseStatus || "").toLowerCase();
-            if (st.includes("dispos") || st.includes("dismiss") || st.includes("allowed")) {
+            if (isCaseDnp(c)) {
+                statDnp++;
+            } else if (isCaseDisposed(c)) {
                 statDisposed++;
             } else {
                 statPending++;
@@ -5775,11 +5915,13 @@
             const isHc = (c.cnrNumber || "").startsWith("HC") || (c.cnrNumber && c.cnrNumber.length >= 4 && c.cnrNumber.substring(2, 4).toUpperCase() === "HC");
             const courtBadge = isHc ? `<span class="badge-court-hc">High Court</span>` : `<span class="badge-court-dc">District/Lower</span>`;
 
-            const st = (c.caseStatus || "").toLowerCase();
-            const isDisposed = st.includes("dispos") || st.includes("dismiss") || st.includes("allowed");
-            const statusHtml = isDisposed
-                ? `<span class="badge-disposed">Disposed</span>`
-                : `<span class="badge-pending">${escapeHtml(c.caseStatus || "—")}</span>`;
+            const isDnp = isCaseDnp(c);
+            const isDisposed = isCaseDisposed(c);
+            const statusHtml = isDnp
+                ? `<span class="badge-disposed" style="background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">DNP</span>`
+                : isDisposed
+                    ? `<span class="badge-disposed">Disposed</span>`
+                    : `<span class="badge-pending">${escapeHtml(c.caseStatus || "—")}</span>`;
 
             let hearingHtml = '<span class="text-muted" style="font-style: italic;">Date Pending</span>';
             if (c.nextHearingDate) {
@@ -6789,6 +6931,21 @@
 
         html += `</tbody></table></div>`;
         container.innerHTML = html;
+    }
+
+    function viewTrackedCaseDossier(cnr) {
+        if (!cnr) return;
+        const c = allCasesData.find(x => (x.cnrNumber || "").toUpperCase() === cnr.toUpperCase());
+        if (c && c.trackedID) {
+            const alertsModalEl = document.getElementById('nwkrtcDailyAlertsModal');
+            if (alertsModalEl) {
+                const alertsModal = bootstrap.Modal.getInstance(alertsModalEl);
+                if (alertsModal) alertsModal.hide();
+            }
+            openCaseDossier(c.trackedID);
+        } else {
+            showToast("Notice", `Case with CNR ${cnr} not found in tracked registry.`, false);
+        }
     }
 
     async function trackAllUntrackedAlerts() {

@@ -86,6 +86,11 @@ namespace MVCCaseManagement.Models
         public string? RawJson { get; set; }
         public string? AddedBy { get; set; }
 
+        // Disposal & DNP Analysis properties
+        public string? NatureOfDisposal { get; set; }
+        public string? DisposalDate { get; set; }
+        public bool IsDNP { get; set; }
+
         // Dynamic properties extracted from authentic eCourts NAPIX payload
         public string? CourtEstName { get; set; }
         public string? BenchId { get; set; }
