@@ -1935,9 +1935,9 @@
         const st = (c.caseStatus || "").toLowerCase();
         if (st === "dnp" || st.includes("non-prosecution") || st.includes("non prosecution")) return true;
         const nod = (c.natureOfDisposal || "").toLowerCase();
-        if (nod.includes("non-prosecution") || nod.includes("non prosecution") || nod.includes("non compliance") || nod.includes("non-compliance") || nod.includes("office objection") || nod.includes("default") || nod === "dnp") return true;
+        if (nod.includes("non-prosecution") || nod.includes("non prosecution") || nod.includes("non compliance") || nod.includes("non-compliance") || nod.includes("office objection") || nod.includes("office-objn") || nod.includes("not pressed") || nod.includes("default") || nod === "dnp") return true;
         const stage = (c.stagePurpose || "").toLowerCase();
-        if ((st.includes("dispos") || st.includes("dismiss")) && (stage.includes("non-compliance of office") || stage.includes("non prosecution"))) return true;
+        if ((st.includes("dispos") || st.includes("dismiss")) && (stage.includes("non-compliance of office") || stage.includes("non-compliance") || stage.includes("office-objn") || stage.includes("non prosecution"))) return true;
         return false;
     }
 

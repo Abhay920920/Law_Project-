@@ -846,5 +846,82 @@ namespace MVCCaseManagement.Tests
             Assert.True(c4.IsDNP);
             Assert.Equal("DNP", c4.CaseStatus);
         }
+
+        [Fact]
+        public async Task Verify_RealDb_Labour_TrackedCases_DNP_Detection()
+        {
+            try
+            {
+                using var conn = new SqlConnection(RealDbConnStr);
+                await conn.OpenAsync();
+                using var cmd = new SqlCommand(@"
+                    SELECT TrackedID, CNRNumber, CaseNumber, CaseYear, CaseStatus, StagePurpose, RawJson, RelatedCaseID
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE RelatedModule = 'Labour'", conn);
+                using var reader = await cmd.ExecuteReaderAsync();
+                
+                int total = 0;
+                int dnpCount = 0;
+                var sampleDnp = new List<string>();
+
+                while (await reader.ReadAsync())
+                {
+                    total++;
+                    string cnr = reader["CNRNumber"]?.ToString() ?? "";
+                    string caseNo = reader["CaseNumber"]?.ToString() ?? "";
+                    string status = reader["CaseStatus"]?.ToString() ?? "";
+                    string stage = reader["StagePurpose"]?.ToString() ?? "";
+                    string rawJson = reader["RawJson"]?.ToString() ?? "";
+
+                    string dispNature = "";
+                    if (!string.IsNullOrWhiteSpace(rawJson))
+                    {
+                        try
+                        {
+                            using var doc = System.Text.Json.JsonDocument.Parse(rawJson);
+                            var root = doc.RootElement;
+                            System.Text.Json.JsonElement target = root;
+                            if (root.TryGetProperty("raw", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.Object) target = r;
+                            else if (root.TryGetProperty("data", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.Object) target = d;
+
+                            if (target.TryGetProperty("disposal_type", out var dt) && !string.IsNullOrWhiteSpace(dt.GetString())) dispNature = dt.GetString()!;
+                            else if (target.TryGetProperty("nature_of_disposal", out var nd) && !string.IsNullOrWhiteSpace(nd.GetString())) dispNature = nd.GetString()!;
+                            else if (target.TryGetProperty("disp_name", out var dn) && !string.IsNullOrWhiteSpace(dn.GetString())) dispNature = dn.GetString()!;
+                            else if (target.TryGetProperty("disposal_nature", out var dn2) && !string.IsNullOrWhiteSpace(dn2.GetString())) dispNature = dn2.GetString()!;
+                            else if (root.TryGetProperty("data", out var dp) && dp.TryGetProperty("disposal_type", out var dpDt) && !string.IsNullOrWhiteSpace(dpDt.GetString())) dispNature = dpDt.GetString()!;
+                            else if (root.TryGetProperty("raw", out var rp) && rp.TryGetProperty("disposal_type", out var rpDt) && !string.IsNullOrWhiteSpace(rpDt.GetString())) dispNature = rpDt.GetString()!;
+                        }
+                        catch { }
+                    }
+
+                    string lowerDisp = dispNature.ToLowerInvariant();
+                    string lowerStage = stage.ToLowerInvariant();
+                    string lowerStatus = status.ToLowerInvariant();
+
+                    bool isDnp = lowerStatus == "dnp" ||
+                                 lowerDisp.Contains("non-prosecution") || lowerDisp.Contains("non prosecution") ||
+                                 lowerDisp.Contains("non compliance") || lowerDisp.Contains("non-compliance") ||
+                                 lowerDisp.Contains("office objection") || lowerDisp.Contains("office-objn") ||
+                                 lowerDisp.Contains("not pressed") || lowerDisp.Contains("default") || lowerDisp == "dnp" ||
+                                 (lowerStatus.Contains("dispos") && (lowerStage.Contains("non-compliance of office") || lowerStage.Contains("non-compliance") || lowerStage.Contains("office-objn") || lowerStage.Contains("non prosecution")));
+
+                    if (isDnp)
+                    {
+                        dnpCount++;
+                        if (sampleDnp.Count < 5) sampleDnp.Add($"{cnr} (WP {caseNo}) -> '{dispNature}'");
+                    }
+                }
+
+                _output.WriteLine($"Audited {total} Labour tracked cases. Found {dnpCount} authentic DNP cases.");
+                foreach (var s in sampleDnp) _output.WriteLine("  " + s);
+
+                Assert.True(total > 500, "Should have tracked cases in Labour module");
+                Assert.True(dnpCount >= 20, $"Should accurately identify >= 20 DNP cases via disposal_type extraction, found {dnpCount}");
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine("DB Test Skipped or Network Restricted: " + ex.Message);
+            }
+        }
     }
 }

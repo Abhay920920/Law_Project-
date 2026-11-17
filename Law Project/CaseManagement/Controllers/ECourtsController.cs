@@ -3057,19 +3057,27 @@ namespace MVCCaseManagement.Controllers
                                 }
                             }
 
-                            // Extract Nature of Disposal & Decision Date from eCourts payload
+                            // Extract Nature of Disposal & Decision Date from eCourts payload (checking all NAPIX / eCourts key variants)
                             string? dispNature = null;
                             string? dispDate = null;
-                            if (target.TryGetProperty("nature_of_disposal", out var nd) && !string.IsNullOrWhiteSpace(nd.GetString()))
+                            if (target.TryGetProperty("disposal_type", out var dt) && !string.IsNullOrWhiteSpace(dt.GetString()))
+                                dispNature = dt.GetString();
+                            else if (target.TryGetProperty("nature_of_disposal", out var nd) && !string.IsNullOrWhiteSpace(nd.GetString()))
                                 dispNature = nd.GetString();
                             else if (target.TryGetProperty("disp_name", out var dn) && !string.IsNullOrWhiteSpace(dn.GetString()))
                                 dispNature = dn.GetString();
                             else if (target.TryGetProperty("disposal_nature", out var dn2) && !string.IsNullOrWhiteSpace(dn2.GetString()))
                                 dispNature = dn2.GetString();
-                            else if (root.TryGetProperty("data", out var dpDisp) && dpDisp.TryGetProperty("nature_of_disposal", out var ndData) && !string.IsNullOrWhiteSpace(ndData.GetString()))
-                                dispNature = ndData.GetString();
-                            else if (root.TryGetProperty("raw", out var rpDisp) && rpDisp.TryGetProperty("nature_of_disposal", out var ndRaw) && !string.IsNullOrWhiteSpace(ndRaw.GetString()))
+                            else if (target.TryGetProperty("nature_of_disp", out var dn3) && !string.IsNullOrWhiteSpace(dn3.GetString()))
+                                dispNature = dn3.GetString();
+                            else if (root.TryGetProperty("raw", out var rpDisp) && rpDisp.TryGetProperty("disposal_type", out var dtRaw) && !string.IsNullOrWhiteSpace(dtRaw.GetString()))
+                                dispNature = dtRaw.GetString();
+                            else if (root.TryGetProperty("raw", out var rpDisp2) && rpDisp2.TryGetProperty("nature_of_disposal", out var ndRaw) && !string.IsNullOrWhiteSpace(ndRaw.GetString()))
                                 dispNature = ndRaw.GetString();
+                            else if (root.TryGetProperty("data", out var dpDisp) && dpDisp.TryGetProperty("disposal_type", out var dtData) && !string.IsNullOrWhiteSpace(dtData.GetString()))
+                                dispNature = dtData.GetString();
+                            else if (root.TryGetProperty("data", out var dpDisp2) && dpDisp2.TryGetProperty("nature_of_disposal", out var ndData) && !string.IsNullOrWhiteSpace(ndData.GetString()))
+                                dispNature = ndData.GetString();
 
                             if (target.TryGetProperty("date_of_decision", out var dod) && !string.IsNullOrWhiteSpace(dod.GetString()))
                                 dispDate = dod.GetString();
@@ -3077,6 +3085,8 @@ namespace MVCCaseManagement.Controllers
                                 dispDate = dd.GetString();
                             else if (target.TryGetProperty("disposal_date", out var ddate) && !string.IsNullOrWhiteSpace(ddate.GetString()))
                                 dispDate = ddate.GetString();
+                            else if (root.TryGetProperty("raw", out var rpDate) && rpDate.TryGetProperty("date_of_decision", out var rpDod) && !string.IsNullOrWhiteSpace(rpDod.GetString()))
+                                dispDate = rpDod.GetString();
 
                             if (!string.IsNullOrWhiteSpace(dispNature))
                                 c.NatureOfDisposal = dispNature.Trim();
@@ -3097,9 +3107,11 @@ namespace MVCCaseManagement.Controllers
                                          nodLower.Contains("non compliance") ||
                                          nodLower.Contains("non-compliance") ||
                                          nodLower.Contains("office objection") ||
+                                         nodLower.Contains("office-objn") ||
+                                         nodLower.Contains("not pressed") ||
                                          nodLower.Contains("default") ||
                                          nodLower.Equals("dnp", StringComparison.OrdinalIgnoreCase) ||
-                                         (statusLower.Contains("dispos") && (stageLower.Contains("non-compliance of office") || stageLower.Contains("non prosecution")));
+                                         (statusLower.Contains("dispos") && (stageLower.Contains("non-compliance of office") || stageLower.Contains("non-compliance") || stageLower.Contains("office-objn") || stageLower.Contains("non prosecution")));
 
                     if (!isDnpDetected && dnpLabourCaseNos != null && !string.IsNullOrWhiteSpace(c.CaseNumber) && dnpLabourCaseNos.Contains(c.CaseNumber.Trim()))
                     {

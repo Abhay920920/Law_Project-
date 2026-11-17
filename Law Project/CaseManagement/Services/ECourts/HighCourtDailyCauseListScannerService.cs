@@ -107,7 +107,7 @@ namespace MVCCaseManagement.Services.ECourts
                     {
                         try
                         {
-                            // Dharwad is the primary NWKRTC seat; give full budget. For secondary benches (Bengaluru/Kalaburagi), cap at 5s to prevent timeouts
+                            // Dharwad is the primary NWKRTC seat; give full budget. For secondary benches (Bengaluru/Kalaburagi), allow up to 25s for reliable multi-bench scanning
                             if (bCode == "KAHC02")
                             {
                                 return await GetOrScanDailyCauseListAsync(bCode, targetDate, forceRefresh, ct);
@@ -115,7 +115,7 @@ namespace MVCCaseManagement.Services.ECourts
                             else
                             {
                                 using var benchCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                                benchCts.CancelAfter(TimeSpan.FromSeconds(4));
+                                benchCts.CancelAfter(TimeSpan.FromSeconds(25));
                                 return await GetOrScanDailyCauseListAsync(bCode, targetDate, forceRefresh, benchCts.Token);
                             }
                         }

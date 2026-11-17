@@ -8,13 +8,18 @@
     string curStatus = ViewBag.CurrentStatus?.ToString() ?? "";
     bool isNoAction = string.Equals(curStatus, "NoActionTaken", StringComparison.OrdinalIgnoreCase);
     bool isSentToCO = string.Equals(curStatus, "SentToCO", StringComparison.OrdinalIgnoreCase);
+    bool isPendingDecision = string.Equals(curStatus, "PendingDecision", StringComparison.OrdinalIgnoreCase);
+    bool isPendingCA = string.Equals(curStatus, "PendingCompetentAuthority", StringComparison.OrdinalIgnoreCase);
+    bool isReinstatement = string.Equals(curStatus, "Reinstatement", StringComparison.OrdinalIgnoreCase);
     bool isWritPetitionClaimant = string.Equals(curStatus, "WritPetitionClaimant", StringComparison.OrdinalIgnoreCase);
     bool isPending = string.Equals(curStatus, "Pending", StringComparison.OrdinalIgnoreCase);
     bool isDivisionPending = !isCO && isPending;
-    bool showWaCol = !isNoAction && !isSentToCO && !isWritPetitionClaimant && !isDivisionPending;
-    bool showWpCol = !isNoAction && !isSentToCO && !isDivisionPending;
-    bool showECourtsCols = isDivisionPending || isSentToCO || isNoAction || !showWaCol;
-    bool showDivisionCol = isCO && !showWaCol && !showWpCol;
+
+    // WA and WP are relevant in 'all', 'WritPetitionClaimant', or High Court stages
+    bool showWaCol = !isNoAction && !isSentToCO && !isPendingDecision && !isPendingCA && !isReinstatement && !isWritPetitionClaimant && !isDivisionPending;
+    bool showWpCol = !isNoAction && !isSentToCO && !isPendingDecision && !isPendingCA && !isReinstatement && !isDivisionPending;
+    bool showECourtsCols = !showWaCol || isDivisionPending || isSentToCO || isPendingDecision || isPendingCA || isReinstatement || isNoAction;
+    bool showDivisionCol = isCO;
 }
 
 <div class="container-fluid labour-registry-page fade-in py-4">
@@ -190,27 +195,27 @@
                         <tr>
                             @if (showDivisionCol)
                             {
-                                <th class="ps-4" style="width: 12%; min-width: 110px;"><i class="bi bi-geo-alt-fill text-primary me-1"></i>Division</th>
+                                <th class="ps-4" style="width: 11%; min-width: 110px;"><i class="bi bi-geo-alt-fill text-primary me-1"></i>Division</th>
                             }
                             @if (showWaCol)
                             {
-                                <th class="ps-4" style="width: 18%; min-width: 160px;"><i class="bi bi-diagram-2 text-danger me-1"></i>WA Number / Year</th>
+                                <th class="@(!showDivisionCol ? "ps-4" : "")" style="width: @(showDivisionCol ? "17%" : "18%"); min-width: 150px;"><i class="bi bi-diagram-2 text-danger me-1"></i>WA Number / Year</th>
                             }
                             @if (showWpCol)
                             {
-                                <th class="@(!showWaCol && !showDivisionCol ? "ps-4" : "")" style="width: @(showWaCol ? "18%" : "22%"); min-width: 160px;"><i class="bi bi-file-earmark-text text-primary me-1"></i>WP Number / Year</th>
+                                <th style="width: @(showDivisionCol ? "17%" : (showWaCol ? "18%" : "22%")); min-width: 150px;"><i class="bi bi-file-earmark-text text-primary me-1"></i>WP Number / Year</th>
                             }
-                            <th class="@(!showWaCol && !showWpCol && !showDivisionCol ? "ps-4" : "")" style="width: @(showDivisionCol ? "12%" : (showECourtsCols ? "14%" : (showWaCol ? "13%" : (showWpCol ? "16%" : "18%")))); min-width: 110px;"><i class="bi bi-tag me-1 text-secondary"></i>Case Type</th>
-                            <th style="width: @(showDivisionCol ? "20%" : (showECourtsCols ? "22%" : (showWaCol ? "23%" : (showWpCol ? "28%" : "36%")))); min-width: 160px;"><i class="bi bi-building text-primary me-1"></i>Case No. / Year &amp; Court</th>
-                            <th style="width: @(showDivisionCol ? "20%" : (showECourtsCols ? "20%" : (showWaCol ? "17%" : (showWpCol ? "22%" : "32%")))); min-width: 160px;"><i class="bi bi-person text-secondary me-1"></i>Petitioner &amp; Employee</th>
+                            <th class="@(!showWaCol && !showWpCol && !showDivisionCol ? "ps-4" : "")" style="width: @(showDivisionCol ? (showECourtsCols ? "12%" : "12%") : (showECourtsCols ? "14%" : (showWaCol ? "13%" : "16%"))); min-width: 110px;"><i class="bi bi-tag me-1 text-secondary"></i>Case Type</th>
+                            <th style="width: @(showDivisionCol ? (showECourtsCols ? "22%" : "20%") : (showECourtsCols ? "25%" : (showWaCol ? "23%" : "28%"))); min-width: 160px;"><i class="bi bi-building text-primary me-1"></i>Case No. / Year &amp; Court</th>
+                            <th style="width: @(showDivisionCol ? (showECourtsCols ? "21%" : "13%") : (showECourtsCols ? "23%" : (showWaCol ? "17%" : "24%"))); min-width: 150px;"><i class="bi bi-person text-secondary me-1"></i>Petitioner &amp; Employee</th>
 
                             @if (showECourtsCols)
                             {
                                 <th style="width: @(showDivisionCol ? "14%" : "16%"); min-width: 130px;"><i class="bi bi-layers text-primary me-1"></i>Current Stage</th>
-                                <th style="width: @(showDivisionCol ? "12%" : "14%"); min-width: 120px;"><i class="bi bi-calendar-event text-success me-1"></i>Next Hearing Date</th>
+                                <th style="width: @(showDivisionCol ? "10%" : "12%"); min-width: 110px;"><i class="bi bi-calendar-event text-success me-1"></i>Next Hearing Date</th>
                             }
 
-                            <th class="text-end pe-4" style="width: @(showDivisionCol ? "10%" : (showECourtsCols ? "12%" : (showWaCol ? "11%" : (showWpCol ? "12%" : "14%")))); min-width: 90px;">Actions</th>
+                            <th class="text-end pe-4" style="width: 10%; min-width: 90px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
