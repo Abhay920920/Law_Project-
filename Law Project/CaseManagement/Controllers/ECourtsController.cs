@@ -264,16 +264,20 @@ namespace MVCCaseManagement.Controllers
 
             var nwkrtcList = itemsList.Where(i => i.NwkrtcRole == "With NWKRTC" || i.NwkrtcRole == "Against NWKRTC" || i.NwkrtcRole == "By NWKRTC" || (i.NwkrtcRole != null && i.NwkrtcRole.Contains("NWKRTC"))).ToList();
 
+            vm.TotalRegisteredCases = nwkrtcList.Count;
+            vm.SyncedCnrCount = nwkrtcList.Count(i => !string.IsNullOrEmpty(i.CNRNumber));
+            vm.ListedTodayCount = nwkrtcList.Count(i => i.NextHearingDate.HasValue && i.NextHearingDate.Value.Date == DateTime.Today);
+            vm.ListedThisWeekCount = nwkrtcList.Count(i => i.NextHearingDate.HasValue && i.NextHearingDate.Value.Date >= DateTime.Today && i.NextHearingDate.Value.Date <= DateTime.Today.AddDays(7));
             vm.NwkrtcTotalCount = nwkrtcList.Count;
             vm.NwkrtcWithCount = nwkrtcList.Count(i => i.NwkrtcRole == "With NWKRTC");
             vm.NwkrtcAgainstCount = nwkrtcList.Count(i => i.NwkrtcRole == "Against NWKRTC");
             vm.NwkrtcListedTodayCount = nwkrtcList.Count(i => i.NextHearingDate.HasValue && i.NextHearingDate.Value.Date == DateTime.Today);
             vm.NwkrtcItems = nwkrtcList;
 
-            vm.Divisions = itemsList.Select(i => i.DivisionName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList()!;
+            vm.Divisions = nwkrtcList.Select(i => i.DivisionName).Where(d => !string.IsNullOrEmpty(d)).Distinct().OrderBy(d => d).ToList()!;
             vm.Divisions.Insert(0, "All");
 
-            var filtered = itemsList.AsEnumerable();
+            var filtered = nwkrtcList.AsEnumerable();
 
             if (!string.IsNullOrWhiteSpace(bench) && !bench.Equals("All", StringComparison.OrdinalIgnoreCase) && !bench.Equals("ALL", StringComparison.OrdinalIgnoreCase))
             {
@@ -593,10 +597,19 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // Persist newly discovered cause list cases into the persistent store asynchronously
+            // Persist verified newly discovered cause list cases into the persistent store asynchronously
             if (newlyDiscoveredToday.Count > 0 && _partyStore != null)
             {
-                _ = _partyStore.MergeFreshCasesAsync(newlyDiscoveredToday);
+                var verifiedNew = newlyDiscoveredToday.Where(x => {
+                    string est = (!string.IsNullOrEmpty(x.CNRNumber) && x.CNRNumber.Length >= 6) ? x.CNRNumber.Substring(0, 6).ToUpperInvariant() : "KAHC02";
+                    return NwkrtcPartyMatcher.IsNwkrtcEntity(x.PetitionerName, out _, est, x.Advocate) ||
+                           NwkrtcPartyMatcher.IsNwkrtcEntity(x.RespondentName, out _, est, x.Advocate);
+                }).ToList();
+
+                if (verifiedNew.Count > 0)
+                {
+                    _ = _partyStore.MergeFreshCasesAsync(verifiedNew);
+                }
             }
 
             // Sanitize any placeholder dates (e.g. 01-01-5000, 1900-01-01)
@@ -657,27 +670,32 @@ namespace MVCCaseManagement.Controllers
                     return false;
                 }
 
-                // If this is a verified cause list listing for today and passed exclusion checks, preserve it
-                if (item.IsListedToday)
-                {
-                    return true;
-                }
-
                 string itemEst = (!string.IsNullOrEmpty(item.CNRNumber) && item.CNRNumber.Length >= 6) 
                     ? item.CNRNumber.Substring(0, 6).ToUpperInvariant() 
                     : (item.HighCourtBench != null && (item.HighCourtBench.IndexOf("Bengaluru", StringComparison.OrdinalIgnoreCase) >= 0 || item.HighCourtBench.IndexOf("Principal", StringComparison.OrdinalIgnoreCase) >= 0) ? "KAHC01" :
                       (item.HighCourtBench != null && item.HighCourtBench.IndexOf("Kalaburagi", StringComparison.OrdinalIgnoreCase) >= 0 ? "KAHC03" : "KAHC02"));
-                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
-                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
+                bool petIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out string pDesig, itemEst, item.Advocate);
+                bool resIsNwkrtc = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out string rDesig, itemEst, item.Advocate);
 
-                if (!petIsNwkrtc && !resIsNwkrtc && !string.IsNullOrEmpty(item.Advocate))
+                if (!petIsNwkrtc && !resIsNwkrtc) return false;
+
+                if (petIsNwkrtc && !resIsNwkrtc)
                 {
-                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|SAHUKAR)\b", RegexOptions.IgnoreCase);
-                    bool hasOfficer = Regex.IsMatch(comb, @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
-                    if (hasAdv && hasOfficer) return true;
+                    item.NwkrtcRole = "With NWKRTC";
+                    item.MatchedDesignation = pDesig;
+                }
+                else if (!petIsNwkrtc && resIsNwkrtc)
+                {
+                    item.NwkrtcRole = "Against NWKRTC";
+                    item.MatchedDesignation = rDesig;
+                }
+                else
+                {
+                    item.NwkrtcRole = "With NWKRTC";
+                    item.MatchedDesignation = pDesig;
                 }
 
-                return petIsNwkrtc || resIsNwkrtc;
+                return true;
             }).ToList();
 
             // Strict deduplication: Collapse duplicate representations of the same court case (synthetic CNR vs genuine CNR)

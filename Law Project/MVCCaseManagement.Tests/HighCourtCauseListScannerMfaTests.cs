@@ -528,17 +528,20 @@ RES: N.W.K.R.T.C (DATE) PANCHAXARAYYA HIREMATH VENKATESH M KHARVI DHANANJAY H M,
             var capturedCaseNumbers = results.Select(r => $"{r.CaseType} {r.RegNumber}/{r.RegYear}").ToList();
             Console.WriteLine($"Captured {results.Count} cases: {string.Join(", ", capturedCaseNumbers)}");
             
-            // Check essential NWKRTC cases
+            // Check essential authentic NWKRTC cases
             Assert.Contains(results, r => r.RegNumber == "104534"); // WP 104534/2026 (Management of NWKRTC)
             Assert.Contains(results, r => r.RegNumber == "100767"); // WA 100767/2025 (Divisional Controller)
             Assert.Contains(results, r => r.RegNumber == "103018"); // WP 103018/2026 (Divisional Controller)
-            Assert.Contains(results, r => r.RegNumber == "104642"); // WP 104642/2026 (Connected)
+            Assert.Contains(results, r => r.RegNumber == "104642"); // WP 104642/2026 (Connected Management)
             Assert.Contains(results, r => r.RegNumber == "85123");  // WP 85123/2013 (Divisional Controller NWKRTC)
             Assert.Contains(results, r => r.RegNumber == "112282"); // WP 112282/2019 (Divisional Controler)
             Assert.Contains(results, r => r.RegNumber == "67437");  // WP 67437/2010 (Divisional Controller)
-            Assert.Contains(results, r => r.RegNumber == "100207"); // CCC 100207/2025 (Contempt Petition)
-            Assert.Contains(results, r => r.RegNumber == "105227"); // WP 105227/2018 (Service Writ Petition)
-            Assert.Contains(results, r => r.RegNumber == "100627"); // WA 100627/2026 (Addl Registrar Judicial)
+            Assert.Contains(results, r => r.RegNumber == "100627"); // WA 100627/2026 (N.W.K.R.T.C)
+
+            // Strictly verify that sister RTCs and non-NWKRTC matters are excluded
+            Assert.DoesNotContain(results, r => r.RegNumber == "105227"); // Central KSRTC (Shantinagar Bengaluru)
+            Assert.DoesNotContain(results, r => r.RegNumber == "67216");  // NEKRTC Bellary
+            Assert.DoesNotContain(results, r => r.RegNumber == "67428");  // NEKRTC Koppal
 
             // Cache for application serving
             string json = System.Text.Json.JsonSerializer.Serialize(results, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
@@ -559,6 +562,86 @@ RES: N.W.K.R.T.C (DATE) PANCHAXARAYYA HIREMATH VENKATESH M KHARVI DHANANJAY H M,
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<MVCCaseManagement.Services.ECourts.HighCourtPartySearchStore>.Instance);
                 store.MergeFreshCasesAsync(results).GetAwaiter().GetResult();
             }
+        }
+
+        [Fact]
+        public void ParseHighCourtCauseListText_Strictly_Eliminates_PrivateDisputes_CivicGovt_PaperMills_And_SisterRTCs()
+        {
+            string falsePositiveSnippet = @"
+HIGH COURT OF KARNATAKA DHARWAD BENCH
+COURT HALL NO : 5
+Cause List No. 1
+
+10 MFA 100077/2023 (MV, I )
+PET: SHRI MRUTUNJAYA S/O BASAPPA HEBBALLI
+RES: SHRI RAJU S/O YALLAPPA HADAPAD AND ANOTHER
+S L MATTI FOR PETITIONER
+
+11 WP 108596/2026 (L, RES )
+PET: THE MANAGEMENT OF WEST COAST PAPER MILLS LTD
+RES: THE LABOUR OFFICER AND REGISTERING AUTHORITY
+RAVI HEGDE FOR PETITIONER
+
+12 WP 106073/2026 (GM, RES )
+PET: POWERGRID CORPORATION OF INDIA LIMITED
+RES: KARNATAKA RENEWABLE ENERGY DEVELOPMENT LIMITED
+SHASHANK S HEGDE FOR PETITIONER
+
+13 WP 102980/2026 (EDN, RES )
+PET: SRI ASHOK S/O BHAGAVANT KAMAT
+RES: THE DEPUTY BLOCK EDUCATION OFFICER BEO
+SUNITHA P KALASOOR FOR PETITIONER
+
+14 WP 109443/2025 (KLR, RES )
+PET: SRI MAHESH S/O BHARMAPPA GADAGIN
+RES: THE DEPUTY DIRECTOR OF LAND RECORDS
+KUPPELUR FOR PETITIONER
+
+15 CCC 100147/2025 (CCC, RES )
+PET: KAMALESHBHAI PATEL
+RES: SPECIAL LAND ACQUISITION OFFICER SLAO
+SHASHANK HEGDE FOR A1
+
+16 WP 7170/2026 (S, KSRTC )
+PET: SRI LAXMI ENTERPRISES
+RES: THE MANAGING DIRECTOR, K.S.R.T.C., SHANTHINAGAR, BENGALURU
+B N SURESH BABU
+
+17 WP 104534/2026 (L, KSRTC ) 
+PET: THE MANAGEMENT OF NWKRTC
+RES: SHRI. SHANKARGOUDA RAMAGOUDRA PATIL
+KHANNUR MADAN. M FOR PETITIONER
+
+18 WP 103018/2026 (L, ID ) 
+PET: THE DIVISIONAL CONTROLLER
+RES: SHRI IRAPPA S/O DUNDAPPA NAIK
+KHANNUR MADAN. M FOR PETITIONER
+";
+
+            var targetDate = new DateTime(2026, 11, 11);
+            var results = HighCourtDailyCauseListScannerService.ParseHighCourtCauseListText(
+                falsePositiveSnippet,
+                estCode: "KAHC02",
+                benchId: "3655",
+                judgeName: "JUSTICE S.K.",
+                causelistType: "Daily List",
+                targetDate: targetDate);
+
+            Assert.NotNull(results);
+            // Only genuine NWKRTC matters (WP 104534 and WP 103018) must be included!
+            Assert.Equal(2, results.Count);
+
+            Assert.Contains(results, r => r.RegNumber == "104534");
+            Assert.Contains(results, r => r.RegNumber == "103018");
+
+            // All false positives must be 100% eliminated
+            Assert.DoesNotContain(results, r => r.RegNumber == "100077"); // Private vs Private (Mrutunjaya vs Hadapad)
+            Assert.DoesNotContain(results, r => r.RegNumber == "108596"); // West Coast Paper Mills
+            Assert.DoesNotContain(results, r => r.RegNumber == "106073"); // Powergrid
+            Assert.DoesNotContain(results, r => r.RegNumber == "102980"); // Block Education Officer
+            Assert.DoesNotContain(results, r => r.RegNumber == "109443"); // Deputy Director of Land Records
+            Assert.DoesNotContain(results, r => r.RegNumber == "100147"); // SLAO Land Acquisition
+            Assert.DoesNotContain(results, r => r.RegNumber == "7170");   // Central KSRTC Bangalore
         }
     }
 }

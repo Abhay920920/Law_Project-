@@ -254,16 +254,7 @@ namespace MVCCaseManagement.Services.ECourts
 
                 bool petIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.PetitionerName, out _, itemEst, item.Advocate);
                 bool resIsNw = NwkrtcPartyMatcher.IsNwkrtcEntity(item.RespondentName, out _, itemEst, item.Advocate);
-                if (petIsNw || resIsNw) return true;
-
-                if (!isMfa && !string.IsNullOrEmpty(item.Advocate))
-                {
-                    bool hasAdv = Regex.IsMatch(item.Advocate, @"\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANE|KINI|KALASOOR|HEGDE|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)\b", RegexOptions.IgnoreCase);
-                    bool hasOfficer = Regex.IsMatch($"{item.PetitionerName} {item.RespondentName}", @"\b(DIRECTOR|CONTROLLER|MANAGEMENT|CORPORATION|DEPOT)\b", RegexOptions.IgnoreCase);
-                    if (hasAdv && hasOfficer) return true;
-                }
-
-                return false;
+                return petIsNw || resIsNw;
             });
 
             // Establishment Filter
