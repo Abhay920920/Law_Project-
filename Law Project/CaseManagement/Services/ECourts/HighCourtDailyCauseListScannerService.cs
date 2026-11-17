@@ -319,7 +319,7 @@ namespace MVCCaseManagement.Services.ECourts
                     return new List<PartyCaseSearchResultItem>();
                 }
 
-                var benchList = new List<(string BenchId, string JudgeName)>();
+                var benchList = new List<(string BenchId, string JudgeName, string CourtNo)>();
                 var root = benchesResult.Value;
 
                 if (root.ValueKind == JsonValueKind.Object)
@@ -330,9 +330,10 @@ namespace MVCCaseManagement.Services.ECourts
                         {
                             string bId = prop.Value.TryGetProperty("bench_id", out var bp) ? bp.ToString() : "";
                             string jName = prop.Value.TryGetProperty("judge_name", out var jp) ? jp.GetString() ?? "" : "";
+                            string courtNo = prop.Value.TryGetProperty("court_no", out var cp) ? cp.ToString() : "";
                             if (!string.IsNullOrEmpty(bId))
                             {
-                                benchList.Add((bId, jName));
+                                benchList.Add((bId, jName, courtNo));
                             }
                         }
                     }
@@ -406,7 +407,7 @@ namespace MVCCaseManagement.Services.ECourts
                             }
                             catch { }
 
-                            var parsedCases = ParseHighCourtCauseListPdf(pdfBytes, estCode, bench.BenchId, bench.JudgeName, clType, targetDate);
+                            var parsedCases = ParseHighCourtCauseListPdf(pdfBytes, estCode, bench.BenchId, bench.JudgeName, clType, targetDate, bench.CourtNo);
                             foreach (var pc in parsedCases)
                             {
                                 allResults.Add(pc);
@@ -442,7 +443,8 @@ namespace MVCCaseManagement.Services.ECourts
             string benchId,
             string judgeName,
             string causelistType,
-            DateTime targetDate)
+            DateTime targetDate,
+            string courtNo = "")
         {
             if (pdfBytes == null || pdfBytes.Length == 0) return new List<PartyCaseSearchResultItem>();
 
@@ -510,7 +512,7 @@ namespace MVCCaseManagement.Services.ECourts
                 }
 
                 string fullText = fullTextBuilder.ToString();
-                return ParseHighCourtCauseListText(fullText, estCode, benchId, judgeName, causelistType, targetDate);
+                return ParseHighCourtCauseListText(fullText, estCode, benchId, judgeName, causelistType, targetDate, courtNo);
             }
             catch (Exception ex)
             {
@@ -525,7 +527,8 @@ namespace MVCCaseManagement.Services.ECourts
             string benchId,
             string judgeName,
             string causelistType,
-            DateTime targetDate)
+            DateTime targetDate,
+            string courtNo = "")
         {
             var list = new List<PartyCaseSearchResultItem>();
             if (string.IsNullOrWhiteSpace(fullText)) return list;
@@ -533,21 +536,36 @@ namespace MVCCaseManagement.Services.ECourts
             try
             {
                 // Extract Court Hall header before cleaning running headers
-                string courtHall = !string.IsNullOrWhiteSpace(judgeName) ? $"Court Hall ({judgeName})" : "Court Hall";
-                var chNumMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*(?:NO\.?|NUMBER)?\s*[:\s\-]*(\d+)", RegexOptions.IgnoreCase);
+                string courtHall = "Court Hall";
+                if (!string.IsNullOrWhiteSpace(courtNo) && courtNo.Trim() != "0")
+                {
+                    string cleanCn = courtNo.Trim();
+                    courtHall = cleanCn.All(char.IsDigit) ? $"COURT HALL NO : {cleanCn}" : cleanCn;
+                }
+                else if (!string.IsNullOrWhiteSpace(judgeName) && !Regex.IsMatch(judgeName, @"(?i)(OF\s+KARNATAKA|DHARWAD|BENCH|SITTING|BENGALURU|KALABURAGI)"))
+                {
+                    courtHall = $"Court Hall ({judgeName.Trim()})";
+                }
+
+                // 1. Check for numbered court hall / court no (e.g. COURT HALL NO : 4, COURT NO. 3, COURT HALL 2, CH NO : 5)
+                var chNumMatch = Regex.Match(fullText, @"(?:\bCOURT\s+HALL\s*(?:NO\.?|NUMBER)?|\bCOURT\s+NO\.?|\bCH\s*(?:NO\.?|NUMBER)?)\s*[:\s\-]*(\d{1,2})\b", RegexOptions.IgnoreCase);
                 if (chNumMatch.Success && chNumMatch.Groups[1].Value != "0")
                 {
                     string hNum = chNumMatch.Groups[1].Value.Trim();
                     if (hNum == "98") hNum = "9"; // Normalize OCR/whitespace artifact Hall 98 -> Hall 9
-                    courtHall = $"COURT HALL NO : {hNum}";
+                    bool isDb = Regex.IsMatch(fullText.Substring(0, Math.Min(1200, fullText.Length)), @"\bDIVISION\s+BENCH\b", RegexOptions.IgnoreCase);
+                    courtHall = isDb ? $"COURT HALL NO : {hNum} (Division Bench)" : $"COURT HALL NO : {hNum}";
                 }
-                else
+                // 2. Chief Justice's Court
+                else if (Regex.IsMatch(fullText.Substring(0, Math.Min(1200, fullText.Length)), @"\bCHIEF\s+JUSTICE(?:'S)?\s+COURT\b", RegexOptions.IgnoreCase))
                 {
-                    var chGenericMatch = Regex.Match(fullText, @"COURT\s*(?:HALL)?\s*(?:NO\.?)?\s*[:\s\-]*([A-Za-z0-9\s]+?)(?:Cause\s+List|Sl\.No|$)", RegexOptions.IgnoreCase);
-                    if (chGenericMatch.Success && !chGenericMatch.Groups[1].Value.Trim().Equals("0"))
-                    {
-                        courtHall = $"COURT HALL NO : {chGenericMatch.Groups[1].Value.Trim()}";
-                    }
+                    courtHall = "Court Hall 1 (Chief Justice)";
+                }
+                // 3. Registrar / In Chambers
+                else if (Regex.IsMatch(fullText.Substring(0, Math.Min(1200, fullText.Length)), @"\b(ADDL\.?\s*REGISTRAR\s*JUDICIAL|REGISTRAR\s*JUDICIAL|ADDL\.?\s*REGISTRAR\s*GENERAL|REGISTRAR\s*GENERAL)\b", RegexOptions.IgnoreCase))
+                {
+                    bool inChambers = Regex.IsMatch(fullText.Substring(0, Math.Min(1200, fullText.Length)), @"\bIN\s+CHAMBERS?\b", RegexOptions.IgnoreCase);
+                    courtHall = inChambers ? "In Chambers (Addl. Registrar Judicial)" : "Court Hall (Addl. Registrar Judicial)";
                 }
 
                 // Extract Cause List No header
@@ -588,14 +606,18 @@ namespace MVCCaseManagement.Services.ECourts
                     if (m.Index > prevItemEnd)
                     {
                         string segmentBefore = fullText.Substring(prevItemEnd, m.Index - prevItemEnd);
-                        var inlineChMatch = Regex.Match(segmentBefore, @"COURT\s*(?:HALL)?\s*(?:NO\.?|NUMBER)?\s*[:\s\-]*([A-Za-z0-9\(\)\s\.\-]+?)(?:Cause\s+List|ORDERS|HEARING|Sl\.No|\r|\n|$)", RegexOptions.IgnoreCase);
-                        if (inlineChMatch.Success && !string.IsNullOrWhiteSpace(inlineChMatch.Groups[1].Value))
+                        var inlineChMatch = Regex.Match(segmentBefore, @"(?:\bCOURT\s+HALL\s*(?:NO\.?|NUMBER)?|\bCOURT\s+NO\.?|\bCH\s*(?:NO\.?|NUMBER)?)\s*[:\s\-]*(\d{1,2})\b", RegexOptions.IgnoreCase);
+                        if (inlineChMatch.Success && !string.IsNullOrWhiteSpace(inlineChMatch.Groups[1].Value) && inlineChMatch.Groups[1].Value != "0")
                         {
                             string chVal = inlineChMatch.Groups[1].Value.Trim();
-                            if (chVal != "0")
-                            {
-                                courtHall = chVal.All(char.IsDigit) ? $"COURT HALL NO : {chVal}" : $"Court Hall ({chVal})";
-                            }
+                            if (chVal == "98") chVal = "9";
+                            bool isDb = Regex.IsMatch(segmentBefore, @"\bDIVISION\s+BENCH\b", RegexOptions.IgnoreCase);
+                            courtHall = isDb ? $"COURT HALL NO : {chVal} (Division Bench)" : $"COURT HALL NO : {chVal}";
+                        }
+                        else if (Regex.IsMatch(segmentBefore, @"\b(ADDL\.?\s*REGISTRAR\s*JUDICIAL|REGISTRAR\s*JUDICIAL)\b", RegexOptions.IgnoreCase))
+                        {
+                            bool inChambers = Regex.IsMatch(segmentBefore, @"\bIN\s+CHAMBERS?\b", RegexOptions.IgnoreCase);
+                            courtHall = inChambers ? "In Chambers (Addl. Registrar Judicial)" : "Court Hall (Addl. Registrar Judicial)";
                         }
                     }
 

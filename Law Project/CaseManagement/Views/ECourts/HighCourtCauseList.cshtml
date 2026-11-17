@@ -2661,18 +2661,27 @@ function renderHcCauselistPage() {
         // Format clean Court Hall / Bench name without stripping named benches
         let cleanHallName = 'Court Hall';
         if (courtNo) {
-            const numM = courtNo.match(/(?:COURT\s+(?:HALL\s+)?(?:NO\s*)?:?\s*|Bench\s*#?)(\d+)/i);
+            const numM = courtNo.match(/(?:COURT\s+(?:HALL\s+)?(?:NO\s*)?:?\s*|COURT\s+NO\.?\s*:?\s*|Bench\s*#?)(\d+)/i);
             if (numM) {
                 let hallNum = numM[1];
                 if (hallNum === '98') hallNum = '9'; // Normalize OCR artifact Hall 98 -> Hall 9
-                cleanHallName = `Court Hall ${hallNum}`;
+                const isDb = /Division\s+Bench/i.test(courtNo);
+                cleanHallName = isDb ? `Court Hall ${hallNum} (Division Bench)` : `Court Hall ${hallNum}`;
+                courtNo = `${cleanHallName}${serialSuffix}`;
+            } else if (/REGISTRAR/i.test(courtNo)) {
+                const inChambers = /CHAMBERS?/i.test(courtNo);
+                cleanHallName = inChambers ? 'In Chambers (Addl. Registrar Judicial)' : 'Court Hall (Addl. Registrar Judicial)';
+                courtNo = `${cleanHallName}${serialSuffix}`;
+            } else if (/CHIEF\s+JUSTICE/i.test(courtNo)) {
+                cleanHallName = 'Court Hall 1 (Chief Justice)';
                 courtNo = `${cleanHallName}${serialSuffix}`;
             } else {
-                // Registrar / Named benches: e.g. "Court Hall (ADDL. REGISTRAR GENERAL)"
-                cleanHallName = courtNo.replace(/\s*\(\s*Serial\s+No\.?[^\)]*\)/gi, '').replace(/\(\s*\)/g, '').replace(/[\(\s\-,:]+$/, '').trim();
-                if (!cleanHallName || cleanHallName.toLowerCase().includes('cause list')) {
-                    cleanHallName = itemBench || 'Court Hall';
+                // Registrar / Named benches: sanitize out non-hall artifacts like (BAGALKOTE), (OF KARNATAKA AT DHARWAD BENCH), (JUDGE), (DATE), etc.
+                let sanitized = courtNo.replace(/\s*\(\s*Serial\s+No\.?[^\)]*\)/gi, '').replace(/\(\s*\)/g, '').replace(/[\(\s\-,:]+$/, '').trim();
+                if (!sanitized || /BAGALKOT|DHARWAD|BENGALURU|KALABURAGI|OF\s+KARNATAKA|JUDGE|DATE/i.test(sanitized)) {
+                    sanitized = 'Court Hall';
                 }
+                cleanHallName = sanitized || itemBench || 'Court Hall';
                 courtNo = `${cleanHallName}${serialSuffix}`;
             }
         } else {

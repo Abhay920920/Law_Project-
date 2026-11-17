@@ -848,6 +848,62 @@ namespace MVCCaseManagement.Tests
         }
 
         [Fact]
+        public void Verify_HighCourt_CourtHall_Extraction_AccuratelyDetectsHalls_WithoutNoise()
+        {
+            // Regexes identical to HighCourtDailyCauseListScannerService
+            var chNumRegex = new System.Text.RegularExpressions.Regex(@"(?:\bCOURT\s+HALL\s*(?:NO\.?|NUMBER)?|\bCOURT\s+NO\.?|\bCH\s*(?:NO\.?|NUMBER)?)\s*[:\s\-]*(\d{1,2})\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var registrarRegex = new System.Text.RegularExpressions.Regex(@"\b(ADDL\.?\s*REGISTRAR\s*JUDICIAL|REGISTRAR\s*JUDICIAL|ADDL\.?\s*REGISTRAR\s*GENERAL|REGISTRAR\s*GENERAL)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var chiefJusticeRegex = new System.Text.RegularExpressions.Regex(@"\bCHIEF\s+JUSTICE(?:'S)?\s+COURT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var divisionBenchRegex = new System.Text.RegularExpressions.Regex(@"\bDIVISION\s+BENCH\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            var inChambersRegex = new System.Text.RegularExpressions.Regex(@"\bIN\s+CHAMBERS?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            string ExtractCourtHall(string sampleText)
+            {
+                var chMatch = chNumRegex.Match(sampleText);
+                if (chMatch.Success && chMatch.Groups[1].Value != "0")
+                {
+                    string hNum = chMatch.Groups[1].Value.Trim();
+                    if (hNum == "98") hNum = "9";
+                    bool isDb = divisionBenchRegex.IsMatch(sampleText.Substring(0, Math.Min(1200, sampleText.Length)));
+                    return isDb ? $"COURT HALL NO : {hNum} (Division Bench)" : $"COURT HALL NO : {hNum}";
+                }
+                else if (registrarRegex.IsMatch(sampleText.Substring(0, Math.Min(1200, sampleText.Length))))
+                {
+                    bool inChambers = inChambersRegex.IsMatch(sampleText.Substring(0, Math.Min(1200, sampleText.Length)));
+                    return inChambers ? "In Chambers (Addl. Registrar Judicial)" : "Court Hall (Addl. Registrar Judicial)";
+                }
+                else if (chiefJusticeRegex.IsMatch(sampleText.Substring(0, Math.Min(1200, sampleText.Length))))
+                {
+                    return "Court Hall 1 (Chief Justice)";
+                }
+                return "Court Hall";
+            }
+
+            // Case 1: Division Bench Court 3
+            string dbText = "HIGH COURT OF KARNATAKA AT DHARWAD BENCH\nDAILY CAUSE LIST\nCOURT NO. 3\nDIVISION BENCH\nBEFORE HON'BLE MR. JUSTICE...";
+            Assert.Equal("COURT HALL NO : 3 (Division Bench)", ExtractCourtHall(dbText));
+
+            // Case 2: Single Judge numbered Hall
+            string sjText = "HIGH COURT OF KARNATAKA AT DHARWAD BENCH\nDAILY CAUSE LIST\nCOURT HALL NO : 4\nBEFORE HON'BLE MR. JUSTICE...";
+            Assert.Equal("COURT HALL NO : 4", ExtractCourtHall(sjText));
+
+            // Case 3: In Chambers Addl. Registrar Judicial
+            string chamberText = "HIGH COURT OF KARNATAKA AT DHARWAD BENCH\nCAUSE LIST\nBEFORE ADDL. REGISTRAR JUDICIAL\n(IN CHAMBERS)";
+            Assert.Equal("In Chambers (Addl. Registrar Judicial)", ExtractCourtHall(chamberText));
+
+            // Case 4: Chief Justice's Court
+            string cjText = "HIGH COURT OF KARNATAKA PRINCIPAL BENCH AT BENGALURU\nCHIEF JUSTICE'S COURT\nBEFORE THE HON'BLE CHIEF JUSTICE";
+            Assert.Equal("Court Hall 1 (Chief Justice)", ExtractCourtHall(cjText));
+
+            // Case 5: Noise protection - District Court Bagalkote in respondent address must NOT produce Court Hall (BAGALKOTE)
+            string noiseAddressText = "HIGH COURT OF KARNATAKA AT DHARWAD BENCH\nRES: 1. PRINCIPAL DISTRICT AND SESSIONS COURT (BAGALKOTE), KARNATAKA";
+            string noiseExtracted = ExtractCourtHall(noiseAddressText);
+            Assert.DoesNotContain("BAGALKOTE", noiseExtracted, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("OF KARNATAKA", noiseExtracted, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("Court Hall", noiseExtracted);
+        }
+
+        [Fact]
         public async Task Verify_RealDb_Labour_TrackedCases_DNP_Detection()
         {
             try
