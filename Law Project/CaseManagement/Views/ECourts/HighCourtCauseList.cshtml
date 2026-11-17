@@ -773,13 +773,9 @@
 
                     <input type="text" id="liveDate" class="form-control form-control-sm font-monospace fw-bold" value="@DateTime.Today.ToString("dd-MM-yyyy")" placeholder="dd-MM-yyyy" onchange="loadHcCourtBenches(); fetchLiveHcCauselist();" onkeyup="if(event.key==='Enter') fetchLiveHcCauselist();" />
 
-                    <div class="btn-group btn-group-sm w-100 mt-1" role="group">
+                    <div class="mt-1">
 
-                        <button type="button" class="btn btn-xs btn-outline-secondary py-1 px-1 extra-small" id="btnQuickYesterday" onclick="setQuickDate('yesterday')" title="Load yesterday's listed cases and Roznama proceedings">Yesterday</button>
-
-                        <button type="button" class="btn btn-xs btn-danger py-1 px-1 extra-small fw-bold active" id="btnQuickToday" onclick="setQuickDate('today')" title="Load today's cause list">Today</button>
-
-                        <button type="button" class="btn btn-xs btn-outline-secondary py-1 px-1 extra-small" id="btnQuickTomorrow" onclick="setQuickDate('tomorrow')" title="Load tomorrow's cause list">Tomorrow</button>
+                        <button type="button" class="btn btn-xs btn-danger w-100 py-1 px-1 extra-small fw-bold active shadow-xs" id="btnQuickToday" onclick="setQuickDate('today')" title="Load today's cause list"><i class="bi bi-calendar2-check me-1"></i>Today</button>
 
                     </div>
 
@@ -1893,6 +1889,16 @@ function fetchLiveHcCauselist(viewMode) {
     const estCode = document.getElementById('liveEstCode')?.value || 'ALL';
 
     const dateInputVal = (document.getElementById('liveDate')?.value || '').trim();
+    const todayObj = new Date();
+    const tDateStr = `${String(todayObj.getDate()).padStart(2, '0')}-${String(todayObj.getMonth() + 1).padStart(2, '0')}-${todayObj.getFullYear()}`;
+    const bToday = document.getElementById('btnQuickToday');
+    if (bToday) {
+        if (!dateInputVal || dateInputVal === tDateStr) {
+            bToday.className = 'btn btn-xs btn-danger w-100 py-1 px-1 extra-small fw-bold active shadow-xs';
+        } else {
+            bToday.className = 'btn btn-xs btn-outline-secondary w-100 py-1 px-1 extra-small';
+        }
+    }
 
     const benchId = document.getElementById('liveBenchId')?.value || 'ALL';
 
@@ -3988,13 +3994,14 @@ function setQuickDate(preset) {
         dateInput.value = dateStr;
     }
 
-    ['btnQuickYesterday', 'btnQuickToday', 'btnQuickTomorrow'].forEach(id => {
-        const b = document.getElementById(id);
-        if (b) b.className = 'btn btn-xs btn-outline-secondary py-0.5 px-1 extra-small';
-    });
-    const activeId = preset === 'yesterday' ? 'btnQuickYesterday' : (preset === 'tomorrow' ? 'btnQuickTomorrow' : 'btnQuickToday');
-    const activeB = document.getElementById(activeId);
-    if (activeB) activeB.className = 'btn btn-xs btn-danger py-0.5 px-1 extra-small fw-bold active';
+    const todayBtn = document.getElementById('btnQuickToday');
+    if (todayBtn) {
+        if (preset === 'today') {
+            todayBtn.className = 'btn btn-xs btn-danger w-100 py-1 px-1 extra-small fw-bold active shadow-xs';
+        } else {
+            todayBtn.className = 'btn btn-xs btn-outline-secondary w-100 py-1 px-1 extra-small';
+        }
+    }
 
     window.__userExplicitlyPickedToday = true;
     loadHcCourtBenches();

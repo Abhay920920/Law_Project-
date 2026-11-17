@@ -20,6 +20,9 @@ dist/
 
 ## User-specific files
 .agents/teamwork/
+.archify/
+**/.archify/
+**/.agents/.vscode/
 *.rsuser
 *.suo
 *.user
