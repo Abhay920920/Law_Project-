@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.Data.SqlClient;
 using MVCCaseManagement.Models;
+using MVCCaseManagement.Utils;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -901,6 +903,123 @@ namespace MVCCaseManagement.Tests
             Assert.DoesNotContain("BAGALKOTE", noiseExtracted, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("OF KARNATAKA", noiseExtracted, StringComparison.OrdinalIgnoreCase);
             Assert.Equal("Court Hall", noiseExtracted);
+        }
+
+        [Fact]
+        public void Verify_UserProfileHelper_ReturnsAccurateBadgesForRoles()
+        {
+            // 1. Admin
+            var adminUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "admin"),
+                new Claim(ClaimTypes.Role, "Admin"),
+                new Claim("FullName", "System Administrator")
+            }, "TestAuth"));
+            var adminBadge = UserProfileHelper.GetProfileBadge(adminUser);
+            Assert.Equal("Admin", adminBadge.Label);
+            Assert.Equal("A", adminBadge.Initial);
+            Assert.Equal("bi-shield-check", adminBadge.Icon);
+
+            // 2. MD (Managing Director)
+            var mdUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "MD"),
+                new Claim(ClaimTypes.Role, "MD"),
+                new Claim("FullName", "Managing Director"),
+                new Claim("DivisionName", "Central Office"),
+                new Claim("DivisionID", "5")
+            }, "TestAuth"));
+            var mdBadge = UserProfileHelper.GetProfileBadge(mdUser);
+            Assert.Equal("Managing Director", mdBadge.Label);
+            Assert.Equal("MD", mdBadge.Initial);
+            Assert.Equal("bi-person-badge-fill", mdBadge.Icon);
+            Assert.Equal("Managing Director (Central Office)", mdBadge.Title);
+
+            // 3. CLO (Chief Law Officer)
+            var cloUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "CLO"),
+                new Claim(ClaimTypes.Role, "CLO"),
+                new Claim("FullName", "Chief Law Officer"),
+                new Claim("DivisionName", "Central Office"),
+                new Claim("DivisionID", "5")
+            }, "TestAuth"));
+            var cloBadge = UserProfileHelper.GetProfileBadge(cloUser);
+            Assert.Equal("Chief Law Officer", cloBadge.Label);
+            Assert.Equal("CLO", cloBadge.Initial);
+            Assert.Equal("bi-briefcase-fill", cloBadge.Icon);
+            Assert.Equal("Chief Law Officer (Central Office)", cloBadge.Title);
+
+            // 4. Dy CLO (Deputy Chief Law Officer)
+            var dycloUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "Dy_CLO"),
+                new Claim(ClaimTypes.Role, "Dy CLO"),
+                new Claim("FullName", "Deputy Chief Law Officer"),
+                new Claim("DivisionName", "Central Office"),
+                new Claim("DivisionID", "5")
+            }, "TestAuth"));
+            var dycloBadge = UserProfileHelper.GetProfileBadge(dycloUser);
+            Assert.Equal("Deputy Chief Law Officer", dycloBadge.Label);
+            Assert.Equal("Dy", dycloBadge.Initial);
+            Assert.Equal("bi-briefcase", dycloBadge.Icon);
+            Assert.Equal("Deputy Chief Law Officer (Central Office)", dycloBadge.Title);
+
+            // 5. Law Officer (LO)
+            var loUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "LAW_OFFICER_CO"),
+                new Claim(ClaimTypes.Role, "LO"),
+                new Claim("FullName", "Law Officer"),
+                new Claim("DivisionName", "Central Office"),
+                new Claim("DivisionID", "5")
+            }, "TestAuth"));
+            var loBadge = UserProfileHelper.GetProfileBadge(loUser);
+            Assert.Equal("Law Officer", loBadge.Label);
+            Assert.Equal("LO", loBadge.Initial);
+            Assert.Equal("bi-person-check", loBadge.Icon);
+
+            // 6. Central Office User (LAW_COH)
+            var coUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "LAW_COH"),
+                new Claim(ClaimTypes.Role, "Division User"),
+                new Claim("FullName", "Central Office User"),
+                new Claim("DivisionName", "Central Office"),
+                new Claim("DivisionID", "5")
+            }, "TestAuth"));
+            var coBadge = UserProfileHelper.GetProfileBadge(coUser);
+            Assert.Equal("Central Office", coBadge.Label);
+            Assert.Equal("CO", coBadge.Initial);
+            Assert.Equal("bi-building", coBadge.Icon);
+
+            // 7. Division Controller (DC)
+            var dcUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "DC-BGKDO"),
+                new Claim(ClaimTypes.Role, "Division Controller"),
+                new Claim("FullName", "Division Controller (Bagalkot)"),
+                new Claim("DivisionName", "Bagalkot"),
+                new Claim("DivisionID", "1")
+            }, "TestAuth"));
+            var dcBadge = UserProfileHelper.GetProfileBadge(dcUser);
+            Assert.Equal("DC (Bagalkot)", dcBadge.Label);
+            Assert.Equal("DC", dcBadge.Initial);
+            Assert.Equal("bi-building-gear", dcBadge.Icon);
+
+            // 8. Division User (e.g. Bagalkot)
+            var divUser = new ClaimsPrincipal(new ClaimsIdentity(new[]
+            {
+                new Claim(ClaimTypes.Name, "LAW_BGK"),
+                new Claim(ClaimTypes.Role, "Division User"),
+                new Claim("FullName", "Bagalkot User"),
+                new Claim("DivisionName", "Bagalkot"),
+                new Claim("DivisionID", "1")
+            }, "TestAuth"));
+            var divBadge = UserProfileHelper.GetProfileBadge(divUser);
+            Assert.Equal("Bagalkot", divBadge.Label);
+            Assert.Equal("B", divBadge.Initial);
+            Assert.Equal("bi-building", divBadge.Icon);
         }
 
         [Fact]

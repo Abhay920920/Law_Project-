@@ -74,22 +74,17 @@
 
             <!-- User Profile Widget -->
             @{
-                bool isAdminUser = User.IsInRole("Admin") || 
-                                   string.Equals(User.Identity?.Name, "admin", System.StringComparison.OrdinalIgnoreCase) ||
-                                   string.Equals(User.FindFirst("Role")?.Value, "Admin", System.StringComparison.OrdinalIgnoreCase);
-                string userDeptLabel = isAdminUser ? "Admin" : (User.FindFirst("DivisionName")?.Value ?? "Central Office");
-                string userAvatarInitial = isAdminUser ? "A" : (!string.IsNullOrEmpty(userDeptLabel) ? userDeptLabel.Substring(0, 1).ToUpper() : "C");
-                string userDeptIcon = isAdminUser ? "bi-shield-check" : "bi-building";
+                var profileBadge = MVCCaseManagement.Utils.UserProfileHelper.GetProfileBadge(User);
             }
-            <div class="user-profile-widget me-2 me-sm-3" title="@userDeptLabel">
-                <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0">
-                    <span>@userAvatarInitial</span>
+            <div class="user-profile-widget me-2 me-sm-3" title="@profileBadge.Title">
+                <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="font-size: @(profileBadge.Initial.Length >= 3 ? "0.62rem" : (profileBadge.Initial.Length == 2 ? "0.72rem" : "0.82rem")); letter-spacing: @(profileBadge.Initial.Length > 1 ? "-0.5px" : "normal");">
+                    <span>@profileBadge.Initial</span>
                     <span class="user-status-indicator position-absolute bottom-0 end-0 rounded-circle" title="Active"></span>
                 </div>
                 <div class="user-profile-info text-start d-none d-md-block ms-2">
-                    <div class="user-dept fw-bold text-dark text-truncate d-flex align-items-center gap-1.5" style="max-width: 150px;">
-                        <i class="bi @userDeptIcon text-primary opacity-75" style="font-size: 0.75rem;"></i>
-                        <span>@userDeptLabel</span>
+                    <div class="user-dept fw-bold text-dark text-truncate d-flex align-items-center gap-1.5" style="max-width: 220px;">
+                        <i class="bi @profileBadge.Icon text-primary opacity-75" style="font-size: 0.75rem;"></i>
+                        <span>@profileBadge.Label</span>
                     </div>
                 </div>
             </div>
@@ -118,15 +113,15 @@
             <!-- User Status Card in Mobile Menu -->
             <div class="p-2.5 mb-2 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
                 <div class="d-flex align-items-center gap-2.5">
-                    <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700;">
-                        <span>@(isAdminUser ? "A" : (!string.IsNullOrEmpty(User.FindFirst("FullName")?.Value) ? User.FindFirst("FullName")?.Value.Substring(0, 1).ToUpper() : "?"))</span>
+                    <div class="user-avatar-badge position-relative rounded-circle d-flex align-items-center justify-content-center flex-shrink-0" style="width: 34px; height: 34px; font-weight: 700; font-size: @(profileBadge.Initial.Length >= 3 ? "0.68rem" : (profileBadge.Initial.Length == 2 ? "0.76rem" : "0.85rem"));">
+                        <span>@profileBadge.Initial</span>
                         <span class="user-status-indicator position-absolute bottom-0 end-0 rounded-circle" title="Active"></span>
                     </div>
                     <div class="min-w-0 text-truncate">
-                        <div class="fw-bold text-white small text-truncate">@(isAdminUser ? "Admin" : User.FindFirst("FullName")?.Value)</div>
+                        <div class="fw-bold text-white small text-truncate">@profileBadge.SubTitle</div>
                         <div class="text-white-50 small text-truncate d-flex align-items-center gap-1" style="font-size: 0.72rem;">
-                            <i class="bi @(isAdminUser ? "bi-shield-check" : "bi-building") extra-small"></i>
-                            <span>@userDeptLabel</span>
+                            <i class="bi @profileBadge.Icon extra-small"></i>
+                            <span>@profileBadge.Label</span>
                         </div>
                     </div>
                 </div>
