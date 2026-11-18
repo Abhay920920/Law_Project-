@@ -40,9 +40,14 @@ namespace MVCCaseManagement.Services.Storage
         bool DeleteFileIfExists(string? relativePath);
 
         /// <summary>
-        /// Gets the primary root directory of the persistent storage vault.
+        /// Gets the primary root directory of the persistent storage vault (law.itnwkrtc.in/uploads_vault outside publish).
         /// </summary>
         string GetVaultRootPath();
+
+        /// <summary>
+        /// Gets the secondary redundant root directory of the storage vault (itnwkrtc.in/httpdocs/uploads_vault outside publish) if configured.
+        /// </summary>
+        string? GetSecondaryVaultRootPath() => null;
     }
 }
 

@@ -20,7 +20,8 @@ namespace MVCCaseManagement.Services.Storage
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _config;
         private readonly ILogger<PhysicalFileStorageService> _logger;
-        private readonly string _vaultRootPath;
+        private readonly string _primaryVaultPath;
+        private readonly string? _secondaryVaultPath;
 
         private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -37,10 +38,13 @@ namespace MVCCaseManagement.Services.Storage
             _env = env;
             _config = config;
             _logger = logger;
-            _vaultRootPath = InitializeVaultRoot();
+            var (primary, secondary) = InitializeVaultRoots();
+            _primaryVaultPath = primary;
+            _secondaryVaultPath = secondary;
         }
 
-        public string GetVaultRootPath() => _vaultRootPath;
+        public string GetVaultRootPath() => _primaryVaultPath;
+        public string? GetSecondaryVaultRootPath() => _secondaryVaultPath;
 
         public async Task<string> SaveFileAsync(
             IFormFile? file,
@@ -75,25 +79,45 @@ namespace MVCCaseManagement.Services.Storage
             // 5. Clean up old file if replacing
             DeleteOldFileIfPresent(existingFilePath);
 
-            // 6. Ensure destination directory exists in persistent vault
-            string targetDir = Path.Combine(_vaultRootPath, cleanSubFolder);
-            if (!Directory.Exists(targetDir))
+            // 6. Ensure destination directory exists in persistent primary vault (law.itnwkrtc.in/uploads_vault outside publish)
+            string primaryTargetDir = Path.Combine(_primaryVaultPath, cleanSubFolder);
+            if (!Directory.Exists(primaryTargetDir))
             {
-                Directory.CreateDirectory(targetDir);
+                Directory.CreateDirectory(primaryTargetDir);
             }
 
             // 7. Write securely using GUID to prevent filename collisions and enumeration attacks
             string uniqueFileName = $"{Guid.NewGuid():N}{ext}";
-            string physicalDestination = Path.Combine(targetDir, uniqueFileName);
+            string physicalDestination = Path.Combine(primaryTargetDir, uniqueFileName);
 
             using (var stream = new FileStream(physicalDestination, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
             {
                 await file.CopyToAsync(stream, cancellationToken);
             }
 
-            _logger.LogInformation("Successfully saved persistent document to vault: {PhysicalPath} ({Size} bytes)", physicalDestination, file.Length);
+            _logger.LogInformation("Successfully saved persistent document to primary vault (law.itnwkrtc.in): {PhysicalPath} ({Size} bytes)", physicalDestination, file.Length);
 
-            // Also synchronize to local WebRoot uploads if running in development mode for convenience
+            // 8. Dual-Write: Redundantly store in secondary vault (itnwkrtc.in/httpdocs/uploads_vault outside publish)
+            if (!string.IsNullOrEmpty(_secondaryVaultPath) && !string.Equals(_primaryVaultPath, _secondaryVaultPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    string secTargetDir = Path.Combine(_secondaryVaultPath, cleanSubFolder);
+                    if (!Directory.Exists(secTargetDir))
+                    {
+                        Directory.CreateDirectory(secTargetDir);
+                    }
+                    string secDestination = Path.Combine(secTargetDir, uniqueFileName);
+                    File.Copy(physicalDestination, secDestination, overwrite: true);
+                    _logger.LogInformation("Successfully mirrored persistent document to secondary vault (itnwkrtc.in): {PhysicalPath}", secDestination);
+                }
+                catch (Exception exSec)
+                {
+                    _logger.LogWarning(exSec, "Could not mirror upload to secondary vault ({SecVault}): {Msg}", _secondaryVaultPath, exSec.Message);
+                }
+            }
+
+            // 9. Also synchronize to local WebRoot uploads if running in development mode for convenience
             TryMirrorToWebRoot(physicalDestination, cleanSubFolder, uniqueFileName);
 
             // Standard relative URL route handled by UploadsController
@@ -131,7 +155,11 @@ namespace MVCCaseManagement.Services.Storage
             }
 
             // Priority roots across hosting environments (Plesk IIS, local dev, published root)
-            TryAddRoot(_vaultRootPath);
+            TryAddRoot(_primaryVaultPath);
+            if (!string.IsNullOrEmpty(_secondaryVaultPath))
+            {
+                TryAddRoot(_secondaryVaultPath);
+            }
             if (!string.IsNullOrEmpty(_env.ContentRootPath))
             {
                 // Immediate local roots in application folder
@@ -336,147 +364,185 @@ namespace MVCCaseManagement.Services.Storage
             return LocatePhysicalFile(relativePath) != null;
         }
 
-        private string InitializeVaultRoot()
+        private (string primary, string? secondary) InitializeVaultRoots()
         {
-            // 1. Configured path from configuration / environment variable
-            string? configuredPath = _config["Storage:UploadsDirectory"] 
-                                  ?? _config["AppSettings:UploadsDirectory"]
-                                  ?? Environment.GetEnvironmentVariable("LAW_PROJECT_UPLOADS_DIR");
+            string? configuredPrimary = _config["Storage:UploadsDirectory"] 
+                                     ?? _config["AppSettings:UploadsDirectory"]
+                                     ?? Environment.GetEnvironmentVariable("LAW_PROJECT_UPLOADS_DIR");
 
-            if (!string.IsNullOrWhiteSpace(configuredPath))
+            string? configuredSecondary = _config["Storage:SecondaryUploadsDirectory"]
+                                       ?? _config["AppSettings:SecondaryUploadsDirectory"]
+                                       ?? Environment.GetEnvironmentVariable("LAW_PROJECT_SECONDARY_UPLOADS_DIR");
+
+            string contentRoot = _env.ContentRootPath ?? Directory.GetCurrentDirectory();
+
+            // 1. Resolve Primary Vault (law.itnwkrtc.in\uploads_vault - strictly OUTSIDE publish)
+            string primaryVault;
+            if (!string.IsNullOrWhiteSpace(configuredPrimary))
             {
-                try
-                {
-                    string resolvedConfig = Path.IsPathRooted(configuredPath)
-                        ? Path.GetFullPath(configuredPath)
-                        : Path.GetFullPath(Path.Combine(_env.ContentRootPath ?? Directory.GetCurrentDirectory(), configuredPath));
+                primaryVault = Path.IsPathRooted(configuredPrimary)
+                    ? Path.GetFullPath(configuredPrimary)
+                    : Path.GetFullPath(Path.Combine(contentRoot, configuredPrimary));
 
-                    // If configured path is explicitly set by admin or tests, ensure it exists and prefer it immediately
-                    if (!Directory.Exists(resolvedConfig))
-                    {
-                        Directory.CreateDirectory(resolvedConfig);
-                    }
-                    _logger.LogInformation("Initialized File Vault using configured path: {VaultPath}", resolvedConfig);
-                    return resolvedConfig;
-                }
-                catch (Exception ex)
+                // If running in a 'publish' folder and configured path resolves inside 'publish',
+                // automatically hoist it up one directory to keep persistent storage safe from redeploys!
+                if (Path.GetFileName(contentRoot).Equals("publish", StringComparison.OrdinalIgnoreCase) &&
+                    primaryVault.StartsWith(contentRoot, StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning(ex, "Failed probing configured upload vault path: {Path}", configuredPath);
+                    primaryVault = Path.GetFullPath(Path.Combine(contentRoot, "..", "uploads_vault"));
                 }
             }
-
-            // 2. Probing candidate list across Plesk main domain, sibling roots, and local directories
-            var candidateVaults = new List<string>();
-
-            void AddCandidate(string? path)
+            else
             {
-                if (string.IsNullOrWhiteSpace(path)) return;
-                try
-                {
-                    string full = Path.GetFullPath(path);
-                    if (!candidateVaults.Contains(full, StringComparer.OrdinalIgnoreCase))
-                    {
-                        candidateVaults.Add(full);
-                    }
-                }
-                catch { }
+                // Default: Outside publish folder (sibling to publish or project)
+                primaryVault = Path.GetFullPath(Path.Combine(contentRoot, "..", "uploads_vault"));
             }
 
-            // Main domain sibling roots from ContentRootPath
-            if (!string.IsNullOrEmpty(_env.ContentRootPath))
-            {
-                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
-                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "httpdocs", "uploads_vault"));
-                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "httpdocs", "uploads"));
-                AddCandidate(Path.Combine(_env.ContentRootPath, "..", "uploads"));
-
-                // Dynamic parent traversal: Walk up parents to discover main domain folders
-                try
-                {
-                    var currentDir = new DirectoryInfo(_env.ContentRootPath);
-                    var parent = currentDir.Parent;
-                    int depth = 0;
-                    while (parent != null && depth < 3)
-                    {
-                        AddCandidate(Path.Combine(parent.FullName, "uploads_vault"));
-                        AddCandidate(Path.Combine(parent.FullName, "httpdocs", "uploads_vault"));
-                        AddCandidate(Path.Combine(parent.FullName, "httpdocs", "uploads"));
-                        AddCandidate(Path.Combine(parent.FullName, "uploads"));
-                        parent = parent.Parent;
-                        depth++;
-                    }
-                }
-                catch { }
-
-                // Local subdomain vault
-                AddCandidate(Path.Combine(_env.ContentRootPath, "uploads_vault"));
-                AddCandidate(Path.Combine(_env.ContentRootPath, "httpdocs", "uploads_vault"));
-            }
-
-            // Known Plesk IIS absolute hosting paths across drives C:, D:, E:
-            foreach (var drive in new[] { "C", "D", "E" })
-            {
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads");
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads");
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\uploads_vault");
-                AddCandidate($@"{drive}:\inetpub\vhosts\itnwkrtc.in\law.itnwkrtc.in\httpdocs\uploads_vault");
-            }
-
-            // Pass 1: Select first candidate that exists and is populated with files or directories
-            foreach (var candidate in candidateVaults)
-            {
-                try
-                {
-                    if (Directory.Exists(candidate) && Directory.EnumerateFileSystemEntries(candidate).Any())
-                    {
-                        _logger.LogInformation("Initialized File Vault using populated vault: {VaultPath}", candidate);
-                        return candidate;
-                    }
-                }
-                catch { }
-            }
-
-            // Pass 2: Select first candidate that exists on disk (even if empty, preferring main domain root)
-            foreach (var candidate in candidateVaults)
-            {
-                try
-                {
-                    if (Directory.Exists(candidate))
-                    {
-                        _logger.LogInformation("Initialized File Vault using existing vault directory: {VaultPath}", candidate);
-                        return candidate;
-                    }
-                }
-                catch { }
-            }
-
-            // Pass 3: Create primary main domain sibling vault if parent is accessible, or local fallback
             try
             {
-                if (!string.IsNullOrEmpty(_env.ContentRootPath))
+                if (!Directory.Exists(primaryVault))
                 {
-                    string siblingVault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "uploads_vault"));
-                    string? parentDir = Path.GetDirectoryName(siblingVault);
-                    if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
+                    Directory.CreateDirectory(primaryVault);
+                }
+                _logger.LogInformation("Initialized Primary Persistent File Vault (law.itnwkrtc.in outside publish): {VaultPath}", primaryVault);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not initialize primary vault at {Path}: {Msg}", primaryVault, ex.Message);
+            }
+
+            // 2. Resolve Secondary Redundant Vault (itnwkrtc.in\httpdocs\uploads_vault - strictly OUTSIDE publish)
+            string? secondaryVault = null;
+            if (!string.IsNullOrWhiteSpace(configuredSecondary))
+            {
+                try
+                {
+                    secondaryVault = Path.IsPathRooted(configuredSecondary)
+                        ? Path.GetFullPath(configuredSecondary)
+                        : Path.GetFullPath(Path.Combine(contentRoot, configuredSecondary));
+                }
+                catch { }
+            }
+
+            if (string.IsNullOrWhiteSpace(secondaryVault))
+            {
+                // Auto-discover Plesk main domain root (itnwkrtc.in\httpdocs\uploads_vault)
+                var secondaryCandidates = new List<string>
+                {
+                    Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "httpdocs", "uploads_vault")),
+                    Path.GetFullPath(Path.Combine(contentRoot, "..", "httpdocs", "uploads_vault")),
+                    Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "uploads_vault"))
+                };
+
+                foreach (var drive in new[] { "C", "D", "E" })
+                {
+                    secondaryCandidates.Add($@"{drive}:\inetpub\vhosts\itnwkrtc.in\httpdocs\uploads_vault");
+                    secondaryCandidates.Add($@"{drive}:\inetpub\vhosts\itnwkrtc.in\uploads_vault");
+                }
+
+                foreach (var cand in secondaryCandidates)
+                {
+                    try
                     {
-                        if (!Directory.Exists(siblingVault)) Directory.CreateDirectory(siblingVault);
-                        _logger.LogInformation("Created and initialized File Vault in main domain sibling root: {VaultPath}", siblingVault);
-                        return siblingVault;
+                        if (Directory.Exists(cand) && !string.Equals(cand, primaryVault, StringComparison.OrdinalIgnoreCase))
+                        {
+                            secondaryVault = cand;
+                            break;
+                        }
+                    }
+                    catch { }
+                }
+
+                // If existing folder not found yet, check if itnwkrtc.in parent directory exists
+                if (secondaryVault == null)
+                {
+                    try
+                    {
+                        string candidate = Path.GetFullPath(Path.Combine(contentRoot, "..", "..", "httpdocs", "uploads_vault"));
+                        string? parentOfHttpdocs = Path.GetDirectoryName(Path.GetDirectoryName(candidate));
+                        if (!string.IsNullOrEmpty(parentOfHttpdocs) && Directory.Exists(parentOfHttpdocs))
+                        {
+                            secondaryVault = candidate;
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(secondaryVault))
+            {
+                try
+                {
+                    if (!Directory.Exists(secondaryVault))
+                    {
+                        Directory.CreateDirectory(secondaryVault);
+                    }
+                    _logger.LogInformation("Initialized Secondary Persistent File Vault (itnwkrtc.in outside publish): {VaultPath}", secondaryVault);
+                }
+                catch (Exception exSec)
+                {
+                    _logger.LogWarning(exSec, "Secondary vault at {Path} inaccessible or lacks write permission: {Msg}", secondaryVault, exSec.Message);
+                }
+            }
+
+            // 3. Automatic Zero-Loss Migration:
+            // If any files were stored in the legacy 'publish\uploads_vault' (e.g. from recent sessions),
+            // safely migrate/copy them to the persistent vaults so no uploads are lost!
+            MigrateLegacyPublishFiles(contentRoot, primaryVault, secondaryVault);
+
+            return (primaryVault, secondaryVault);
+        }
+
+        private void MigrateLegacyPublishFiles(string contentRoot, string primaryVault, string? secondaryVault)
+        {
+            try
+            {
+                string legacyPublishVault = Path.Combine(contentRoot, "uploads_vault");
+                if (Directory.Exists(legacyPublishVault) && !string.Equals(legacyPublishVault, primaryVault, StringComparison.OrdinalIgnoreCase))
+                {
+                    var files = Directory.GetFiles(legacyPublishVault, "*.*", SearchOption.AllDirectories);
+                    if (files.Length > 0)
+                    {
+                        _logger.LogInformation("Detected {Count} files in legacy publish\\uploads_vault. Auto-migrating to persistent vaults...", files.Length);
+                        foreach (var file in files)
+                        {
+                            try
+                            {
+                                string relative = Path.GetRelativePath(legacyPublishVault, file);
+
+                                // Copy to Primary Vault
+                                string primaryDest = Path.Combine(primaryVault, relative);
+                                string? primDir = Path.GetDirectoryName(primaryDest);
+                                if (!string.IsNullOrEmpty(primDir) && !Directory.Exists(primDir)) Directory.CreateDirectory(primDir);
+                                if (!File.Exists(primaryDest))
+                                {
+                                    File.Copy(file, primaryDest, overwrite: false);
+                                }
+
+                                // Copy to Secondary Vault
+                                if (!string.IsNullOrEmpty(secondaryVault) && Directory.Exists(secondaryVault))
+                                {
+                                    string secDest = Path.Combine(secondaryVault, relative);
+                                    string? secDir = Path.GetDirectoryName(secDest);
+                                    if (!string.IsNullOrEmpty(secDir) && !Directory.Exists(secDir)) Directory.CreateDirectory(secDir);
+                                    if (!File.Exists(secDest))
+                                    {
+                                        File.Copy(file, secDest, overwrite: false);
+                                    }
+                                }
+                            }
+                            catch (Exception exFile)
+                            {
+                                _logger.LogWarning(exFile, "Could not auto-migrate legacy publish file {File}", file);
+                            }
+                        }
                     }
                 }
             }
-            catch { }
-
-            // 10. WebRoot or ContentRoot uploads fallback
-            string fallbackWebRoot = !string.IsNullOrEmpty(_env.WebRootPath)
-                ? Path.Combine(_env.WebRootPath, "uploads")
-                : Path.Combine(_env.ContentRootPath ?? Directory.GetCurrentDirectory(), "uploads");
-
-            if (!Directory.Exists(fallbackWebRoot)) Directory.CreateDirectory(fallbackWebRoot);
-            _logger.LogInformation("Initialized File Vault using WebRoot fallback: {VaultPath}", fallbackWebRoot);
-            return fallbackWebRoot;
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error checking for legacy publish files to migrate.");
+            }
         }
 
         private static string CleanRelativePath(string rawPath)
@@ -528,19 +594,45 @@ namespace MVCCaseManagement.Services.Storage
         {
             if (string.IsNullOrWhiteSpace(relativePath)) return false;
             bool deleted = false;
+            string clean = CleanRelativePath(relativePath);
+            if (string.IsNullOrEmpty(clean)) return false;
+
             try
             {
-                string? physicalOld = LocatePhysicalFile(relativePath);
-                if (!string.IsNullOrEmpty(physicalOld) && File.Exists(physicalOld))
+                // 1. Delete from primary vault (law.itnwkrtc.in)
+                string primaryTarget = Path.Combine(_primaryVaultPath, clean);
+                if (File.Exists(primaryTarget))
                 {
-                    File.Delete(physicalOld);
-                    _logger.LogInformation("Deleted document from storage: {Path}", physicalOld);
+                    File.Delete(primaryTarget);
+                    _logger.LogInformation("Deleted document from primary vault: {Path}", primaryTarget);
                     deleted = true;
                 }
 
+                // 2. Delete from secondary vault (itnwkrtc.in)
+                if (!string.IsNullOrEmpty(_secondaryVaultPath))
+                {
+                    string secTarget = Path.Combine(_secondaryVaultPath, clean);
+                    if (File.Exists(secTarget))
+                    {
+                        File.Delete(secTarget);
+                        _logger.LogInformation("Deleted document from secondary vault: {Path}", secTarget);
+                        deleted = true;
+                    }
+                }
+
+                // 3. Delete from fallback/legacy physical path if located elsewhere
+                string? physicalOld = LocatePhysicalFile(relativePath);
+                if (!string.IsNullOrEmpty(physicalOld) && File.Exists(physicalOld) &&
+                    !string.Equals(physicalOld, primaryTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(physicalOld);
+                    _logger.LogInformation("Deleted document from fallback storage: {Path}", physicalOld);
+                    deleted = true;
+                }
+
+                // 4. Delete from WebRoot mirror
                 if (!string.IsNullOrEmpty(_env.WebRootPath))
                 {
-                    string clean = CleanRelativePath(relativePath);
                     string webMirror = Path.Combine(_env.WebRootPath, "uploads", clean);
                     if (File.Exists(webMirror) && !string.Equals(webMirror, physicalOld, StringComparison.OrdinalIgnoreCase))
                     {

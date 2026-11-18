@@ -265,5 +265,123 @@ namespace MVCCaseManagement.Tests
             Assert.NotNull(resolved);
             Assert.Equal(Path.GetFullPath(filePath), Path.GetFullPath(resolved));
         }
+
+        [Fact]
+        public async Task SaveFileAsync_DualStorage_WritesToBothPrimaryAndSecondaryVaultsOutsidePublish()
+        {
+            // Setup dual vault test environment
+            string tempBase = Path.Combine(Path.GetTempPath(), "DualStorageTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempBase);
+            try
+            {
+                string publishDir = Path.Combine(tempBase, "law.itnwkrtc.in", "publish");
+                Directory.CreateDirectory(publishDir);
+
+                string primaryVault = Path.Combine(tempBase, "law.itnwkrtc.in", "uploads_vault");
+                string secondaryVault = Path.Combine(tempBase, "httpdocs", "uploads_vault");
+
+                var mockEnv = new Mock<IWebHostEnvironment>();
+                mockEnv.Setup(e => e.ContentRootPath).Returns(publishDir);
+                mockEnv.Setup(e => e.WebRootPath).Returns(Path.Combine(publishDir, "wwwroot"));
+
+                var mockConfig = new Mock<IConfiguration>();
+                mockConfig.Setup(c => c["Storage:UploadsDirectory"]).Returns("..\\uploads_vault");
+                mockConfig.Setup(c => c["Storage:SecondaryUploadsDirectory"]).Returns("..\\..\\httpdocs\\uploads_vault");
+
+                var dualService = new PhysicalFileStorageService(
+                    mockEnv.Object,
+                    mockConfig.Object,
+                    NullLogger<PhysicalFileStorageService>.Instance
+                );
+
+                // Verify both vaults are outside publish
+                Assert.Equal(Path.GetFullPath(primaryVault), Path.GetFullPath(dualService.GetVaultRootPath()));
+                Assert.Equal(Path.GetFullPath(secondaryVault), Path.GetFullPath(dualService.GetSecondaryVaultRootPath()!));
+                Assert.DoesNotContain("publish", dualService.GetVaultRootPath());
+                Assert.DoesNotContain("publish", dualService.GetSecondaryVaultRootPath());
+
+                // Save a test file
+                byte[] pdfBytes = Encoding.UTF8.GetBytes("%PDF-1.4 NWKRTC Dual Vault Test Document");
+                var fileMock = new Mock<IFormFile>();
+                fileMock.Setup(f => f.FileName).Returns("Dual_Award.pdf");
+                fileMock.Setup(f => f.Length).Returns(pdfBytes.Length);
+                fileMock.Setup(f => f.OpenReadStream()).Returns(new MemoryStream(pdfBytes));
+                fileMock.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+                    .Returns((Stream stream, CancellationToken token) => stream.WriteAsync(pdfBytes, 0, pdfBytes.Length, token));
+
+                string savedUrl = await dualService.SaveFileAsync(fileMock.Object, "judgments");
+
+                Assert.StartsWith("/uploads/judgments/", savedUrl);
+                string fileName = Path.GetFileName(savedUrl);
+
+                // Assert file exists in PRIMARY vault (law.itnwkrtc.in/uploads_vault)
+                string primaryExpectedFile = Path.Combine(primaryVault, "judgments", fileName);
+                Assert.True(File.Exists(primaryExpectedFile), $"File missing in primary vault: {primaryExpectedFile}");
+
+                // Assert file ALSO exists in SECONDARY vault (itnwkrtc.in/httpdocs/uploads_vault)
+                string secondaryExpectedFile = Path.Combine(secondaryVault, "judgments", fileName);
+                Assert.True(File.Exists(secondaryExpectedFile), $"File missing in secondary vault: {secondaryExpectedFile}");
+
+                // Assert LocatePhysicalFile resolves it
+                string? located = dualService.LocatePhysicalFile(savedUrl);
+                Assert.NotNull(located);
+                Assert.True(File.Exists(located));
+
+                // Assert DeleteFileIfExists removes from BOTH
+                bool deleted = dualService.DeleteFileIfExists(savedUrl);
+                Assert.True(deleted);
+                Assert.False(File.Exists(primaryExpectedFile));
+                Assert.False(File.Exists(secondaryExpectedFile));
+            }
+            finally
+            {
+                try { Directory.Delete(tempBase, recursive: true); } catch { }
+            }
+        }
+
+        [Fact]
+        public void MigrateLegacyPublishFiles_SafelyCopiesFilesFromLegacyPublishToPersistentVaults()
+        {
+            string tempBase = Path.Combine(Path.GetTempPath(), "MigrationTest_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempBase);
+            try
+            {
+                string publishDir = Path.Combine(tempBase, "law.itnwkrtc.in", "publish");
+                string legacyVaultDir = Path.Combine(publishDir, "uploads_vault", "claims");
+                Directory.CreateDirectory(legacyVaultDir);
+
+                // Put legacy file inside publish\uploads_vault
+                string legacyFile = Path.Combine(legacyVaultDir, "LegacyClaim.pdf");
+                File.WriteAllText(legacyFile, "%PDF-1.4 Legacy Claim Content from Nov 18");
+
+                string primaryVault = Path.Combine(tempBase, "law.itnwkrtc.in", "uploads_vault");
+                string secondaryVault = Path.Combine(tempBase, "httpdocs", "uploads_vault");
+
+                var mockEnv = new Mock<IWebHostEnvironment>();
+                mockEnv.Setup(e => e.ContentRootPath).Returns(publishDir);
+                mockEnv.Setup(e => e.WebRootPath).Returns(Path.Combine(publishDir, "wwwroot"));
+
+                var mockConfig = new Mock<IConfiguration>();
+                mockConfig.Setup(c => c["Storage:UploadsDirectory"]).Returns("..\\uploads_vault");
+                mockConfig.Setup(c => c["Storage:SecondaryUploadsDirectory"]).Returns("..\\..\\httpdocs\\uploads_vault");
+
+                // Initialize service — should auto-migrate the legacy file
+                var service = new PhysicalFileStorageService(
+                    mockEnv.Object,
+                    mockConfig.Object,
+                    NullLogger<PhysicalFileStorageService>.Instance
+                );
+
+                string migratedPrimary = Path.Combine(primaryVault, "claims", "LegacyClaim.pdf");
+                string migratedSecondary = Path.Combine(secondaryVault, "claims", "LegacyClaim.pdf");
+
+                Assert.True(File.Exists(migratedPrimary), $"Legacy file was not migrated to primary vault: {migratedPrimary}");
+                Assert.True(File.Exists(migratedSecondary), $"Legacy file was not migrated to secondary vault: {migratedSecondary}");
+            }
+            finally
+            {
+                try { Directory.Delete(tempBase, recursive: true); } catch { }
+            }
+        }
     }
 }
