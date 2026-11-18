@@ -1348,5 +1348,55 @@ namespace MVCCaseManagement.Tests
             var dcRoot = dcResult.Value;
             Assert.Equal("KADW200035292024", dcRoot.GetProperty("cino").GetString());
         }
+
+        [Fact]
+        public void ExtractActsArray_NormalizesHighCourtActsPayloadProperly()
+        {
+            string json = @"{
+                ""acts"": {
+                    ""act1"": {
+                        ""actname"": ""CODE OF CIVIL PROCEDURE"",
+                        ""section"": ""4,""
+                    }
+                }
+            }";
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var method = typeof(MVCCaseManagement.Controllers.ECourtsController)
+                .GetMethod("ExtractActsArray", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.NotNull(method);
+            var result = method.Invoke(null, new object[] { doc.RootElement }) as System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string?>>;
+            Assert.NotNull(result);
+            Assert.Single(result);
+            var act = result[0];
+            Assert.Equal("CODE OF CIVIL PROCEDURE", act["actname"]);
+            Assert.Equal("CODE OF CIVIL PROCEDURE", act["act_name"]);
+            Assert.Equal("CODE OF CIVIL PROCEDURE", act["act"]);
+            Assert.Equal("4", act["section"]);
+        }
+
+        [Fact]
+        public void ExtractActsArray_NormalizesArrayPayloadProperly()
+        {
+            string json = @"{
+                ""acts"": [
+                    {
+                        ""act_name"": ""MOTOR VEHICLES ACT, 1988"",
+                        ""section"": ""166, 140,""
+                    }
+                ]
+            }";
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var method = typeof(MVCCaseManagement.Controllers.ECourtsController)
+                .GetMethod("ExtractActsArray", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.NotNull(method);
+            var result = method.Invoke(null, new object[] { doc.RootElement }) as System.Collections.Generic.List<System.Collections.Generic.Dictionary<string, string?>>;
+            Assert.NotNull(result);
+            Assert.Single(result);
+            var act = result[0];
+            Assert.Equal("MOTOR VEHICLES ACT, 1988", act["actname"]);
+            Assert.Equal("MOTOR VEHICLES ACT, 1988", act["act_name"]);
+            Assert.Equal("MOTOR VEHICLES ACT, 1988", act["act"]);
+            Assert.Equal("166, 140", act["section"]);
+        }
     }
 }

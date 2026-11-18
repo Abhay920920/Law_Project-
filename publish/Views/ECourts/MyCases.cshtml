@@ -5208,16 +5208,26 @@
         }
 
         // Acts
-        const acts = dossier.acts || [];
+        let acts = dossier.acts || [];
+        if ((!acts || acts.length === 0) && raw.acts) {
+            if (Array.isArray(raw.acts)) acts = raw.acts;
+            else if (typeof raw.acts === 'object') acts = Object.values(raw.acts);
+        }
         const tbodyActs = document.getElementById("dTbodyActs");
-        if (acts.length > 0) {
-            tbodyActs.innerHTML = acts.map((a, i) => `
-                <tr>
-                    <td class="text-muted fw-bold">${i + 1}</td>
-                    <td class="fw-semibold">${a.act || a.act_name || "—"}</td>
-                    <td class="font-monospace">${a.section || "—"}</td>
-                </tr>
-            `).join("");
+        if (acts && acts.length > 0) {
+            tbodyActs.innerHTML = acts.map((a, i) => {
+                const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || "—").trim());
+                let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || "—").trim();
+                if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+                if (!secName) secName = "—";
+                secName = escapeHtml(secName);
+                return `
+                    <tr>
+                        <td class="text-muted fw-bold">${i + 1}</td>
+                        <td class="fw-semibold">${actName}</td>
+                        <td class="font-monospace">${secName}</td>
+                    </tr>`;
+            }).join("");
         } else {
             tbodyActs.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-4">No statutory acts recorded.</td></tr>`;
         }
@@ -6675,13 +6685,19 @@
         // 5. Acts Rows
         let actsRows = "";
         if (acts.length > 0) {
-            actsRows = acts.map((a, i) => `
+            actsRows = acts.map((a, i) => {
+                const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || "—").trim());
+                let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || "—").trim();
+                if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+                if (!secName) secName = "—";
+                secName = escapeHtml(secName);
+                return `
                 <tr>
                     <td class="text-center fw-bold text-muted">${i + 1}</td>
-                    <td class="fw-semibold">${escapeHtml(a.act || a.act_name || "—")}</td>
-                    <td class="font-mono">${escapeHtml(a.section || "—")}</td>
-                </tr>
-            `).join("");
+                    <td class="fw-semibold">${actName}</td>
+                    <td class="font-mono">${secName}</td>
+                </tr>`;
+            }).join("");
         } else {
             actsRows = `<tr><td colspan="3" class="text-center text-muted" style="padding: 10px;">No statutory acts recorded.</td></tr>`;
         }

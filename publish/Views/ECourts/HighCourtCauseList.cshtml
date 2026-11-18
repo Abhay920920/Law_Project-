@@ -3799,18 +3799,31 @@ function openDossierModal(appealId, cnr, mfaNo) {
                 }
 
                 // 7. Acts & Sections
-                const acts = res.acts || raw.acts || [];
+                let acts = res.acts || [];
+                if ((!acts || acts.length === 0) && raw.acts) {
+                    if (Array.isArray(raw.acts)) {
+                        acts = raw.acts;
+                    } else if (typeof raw.acts === 'object') {
+                        acts = Object.values(raw.acts);
+                    }
+                }
                 document.getElementById('mCountActs').textContent = acts.length;
 
-                if (acts.length === 0) {
+                if (!acts || acts.length === 0) {
                     document.getElementById('mTbodyActs').innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No specific acts or sections recorded in e-Courts payload.</td></tr>';
                 } else {
                     let actsHtml = '';
                     acts.forEach((a, idx) => {
+                        const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || '—').trim());
+                        let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || '—').trim();
+                        if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+                        if (!secName) secName = '—';
+                        secName = escapeHtml(secName);
+
                         actsHtml += `<tr>
                             <td class="text-center fw-bold text-muted">${idx + 1}</td>
-                            <td class="fw-semibold text-dark">${a.act || a.act_name || '—'}</td>
-                            <td class="font-monospace text-primary fw-bold">${a.section || '—'}</td>
+                            <td class="fw-semibold text-dark">${actName}</td>
+                            <td class="font-monospace text-primary fw-bold">${secName}</td>
                         </tr>`;
                     });
                     document.getElementById('mTbodyActs').innerHTML = actsHtml;
@@ -3893,6 +3906,25 @@ function printHighCourtDossier() {
         </tr>
     `).join('') || '<tr><td colspan="5" style="text-align:center;">No orders recorded</td></tr>';
 
+    let actsList = currentHighCourtDossier.acts || [];
+    if ((!actsList || actsList.length === 0) && raw.acts) {
+        if (Array.isArray(raw.acts)) actsList = raw.acts;
+        else if (typeof raw.acts === 'object') actsList = Object.values(raw.acts);
+    }
+    const actsRows = (actsList || []).map((a, i) => {
+        const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || '—').trim());
+        let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || '—').trim();
+        if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+        if (!secName) secName = '—';
+        secName = escapeHtml(secName);
+        return `
+            <tr>
+                <td style="text-align:center;">${i + 1}</td>
+                <td><strong>${actName}</strong></td>
+                <td>${secName}</td>
+            </tr>`;
+    }).join('') || '<tr><td colspan="3" style="text-align:center; color:#94a3b8;">No specific statutory acts recorded</td></tr>';
+
     pWin.document.write(`
         <!DOCTYPE html>
         <html>
@@ -3955,6 +3987,14 @@ function printHighCourtDossier() {
                     <tr><th style="width:30px;">#</th><th style="width:90px;">Order Date</th><th style="width:80px;">Order No</th><th>Order Type / Details</th><th>Judge / Coram</th></tr>
                 </thead>
                 <tbody>${orderRows}</tbody>
+            </table>
+
+            <div class="sec-title">Statutory Acts & Sections Invoked (${actsList.length})</div>
+            <table class="data">
+                <thead>
+                    <tr><th style="width:30px;">#</th><th style="width:60%;">Act Name</th><th style="width:40%;">Section(s) Invoked</th></tr>
+                </thead>
+                <tbody>${actsRows}</tbody>
             </table>
 
             <div style="margin-top: 30px; text-align: right; font-size: 8.5pt; color: #94a3b8;">

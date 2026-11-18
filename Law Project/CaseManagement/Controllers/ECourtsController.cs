@@ -6987,6 +6987,63 @@ namespace MVCCaseManagement.Controllers
             return result;
         }
 
+        private static Dictionary<string, string?> NormalizeActDictionary(JsonElement elem)
+        {
+            var dict = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            if (elem.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var p in elem.EnumerateObject())
+                {
+                    dict[p.Name] = JsonValToString(p.Value);
+                }
+            }
+
+            // Extract Act Name from all known keys across eCourts / NAPIX dialects
+            string? actName = dict.GetValueOrDefault("actname")
+                           ?? dict.GetValueOrDefault("act_name")
+                           ?? dict.GetValueOrDefault("act")
+                           ?? dict.GetValueOrDefault("act_title")
+                           ?? dict.GetValueOrDefault("acttitle")
+                           ?? dict.GetValueOrDefault("ActName")
+                           ?? dict.GetValueOrDefault("Act")
+                           ?? dict.GetValueOrDefault("name");
+
+            // Extract Section from all known keys
+            string? section = dict.GetValueOrDefault("section")
+                           ?? dict.GetValueOrDefault("section_name")
+                           ?? dict.GetValueOrDefault("sections")
+                           ?? dict.GetValueOrDefault("sec")
+                           ?? dict.GetValueOrDefault("Section");
+
+            if (!string.IsNullOrWhiteSpace(actName))
+            {
+                actName = actName.Trim();
+            }
+            else
+            {
+                actName = "—";
+            }
+
+            if (!string.IsNullOrWhiteSpace(section))
+            {
+                section = section.Trim().TrimEnd(',').Trim();
+            }
+            if (string.IsNullOrWhiteSpace(section))
+            {
+                section = "—";
+            }
+
+            // Populate all standard aliases so any consumer finds both act and section reliably
+            dict["act"] = actName;
+            dict["act_name"] = actName;
+            dict["actname"] = actName;
+            dict["ActName"] = actName;
+            dict["section"] = section;
+            dict["Section"] = section;
+
+            return dict;
+        }
+
         private static List<Dictionary<string, string?>> ExtractActsArray(System.Text.Json.JsonElement root)
         {
             var result = new List<Dictionary<string, string?>>();
@@ -7006,7 +7063,7 @@ namespace MVCCaseManagement.Controllers
                                 foreach (var item in prop.Value.EnumerateArray())
                                 {
                                     if (item.ValueKind == JsonValueKind.Object)
-                                        result.Add(item.EnumerateObject().ToDictionary(p => p.Name, p => (string?)JsonValToString(p.Value)));
+                                        result.Add(NormalizeActDictionary(item));
                                 }
                             }
                             else if (prop.Value.ValueKind == JsonValueKind.Object)
@@ -7014,7 +7071,7 @@ namespace MVCCaseManagement.Controllers
                                 foreach (var child in prop.Value.EnumerateObject())
                                 {
                                     if (child.Value.ValueKind == JsonValueKind.Object)
-                                        result.Add(child.Value.EnumerateObject().ToDictionary(p => p.Name, p => (string?)JsonValToString(p.Value)));
+                                        result.Add(NormalizeActDictionary(child.Value));
                                 }
                             }
                         }
