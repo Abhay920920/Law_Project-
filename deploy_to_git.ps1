@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Automated zero-loss build, test, publish, and git-push deployment script for NWKRTC Law Project.
 .DESCRIPTION

@@ -833,12 +833,13 @@
                         <th style="min-width: 260px;">Parties</th>
                         <th style="min-width: 160px;">Next Hearing / Stage</th>
                         <th style="min-width: 95px;">Status</th>
+                        <th style="min-width: 180px;">Remarks</th>
                         <th style="min-width: 165px;" class="text-end pe-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="myCasesTbody">
                     <tr>
-                        <td colspan="8" class="text-center py-5 text-muted">
+                        <td colspan="9" class="text-center py-5 text-muted">
                             <div class="spinner-border text-primary spinner-border-sm me-2" role="status"></div>
                             <span>Loading your tracked cases from database...</span>
                         </td>
@@ -1774,6 +1775,79 @@
     </div>
 </div>
 
+<!-- ======================================================== -->
+<!-- MODAL: Case Remarks & Internal Notes -->
+<!-- ======================================================== -->
+<div class="modal fade" id="caseRemarkModal" tabindex="-1" aria-labelledby="caseRemarkModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+            <div class="modal-header bg-dark text-white py-3 px-4">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-chat-left-text fs-5 text-warning"></i>
+                    <div>
+                        <h6 class="modal-title fw-bold mb-0" id="caseRemarkModalLabel">Case Remark &amp; Follow-up Note</h6>
+                        <div class="extra-small text-white-50" id="remarkModalSubtitle">Update internal tracking remark</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3 p-sm-4 bg-light bg-opacity-50">
+                <input type="hidden" id="remarkTrackedId" />
+                
+                <!-- Case Summary Header Card -->
+                <div class="p-2.5 rounded-3 bg-white border shadow-xs mb-3">
+                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-1 mb-1">
+                        <span class="badge bg-primary font-monospace fw-bold" id="remarkCaseTypeBadge">—</span>
+                        <span class="font-monospace fw-bold text-dark fs-6" id="remarkCnrNumber">—</span>
+                    </div>
+                    <div class="small fw-semibold text-dark text-truncate" id="remarkPartiesText">—</div>
+                </div>
+
+                <!-- Quick Preset Chips -->
+                <div class="mb-2">
+                    <label class="form-label extra-small text-uppercase fw-bold text-muted mb-1">
+                        <i class="bi bi-lightning-charge-fill text-warning me-1"></i>Quick Preset Tags:
+                    </label>
+                    <div class="d-flex flex-wrap gap-1.5" id="remarkPresetChips">
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Vakalatnama filed.')">Vakalatnama Filed</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Statement of objections / counter filed.')">Counter Filed</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Urgent stay application moved.')">Stay Application</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Awaiting compliance from Division Office.')">Awaiting Compliance</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Advocate briefed with instructions.')">Advocate Briefed</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Certified copy applied.')">CC Applied</button>
+                        <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill extra-small" onclick="appendRemarkPreset('Disposed copy received.')">Copy Received</button>
+                    </div>
+                </div>
+
+                <!-- Remarks Textarea -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label for="caseRemarkTextarea" class="form-label extra-small text-uppercase fw-bold text-muted mb-0">
+                            Remark Details:
+                        </label>
+                        <span class="extra-small text-muted" id="remarkCharCounter">0 / 1000</span>
+                    </div>
+                    <textarea class="form-control rounded-3 shadow-none border-secondary-subtle" id="caseRemarkTextarea" rows="4" maxlength="1000" placeholder="Type internal remark, advocate notes, or case status updates..." oninput="updateRemarkCharCount()"></textarea>
+                </div>
+
+                <!-- Author & Last Updated Info -->
+                <div class="extra-small text-muted text-end" id="remarkLastUpdatedInfo"></div>
+            </div>
+            <div class="modal-footer bg-white border-top py-2.5 px-4 d-flex justify-content-between align-items-center">
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="clearCaseRemark()">
+                    <i class="bi bi-trash me-1"></i>Clear
+                </button>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-sm btn-light border rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-sm btn-primary rounded-pill px-4 shadow-sm" id="btnSaveRemark" onclick="saveCaseRemark()">
+                        <i class="bi bi-check-lg me-1"></i>Save Remark
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;" id="myCasesToastContainer"></div>
 
@@ -1893,7 +1967,7 @@
                 }
             } else {
                 if (tbody) {
-                    tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-danger">
+                    tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-danger">
                         <i class="bi bi-exclamation-octagon fs-3 d-block mb-2"></i>
                         ${json.message || "Failed to load tracked cases."}
                     </td></tr>`;
@@ -1909,7 +1983,7 @@
         } catch (err) {
             console.error("Error loading tracked cases:", err);
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-danger">
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-danger">
                     <i class="bi bi-wifi-off fs-3 d-block mb-2"></i>
                     Connection error while retrieving tracked cases.
                 </td></tr>`;
@@ -2313,6 +2387,146 @@
     }
 
     // ==========================================
+    // Case Remarks Modal & AJAX Management
+    // ==========================================
+    function openCaseRemarkModal(trackedId) {
+        const c = allCasesData.find(x => x.trackedID === trackedId);
+        if (!c) {
+            showToast("Error", "Case not found.", false);
+            return;
+        }
+
+        const idElem = document.getElementById("remarkTrackedId");
+        if (idElem) idElem.value = trackedId;
+
+        const badgeElem = document.getElementById("remarkCaseTypeBadge");
+        if (badgeElem) badgeElem.innerText = getDisplayCaseType(c);
+
+        const cnrElem = document.getElementById("remarkCnrNumber");
+        if (cnrElem) cnrElem.innerText = c.cnrNumber || "—";
+
+        const partiesElem = document.getElementById("remarkPartiesText");
+        if (partiesElem) partiesElem.innerText = `${c.petitioner || 'Petitioner'} vs ${c.respondent || 'Respondent'}`;
+
+        const textarea = document.getElementById("caseRemarkTextarea");
+        if (textarea) {
+            textarea.value = c.remarks || "";
+            updateRemarkCharCount();
+        }
+
+        const infoEl = document.getElementById("remarkLastUpdatedInfo");
+        if (infoEl) {
+            if (c.remarkUpdatedBy) {
+                const datePart = c.remarkUpdatedDate ? c.remarkUpdatedDate.split('T')[0] : '';
+                infoEl.innerHTML = `<i class="bi bi-clock-history me-1"></i>Last updated by <strong>${escapeHtml(c.remarkUpdatedBy)}</strong> ${datePart ? 'on ' + escapeHtml(datePart) : ''}`;
+            } else {
+                infoEl.innerHTML = "";
+            }
+        }
+
+        const modalEl = document.getElementById("caseRemarkModal");
+        if (modalEl) {
+            const modal = (typeof bootstrap !== 'undefined' && bootstrap.Modal && bootstrap.Modal.getOrCreateInstance)
+                ? bootstrap.Modal.getOrCreateInstance(modalEl)
+                : new bootstrap.Modal(modalEl);
+            modal.show();
+        }
+    }
+
+    function appendRemarkPreset(presetText) {
+        const textarea = document.getElementById("caseRemarkTextarea");
+        if (textarea) {
+            if (textarea.value.trim()) {
+                textarea.value = textarea.value.trim() + " " + presetText;
+            } else {
+                textarea.value = presetText;
+            }
+            updateRemarkCharCount();
+            textarea.focus();
+        }
+    }
+
+    function updateRemarkCharCount() {
+        const textarea = document.getElementById("caseRemarkTextarea");
+        const counter = document.getElementById("remarkCharCounter");
+        if (textarea && counter) {
+            counter.innerText = `${textarea.value.length} / 1000`;
+        }
+    }
+
+    function clearCaseRemark() {
+        const textarea = document.getElementById("caseRemarkTextarea");
+        if (textarea) {
+            textarea.value = "";
+            updateRemarkCharCount();
+            textarea.focus();
+        }
+    }
+
+    async function saveCaseRemark() {
+        const idElem = document.getElementById("remarkTrackedId");
+        const trackedId = idElem ? parseInt(idElem.value, 10) : 0;
+        const textarea = document.getElementById("caseRemarkTextarea");
+        const remarks = textarea ? textarea.value.trim() : "";
+        const btn = document.getElementById("btnSaveRemark");
+
+        if (!trackedId) {
+            showToast("Error", "Invalid case selected.", false);
+            return;
+        }
+
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span>Saving...`;
+        }
+
+        try {
+            const resp = await fetch("/ECourts/SaveCaseRemark", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    TrackedID: trackedId,
+                    Remarks: remarks
+                })
+            });
+
+            const res = await resp.json();
+            if (res.success) {
+                // Update in-memory case object
+                const c = allCasesData.find(x => x.trackedID === trackedId);
+                if (c) {
+                    c.remarks = res.remarks;
+                    c.remarkUpdatedBy = res.updatedBy;
+                    c.remarkUpdatedDate = new Date().toISOString();
+                }
+
+                // Hide modal
+                const modalEl = document.getElementById("caseRemarkModal");
+                if (modalEl) {
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
+
+                // Re-render table in place without losing search or scroll position
+                renderCasesTable();
+                showToast("Success", "Remark saved successfully.", true);
+            } else {
+                showToast("Error", res.message || "Failed to save remark.", false);
+            }
+        } catch (err) {
+            console.error("Save remark error:", err);
+            showToast("Error", "Network or server error while saving remark.", false);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="bi bi-check-lg me-1"></i>Save Remark`;
+            }
+        }
+    }
+
+    // ==========================================
     // Render Single Case Row HTML Helper
     // ==========================================
     function renderCaseRowHtml(c, index, groupClass = "") {
@@ -2483,6 +2697,23 @@
             <td>
                 ${statusBadge}
             </td>
+            <td>
+                ${c.remarks ? `
+                <div class="p-1.5 rounded-2 bg-light bg-opacity-75 border border-secondary-subtle d-flex align-items-start justify-content-between gap-1.5">
+                    <div class="small text-dark text-break" style="max-width: 190px; line-height: 1.35;" title="${escapeHtml(c.remarks)}">
+                        <i class="bi bi-chat-left-text-fill text-primary me-1"></i><span class="fw-semibold">${escapeHtml(c.remarks)}</span>
+                        ${c.remarkUpdatedBy ? `<div class="extra-small text-muted mt-0.5"><i class="bi bi-person me-0.5"></i>${escapeHtml(c.remarkUpdatedBy)} <span class="opacity-75">${c.remarkUpdatedDate ? '· ' + escapeHtml(c.remarkUpdatedDate.split('T')[0]) : ''}</span></div>` : ''}
+                    </div>
+                    <button type="button" class="btn btn-link btn-xs text-primary p-0 ms-1 flex-shrink-0" onclick="openCaseRemarkModal(${c.trackedID})" title="Edit Remark">
+                        <i class="bi bi-pencil-square fs-6"></i>
+                    </button>
+                </div>
+                ` : `
+                <button type="button" class="btn btn-outline-secondary btn-xs rounded-pill px-2.5 py-1 extra-small d-inline-flex align-items-center gap-1 shadow-none hover-primary" onclick="openCaseRemarkModal(${c.trackedID})">
+                    <i class="bi bi-plus-circle text-primary"></i><span>Add Remark</span>
+                </button>
+                `}
+            </td>
             <td class="text-end pe-3">
                 <div class="d-inline-flex align-items-center gap-1">
                     <button type="button" class="btn btn-outline-primary btn-xs px-2 py-1 fw-semibold d-inline-flex align-items-center gap-1 shadow-none" title="View Full Case Dossier" onclick="openCaseDossier(${c.trackedID})">
@@ -2499,6 +2730,7 @@
                             <i class="bi bi-three-dots-vertical"></i>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 py-1 small">
+                            <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openCaseRemarkModal(${c.trackedID})"><i class="bi bi-chat-left-text text-primary"></i>Edit Case Remark</a></li>
                             <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" onclick="printSingleCase(${c.trackedID})"><i class="bi bi-printer text-dark"></i>Print Dossier</a></li>
                             <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" onclick="openReassignModal(${c.trackedID}, '${c.cnrNumber}', '${escapeJs(workerName)}')"><i class="bi bi-person-gear text-primary"></i>Reassign Worker</a></li>
                             <li><a class="dropdown-item py-1.5 extra-small d-flex align-items-center gap-2" href="javascript:void(0)" id="btnSync_${c.trackedID}" onclick="syncCaseLive(${c.trackedID})"><i class="bi bi-arrow-clockwise text-success"></i>Sync Live eCourts</a></li>
@@ -2512,7 +2744,7 @@
         
         <!-- Expandable Hearing History & Daily Status Drawer Row -->
         <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClass ? `group-row-${groupClass}` : ''}">
-            <td colspan="8" class="p-2 p-md-3 ps-md-4 pe-md-4">
+            <td colspan="9" class="p-2 p-md-3 ps-md-4 pe-md-4">
                 <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hearing-drawer-card" style="position: sticky; left: 12px; width: calc(100vw - 370px); max-width: calc(100vw - 370px); box-sizing: border-box;">
                     <div class="card-header bg-dark text-white py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -2901,6 +3133,24 @@
                     ${hearingDisplay}
                 </div>
 
+                <!-- Case Remarks Section -->
+                <div class="p-2.5 rounded-3 bg-light border mb-2 d-flex justify-content-between align-items-start gap-1.5">
+                    <div class="flex-grow-1" style="word-break: break-word;">
+                        <div class="extra-small text-uppercase fw-bold text-muted mb-0.5">
+                            <i class="bi bi-chat-left-text me-1 text-primary"></i>Case Remark
+                        </div>
+                        ${c.remarks ? `
+                            <div class="small fw-semibold text-dark">${escapeHtml(c.remarks)}</div>
+                            ${c.remarkUpdatedBy ? `<div class="extra-small text-muted mt-0.5">By: ${escapeHtml(c.remarkUpdatedBy)} ${c.remarkUpdatedDate ? '· ' + escapeHtml(c.remarkUpdatedDate.split('T')[0]) : ''}</div>` : ''}
+                        ` : `
+                            <div class="extra-small text-muted fst-italic">No remarks added yet.</div>
+                        `}
+                    </div>
+                    <button type="button" class="btn btn-xs btn-outline-primary rounded-pill px-2.5 py-1 extra-small flex-shrink-0 shadow-none" onclick="openCaseRemarkModal(${c.trackedID})">
+                        <i class="bi bi-pencil-square me-1"></i>${c.remarks ? 'Edit' : 'Add'}
+                    </button>
+                </div>
+
                 <!-- Case Worker & Sync Metadata -->
                 <div class="d-flex justify-content-between align-items-center extra-small text-muted pt-1 border-top">
                     <span class="badge bg-light text-dark border py-1 px-2" title="Assigned Case Worker">
@@ -3040,7 +3290,7 @@
         const filtered = allCasesData.filter(c => {
             // Text search
             if (query) {
-                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""} ${c.addedBy || ""} ${c.natureOfDisposal || ""} ${c.caseStatus || ""}`.toLowerCase();
+                const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""} ${c.addedBy || ""} ${c.natureOfDisposal || ""} ${c.caseStatus || ""} ${c.remarks || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
             }
 
@@ -3158,7 +3408,7 @@
 
         if (filtered.length === 0) {
             if (tbody) {
-                tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">
+                tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted">
                     <i class="bi bi-inbox fs-2 text-secondary d-block mb-2"></i>
                     No cases match the selected filter criteria.
                 </td></tr>`;
@@ -3196,7 +3446,7 @@
 
                 groupHtml += `
                 <tr class="table-group-header border-top border-bottom border-primary-subtle" style="background: linear-gradient(90deg, #f0f4ff 0%, #ffffff 100%);">
-                    <td colspan="8" class="py-2.5 px-3">
+                    <td colspan="9" class="py-2.5 px-3">
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <button type="button" class="btn btn-sm btn-link text-primary p-0 text-decoration-none" onclick="toggleGroupCollapse('${gId}')" title="Collapse / Expand group">
@@ -3580,6 +3830,7 @@
                 <td style="text-align: center; border: 0.5pt solid #cbd5e1;">${escapeHtml(c.lastHearingDate || "—")}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.lastProceeding || "—")}</td>
                 <td style="text-align: center; border: 0.5pt solid #cbd5e1; ${statusStyle}">${escapeHtml(statusText)}</td>
+                <td style="border: 0.5pt solid #cbd5e1; color: #0f172a;">${escapeHtml(c.remarks || "")}</td>
                 <td style="border: 0.5pt solid #cbd5e1; font-weight: bold; color: #1e293b;">${escapeHtml(c.addedBy || "Central Office")}</td>
                 <td style="border: 0.5pt solid #cbd5e1; font-size: 8.5pt; color: #64748b;">${escapeHtml(syncedDateStr)}</td>
             </tr>`;
@@ -3615,15 +3866,15 @@
 <body>
     <table>
         <tr>
-            <td colspan="24" class="hdr-title">${escapeHtml(defaultOrgNameEnglish)} (${escapeHtml(defaultOrgShortName)})</td>
+            <td colspan="25" class="hdr-title">${escapeHtml(defaultOrgNameEnglish)} (${escapeHtml(defaultOrgShortName)})</td>
         </tr>
         <tr>
-            <td colspan="24" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
+            <td colspan="25" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
         </tr>
         <tr>
-            <td colspan="24" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
+            <td colspan="25" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
         </tr>
-        <tr><td colspan="24"></td></tr>
+        <tr><td colspan="25"></td></tr>
         <thead>
             <tr>
                 <th style="width: 40px; text-align: center;">#</th>
@@ -3648,6 +3899,7 @@
                 <th style="width: 110px; text-align: center;">Last Listing</th>
                 <th style="width: 240px;">Last Proceeding / Roznama</th>
                 <th style="width: 110px; text-align: center;">Case Status</th>
+                <th style="width: 220px;">Internal Remarks</th>
                 <th style="width: 140px;">Case Worker / Desk</th>
                 <th style="width: 140px;">Last Synced With eCourts</th>
             </tr>
@@ -3694,7 +3946,7 @@
             "Est Code", "Court Establishment", "Court Hall", "Bench", "Presiding Judge",
             "Cause List Type", "Petitioner", "Respondent", "Next Hearing Date",
             "Stage/Purpose", "Hearing Urgency", "Total Hearings", "First Listed Date",
-            "Last Listing Date", "Last Proceeding Summary", "Case Status", "Case Worker", "Last Synced At"
+            "Last Listing Date", "Last Proceeding Summary", "Case Status", "Internal Remarks", "Case Worker", "Last Synced At"
         ];
 
         const rows = toExport.map((c, i) => {
@@ -3724,6 +3976,7 @@
                 `"${c.lastHearingDate || ""}"`,
                 `"${(c.lastProceeding || "").replace(/"/g, '""')}"`,
                 `"${(isCaseDnp(c) ? "DNP" : isCaseDisposed(c) ? "DISPOSED" : (c.caseStatus || "PENDING")).replace(/"/g, '""')}"`,
+                `"${(c.remarks || "").replace(/"/g, '""')}"`,
                 `"${(c.addedBy || "Central Office").replace(/"/g, '""')}"`,
                 `"${(c.lastSyncedAt || "").replace(/"/g, '""')}"`
             ].join(",");
@@ -7215,6 +7468,7 @@
         .btn-group,
         .modal-backdrop,
         #addCnrModal,
+        #caseRemarkModal,
         .toast-container,
         #customDateRangeInputs,
         .status-filter-group {

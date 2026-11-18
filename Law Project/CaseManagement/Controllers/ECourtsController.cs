@@ -2932,7 +2932,8 @@ namespace MVCCaseManagement.Controllers
                     SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
                            RelatedCaseID, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
                            NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
-                           LastSyncedAt, CreatedDate, AddedBy, RawJson
+                           LastSyncedAt, CreatedDate, AddedBy, RawJson,
+                           Remarks, RemarkUpdatedDate, RemarkUpdatedBy
                     FROM admin_Law.ECOURTS_TRACKED_CASES
                     WHERE RelatedModule = @norm
                     ORDER BY TrackedID DESC", new { norm })).ToList();
@@ -3341,6 +3342,49 @@ namespace MVCCaseManagement.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to bulk reassign case workers");
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> SaveCaseRemark([FromBody] MVCCaseManagement.Models.SaveCaseRemarkRequest req)
+        {
+            if (req == null || req.TrackedID <= 0)
+            {
+                return Json(new { success = false, message = "Invalid request or case ID." });
+            }
+
+            string userName = User.Identity?.Name ?? "Central Office";
+            string? cleanRemarks = string.IsNullOrWhiteSpace(req.Remarks) ? null : req.Remarks.Trim();
+
+            try
+            {
+                using var conn = _db.GetConnection();
+                int affected = await conn.ExecuteAsync(@"
+                    UPDATE admin_Law.ECOURTS_TRACKED_CASES 
+                    SET Remarks = @cleanRemarks, 
+                        RemarkUpdatedDate = GETDATE(), 
+                        RemarkUpdatedBy = @userName 
+                    WHERE TrackedID = @TrackedID",
+                    new { cleanRemarks, userName, TrackedID = req.TrackedID });
+
+                if (affected > 0)
+                {
+                    return Json(new
+                    {
+                        success = true,
+                        message = "Remark saved successfully.",
+                        trackedId = req.TrackedID,
+                        remarks = cleanRemarks,
+                        updatedDate = DateTime.Now.ToString("dd-MMM-yyyy HH:mm"),
+                        updatedBy = userName
+                    });
+                }
+                return Json(new { success = false, message = "Case record not found." });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save remark for TrackedID {TrackedID}", req.TrackedID);
                 return Json(new { success = false, message = ex.Message });
             }
         }

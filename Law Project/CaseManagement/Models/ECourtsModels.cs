@@ -86,6 +86,11 @@ namespace MVCCaseManagement.Models
         public string? RawJson { get; set; }
         public string? AddedBy { get; set; }
 
+        // Internal Case Remarks & Tracking Metadata
+        public string? Remarks { get; set; }
+        public DateTime? RemarkUpdatedDate { get; set; }
+        public string? RemarkUpdatedBy { get; set; }
+
         // Disposal & DNP Analysis properties
         public string? NatureOfDisposal { get; set; }
         public string? DisposalDate { get; set; }
@@ -110,6 +115,12 @@ namespace MVCCaseManagement.Models
         public string? HearingUrgency { get; set; } // TODAY, TOMORROW, THIS_WEEK, THIS_MONTH, OVERDUE, UPCOMING, UNSCHEDULED, DISPOSED
         public string? HearingAnalysisSummary { get; set; }
         public List<Dictionary<string, string?>>? ProceedingsHistory { get; set; }
+    }
+
+    public class SaveCaseRemarkRequest
+    {
+        public int TrackedID { get; set; }
+        public string? Remarks { get; set; }
     }
 
     public class DailyCauseListHeaderModel
