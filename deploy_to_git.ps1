@@ -34,7 +34,12 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "dotnet publish failed! Aborting deployment."
     exit 1
 }
-Write-Host "✅ Release build published to publish/!" -ForegroundColor Green
+
+# Ensure raw Views and wwwroot are explicitly synchronized to publish/ for runtime compilation & static assets
+Write-Host "Syncing updated Views and wwwroot into publish/..." -ForegroundColor Gray
+Copy-Item -Recurse -Force "Law Project\CaseManagement\Views\*" "publish\Views\"
+Copy-Item -Recurse -Force "Law Project\CaseManagement\wwwroot\*" "publish\wwwroot\"
+Write-Host "✅ Release build and raw views synced to publish/!" -ForegroundColor Green
 
 # 3. Verify Safe Vault Configuration
 Write-Host "`n[3/5] Verifying persistent vault paths in publish config..." -ForegroundColor Yellow
