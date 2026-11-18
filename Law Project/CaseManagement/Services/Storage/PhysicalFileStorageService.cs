@@ -497,44 +497,73 @@ namespace MVCCaseManagement.Services.Storage
         {
             try
             {
-                string legacyPublishVault = Path.Combine(contentRoot, "uploads_vault");
-                if (Directory.Exists(legacyPublishVault) && !string.Equals(legacyPublishVault, primaryVault, StringComparison.OrdinalIgnoreCase))
+                // Zero-loss migration only targets publish / deployment directories or Production hosting environments
+                bool isPublishDir = Path.GetFileName(contentRoot).Equals("publish", StringComparison.OrdinalIgnoreCase);
+                bool isProd = false;
+                try
                 {
-                    var files = Directory.GetFiles(legacyPublishVault, "*.*", SearchOption.AllDirectories);
-                    if (files.Length > 0)
+                    isProd = string.Equals(_env?.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase);
+                }
+                catch { }
+
+                if (!isPublishDir && !isProd)
+                {
+                    return;
+                }
+
+                var legacyCandidates = new[]
+                {
+                    Path.Combine(contentRoot, "uploads_vault"),
+                    Path.Combine(contentRoot, "wwwroot", "uploads"),
+                    Path.Combine(contentRoot, "uploads")
+                };
+
+                foreach (var legacyDir in legacyCandidates)
+                {
+                    if (!Directory.Exists(legacyDir) ||
+                        string.Equals(legacyDir, primaryVault, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(secondaryVault) && string.Equals(legacyDir, secondaryVault, StringComparison.OrdinalIgnoreCase)))
                     {
-                        _logger.LogInformation("Detected {Count} files in legacy publish\\uploads_vault. Auto-migrating to persistent vaults...", files.Length);
-                        foreach (var file in files)
+                        continue;
+                    }
+
+                    var files = Directory.GetFiles(legacyDir, "*.*", SearchOption.AllDirectories);
+                    if (files.Length == 0) continue;
+
+                    _logger.LogInformation("Detected {Count} files in legacy directory '{Dir}'. Auto-migrating to persistent vaults...", files.Length, legacyDir);
+                    foreach (var file in files)
+                    {
+                        try
                         {
-                            try
+                            string fileName = Path.GetFileName(file);
+                            if (string.Equals(fileName, ".gitkeep", StringComparison.OrdinalIgnoreCase)) continue;
+
+                            string relative = Path.GetRelativePath(legacyDir, file);
+
+                            // Copy to Primary Vault (outside publish)
+                            string primaryDest = Path.Combine(primaryVault, relative);
+                            string? primDir = Path.GetDirectoryName(primaryDest);
+                            if (!string.IsNullOrEmpty(primDir) && !Directory.Exists(primDir)) Directory.CreateDirectory(primDir);
+                            if (!File.Exists(primaryDest))
                             {
-                                string relative = Path.GetRelativePath(legacyPublishVault, file);
+                                File.Copy(file, primaryDest, overwrite: false);
+                            }
 
-                                // Copy to Primary Vault
-                                string primaryDest = Path.Combine(primaryVault, relative);
-                                string? primDir = Path.GetDirectoryName(primaryDest);
-                                if (!string.IsNullOrEmpty(primDir) && !Directory.Exists(primDir)) Directory.CreateDirectory(primDir);
-                                if (!File.Exists(primaryDest))
+                            // Copy to Secondary Vault (itnwkrtc.in/httpdocs/uploads_vault)
+                            if (!string.IsNullOrEmpty(secondaryVault) && Directory.Exists(secondaryVault))
+                            {
+                                string secDest = Path.Combine(secondaryVault, relative);
+                                string? secDir = Path.GetDirectoryName(secDest);
+                                if (!string.IsNullOrEmpty(secDir) && !Directory.Exists(secDir)) Directory.CreateDirectory(secDir);
+                                if (!File.Exists(secDest))
                                 {
-                                    File.Copy(file, primaryDest, overwrite: false);
-                                }
-
-                                // Copy to Secondary Vault
-                                if (!string.IsNullOrEmpty(secondaryVault) && Directory.Exists(secondaryVault))
-                                {
-                                    string secDest = Path.Combine(secondaryVault, relative);
-                                    string? secDir = Path.GetDirectoryName(secDest);
-                                    if (!string.IsNullOrEmpty(secDir) && !Directory.Exists(secDir)) Directory.CreateDirectory(secDir);
-                                    if (!File.Exists(secDest))
-                                    {
-                                        File.Copy(file, secDest, overwrite: false);
-                                    }
+                                    File.Copy(file, secDest, overwrite: false);
                                 }
                             }
-                            catch (Exception exFile)
-                            {
-                                _logger.LogWarning(exFile, "Could not auto-migrate legacy publish file {File}", file);
-                            }
+                        }
+                        catch (Exception exFile)
+                        {
+                            _logger.LogWarning(exFile, "Could not auto-migrate legacy publish file {File}", file);
                         }
                     }
                 }

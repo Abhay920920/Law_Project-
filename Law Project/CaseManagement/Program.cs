@@ -305,4 +305,22 @@ app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Dashboard}/{action=Index}/{id?}");
 
+// Eagerly resolve IFileStorageService on boot to ensure persistent vaults outside publish are verified and legacy files auto-migrated immediately
+try
+{
+    using var bootScope = app.Services.CreateScope();
+    var storage = bootScope.ServiceProvider.GetService<MVCCaseManagement.Services.Storage.IFileStorageService>();
+    if (storage != null)
+    {
+        var bootLogger = bootScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        bootLogger.LogInformation("Vault storage initialized and verified on boot: Primary={PrimaryVault}, Secondary={SecondaryVault}",
+            storage.GetVaultRootPath(), storage.GetSecondaryVaultRootPath());
+    }
+}
+catch (Exception exBootStorage)
+{
+    var fallbackLogger = app.Services.GetService<ILogger<Program>>();
+    fallbackLogger?.LogWarning(exBootStorage, "Storage vault boot initialization warning: {Msg}", exBootStorage.Message);
+}
+
 app.Run();

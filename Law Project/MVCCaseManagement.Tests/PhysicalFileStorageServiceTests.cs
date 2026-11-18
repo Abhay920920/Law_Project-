@@ -354,6 +354,12 @@ namespace MVCCaseManagement.Tests
                 string legacyFile = Path.Combine(legacyVaultDir, "LegacyClaim.pdf");
                 File.WriteAllText(legacyFile, "%PDF-1.4 Legacy Claim Content from Nov 18");
 
+                // Put legacy file inside publish\wwwroot\uploads
+                string legacyWebRootDir = Path.Combine(publishDir, "wwwroot", "uploads", "judgments");
+                Directory.CreateDirectory(legacyWebRootDir);
+                string legacyWebFile = Path.Combine(legacyWebRootDir, "LegacyWebRoot.pdf");
+                File.WriteAllText(legacyWebFile, "%PDF-1.4 Legacy WebRoot Content from Nov 17");
+
                 string primaryVault = Path.Combine(tempBase, "law.itnwkrtc.in", "uploads_vault");
                 string secondaryVault = Path.Combine(tempBase, "httpdocs", "uploads_vault");
 
@@ -375,8 +381,13 @@ namespace MVCCaseManagement.Tests
                 string migratedPrimary = Path.Combine(primaryVault, "claims", "LegacyClaim.pdf");
                 string migratedSecondary = Path.Combine(secondaryVault, "claims", "LegacyClaim.pdf");
 
+                string migratedWebPrimary = Path.Combine(primaryVault, "judgments", "LegacyWebRoot.pdf");
+                string migratedWebSecondary = Path.Combine(secondaryVault, "judgments", "LegacyWebRoot.pdf");
+
                 Assert.True(File.Exists(migratedPrimary), $"Legacy file was not migrated to primary vault: {migratedPrimary}");
                 Assert.True(File.Exists(migratedSecondary), $"Legacy file was not migrated to secondary vault: {migratedSecondary}");
+                Assert.True(File.Exists(migratedWebPrimary), $"Legacy webroot file was not migrated to primary vault: {migratedWebPrimary}");
+                Assert.True(File.Exists(migratedWebSecondary), $"Legacy webroot file was not migrated to secondary vault: {migratedWebSecondary}");
             }
             finally
             {
