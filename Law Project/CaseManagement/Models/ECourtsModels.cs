@@ -101,6 +101,8 @@ namespace MVCCaseManagement.Models
         public string? BenchId { get; set; }
         public string? BenchName { get; set; }
         public string? CauseListType { get; set; }
+        public string? CauseListNo { get; set; }
+        public string? CauseListItemNo { get; set; }
         public string? ItemNo { get; set; }
 
         // Daily Proceedings & Hearing Date Analysis properties

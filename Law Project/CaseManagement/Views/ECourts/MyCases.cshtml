@@ -400,6 +400,11 @@
 
             <!-- Tier 2: Realtime Sync & Cause List Pair (50% / 50% on mobile) -->
             <div class="header-btn-row-2">
+                <button type="button" class="btn btn-warning text-dark btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5 fw-bold" onclick="fetchTodayCourtHallsAndSerials()" id="btnFetchTodayCourtHalls" title="Fetch and update Court Halls and Serial Numbers for today's listed cases">
+                    <i class="bi bi-bank2"></i>
+                    <span class="d-none d-md-inline">Fetch Today's Court Halls &amp; Serials</span>
+                    <span class="d-inline d-md-none">Court Halls</span>
+                </button>
                 <button type="button" class="btn btn-info btn-sm shadow-sm px-2.5 px-sm-3 py-2 d-flex align-items-center justify-content-center gap-1.5 text-white fw-semibold" onclick="syncAllProceedings()" id="btnSyncAllProceedings" title="Sync and analyze daily proceedings & hearing dates for all cases from live eCourts">
                     <i class="bi bi-journal-check"></i>
                     <span class="d-none d-md-inline">Sync All Proceedings</span>
@@ -2558,6 +2563,22 @@
 
         const todayStr = new Date().toISOString().split('T')[0];
 
+        const isTodayListed = c.hearingUrgency === "TODAY";
+        const isTomorrowListed = c.hearingUrgency === "TOMORROW";
+
+        let todayQuickChip = "";
+        if (isTodayListed) {
+            const hallVal = c.courtNo || "";
+            const itemVal = c.itemNo || c.causeListItemNo || "";
+            if (hallVal || itemVal) {
+                todayQuickChip = `
+                    <div class="mt-1.5 p-1 px-1.5 rounded bg-warning-subtle border border-warning-subtle extra-small d-flex flex-column gap-0.5 shadow-xs">
+                        ${hallVal ? `<div class="fw-bold text-dark text-truncate" style="max-width: 170px;"><i class="bi bi-bank2 text-warning-emphasis me-1"></i>${escapeHtml(hallVal)}</div>` : ''}
+                        ${itemVal ? `<div class="fw-bold text-danger text-truncate"><i class="bi bi-list-ol me-1"></i>${itemVal.toString().startsWith('Serial') || itemVal.toString().startsWith('Item') ? escapeHtml(itemVal) : `Serial No. ${escapeHtml(itemVal)}`}</div>` : ''}
+                    </div>`;
+            }
+        }
+
         // Next Hearing Date & Urgency Analysis formatting
         let hearingDisplay = "";
         let urgencyBadge = "";
@@ -2584,7 +2605,8 @@
                     </div>
                     <div class="extra-small text-dark fw-semibold mt-0.5" style="min-width: 160px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.stagePurpose || "—")}">
                         <i class="bi bi-bookmark-star text-secondary me-0.5"></i>${escapeHtml(c.stagePurpose || "—")}
-                    </div>`;
+                    </div>
+                    ${todayQuickChip}`;
             }
         }
 
@@ -2627,8 +2649,6 @@
             recentHearingsSnippet = `<div class="extra-small text-muted fst-italic p-2 bg-white rounded border text-center mt-1">No earlier proceedings recorded in eCourts dossier.</div>`;
         }
 
-        const isTodayListed = c.hearingUrgency === "TODAY";
-        const isTomorrowListed = c.hearingUrgency === "TOMORROW";
         const lastBiz = (c.lastProceeding || "").trim();
 
         return `
@@ -2671,10 +2691,11 @@
                 </div>
                 <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
                     ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim()))) ? `
-                    <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold" title="Physical Court Hall">
-                        <i class="bi bi-bank2 me-1 text-secondary"></i>${escapeHtml(c.courtNo)}
+                    <span class="badge ${isTodayListed ? 'bg-warning text-dark font-monospace fw-bold shadow-sm' : 'bg-warning-subtle text-dark border border-warning font-monospace fw-bold'}" title="Physical Court Hall">
+                        <i class="bi bi-bank2 me-1 ${isTodayListed ? 'text-dark' : 'text-secondary'}"></i>${escapeHtml(c.courtNo)}
                     </span>` : ''}
-                    ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
+                    ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge ${isTodayListed ? 'bg-danger text-white shadow-sm' : 'bg-primary text-white'} font-monospace extra-small fw-bold shadow-sm" title="Cause List Serial Number"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') || c.itemNo.toString().startsWith('Serial') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
+                    ${(c.causeListNo && c.causeListNo !== '—') ? `<span class="badge bg-light text-secondary border extra-small" title="Cause List Number">Cause List No. ${escapeHtml(c.causeListNo)}</span>` : ''}
                     ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                     <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                 </div>
@@ -2778,12 +2799,17 @@
                                     <div>
                                         <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
                                             <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-bank2 me-1 text-secondary"></i>Court Hall:</span>
-                                            <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">${escapeHtml(c.courtNo || 'Awaited')}</span>
+                                            <span class="badge ${isTodayListed ? 'bg-warning text-dark font-monospace fw-bold shadow-sm' : 'bg-warning-subtle text-dark border border-warning font-monospace fw-bold'}">${escapeHtml(c.courtNo || 'Awaited')}</span>
                                         </div>
                                         <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
                                             <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-list-ol me-1 text-secondary"></i>Serial Number:</span>
-                                            <span class="font-monospace fw-bold text-dark small">${c.itemNo ? escapeHtml(c.itemNo) : '—'}</span>
+                                            <span class="badge ${(c.itemNo || c.causeListItemNo) ? (isTodayListed ? 'bg-danger text-white font-monospace fw-bold' : 'bg-primary text-white font-monospace extra-small') : 'bg-light text-muted border font-monospace'}">${(c.itemNo || c.causeListItemNo) ? escapeHtml(c.itemNo || c.causeListItemNo) : '—'}</span>
                                         </div>
+                                        ${(c.causeListNo && c.causeListNo !== '—') ? `
+                                        <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
+                                            <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-card-list me-1 text-secondary"></i>Cause List No:</span>
+                                            <span class="badge bg-light text-dark border font-monospace extra-small">${escapeHtml(c.causeListNo)}</span>
+                                        </div>` : ''}
                                         <div class="d-flex justify-content-between align-items-center py-1 border-bottom border-light-subtle">
                                             <span class="extra-small text-muted text-nowrap me-2"><i class="bi bi-diagram-3 me-1 text-secondary"></i>Bench Roster:</span>
                                             <span class="extra-small fw-semibold text-truncate text-end" style="max-width: 60%;" title="${escapeHtml(c.benchName || '')}">${escapeHtml(c.benchName || (isHc ? 'Single Bench' : 'Court'))}</span>
@@ -3106,10 +3132,11 @@
                     </div>
                     <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
                         ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim()))) ? `
-                        <span class="badge bg-warning-subtle text-dark border border-warning font-monospace fw-bold">
-                            <i class="bi bi-bank2 me-1"></i>${escapeHtml(c.courtNo)}
+                        <span class="badge ${c.hearingUrgency === 'TODAY' ? 'bg-warning text-dark font-monospace fw-bold shadow-sm' : 'bg-warning-subtle text-dark border border-warning font-monospace fw-bold'}">
+                            <i class="bi bi-bank2 me-1 ${c.hearingUrgency === 'TODAY' ? 'text-dark' : 'text-secondary'}"></i>${escapeHtml(c.courtNo)}
                         </span>` : ''}
-                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge bg-primary text-white font-monospace extra-small fw-bold"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
+                        ${(c.itemNo && c.itemNo !== '—') ? `<span class="badge ${c.hearingUrgency === 'TODAY' ? 'bg-danger text-white font-monospace fw-bold shadow-sm' : 'bg-primary text-white font-monospace extra-small fw-bold'}"><i class="bi bi-list-ol me-1"></i>${c.itemNo.toString().startsWith('Item') || c.itemNo.toString().startsWith('Sl') || c.itemNo.toString().startsWith('Serial') ? escapeHtml(c.itemNo) : `Serial No. ${escapeHtml(c.itemNo)}`}</span>` : ''}
+                        ${(c.causeListNo && c.causeListNo !== '—') ? `<span class="badge bg-light text-secondary border extra-small">Cause List No. ${escapeHtml(c.causeListNo)}</span>` : ''}
                         ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                         <span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName || (!c.courtNo?.toLowerCase().includes("court hall") ? c.courtNo : '') || (isHc ? "Single Bench" : "Court"))}</span>
                     </div>
@@ -3817,6 +3844,8 @@
                 <td style="${msoText} border: 0.5pt solid #cbd5e1;">${escapeHtml(c.estCode || "")}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.courtEstName || c.estCode || "")}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.courtNo || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1; text-align: center; font-weight: bold; color: #dc2626;">${escapeHtml(c.itemNo || c.causeListItemNo || "")}</td>
+                <td style="border: 0.5pt solid #cbd5e1; text-align: center;">${escapeHtml(c.causeListNo || "")}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.benchName || (c.benchId ? `Bench ${c.benchId}` : ""))}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.judgeDesignation || "")}</td>
                 <td style="border: 0.5pt solid #cbd5e1;">${escapeHtml(c.causeListType || "")}</td>
@@ -3866,15 +3895,15 @@
 <body>
     <table>
         <tr>
-            <td colspan="25" class="hdr-title">${escapeHtml(defaultOrgNameEnglish)} (${escapeHtml(defaultOrgShortName)})</td>
+            <td colspan="27" class="hdr-title">${escapeHtml(defaultOrgNameEnglish)} (${escapeHtml(defaultOrgShortName)})</td>
         </tr>
         <tr>
-            <td colspan="25" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
+            <td colspan="27" class="hdr-sub">Central Law Cell — ${escapeHtml(moduleLabel)} — eCourts CNR Tracking Register</td>
         </tr>
         <tr>
-            <td colspan="25" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
+            <td colspan="27" class="hdr-meta">Export Generated: <strong>${escapeHtml(printTime)}</strong> | Scope: <strong>${scope === 'all' ? 'All Tracked Cases' : 'Current Filtered View'}</strong> | Total Exported: <strong>${toExport.length} cases</strong></td>
         </tr>
-        <tr><td colspan="25"></td></tr>
+        <tr><td colspan="27"></td></tr>
         <thead>
             <tr>
                 <th style="width: 40px; text-align: center;">#</th>
@@ -3886,6 +3915,8 @@
                 <th style="width: 80px;">Est Code</th>
                 <th style="width: 250px;">Court Establishment Name</th>
                 <th style="width: 140px;">Court Hall / Room</th>
+                <th style="width: 110px; text-align: center;">Serial No</th>
+                <th style="width: 100px; text-align: center;">Cause List No</th>
                 <th style="width: 140px;">Bench Roster</th>
                 <th style="width: 220px;">Presiding Judge / Coram</th>
                 <th style="width: 130px;">Cause List Type</th>
@@ -3943,7 +3974,7 @@
 
         const headers = [
             "#", "CNR Number", "Court Tier", "Case Type", "Case Number", "Case Year",
-            "Est Code", "Court Establishment", "Court Hall", "Bench", "Presiding Judge",
+            "Est Code", "Court Establishment", "Court Hall", "Cause List Serial No", "Cause List No", "Bench", "Presiding Judge",
             "Cause List Type", "Petitioner", "Respondent", "Next Hearing Date",
             "Stage/Purpose", "Hearing Urgency", "Total Hearings", "First Listed Date",
             "Last Listing Date", "Last Proceeding Summary", "Case Status", "Internal Remarks", "Case Worker", "Last Synced At"
@@ -3963,6 +3994,8 @@
                 `"${(c.estCode || "").replace(/"/g, '""')}"`,
                 `"${(c.courtEstName || c.estCode || "").replace(/"/g, '""')}"`,
                 `"${(c.courtNo || "").replace(/"/g, '""')}"`,
+                `"${(c.itemNo || c.causeListItemNo || "").replace(/"/g, '""')}"`,
+                `"${(c.causeListNo || "").replace(/"/g, '""')}"`,
                 `"${(c.benchName || (c.benchId ? `Bench ${c.benchId}` : "")).replace(/"/g, '""')}"`,
                 `"${(c.judgeDesignation || "").replace(/"/g, '""')}"`,
                 `"${(c.causeListType || "").replace(/"/g, '""')}"`,
@@ -5422,6 +5455,36 @@
             }
         } catch (err) {
             showToast("Sync Error", "Network error while connecting to cause list gateway.", false);
+        }
+    }
+
+    async function fetchTodayCourtHallsAndSerials() {
+        const btn = document.getElementById("btnFetchTodayCourtHalls");
+        const origHtml = btn ? btn.innerHTML : "";
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span><span>Fetching...</span>`;
+        }
+        showToast("Cause List Sync", "Scanning today's High Court cause lists for Court Halls and Serial Numbers...", true);
+
+        try {
+            const res = await fetch(`/ECourts/FetchTodayListedCourtHallsAndSerials?module=${encodeURIComponent(currentModule)}`, { method: "POST" });
+            const json = await res.json();
+
+            if (json.success) {
+                showToast("Court Halls & Serials Updated", json.message || `Matched ${json.matchedCount || 0} cases with live Court Halls and Serial Numbers.`, true);
+                await loadTrackedCases(true);
+            } else {
+                showToast("Notice", json.message || "Failed to fetch today's court halls.", false);
+            }
+        } catch (err) {
+            console.error("Error fetching court halls and serials:", err);
+            showToast("Sync Error", "Network error while connecting to cause list scanner.", false);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
         }
     }
 

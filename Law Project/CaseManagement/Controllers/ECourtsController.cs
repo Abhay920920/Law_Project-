@@ -2933,10 +2933,45 @@ namespace MVCCaseManagement.Controllers
                            RelatedCaseID, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
                            NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
                            LastSyncedAt, CreatedDate, AddedBy, RawJson,
-                           Remarks, RemarkUpdatedDate, RemarkUpdatedBy
+                           Remarks, RemarkUpdatedDate, RemarkUpdatedBy,
+                           CauseListNo, CauseListItemNo
                     FROM admin_Law.ECOURTS_TRACKED_CASES
                     WHERE RelatedModule = @norm
                     ORDER BY TrackedID DESC", new { norm })).ToList();
+
+                // Load today's scanned cause lists across all benches to enrich today's listed cases with physical Court Hall and Serial No
+                List<PartyCaseSearchResultItem> todaysCauseLists = new();
+                if (_causeListScanner != null)
+                {
+                    try
+                    {
+                        todaysCauseLists = await _causeListScanner.GetOrScanDailyCauseListAsync("ALL", DateTime.Today);
+                    }
+                    catch (Exception exScan)
+                    {
+                        _logger.LogWarning(exScan, "Could not fetch today's cause lists for MyCases cross-referencing.");
+                    }
+                }
+
+                var cnrMap = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+                var caseKeyMap = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+
+                if (todaysCauseLists != null)
+                {
+                    foreach (var item in todaysCauseLists)
+                    {
+                        if (!string.IsNullOrWhiteSpace(item.CNRNumber) && !item.CNRNumber.EndsWith("000000"))
+                        {
+                            cnrMap[item.CNRNumber.Trim().ToUpperInvariant()] = item;
+                        }
+
+                        string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, int.TryParse(item.RegYear, out int y) ? y : null);
+                        if (!string.IsNullOrEmpty(sKey) && !caseKeyMap.ContainsKey(sKey))
+                        {
+                            caseKeyMap[sKey] = item;
+                        }
+                    }
+                }
 
                 // Cross-reference DNP cases recorded in LABOUR_CASES
                 HashSet<string>? dnpLabourCaseNos = null;
@@ -3174,8 +3209,88 @@ namespace MVCCaseManagement.Controllers
                         c.CaseTypeCode = resolved;
                     }
 
-                    // Strictly real data: Only attempt live High Court sitting hall resolution if the case is genuinely scheduled for TODAY
-                    if (isHc && !string.IsNullOrWhiteSpace(c.EstCode) && c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == DateTime.Today)
+                    // Ensure CauseListItemNo / ItemNo is synchronized
+                    if (string.IsNullOrWhiteSpace(c.ItemNo) && !string.IsNullOrWhiteSpace(c.CauseListItemNo))
+                    {
+                        c.ItemNo = c.CauseListItemNo;
+                    }
+
+                    // Cross-reference today's scanned cause lists
+                    PartyCaseSearchResultItem? matchedCauseItem = null;
+                    if (!string.IsNullOrWhiteSpace(c.CNRNumber) && cnrMap.TryGetValue(c.CNRNumber.Trim().ToUpperInvariant(), out var m1))
+                    {
+                        matchedCauseItem = m1;
+                    }
+                    else
+                    {
+                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, c.CaseYear);
+                        if (!string.IsNullOrEmpty(cKey) && caseKeyMap.TryGetValue(cKey, out var m2))
+                        {
+                            matchedCauseItem = m2;
+                        }
+                    }
+
+                    if (matchedCauseItem != null)
+                    {
+                        string rawHall = matchedCauseItem.CourtHall ?? "";
+                        string cleanHall = rawHall;
+                        if (cleanHall.Contains("(Serial No."))
+                        {
+                            cleanHall = System.Text.RegularExpressions.Regex.Replace(cleanHall, @"\s*\(Serial No\.[^)]*\)", "").Trim();
+                        }
+                        if (!string.IsNullOrWhiteSpace(cleanHall))
+                        {
+                            c.CourtNo = cleanHall.Length > 50 ? cleanHall.Substring(0, 50) : cleanHall;
+                        }
+                        if (!string.IsNullOrWhiteSpace(matchedCauseItem.CauseListItemNo))
+                        {
+                            c.CauseListItemNo = matchedCauseItem.CauseListItemNo.Length > 50 ? matchedCauseItem.CauseListItemNo.Substring(0, 50) : matchedCauseItem.CauseListItemNo;
+                            c.ItemNo = c.CauseListItemNo;
+                        }
+                        if (!string.IsNullOrWhiteSpace(matchedCauseItem.CauseListNo))
+                        {
+                            c.CauseListNo = matchedCauseItem.CauseListNo.Length > 50 ? matchedCauseItem.CauseListNo.Substring(0, 50) : matchedCauseItem.CauseListNo;
+                        }
+                        if (!string.IsNullOrWhiteSpace(matchedCauseItem.CauseListType))
+                        {
+                            c.CauseListType = matchedCauseItem.CauseListType;
+                        }
+                        else if (!string.IsNullOrWhiteSpace(matchedCauseItem.CauseListNo))
+                        {
+                            c.CauseListType = $"Cause List No. {matchedCauseItem.CauseListNo}";
+                        }
+                        if (!string.IsNullOrWhiteSpace(matchedCauseItem.JudgeName) && (string.IsNullOrWhiteSpace(c.JudgeDesignation) || c.JudgeDesignation == "Unknown"))
+                        {
+                            c.JudgeDesignation = matchedCauseItem.JudgeName.Length > 255 ? matchedCauseItem.JudgeName.Substring(0, 255) : matchedCauseItem.JudgeName;
+                        }
+                        if (!string.IsNullOrWhiteSpace(matchedCauseItem.CaseStage) && (string.IsNullOrWhiteSpace(c.StagePurpose) || c.StagePurpose == "—"))
+                        {
+                            c.StagePurpose = matchedCauseItem.CaseStage.Length > 255 ? matchedCauseItem.CaseStage.Substring(0, 255) : matchedCauseItem.CaseStage;
+                        }
+                        c.NextHearingDate = matchedCauseItem.NextHearingDate ?? DateTime.Today;
+
+                        try
+                        {
+                            await conn.ExecuteAsync(@"
+                                UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                                SET CourtNo = @courtNo,
+                                    CauseListNo = @causeListNo,
+                                    CauseListItemNo = @causeListItemNo,
+                                    NextHearingDate = COALESCE(@nextHearingDate, NextHearingDate)
+                                WHERE TrackedID = @TrackedID",
+                                new {
+                                    courtNo = c.CourtNo,
+                                    causeListNo = c.CauseListNo,
+                                    causeListItemNo = c.CauseListItemNo,
+                                    nextHearingDate = c.NextHearingDate,
+                                    c.TrackedID
+                                });
+                        }
+                        catch { }
+                    }
+
+                    // Strictly real data: Only attempt live High Court sitting hall resolution if the case is genuinely scheduled for TODAY and court hall is still generic
+                    if (isHc && !string.IsNullOrWhiteSpace(c.EstCode) && c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == DateTime.Today && (string.IsNullOrWhiteSpace(c.CourtNo) || c.CourtNo.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) || c.CourtNo.Equals("Division Bench", StringComparison.OrdinalIgnoreCase)))
                     {
                         var resolvedHall = await ResolveHighCourtSittingHallAsync(c.EstCode, c.BenchId, c.JudgeDesignation, DateTime.Today.ToString("yyyy-MM-dd"), norm);
                         if (!string.IsNullOrWhiteSpace(resolvedHall))
@@ -3202,6 +3317,10 @@ namespace MVCCaseManagement.Controllers
                         catch { }
                     }
                     PopulateHearingAnalysisAndProceedings(c, DateTime.Today);
+                    if (c.NextHearingDate.HasValue && c.NextHearingDate.Value.Date == DateTime.Today)
+                    {
+                        c.HearingUrgency = "TODAY";
+                    }
                 }
 
                 return Json(new { success = true, data = cases });
@@ -3651,6 +3770,136 @@ namespace MVCCaseManagement.Controllers
             }
             catch (Exception ex)
             {
+                return Json(new { success = false, message = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// On-demand endpoint: Scans today's High Court daily cause lists across Dharwad, Bengaluru, and Kalaburagi,
+        /// matches against all tracked cases for the given module, and updates Court Hall, Cause List Serial No,
+        /// Cause List No, and NextHearingDate.
+        /// </summary>
+        [HttpPost, HttpGet]
+        public async Task<IActionResult> FetchTodayListedCourtHallsAndSerials(string module = "MVC")
+        {
+            string norm = NapixQuotaService.NormalizeModule(module);
+            if (_causeListScanner == null)
+            {
+                return Json(new { success = false, message = "Cause list scanner service unavailable." });
+            }
+
+            try
+            {
+                using var conn = _db.GetConnection();
+
+                // 1. Force refresh today's daily cause lists across benches
+                var todaysCauseLists = await _causeListScanner.GetOrScanDailyCauseListAsync("ALL", DateTime.Today, forceRefresh: true);
+                if (todaysCauseLists == null || todaysCauseLists.Count == 0)
+                {
+                    return Json(new { 
+                        success = true, 
+                        matchedCount = 0, 
+                        message = "No daily cause list matters found for today or court is closed." 
+                    });
+                }
+
+                var cnrMap = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+                var caseKeyMap = new Dictionary<string, PartyCaseSearchResultItem>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var item in todaysCauseLists)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.CNRNumber) && !item.CNRNumber.EndsWith("000000"))
+                    {
+                        cnrMap[item.CNRNumber.Trim().ToUpperInvariant()] = item;
+                    }
+
+                    string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, int.TryParse(item.RegYear, out int y) ? y : null);
+                    if (!string.IsNullOrEmpty(sKey) && !caseKeyMap.ContainsKey(sKey))
+                    {
+                        caseKeyMap[sKey] = item;
+                    }
+                }
+
+                // 2. Fetch all tracked cases for this module
+                var trackedCases = (await conn.QueryAsync<MVCCaseManagement.Models.TrackedCaseModel>(@"
+                    SELECT TrackedID, CNRNumber, EstCode, CaseTypeCode, CaseNumber, CaseYear, 
+                           RelatedCaseID, RelatedModule, DivisionID, Petitioner, Respondent, CaseStatus, 
+                           NextHearingDate, StagePurpose, CourtNo, JudgeDesignation, 
+                           LastSyncedAt, CreatedDate, AddedBy, RawJson,
+                           Remarks, RemarkUpdatedDate, RemarkUpdatedBy,
+                           CauseListNo, CauseListItemNo
+                    FROM admin_Law.ECOURTS_TRACKED_CASES
+                    WHERE RelatedModule = @norm", new { norm })).ToList();
+
+                int matchedCount = 0;
+                var matchedItems = new List<object>();
+
+                foreach (var c in trackedCases)
+                {
+                    PartyCaseSearchResultItem? match = null;
+                    if (!string.IsNullOrWhiteSpace(c.CNRNumber) && cnrMap.TryGetValue(c.CNRNumber.Trim().ToUpperInvariant(), out var m1))
+                    {
+                        match = m1;
+                    }
+                    else
+                    {
+                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, c.CaseYear);
+                        if (!string.IsNullOrEmpty(cKey) && caseKeyMap.TryGetValue(cKey, out var m2))
+                        {
+                            match = m2;
+                        }
+                    }
+
+                    if (match != null)
+                    {
+                        string cleanHall = match.CourtHall ?? "";
+                        if (cleanHall.Contains("(Serial No."))
+                        {
+                            cleanHall = System.Text.RegularExpressions.Regex.Replace(cleanHall, @"\s*\(Serial No\.[^)]*\)", "").Trim();
+                        }
+
+                        string courtNoVal = !string.IsNullOrWhiteSpace(cleanHall) ? (cleanHall.Length > 50 ? cleanHall.Substring(0, 50) : cleanHall) : (c.CourtNo ?? "");
+                        string slNoVal = !string.IsNullOrWhiteSpace(match.CauseListItemNo) ? (match.CauseListItemNo.Length > 50 ? match.CauseListItemNo.Substring(0, 50) : match.CauseListItemNo) : (c.CauseListItemNo ?? "");
+                        string clNoVal = !string.IsNullOrWhiteSpace(match.CauseListNo) ? (match.CauseListNo.Length > 50 ? match.CauseListNo.Substring(0, 50) : match.CauseListNo) : (c.CauseListNo ?? "");
+                        DateTime nextDt = match.NextHearingDate ?? DateTime.Today;
+
+                        await conn.ExecuteAsync(@"
+                            UPDATE admin_Law.ECOURTS_TRACKED_CASES
+                            SET CourtNo = @courtNo,
+                                CauseListNo = @causeListNo,
+                                CauseListItemNo = @causeListItemNo,
+                                NextHearingDate = @nextHearingDate
+                            WHERE TrackedID = @TrackedID",
+                            new {
+                                courtNo = courtNoVal,
+                                causeListNo = clNoVal,
+                                causeListItemNo = slNoVal,
+                                nextHearingDate = nextDt,
+                                c.TrackedID
+                            });
+
+                        matchedCount++;
+                        matchedItems.Add(new {
+                            trackedId = c.TrackedID,
+                            cnr = c.CNRNumber,
+                            courtHall = courtNoVal,
+                            serialNo = slNoVal,
+                            causeListNo = clNoVal
+                        });
+                    }
+                }
+
+                return Json(new {
+                    success = true,
+                    matchedCount,
+                    totalScanned = todaysCauseLists.Count,
+                    matchedItems,
+                    message = $"Scanned {todaysCauseLists.Count} cause list entries and updated {matchedCount} today's tracked cases with Court Halls and Serial Numbers."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error executing FetchTodayListedCourtHallsAndSerials for module {Module}", norm);
                 return Json(new { success = false, message = ex.Message });
             }
         }
@@ -5580,6 +5829,35 @@ namespace MVCCaseManagement.Controllers
             n = System.Text.RegularExpressions.Regex.Replace(n, @"(?i)\b(HON'BLE|HONBLE|JUSTICE|JUSTICES|SRI|SMT|DR|MR|MRS)\b", " ");
             n = System.Text.RegularExpressions.Regex.Replace(n, @"[\.\,\-]", " ");
             return System.Text.RegularExpressions.Regex.Replace(n, @"\s+", " ").Trim();
+        }
+
+        /// <summary>
+        /// Normalizes case type, registration number, and year into a canonical match key.
+        /// Handles variants like "Writ Appeal" / "WA", "WP 100234/2024" vs "WP" "100234" 2024.
+        /// </summary>
+        public static string NormalizeCaseKey(string? type, string? number, int? year)
+        {
+            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(number)) return string.Empty;
+            string cleanType = System.Text.RegularExpressions.Regex.Replace(type.Trim(), @"[^\w]", "").ToUpperInvariant();
+            if (cleanType.Contains("WRITPETITION") || cleanType == "WP") cleanType = "WP";
+            else if (cleanType.Contains("WRITAPPEAL") || cleanType == "WA") cleanType = "WA";
+            else if (cleanType.Contains("MISCELLANEOUSFIRSTAPPEAL") || cleanType == "MFA") cleanType = "MFA";
+            else if (cleanType.Contains("CONTEMPTOFCALL") || cleanType == "CCC") cleanType = "CCC";
+            else if (cleanType.Contains("CIVILMISCPETITION") || cleanType == "CMP") cleanType = "CMP";
+            else if (cleanType.Contains("REGULARFIRSTAPPEAL") || cleanType == "RFA") cleanType = "RFA";
+            else if (cleanType.Contains("REGULARSECONDAPPEAL") || cleanType == "RSA") cleanType = "RSA";
+            else if (cleanType.Contains("CRIMINALPETITION") || cleanType == "CRLP") cleanType = "CRLP";
+            else if (cleanType.Contains("CRIMINALAPPEAL") || cleanType == "CRL_A" || cleanType == "CRLA") cleanType = "CRLA";
+
+            string cleanNum = System.Text.RegularExpressions.Regex.Replace(number, @"[^\d]", "");
+            string cleanYear = year.HasValue && year.Value > 1900 ? year.Value.ToString() : "";
+            if (string.IsNullOrEmpty(cleanYear) && number.Contains("/"))
+            {
+                var parts = number.Split('/');
+                if (parts.Length > 1) cleanYear = System.Text.RegularExpressions.Regex.Replace(parts[1], @"[^\d]", "");
+            }
+            if (string.IsNullOrEmpty(cleanNum)) return string.Empty;
+            return $"{cleanType}_{cleanNum}_{cleanYear}".ToUpperInvariant();
         }
 
         /// <summary>
