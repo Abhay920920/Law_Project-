@@ -799,6 +799,15 @@
                                 </label>
                             </div>
 
+                            <!-- Group Order Selector (Visible when both are checked) -->
+                            <div id="groupOrderContainer" class="d-none align-items-center gap-1.5 bg-white py-1 px-2.5 rounded-pill border shadow-sm">
+                                <span class="extra-small text-muted fw-semibold">Order:</span>
+                                <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill py-0.5 px-2 fw-semibold d-flex align-items-center gap-1" id="groupOrderBtn" onclick="toggleGroupingOrder()" title="Click to swap grouping priority between Court Hall and Case Worker">
+                                    <span id="groupOrderLabel"><i class="bi bi-bank2 text-warning me-1"></i>Court Hall &rarr; <i class="bi bi-person-fill text-primary me-1"></i>Worker</span>
+                                    <i class="bi bi-arrow-left-right text-muted ms-1"></i>
+                                </button>
+                            </div>
+
                             <span class="badge bg-white text-secondary border shadow-sm small py-1.5 px-2.5" id="workerFilterSummaryBadge">
                                 All workers
                             </span>
@@ -2290,21 +2299,46 @@
         }
     }
 
-    function onGroupByCourtHallChange() {
+    let currentGroupingOrder = "courtHall_worker"; // "courtHall_worker" or "worker_courtHall"
+
+    function toggleGroupingOrder() {
+        currentGroupingOrder = (currentGroupingOrder === "courtHall_worker") ? "worker_courtHall" : "courtHall_worker";
+        updateGroupingControlsUi();
+        renderCasesTable();
+    }
+
+    function updateGroupingControlsUi() {
         const hallToggle = document.getElementById("groupByCourtHallToggle");
         const workerToggle = document.getElementById("groupByWorkerToggle");
-        if (hallToggle && hallToggle.checked && workerToggle) {
-            workerToggle.checked = false;
+        const orderContainer = document.getElementById("groupOrderContainer");
+        const orderLabel = document.getElementById("groupOrderLabel");
+
+        const isHall = hallToggle?.checked || false;
+        const isWorker = workerToggle?.checked || false;
+
+        if (orderContainer) {
+            if (isHall && isWorker) {
+                orderContainer.classList.remove("d-none");
+                orderContainer.classList.add("d-flex");
+                if (orderLabel) {
+                    orderLabel.innerHTML = (currentGroupingOrder === "courtHall_worker")
+                        ? '<i class="bi bi-bank2 text-warning me-1"></i>Court Hall &rarr; <i class="bi bi-person-fill text-primary me-1"></i>Worker'
+                        : '<i class="bi bi-person-fill text-primary me-1"></i>Worker &rarr; <i class="bi bi-bank2 text-warning me-1"></i>Court Hall';
+                }
+            } else {
+                orderContainer.classList.add("d-none");
+                orderContainer.classList.remove("d-flex");
+            }
         }
+    }
+
+    function onGroupByCourtHallChange() {
+        updateGroupingControlsUi();
         renderCasesTable();
     }
 
     function onGroupByWorkerChange() {
-        const hallToggle = document.getElementById("groupByCourtHallToggle");
-        const workerToggle = document.getElementById("groupByWorkerToggle");
-        if (workerToggle && workerToggle.checked && hallToggle) {
-            hallToggle.checked = false;
-        }
+        updateGroupingControlsUi();
         renderCasesTable();
     }
 
@@ -2692,7 +2726,13 @@
         }
 
         const workerName = c.addedBy || "Central Office";
-        const rowClassAttr = groupClass ? `class="group-row-${groupClass}"` : "";
+        let groupClassesStr = "";
+        if (Array.isArray(groupClass)) {
+            groupClassesStr = groupClass.filter(Boolean).map(g => `group-row-${g}`).join(" ");
+        } else if (groupClass) {
+            groupClassesStr = groupClass.includes("group-row-") ? groupClass : `group-row-${groupClass}`;
+        }
+        const rowClassAttr = groupClassesStr ? `class="${groupClassesStr}"` : "";
 
         // Build recent hearings timeline snippet for the drawer
         let recentHearingsSnippet = "";
@@ -2828,7 +2868,7 @@
         </tr>
         
         <!-- Expandable Hearing History & Daily Status Drawer Row -->
-        <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClass ? `group-row-${groupClass}` : ''}">
+        <tr id="drawer_row_${c.trackedID}" class="d-none bg-light bg-opacity-75 border-start border-4 border-primary hearing-drawer-row ${groupClassesStr}">
             <td colspan="9" class="p-2 p-md-3 ps-md-4 pe-md-4">
                 <div class="card border-0 shadow-sm rounded-3 overflow-hidden bg-white hearing-drawer-card" style="position: sticky; left: 12px; width: calc(100vw - 370px); max-width: calc(100vw - 370px); box-sizing: border-box;">
                     <div class="card-header bg-dark text-white py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -3378,6 +3418,7 @@
         const fromVal = document.getElementById("hearingDateFrom")?.value || "";
         const toVal = document.getElementById("hearingDateTo")?.value || "";
         const todayStr = new Date().toISOString().split('T')[0];
+        updateGroupingControlsUi();
 
         const filtered = allCasesData.filter(c => {
             // Text search
@@ -3431,7 +3472,39 @@
         });
 
         // Pre-sort if grouped so that items within each group remain contiguous across pagination
-        if (isCourtHallGrouped) {
+        if (isCourtHallGrouped && isGrouped) {
+            if (currentGroupingOrder === "courtHall_worker") {
+                filtered.sort((a, b) => {
+                    const hallA = getCourtHallGroupName(a);
+                    const hallB = getCourtHallGroupName(b);
+                    const hallCmp = compareCourtHallGroups(hallA, hallB);
+                    if (hallCmp !== 0) return hallCmp;
+                    const wA = (a.addedBy || "Central Office").trim();
+                    const wB = (b.addedBy || "Central Office").trim();
+                    const wCmp = wA.localeCompare(wB);
+                    if (wCmp !== 0) return wCmp;
+                    const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                    const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                    if (sA !== sB) return sA - sB;
+                    return (a.caseNumber || 0) - (b.caseNumber || 0);
+                });
+            } else {
+                filtered.sort((a, b) => {
+                    const wA = (a.addedBy || "Central Office").trim();
+                    const wB = (b.addedBy || "Central Office").trim();
+                    const wCmp = wA.localeCompare(wB);
+                    if (wCmp !== 0) return wCmp;
+                    const hallA = getCourtHallGroupName(a);
+                    const hallB = getCourtHallGroupName(b);
+                    const hallCmp = compareCourtHallGroups(hallA, hallB);
+                    if (hallCmp !== 0) return hallCmp;
+                    const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                    const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                    if (sA !== sB) return sA - sB;
+                    return (a.caseNumber || 0) - (b.caseNumber || 0);
+                });
+            }
+        } else if (isCourtHallGrouped) {
             filtered.sort((a, b) => {
                 const hallA = getCourtHallGroupName(a);
                 const hallB = getCourtHallGroupName(b);
@@ -3474,7 +3547,16 @@
         // Update table summary
         const summaryEl = document.getElementById("tableSummaryText");
         if (summaryEl) {
-            const groupTag = isCourtHallGrouped ? ' <span class="badge bg-warning text-dark border border-warning-subtle extra-small ms-1"><i class="bi bi-bank2 me-1"></i>Grouped by Court Hall</span>' : (isGrouped ? ' <span class="badge bg-primary text-white border border-primary-subtle extra-small ms-1"><i class="bi bi-diagram-3-fill me-1"></i>Grouped by Worker</span>' : '');
+            let groupTag = "";
+            if (isCourtHallGrouped && isGrouped) {
+                groupTag = (currentGroupingOrder === "courtHall_worker")
+                    ? ' <span class="badge bg-warning text-dark border border-warning-subtle extra-small ms-1"><i class="bi bi-bank2 me-1"></i>Court Hall</span> &rarr; <span class="badge bg-primary text-white border border-primary-subtle extra-small ms-1"><i class="bi bi-person-fill me-1"></i>Worker</span>'
+                    : ' <span class="badge bg-primary text-white border border-primary-subtle extra-small ms-1"><i class="bi bi-person-fill me-1"></i>Worker</span> &rarr; <span class="badge bg-warning text-dark border border-warning-subtle extra-small ms-1"><i class="bi bi-bank2 me-1"></i>Court Hall</span>';
+            } else if (isCourtHallGrouped) {
+                groupTag = ' <span class="badge bg-warning text-dark border border-warning-subtle extra-small ms-1"><i class="bi bi-bank2 me-1"></i>Grouped by Court Hall</span>';
+            } else if (isGrouped) {
+                groupTag = ' <span class="badge bg-primary text-white border border-primary-subtle extra-small ms-1"><i class="bi bi-diagram-3-fill me-1"></i>Grouped by Worker</span>';
+            }
             if (totalCount === 0) {
                 summaryEl.innerText = "Showing 0 cases";
             } else if (pageSize === "all") {
@@ -3532,6 +3614,283 @@
                     No cases match the selected filter criteria.
                 </div>`;
             }
+            return;
+        }
+
+        // ==========================================
+        // Two-Level Grouping: BOTH Court Hall & Case Worker
+        // ==========================================
+        if (isCourtHallGrouped && isGrouped) {
+            let groupHtml = "";
+            let groupCardsHtml = "";
+            let overallIndex = startIndex;
+
+            if (currentGroupingOrder === "courtHall_worker") {
+                // Primary: Court Hall, Secondary: Case Worker
+                const hallGroups = {};
+                pagedItems.forEach(c => {
+                    const hall = getCourtHallGroupName(c);
+                    if (!hallGroups[hall]) hallGroups[hall] = [];
+                    hallGroups[hall].push(c);
+                });
+
+                const hallNames = Object.keys(hallGroups).sort(compareCourtHallGroups);
+
+                hallNames.forEach((hName, gIdx) => {
+                    const hCases = hallGroups[hName];
+                    const gId = `both_h_${gIdx}`;
+                    const pendingCnt = hCases.filter(c => !isCaseDisposed(c) && !isCaseDnp(c)).length;
+                    const dnpCnt = hCases.filter(c => isCaseDnp(c)).length;
+                    const disposedCnt = hCases.filter(c => isCaseDisposed(c)).length;
+                    const todayCnt = hCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
+
+                    // Level 1: Court Hall Header
+                    groupHtml += `
+                    <tr class="table-group-header border-top border-bottom border-warning-subtle" style="background: linear-gradient(90deg, #fffbeb 0%, #ffffff 100%);">
+                        <td colspan="9" class="py-2.5 px-3">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-link text-warning-emphasis p-0 text-decoration-none" onclick="toggleGroupCollapse('${gId}')" title="Collapse / Expand Court Hall">
+                                        <i class="bi bi-chevron-down fs-6 fw-bold" id="icon_${gId}"></i>
+                                    </button>
+                                    <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-3 py-1.5 fs-6 shadow-sm">
+                                        <i class="bi bi-bank2 me-1.5 text-warning-emphasis"></i>${escapeHtml(hName)}
+                                    </span>
+                                    <span class="badge bg-white text-dark border shadow-sm small py-1 px-2.5">
+                                        <strong>${hCases.length}</strong> Case(s)
+                                    </span>
+                                    ${todayCnt > 0 ? `<span class="badge bg-danger text-white small py-1 px-2"><i class="bi bi-calendar-check me-1"></i>${todayCnt} Listed Today</span>` : ''}
+                                    <span class="badge bg-warning-subtle text-dark border border-warning small py-1 px-2">
+                                        <i class="bi bi-hourglass-split me-1 text-warning"></i>${pendingCnt} Pending
+                                    </span>
+                                    ${dnpCnt > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger small py-1 px-2"><i class="bi bi-x-octagon me-1"></i>${dnpCnt} DNP</span>` : ''}
+                                    <span class="badge bg-success-subtle text-success border border-success small py-1 px-2">
+                                        <i class="bi bi-check-circle me-1 text-success"></i>${disposedCnt} Disposed
+                                    </span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-warning text-dark rounded-pill extra-small px-2.5 py-1" onclick="filterByCourtHallOnly('${escapeJs(hName)}')" title="Filter table to only this court hall">
+                                        <i class="bi bi-funnel me-1"></i>Focus Hall
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    groupCardsHtml += `
+                    <div class="card border-warning-subtle shadow-sm mb-3 rounded-3 overflow-hidden">
+                        <div class="card-header bg-warning-subtle border-bottom border-warning-subtle text-dark py-2 px-3 d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2.5 py-1 fw-bold fs-6">
+                                    <i class="bi bi-bank2 me-1 text-dark"></i>${escapeHtml(hName)}
+                                </span>
+                                <span class="badge bg-white text-dark border extra-small">${hCases.length} Cases</span>
+                                ${todayCnt > 0 ? `<span class="badge bg-danger text-white extra-small">${todayCnt} Today</span>` : ''}
+                            </div>
+                            <button type="button" class="btn btn-xs btn-outline-dark rounded-pill extra-small px-2 py-0.5" onclick="filterByCourtHallOnly('${escapeJs(hName)}')">Focus</button>
+                        </div>
+                        <div class="card-body p-2 bg-light">`;
+
+                    // Subgroup by Case Worker inside this Court Hall
+                    const workerSubgroups = {};
+                    hCases.forEach(c => {
+                        const w = (c.addedBy || "Central Office").trim();
+                        if (!workerSubgroups[w]) workerSubgroups[w] = [];
+                        workerSubgroups[w].push(c);
+                    });
+
+                    const workerNames = Object.keys(workerSubgroups).sort((a, b) => a.localeCompare(b));
+                    workerNames.forEach((wName, wIdx) => {
+                        const wCases = workerSubgroups[wName];
+                        wCases.sort((a, b) => {
+                            const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                            const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                            if (sA !== sB) return sA - sB;
+                            return (a.caseNumber || 0) - (b.caseNumber || 0);
+                        });
+
+                        const subGId = `${gId}_w_${wIdx}`;
+                        const wTodayCnt = wCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
+
+                        // Level 2: Case Worker Sub-Header
+                        groupHtml += `
+                        <tr class="table-subgroup-header group-row-${gId} border-bottom border-primary-subtle" style="background: linear-gradient(90deg, #f0f4ff 0%, #ffffff 100%);">
+                            <td colspan="9" class="py-1.5 px-3 ps-5">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <button type="button" class="btn btn-sm btn-link text-primary p-0 text-decoration-none" onclick="toggleGroupCollapse('${subGId}')" title="Collapse / Expand Case Worker">
+                                            <i class="bi bi-chevron-down extra-small fw-bold" id="icon_${subGId}"></i>
+                                        </button>
+                                        <span class="badge bg-primary text-white rounded-pill px-2.5 py-1 small shadow-xs">
+                                            <i class="bi bi-person-fill me-1"></i>${escapeHtml(wName)}
+                                        </span>
+                                        <span class="badge bg-white text-secondary border extra-small">
+                                            ${wCases.length} Case(s)
+                                        </span>
+                                        ${wTodayCnt > 0 ? `<span class="badge bg-danger text-white extra-small"><i class="bi bi-calendar-check me-1"></i>${wTodayCnt} Today</span>` : ''}
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button" class="btn btn-xs btn-outline-primary rounded-pill extra-small px-2 py-0.5" onclick="filterByWorkerOnly('${escapeJs(wName)}')">Focus Worker</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>`;
+
+                        groupCardsHtml += `
+                        <div class="p-2 mb-2 bg-white rounded border border-primary-subtle">
+                            <div class="d-flex justify-content-between align-items-center mb-1.5 pb-1 border-bottom">
+                                <span class="badge bg-primary text-white rounded-pill px-2 py-0.5 extra-small">
+                                    <i class="bi bi-person-fill me-1"></i>${escapeHtml(wName)} (${wCases.length})
+                                </span>
+                                <button type="button" class="btn btn-xs btn-outline-primary rounded-pill py-0 px-1.5 extra-small" onclick="filterByWorkerOnly('${escapeJs(wName)}')">Focus</button>
+                            </div>`;
+
+                        wCases.forEach(c => {
+                            overallIndex++;
+                            groupHtml += renderCaseRowHtml(c, overallIndex, [gId, subGId]);
+                            groupCardsHtml += renderCaseMobileCardHtml(c, overallIndex);
+                        });
+
+                        groupCardsHtml += `</div>`;
+                    });
+
+                    groupCardsHtml += `</div></div>`;
+                });
+            } else {
+                // Primary: Case Worker, Secondary: Court Hall
+                const workerGroups = {};
+                pagedItems.forEach(c => {
+                    const w = (c.addedBy || "Central Office").trim();
+                    if (!workerGroups[w]) workerGroups[w] = [];
+                    workerGroups[w].push(c);
+                });
+
+                const workerNames = Object.keys(workerGroups).sort((a, b) => a.localeCompare(b));
+
+                workerNames.forEach((wName, wIdx) => {
+                    const wCases = workerGroups[wName];
+                    const gId = `both_w_${wIdx}`;
+                    const pendingCnt = wCases.filter(c => !isCaseDisposed(c) && !isCaseDnp(c)).length;
+                    const dnpCnt = wCases.filter(c => isCaseDnp(c)).length;
+                    const disposedCnt = wCases.filter(c => isCaseDisposed(c)).length;
+                    const todayCnt = wCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
+
+                    // Level 1: Case Worker Header
+                    groupHtml += `
+                    <tr class="table-group-header border-top border-bottom border-primary-subtle" style="background: linear-gradient(90deg, #f0f4ff 0%, #ffffff 100%);">
+                        <td colspan="9" class="py-2.5 px-3">
+                            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-link text-primary p-0 text-decoration-none" onclick="toggleGroupCollapse('${gId}')" title="Collapse / Expand Case Worker">
+                                        <i class="bi bi-chevron-down fs-6 fw-bold" id="icon_${gId}"></i>
+                                    </button>
+                                    <span class="badge bg-primary text-white rounded-pill px-3 py-1.5 fs-6 shadow-sm">
+                                        <i class="bi bi-person-badge-fill me-1.5"></i>${escapeHtml(wName)}
+                                    </span>
+                                    <span class="badge bg-white text-dark border shadow-sm small py-1 px-2.5">
+                                        <strong>${wCases.length}</strong> Case(s)
+                                    </span>
+                                    <span class="badge bg-warning-subtle text-dark border border-warning small py-1 px-2">
+                                        <i class="bi bi-hourglass-split me-1 text-warning"></i>${pendingCnt} Pending
+                                    </span>
+                                    ${dnpCnt > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger small py-1 px-2"><i class="bi bi-x-octagon me-1"></i>${dnpCnt} DNP</span>` : ''}
+                                    ${todayCnt > 0 ? `<span class="badge bg-danger text-white small py-1 px-2"><i class="bi bi-calendar-check me-1"></i>${todayCnt} Listed Today</span>` : ''}
+                                    <span class="badge bg-success-subtle text-success border border-success small py-1 px-2">
+                                        <i class="bi bi-check-circle me-1 text-success"></i>${disposedCnt} Disposed
+                                    </span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill extra-small px-2.5 py-1" onclick="filterByWorkerOnly('${escapeJs(wName)}')" title="Filter table to only this worker">
+                                        <i class="bi bi-funnel me-1"></i>Focus Worker
+                                    </button>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    groupCardsHtml += `
+                    <div class="card border-primary-subtle shadow-sm mb-3 rounded-3 overflow-hidden">
+                        <div class="card-header bg-primary text-white py-2 px-3 d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <span class="badge bg-white text-primary rounded-pill px-2.5 py-1 fw-bold fs-6">
+                                    <i class="bi bi-person-badge-fill me-1"></i>${escapeHtml(wName)}
+                                </span>
+                                <span class="badge bg-white bg-opacity-25 text-white extra-small">${wCases.length} Cases</span>
+                            </div>
+                            <button type="button" class="btn btn-xs btn-outline-light rounded-pill extra-small px-2 py-0.5" onclick="filterByWorkerOnly('${escapeJs(wName)}')">Focus</button>
+                        </div>
+                        <div class="card-body p-2 bg-light">`;
+
+                    // Subgroup by Court Hall inside this Case Worker
+                    const hallSubgroups = {};
+                    wCases.forEach(c => {
+                        const hall = getCourtHallGroupName(c);
+                        if (!hallSubgroups[hall]) hallSubgroups[hall] = [];
+                        hallSubgroups[hall].push(c);
+                    });
+
+                    const hallNames = Object.keys(hallSubgroups).sort(compareCourtHallGroups);
+                    hallNames.forEach((hName, hIdx) => {
+                        const hCases = hallSubgroups[hName];
+                        hCases.sort((a, b) => {
+                            const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                            const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                            if (sA !== sB) return sA - sB;
+                            return (a.caseNumber || 0) - (b.caseNumber || 0);
+                        });
+
+                        const subGId = `${gId}_h_${hIdx}`;
+                        const hTodayCnt = hCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
+
+                        // Level 2: Court Hall Sub-Header
+                        groupHtml += `
+                        <tr class="table-subgroup-header group-row-${gId} border-bottom border-warning-subtle" style="background: linear-gradient(90deg, #fffbeb 0%, #f8fafc 100%);">
+                            <td colspan="9" class="py-1.5 px-3 ps-5">
+                                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <button type="button" class="btn btn-sm btn-link text-warning-emphasis p-0 text-decoration-none" onclick="toggleGroupCollapse('${subGId}')" title="Collapse / Expand Court Hall">
+                                            <i class="bi bi-chevron-down extra-small fw-bold" id="icon_${subGId}"></i>
+                                        </button>
+                                        <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2.5 py-1 small shadow-xs">
+                                            <i class="bi bi-bank2 me-1 text-warning-emphasis"></i>${escapeHtml(hName)}
+                                        </span>
+                                        <span class="badge bg-white text-secondary border extra-small">
+                                            ${hCases.length} Case(s)
+                                        </span>
+                                        ${hTodayCnt > 0 ? `<span class="badge bg-danger text-white extra-small"><i class="bi bi-calendar-check me-1"></i>${hTodayCnt} Today</span>` : ''}
+                                    </div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <button type="button" class="btn btn-xs btn-outline-warning text-dark rounded-pill extra-small px-2 py-0.5" onclick="filterByCourtHallOnly('${escapeJs(hName)}')">Focus Hall</button>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>`;
+
+                        groupCardsHtml += `
+                        <div class="p-2 mb-2 bg-white rounded border border-warning-subtle">
+                            <div class="d-flex justify-content-between align-items-center mb-1.5 pb-1 border-bottom">
+                                <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2 py-0.5 extra-small">
+                                    <i class="bi bi-bank2 me-1"></i>${escapeHtml(hName)} (${hCases.length})
+                                </span>
+                                <button type="button" class="btn btn-xs btn-outline-dark rounded-pill py-0 px-1.5 extra-small" onclick="filterByCourtHallOnly('${escapeJs(hName)}')">Focus</button>
+                            </div>`;
+
+                        hCases.forEach(c => {
+                            overallIndex++;
+                            groupHtml += renderCaseRowHtml(c, overallIndex, [gId, subGId]);
+                            groupCardsHtml += renderCaseMobileCardHtml(c, overallIndex);
+                        });
+
+                        groupCardsHtml += `</div>`;
+                    });
+
+                    groupCardsHtml += `</div></div>`;
+                });
+            }
+
+            if (tbody) tbody.innerHTML = groupHtml;
+            if (cardsContainer) cardsContainer.innerHTML = groupCardsHtml;
+            updateTableScrollSync();
             return;
         }
 
@@ -3955,7 +4314,39 @@
 
         const isCourtHallGrouped = document.getElementById("groupByCourtHallToggle")?.checked || false;
         const isGrouped = document.getElementById("groupByWorkerToggle")?.checked || false;
-        if (isCourtHallGrouped) {
+        if (isCourtHallGrouped && isGrouped) {
+            if (currentGroupingOrder === "courtHall_worker") {
+                results.sort((a, b) => {
+                    const hallA = getCourtHallGroupName(a);
+                    const hallB = getCourtHallGroupName(b);
+                    const hallCmp = compareCourtHallGroups(hallA, hallB);
+                    if (hallCmp !== 0) return hallCmp;
+                    const wA = (a.addedBy || "Central Office").trim();
+                    const wB = (b.addedBy || "Central Office").trim();
+                    const wCmp = wA.localeCompare(wB);
+                    if (wCmp !== 0) return wCmp;
+                    const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                    const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                    if (sA !== sB) return sA - sB;
+                    return (a.caseNumber || 0) - (b.caseNumber || 0);
+                });
+            } else {
+                results.sort((a, b) => {
+                    const wA = (a.addedBy || "Central Office").trim();
+                    const wB = (b.addedBy || "Central Office").trim();
+                    const wCmp = wA.localeCompare(wB);
+                    if (wCmp !== 0) return wCmp;
+                    const hallA = getCourtHallGroupName(a);
+                    const hallB = getCourtHallGroupName(b);
+                    const hallCmp = compareCourtHallGroups(hallA, hallB);
+                    if (hallCmp !== 0) return hallCmp;
+                    const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                    const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                    if (sA !== sB) return sA - sB;
+                    return (a.caseNumber || 0) - (b.caseNumber || 0);
+                });
+            }
+        } else if (isCourtHallGrouped) {
             results.sort((a, b) => {
                 const hallA = getCourtHallGroupName(a);
                 const hallB = getCourtHallGroupName(b);
