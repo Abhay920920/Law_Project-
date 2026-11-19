@@ -17,7 +17,6 @@ namespace MVCCaseManagement.DAL
         MVCCaseViewModel? GetCaseByMvcDetails(int divisionId, string mvcNo, int mvcYear, int mactId);
         MVCCaseViewModel? GetCaseByMVCDetails(string mvcNo, int mvcYear, int mactId);
         MVCCaseViewModel? GetCaseByAuditCriteria(string mvcNo, string vehicleNo, DateTime accidentDate);
-        bool SaveCasePayments(int caseId, List<CasePaymentViewModel> payments);
         List<CasePaymentViewModel> GetCasePayments(int caseId);
         List<RecentCaseViewModel> GetCasesByHearingDate(DateTime hearingDate, int divisionId = 0, DateTime? endDate = null);
         List<GlobalCaseViewModel> GetHearingsTodayIrrespectiveOfModule(int divisionId = 0, string? module = null);

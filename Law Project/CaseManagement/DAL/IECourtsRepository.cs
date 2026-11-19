@@ -56,7 +56,6 @@ namespace MVCCaseManagement.DAL
         Task<TrackedCaseModel?> GetTrackedCaseByCnrAsync(string cnrNumber);
         Task<IEnumerable<TrackedCaseModel>> GetAllTrackedCasesAsync();
         Task<bool> UpdateCaseCnrLinkAsync(string table, string primaryKeyCol, int id, string cnrNumber);
-        Task<int> SaveCauselistAsync(CauselistHeaderModel header);
         Task<CauselistHeaderModel?> GetCauselistAsync(string estCode, string courtNo, DateTime date, string type = "civil");
         Task<IEnumerable<MVCCaseManagement.Models.HighCourtCauseListItem>> GetHighCourtCauseListAsync();
         Task UpdateAppealLiveECourtsDataAsync(string? cnrNumber, string? courtHall, DateTime? nextHearingDate, string? stage, int? appealId = null);

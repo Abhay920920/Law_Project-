@@ -1856,17 +1856,6 @@ namespace MVCCaseManagement.DAL
             _db.ExecuteNonQuery(query, new[] { new SqlParameter("@CaseID", caseId) });
         }
 
-        private bool ToBool(object? value)
-        {
-            if (value == null || value == DBNull.Value) return false;
-            if (value is bool b) return b;
-            
-            string s = value.ToString()?.Trim() ?? "";
-            if (s == "1" || s.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
-            if (s == "0" || s.Equals("false", StringComparison.OrdinalIgnoreCase)) return false;
-
-            return false;
-        }
         public void AddCaseHistory(LabourCaseHistory history, SqlConnection? conn = null, SqlTransaction? trans = null)
         {
             string query = "INSERT INTO LABOUR_CASE_HISTORY (CaseID, CurrentStage, NextHearingDate, Remarks, CreatedDate) VALUES (@CaseID, @Stage, @NextDate, @Remarks, @CreatedDate)";

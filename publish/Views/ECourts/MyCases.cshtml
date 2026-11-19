@@ -2566,19 +2566,6 @@
         const isTodayListed = c.hearingUrgency === "TODAY";
         const isTomorrowListed = c.hearingUrgency === "TOMORROW";
 
-        let todayQuickChip = "";
-        if (isTodayListed) {
-            const hallVal = c.courtNo || "";
-            const itemVal = c.itemNo || c.causeListItemNo || "";
-            if (hallVal || itemVal) {
-                todayQuickChip = `
-                    <div class="mt-1.5 p-1 px-1.5 rounded bg-warning-subtle border border-warning-subtle extra-small d-flex flex-column gap-0.5 shadow-xs">
-                        ${hallVal ? `<div class="fw-bold text-dark text-truncate" style="max-width: 170px;"><i class="bi bi-bank2 text-warning-emphasis me-1"></i>${escapeHtml(hallVal)}</div>` : ''}
-                        ${itemVal ? `<div class="fw-bold text-danger text-truncate"><i class="bi bi-list-ol me-1"></i>${itemVal.toString().startsWith('Serial') || itemVal.toString().startsWith('Item') ? escapeHtml(itemVal) : `Serial No. ${escapeHtml(itemVal)}`}</div>` : ''}
-                    </div>`;
-            }
-        }
-
         // Next Hearing Date & Urgency Analysis formatting
         let hearingDisplay = "";
         let urgencyBadge = "";
@@ -2605,8 +2592,7 @@
                     </div>
                     <div class="extra-small text-dark fw-semibold mt-0.5" style="min-width: 160px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.stagePurpose || "—")}">
                         <i class="bi bi-bookmark-star text-secondary me-0.5"></i>${escapeHtml(c.stagePurpose || "—")}
-                    </div>
-                    ${todayQuickChip}`;
+                    </div>`;
             }
         }
 
@@ -2702,7 +2688,7 @@
                 <div class="extra-small text-muted mt-0.5" style="min-width: 220px; line-height: 1.3; word-break: break-word;" title="${escapeHtml(c.judgeDesignation || "")}">
                     <i class="bi bi-person-lines-fill me-1 text-secondary"></i>${escapeHtml(c.judgeDesignation || "—")}
                 </div>
-                ${c.causeListType ? `<div class="extra-small text-secondary mt-0.5"><i class="bi bi-list-check me-1 text-success"></i>${escapeHtml(c.causeListType)}</div>` : ''}
+                ${c.causeListType && (!c.causeListNo || (!c.causeListType.toLowerCase().includes('cause list no.') && !c.causeListType.toLowerCase().includes('cause list '))) ? `<div class="extra-small text-secondary mt-0.5"><i class="bi bi-list-check me-1 text-success"></i>${escapeHtml(c.causeListType)}</div>` : ''}
             </td>
             <td>
                 <div class="fw-bold text-dark" style="min-width: 250px; line-height: 1.35; word-break: break-word;" title="${escapeHtml(c.petitioner || "")}">
@@ -5249,10 +5235,30 @@
         const tbodyActs = document.getElementById("dTbodyActs");
         if (acts && acts.length > 0) {
             tbodyActs.innerHTML = acts.map((a, i) => {
-                const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || "—").trim());
-                let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || "—").trim();
+                let actName = (a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.under_act || a.act_desc || a.name || "").trim();
+                let secName = (a.section || a.sections || a.under_section || a.sec || a.section_name || a.Section || "").trim();
                 if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+
+                if (!actName || actName === '—' || actName === '-') {
+                    if (secName === '4' || secName.startsWith('4,') || secName.startsWith('4 ')) {
+                        actName = 'Karnataka High Court Act, 1961';
+                    } else if (secName.startsWith('173')) {
+                        actName = 'Motor Vehicles Act, 1988';
+                    } else if (secName.startsWith('30')) {
+                        actName = 'Employees\' Compensation Act, 1923';
+                    } else if (secName.startsWith('226') || secName.startsWith('227')) {
+                        actName = 'Constitution of India';
+                    } else if (secName.startsWith('10') || secName.startsWith('33')) {
+                        actName = 'Industrial Disputes Act, 1947';
+                    } else if (secName.startsWith('7')) {
+                        actName = 'Payment of Gratuity Act, 1972';
+                    } else {
+                        actName = '—';
+                    }
+                }
                 if (!secName) secName = "—";
+
+                actName = escapeHtml(actName);
                 secName = escapeHtml(secName);
                 return `
                     <tr>

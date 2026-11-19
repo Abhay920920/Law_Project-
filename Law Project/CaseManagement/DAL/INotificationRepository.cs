@@ -9,7 +9,6 @@ namespace MVCCaseManagement.DAL
         IEnumerable<Notification> GetAllNotifications(int? userId, int? divisionId);
         void MarkAsRead(int notificationId);
         void MarkAllAsRead(int? userId, int? divisionId);
-        void AddNotification(Notification notification);
         void GenerateDailyAlerts();
     }
 }

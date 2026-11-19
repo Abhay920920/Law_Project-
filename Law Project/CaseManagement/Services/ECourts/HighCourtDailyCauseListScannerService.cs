@@ -7,8 +7,10 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Dapper;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Logging;
+using MVCCaseManagement.DAL;
 using MVCCaseManagement.Models;
 using MVCCaseManagement.Utils;
 using UglyToad.PdfPig;
@@ -21,18 +23,21 @@ namespace MVCCaseManagement.Services.ECourts
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<HighCourtDailyCauseListScannerService> _logger;
         private readonly IHighCourtPartySearchStore? _partyStore;
+        private readonly DBHelper? _db;
         private static readonly SemaphoreSlim _scanLock = new(1, 1);
 
         public HighCourtDailyCauseListScannerService(
             IECourtsNapixService napixService,
             IWebHostEnvironment env,
             ILogger<HighCourtDailyCauseListScannerService> logger,
-            IHighCourtPartySearchStore? partyStore = null)
+            IHighCourtPartySearchStore? partyStore = null,
+            DBHelper? db = null)
         {
             _napixService = napixService;
             _env = env;
             _logger = logger;
             _partyStore = partyStore;
+            _db = db;
         }
 
         private string GetCacheFilePath(string estCode, DateTime targetDate)
@@ -343,6 +348,36 @@ namespace MVCCaseManagement.Services.ECourts
 
                 var allResults = new ConcurrentBag<PartyCaseSearchResultItem>();
 
+                // Pre-load known tracked case keys from ECOURTS_TRACKED_CASES to ensure 100% inclusion of tracked matters
+                var knownTrackedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (_db != null)
+                {
+                    try
+                    {
+                        using var conn = _db.GetConnection();
+                        var tracked = await conn.QueryAsync<(string? CaseTypeCode, string? CaseNumber, int? CaseYear)>(
+                            "SELECT CaseTypeCode, CaseNumber, CaseYear FROM admin_Law.ECOURTS_TRACKED_CASES WHERE CaseNumber IS NOT NULL");
+                        foreach (var tc in tracked)
+                        {
+                            if (!string.IsNullOrWhiteSpace(tc.CaseTypeCode) && !string.IsNullOrWhiteSpace(tc.CaseNumber))
+                            {
+                                string cType = Regex.Replace(tc.CaseTypeCode.Trim(), @"[^\w]", "").ToUpperInvariant();
+                                string cNum = tc.CaseNumber.Trim();
+                                string cYr = tc.CaseYear?.ToString() ?? "";
+                                if (!string.IsNullOrEmpty(cYr))
+                                {
+                                    knownTrackedKeys.Add($"{cType}_{cNum}_{cYr}");
+                                }
+                                knownTrackedKeys.Add($"{cType}_{cNum}");
+                            }
+                        }
+                    }
+                    catch (Exception exDb)
+                    {
+                        _logger.LogWarning(exDb, "[CauseListScanner] Could not pre-load tracked cases for cause list whitelist.");
+                    }
+                }
+
                 // Scan each bench in parallel with bounded concurrency (Max 2 to prevent NAPIX rate-limiting/500 errors)
                 await Parallel.ForEachAsync(benchList, new ParallelOptions { MaxDegreeOfParallelism = 2, CancellationToken = ct }, async (bench, token) =>
                 {
@@ -407,7 +442,7 @@ namespace MVCCaseManagement.Services.ECourts
                             }
                             catch { }
 
-                            var parsedCases = ParseHighCourtCauseListPdf(pdfBytes, estCode, bench.BenchId, bench.JudgeName, clType, targetDate, bench.CourtNo);
+                            var parsedCases = ParseHighCourtCauseListPdf(pdfBytes, estCode, bench.BenchId, bench.JudgeName, clType, targetDate, bench.CourtNo, knownTrackedKeys);
                             foreach (var pc in parsedCases)
                             {
                                 allResults.Add(pc);
@@ -444,7 +479,8 @@ namespace MVCCaseManagement.Services.ECourts
             string judgeName,
             string causelistType,
             DateTime targetDate,
-            string courtNo = "")
+            string courtNo = "",
+            HashSet<string>? knownTrackedKeys = null)
         {
             if (pdfBytes == null || pdfBytes.Length == 0) return new List<PartyCaseSearchResultItem>();
 
@@ -512,7 +548,7 @@ namespace MVCCaseManagement.Services.ECourts
                 }
 
                 string fullText = fullTextBuilder.ToString();
-                return ParseHighCourtCauseListText(fullText, estCode, benchId, judgeName, causelistType, targetDate, courtNo);
+                return ParseHighCourtCauseListText(fullText, estCode, benchId, judgeName, causelistType, targetDate, courtNo, knownTrackedKeys);
             }
             catch (Exception ex)
             {
@@ -528,7 +564,8 @@ namespace MVCCaseManagement.Services.ECourts
             string judgeName,
             string causelistType,
             DateTime targetDate,
-            string courtNo = "")
+            string courtNo = "",
+            HashSet<string>? knownTrackedKeys = null)
         {
             var list = new List<PartyCaseSearchResultItem>();
             if (string.IsNullOrWhiteSpace(fullText)) return list;
@@ -695,8 +732,12 @@ namespace MVCCaseManagement.Services.ECourts
                         ? fullText.Substring(startIndex, endIndex - startIndex)
                         : "";
 
-                    // Check if block contains NWKRTC relevance
-                    if (!IsNwkrtcRelated(blockText, estCode, caseType))
+                    string itemKeyWithYr = $"{caseType}_{regNumber}_{regYear}".ToUpperInvariant();
+                    string itemKeyNoYr = $"{caseType}_{regNumber}".ToUpperInvariant();
+                    bool isKnownTracked = knownTrackedKeys != null && (knownTrackedKeys.Contains(itemKeyWithYr) || knownTrackedKeys.Contains(itemKeyNoYr));
+
+                    // Check if block contains NWKRTC relevance or is an actively tracked case in NWKRTC database
+                    if (!isKnownTracked && !IsNwkrtcRelated(blockText, estCode, caseType))
                     {
                         continue;
                     }
@@ -719,13 +760,13 @@ namespace MVCCaseManagement.Services.ECourts
                     var allowedCatMatch = Regex.Match(blockText, @"\(\s*(?:L\s*,\s*[A-Za-z0-9\/\-]+|S\s*,\s*[A-Za-z0-9\/\-]+|GM\s*,\s*(?:TEN|CON|RES)|MV\s*,\s*[A-Za-z0-9\/\-]*|ECA\s*,?|WC\s*,?)\s*\)", RegexOptions.IgnoreCase);
                     var excludedCatMatch = Regex.Match(blockText, @"\(\s*(?:KLR|LA|LAC|GM\s*,\s*(?:CPC|CON)|TAX|EDN|HRC)\b", RegexOptions.IgnoreCase);
 
-                    if (excludedCatMatch.Success)
+                    if (!isKnownTracked && excludedCatMatch.Success)
                     {
                         continue; // Strictly exclude Land Revenue, Land Acquisition, General Civil, Tax, etc.
                     }
 
                     // Also exclude Land Acquisition/SLAO/UKP in MFA/MSA even if category parentheses are absent
-                    if ((caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase)) &&
+                    if (!isKnownTracked && (caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase)) &&
                         Regex.IsMatch(blockText, @"(?i)\b(SPECIAL\s*LAND|LAND\s*ACQUISITION|SLAO|UKP|UPPER\s*KRISHNA|LAC\s*NO|L\.A\.C)\b") &&
                         !Regex.IsMatch(blockText, @"(?i)(NWKRTC|NKWRTC|NORTH\s*[- ]?WEST)"))
                     {
@@ -828,7 +869,7 @@ namespace MVCCaseManagement.Services.ECourts
 ]*", " ", RegexOptions.IgnoreCase);
 
                     // Extract Counsel/Advocate if present (covers Dharwad, Bengaluru, Kalaburagi standing counsel)
-                    var advMatch = Regex.Match(blockText, @"(?:MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|(?:HANAMANTREDDY|MALLIKARJUN)?\s*(?:S\s*)?SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M|KUPPELUR)", RegexOptions.IgnoreCase);
+                    var advMatch = Regex.Match(blockText, @"(?:SANTOSHKUMAR\s*(?:G\s*)?RAMPUR|S\s*G\s*RAMPUR|RAMPUR|V\s*V\s*AREKERI|AREKERI|UMESH\s*(?:C\s*)?AINAPUR|AINAPUR|HARISH\s*(?:S\s*)?MAIGUR|MAIGUR|MADANMOHAN\s*(?:M\s*)?KHANNUR|M\s*M\s*KHANNUR|PRASHANT\s*(?:S\s*)?HOSMANI|P\s*S\s*HOSMANI|PRASHANT\s*HOSMANI|PRAKASH\s*(?:N\s*)?HOSAMAN[EI]|P\s*N\s*HOSAMANE|KINI\s*N\s*S|N\s*S\s*KINI|SUNITHA\s*(?:P\s*)?KALASOOR|VEENA\s*HEGDE|HEGDE\s*VEENA|VEERESH\s*(?:R\s*)?BUDIHAL|SHIVAKUMAR\s*(?:S\s*)?BADAWADAGI|S\s*S\s*BHUTI|S\s*C\s*BHUTI|CHANDRASHEKHAR\s*(?:M\s*)?HOSAMANI|C\s*M\s*HOSAMANI|S\s*L\s*MATTI|SHIVANAND\s*L\s*MATTI|VAISHALI\s*(?:K\s*)?KALADAGI|ROHIT\s*(?:S\s*)?PATIL|MANJUNATH\s*(?:A\s*)?KARIGANNAVAR|D\s*VIJAYKUMAR|D\s*VIJAYA\s*KUMAR|PREMAVATHI\s*(?:B\s*)?PATIL|SHWETA\s*KULKARNI|B\s*L\s*SANJEEV|H\s*R\s*GUNDAPPA|F\s*S\s*DABALI|SANTOSH\s*(?:B\s*)?MANE|(?:HANAMANTREDDY|MALLIKARJUN)?\s*(?:S\s*)?SAHUKAR|LINGARAJ\s*MARADI|RAVI\s*HEGDE|KALPANA\s*(?:T\s*)?M|KUPPELUR)", RegexOptions.IgnoreCase);
                     if (advMatch.Success)
                     {
                         advocate = advMatch.Value.ToUpperInvariant();
@@ -869,11 +910,39 @@ namespace MVCCaseManagement.Services.ECourts
                     string role = "With NWKRTC";
                     bool petIsCorp = NwkrtcPartyMatcher.IsNwkrtcEntity(petitioner, out string petDesig, estCode);
                     bool resIsCorp = NwkrtcPartyMatcher.IsNwkrtcEntity(respondent, out string resDesig, estCode);
+                    bool hasStandingCounsel = Regex.IsMatch(blockText, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR|RAMPUR|AREKERI|AINAPUR|MAIGUR)");
+                    bool isDharwadBench = string.Equals(estCode, "KAHC02", StringComparison.OrdinalIgnoreCase);
 
-                    // Strictly skip if neither petitioner nor respondent is a verified NWKRTC entity
+                    // If neither petitioner nor respondent explicitly mentions NWKRTC in the headline,
+                    // check if the case is a known tracked NWKRTC case or if an empanelled NWKRTC Standing Counsel
+                    // appears on behalf of NWKRTC (e.g. co-respondent in MFA appeals where only R1 is named in cause list)
                     if (!petIsCorp && !resIsCorp)
                     {
-                        continue;
+                        if (isKnownTracked)
+                        {
+                            resIsCorp = true;
+                            resDesig = "Tracked Case";
+                            role = "Against NWKRTC";
+                        }
+                        else if (hasStandingCounsel && isDharwadBench)
+                        {
+                            if (Regex.IsMatch(blockText, @"(?i)(FOR\s+(?:PETITIONER|APPELLANT)|PET:\s*[^;\n]*\b(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR|RAMPUR|AREKERI|AINAPUR|MAIGUR))"))
+                            {
+                                petIsCorp = true;
+                                petDesig = "Petitioner Corporation";
+                                role = "By NWKRTC";
+                            }
+                            else
+                            {
+                                resIsCorp = true;
+                                resDesig = "Respondent Corporation";
+                                role = "Against NWKRTC";
+                            }
+                        }
+                        else
+                        {
+                            continue;
+                        }
                     }
 
                     if (petIsCorp && !resIsCorp)
@@ -1000,14 +1069,21 @@ namespace MVCCaseManagement.Services.ECourts
             bool isMfaOrMsa = caseType.Equals("MFA", StringComparison.OrdinalIgnoreCase) || 
                               caseType.Equals("MSA", StringComparison.OrdinalIgnoreCase);
 
+            bool isDharwadBench = string.Equals(estCode, "KAHC02", StringComparison.OrdinalIgnoreCase);
+
+            // Empanelled NWKRTC Standing Counsel check (Dharwad Bench)
+            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR|RAMPUR|AREKERI|AINAPUR|MAIGUR)");
+            bool hasDivisionalController = Regex.IsMatch(text, @"(?i)(DIVIS?I?ONAL\s*CONTROL+ER|DIVIS?I?ONALCONTROL+ER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONN?EL\s*MANAGER|C\.?P\.?M\.?\b|DISCIPLINARY\s*AUTHORITY)");
+
             // 0A. Direct NWKRTC keywords check (used across all downstream exclusion checks)
             bool hasExplicitNwkrtc = Regex.IsMatch(text, @"(?i)(NWKRTC|N[-.\s]*W[-.\s]*K[-.\s]*R[-.\s]*T[-.\s]*C\.?|N[-.\s]*W[-.\s]*K[-.\s]*S[-.\s]*R[-.\s]*T[-.\s]*C\.?|NKWRTC|NWKSRTC|NORTH\s*[- ]?WEST|INTERNAL\s+INSURANCE\s+FUND|SELF\s+INSURANCE\s+FUND|GOKUL\s*ROAD)");
             bool hasNwkrtcDivision = Regex.IsMatch(text, @"(?i)(HUBBALLI|HUBLI|BELAGAVI|BELGAUM|BAGALKOT|GADAG|HAVERI|UTTARA\s*KANNADA|CHIKKODI|SIRSI)");
 
             // 0B. EXCLUSION: Insurance Companies (dominates MFA claims)
             // Exclude private and state insurance companies UNLESS NWKRTC is an explicitly named party
+            // or in Dharwad bench where NWKRTC is represented by empanelled standing counsel or divisional controller
             if (Regex.IsMatch(text, @"(?i)\b(UNITED\s+INDIA|NATIONAL\s+INSURANCE|NEW\s+INDIA\s+ASSURANCE|ORIENTAL\s+INSURANCE|ICICI\s+LOMBARD|BAJAJ\s+ALLIANZ|SHRIRAM\s+GENERAL|CHOLAMANDALAM|RELIANCE\s+GENERAL|IFFCO\s*TOKIO|TATA\s*AIG|SBI\s+GENERAL|ROYAL\s+SUNDARAM|HDFC\s*ERGO|GO\s*DIGIT|DIGIT\s+INSURANCE|UNIVERSAL\s+SOMPO|MAGMA\s*HDI|LIBERTY\s+GENERAL|STAR\s+HEALTH|FUTURE\s+GENERALI|KOTAK\s+MAHINDRA\s+GENERAL|CARE\s+HEALTH|RAHEJA|ZUNO|ACKO|EDELWEISS|KGID|K\.?G\.?I\.?D|KARNATAKA\s+GOVERNMENT\s+INSURANCE)\b") &&
-                !hasExplicitNwkrtc)
+                !hasExplicitNwkrtc && !(isDharwadBench && (hasStandingCounsel || hasDivisionalController)))
             {
                 return false;
             }
@@ -1024,10 +1100,11 @@ namespace MVCCaseManagement.Services.ECourts
             string textNoSubject = Regex.Replace(text, @"\([A-Za-z0-9\s,]+\s*,\s*KSRTC\s*\)", " ", RegexOptions.IgnoreCase);
             if (!hasExplicitNwkrtc && Regex.IsMatch(textNoSubject, @"(?i)(BMTC|KKRTC|NEKRTC|NEKSRTC|BANGALORE\s+METROPOLITAN|BENGALURU\s+METROPOLITAN|KALYANA\s+KARNATAKA|NORTH\s*[- ]?EAST|KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT|K\.?S\.?R\.?T\.?C\.?)"))
             {
-                return false;
+                if (!(isDharwadBench && (hasDivisionalController || hasStandingCounsel)))
+                {
+                    return false;
+                }
             }
-
-            bool isDharwadBench = string.Equals(estCode, "KAHC02", StringComparison.OrdinalIgnoreCase);
 
             // In non-Dharwad benches, exclude general KSRTC unless explicitly NWKRTC
             if (!isDharwadBench && Regex.IsMatch(textNoSubject, @"(?i)(KSRTC|KARNATAKA\s+STATE\s+ROAD\s+TRANSPORT|K\.?S\.?R\.?T\.?C\.?)") &&
@@ -1066,13 +1143,10 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 2. NWKRTC Officers in Dharwad Bench: Divisional Controller, Depot Manager, CPM, Disciplinary Authority
-            if (Regex.IsMatch(text, @"(?i)(DIVIS?I?ONAL\s*CONTROL+ER|DIVIS?I?ONALCONTROL+ER|DEPOT\s*MANAGER|DEPOTMANAGER|CHIEF\s*PERSONN?EL\s*MANAGER|C\.?P\.?M\.?\b|DISCIPLINARY\s*AUTHORITY)"))
+            if (hasDivisionalController)
             {
                 return true;
             }
-
-            // Empanelled NWKRTC Standing Counsel check (Dharwad Bench)
-            bool hasStandingCounsel = Regex.IsMatch(text, @"(?i)(MADANMOHAN|KHANNUR|HOSMANI|HOSAMANI|HOSAMANE|KINI|KALASOOR|BUDIHAL|BADAWADAGI|BHUTI|MATTI|KALADAGI|KARIGANNAVAR|DABALI|GUNDAPPA|SANJEEV|SAHUKAR)");
 
             // 3. Managing Director: In Dharwad Bench, NWKRTC is sued as The Managing Director in accident and labour appeals.
             // Must NOT be an excluded entity (insurance, land acquisition, electricity, police, etc. - already filtered above).
@@ -1090,9 +1164,9 @@ namespace MVCCaseManagement.Services.ECourts
             }
 
             // 4. Standing Counsel representation check
-            // Note: Advocate appearance can only corroborate an existing transport entity / officer, never a purely private dispute.
             if (hasStandingCounsel)
             {
+                if (isDharwadBench) return true;
                 bool hasTransportOfficer = Regex.IsMatch(text, @"(?i)(DIVIS?I?ONAL\s*CONTROL+ER|DEPOT\s*MANAGER|MANAGING\s*DIRECTOR|THE\s+MANAGEMENT|INTERNAL\s+INSURANCE|SELF\s+INSURANCE|ROAD\s*TRANSPORT)");
                 if (hasTransportOfficer)
                 {

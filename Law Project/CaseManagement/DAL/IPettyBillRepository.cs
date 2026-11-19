@@ -20,13 +20,6 @@ namespace MVCCaseManagement.DAL
         PettyBillViewModel? GetPettyBillById(int billId);
 
         /// <summary>
-        /// Retrieves all petty bills for a specific case
-        /// </summary>
-        /// <param name="caseId">The case ID</param>
-        /// <returns>List of petty bills for the case</returns>
-        List<PettyBillViewModel> GetPettyBillsByCaseId(int caseId);
-
-        /// <summary>
         /// Retrieves all petty bills for a specific MVC number and year
         /// </summary>
         /// <param name="mvcNo">MVC Number</param>

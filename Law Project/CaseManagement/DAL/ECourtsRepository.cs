@@ -99,9 +99,8 @@ namespace MVCCaseManagement.DAL
             return await conn.QueryAsync<TrackedCaseModel>(sql);
         }
 
-        public async Task<bool> UpdateCaseCnrLinkAsync(string table, string primaryKeyCol, int id, string cnrNumber)
+                public async Task<bool> UpdateCaseCnrLinkAsync(string table, string primaryKeyCol, int id, string cnrNumber)
         {
-            // Allowed table and column allowlists to prevent SQL injection in dynamic identifier clauses
             var allowedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "MVC_CASES", "LABOUR_CASES", "LABOUR_SERVICE_MATTERS", "APPEAL_DETAILS"
@@ -126,74 +125,6 @@ namespace MVCCaseManagement.DAL
             string sql = $"UPDATE [{table}] SET CNRNumber = @cnrNumber WHERE [{primaryKeyCol}] = @id";
             int rows = await conn.ExecuteAsync(sql, new { cnrNumber, id });
             return rows > 0;
-        }
-
-        public async Task<int> SaveCauselistAsync(CauselistHeaderModel header)
-        {
-            using var conn = _db.GetConnection();
-            await conn.OpenAsync();
-            using var tran = conn.BeginTransaction(IsolationLevel.ReadCommitted);
-
-            try
-            {
-                string sqlCheck = @"
-                    SELECT CauselistID FROM DAILY_CAUSELISTS 
-                    WHERE EstCode = @EstCode AND CourtNo = @CourtNo 
-                      AND CauselistDate = @CauselistDate AND CauselistType = @CauselistType";
-
-                int causelistId = await conn.ExecuteScalarAsync<int>(sqlCheck, header, tran);
-
-                if (causelistId > 0)
-                {
-                    // Delete existing items to replace with fresh list
-                    await conn.ExecuteAsync("DELETE FROM CAUSELIST_ITEMS WHERE CauselistID = @causelistId", new { causelistId }, tran);
-                    
-                    string sqlUpdate = @"
-                        UPDATE DAILY_CAUSELISTS SET
-                            TotalCases = @TotalCases,
-                            CorporationCasesCount = @CorporationCasesCount,
-                            FetchedDate = GETDATE()
-                        WHERE CauselistID = @causelistId";
-
-                    await conn.ExecuteAsync(sqlUpdate, new { header.TotalCases, header.CorporationCasesCount, causelistId }, tran);
-                }
-                else
-                {
-                    string sqlInsert = @"
-                        INSERT INTO DAILY_CAUSELISTS (
-                            EstCode, CourtNo, CauselistDate, CauselistType, TotalCases, CorporationCasesCount, FetchedDate
-                        ) VALUES (
-                            @EstCode, @CourtNo, @CauselistDate, @CauselistType, @TotalCases, @CorporationCasesCount, GETDATE()
-                        );
-                        SELECT CAST(SCOPE_IDENTITY() as int);";
-
-                    causelistId = await conn.ExecuteScalarAsync<int>(sqlInsert, header, tran);
-                }
-
-                if (header.Items != null && header.Items.Count > 0)
-                {
-                    string sqlItemInsert = @"
-                        INSERT INTO CAUSELIST_ITEMS (
-                            CauselistID, SrNo, CNRNumber, CaseNumber, PartyDetails, AdvocateDetails, Stage, IsCorporationCase, TrackedCaseID
-                        ) VALUES (
-                            @CauselistID, @SrNo, @CNRNumber, @CaseNumber, @PartyDetails, @AdvocateDetails, @Stage, @IsCorporationCase, @TrackedCaseID
-                        );";
-
-                    foreach (var item in header.Items)
-                    {
-                        item.CauselistID = causelistId;
-                        await conn.ExecuteAsync(sqlItemInsert, item, tran);
-                    }
-                }
-
-                tran.Commit();
-                return causelistId;
-            }
-            catch
-            {
-                tran.Rollback();
-                throw;
-            }
         }
 
         public async Task<CauselistHeaderModel?> GetCauselistAsync(string estCode, string courtNo, DateTime date, string type = "civil")

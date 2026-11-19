@@ -115,36 +115,6 @@ namespace MVCCaseManagement.DAL
             return paymentId;
         }
 
-        public bool UpdatePayment(CasePaymentViewModel payment)
-        {
-            using (var connection = new SqlConnection(_connectionString))
-            {
-                connection.Open();
-
-                string query = @"
-                    UPDATE MVC_CASE_PAYMENTS 
-                    SET Amount = @Amount,
-                        ChequeNumber = @ChequeNumber,
-                        ChequeDate = @ChequeDate,
-                        PaymentType = @PaymentType,
-                        Remarks = @Remarks
-                    WHERE PaymentID = @PaymentID";
-
-                using (var cmd = new SqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@PaymentID", payment.PaymentID);
-                    cmd.Parameters.AddWithValue("@Amount", payment.Amount);
-                    cmd.Parameters.AddWithValue("@ChequeNumber", (object?)payment.ChequeNumber ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@ChequeDate", (object?)payment.ChequeDate ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@PaymentType", (object?)payment.PaymentType ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Remarks", (object?)payment.Remarks ?? DBNull.Value);
-
-                    int rowsAffected = cmd.ExecuteNonQuery();
-                    return rowsAffected > 0;
-                }
-            }
-        }
-
         public bool DeletePayment(int paymentId)
         {
             using (var connection = new SqlConnection(_connectionString))
@@ -158,26 +128,6 @@ namespace MVCCaseManagement.DAL
                     cmd.Parameters.AddWithValue("@PaymentID", paymentId);
                     int rowsAffected = cmd.ExecuteNonQuery();
                     return rowsAffected > 0;
-                }
-            }
-        }
-
-        public decimal GetTotalPaymentsByCaseId(int caseId)
-        {
-            using (var connection = new SqlConnection(_connectionString))
-            {
-                connection.Open();
-
-                string query = @"
-                    SELECT ISNULL(SUM(Amount), 0) 
-                    FROM MVC_CASE_PAYMENTS 
-                    WHERE CaseID = @CaseID";
-
-                using (var cmd = new SqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@CaseID", caseId);
-                    var result = cmd.ExecuteScalar();
-                    return result != null && result != DBNull.Value ? Convert.ToDecimal(result) : 0m;
                 }
             }
         }

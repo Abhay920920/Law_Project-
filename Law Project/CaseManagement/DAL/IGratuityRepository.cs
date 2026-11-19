@@ -15,7 +15,6 @@ namespace MVCCaseManagement.DAL
         Task<bool> MarkAsViewedByCO(int caseId);
         
         // Additional helper methods if needed
-        Task<IEnumerable<GratuityCase>> GetCasesByDivision(int divisionId);
         Task<DashboardStatsViewModel> GetDashboardStats(int divisionId = 0);
         Task<List<RecentCaseViewModel>> GetCasesByHearingDate(DateTime hearingDate, int divisionId = 0, DateTime? endDate = null);
     }

@@ -38,8 +38,20 @@ if ($LASTEXITCODE -ne 0) {
 # Ensure raw Views and wwwroot are explicitly synchronized to publish/ for runtime compilation & static assets
 Write-Host "Syncing updated Views and wwwroot into publish/..." -ForegroundColor Gray
 Copy-Item -Recurse -Force "Law Project\CaseManagement\Views\*" "publish\Views\"
-Copy-Item -Recurse -Force "Law Project\CaseManagement\wwwroot\*" "publish\wwwroot\"
-Write-Host "✅ Release build and raw views synced to publish/!" -ForegroundColor Green
+
+# Sync static assets (css, js, images, favicon) excluding uploaded user files
+Get-ChildItem -Path "Law Project\CaseManagement\wwwroot\*" -Exclude "uploads" | ForEach-Object {
+    Copy-Item -Path $_.FullName -Destination "publish\wwwroot\" -Recurse -Force
+}
+# Ensure uploads directories with .gitkeep exist in publish/wwwroot/uploads without duplicating payload files
+if (-not (Test-Path "publish\wwwroot\uploads")) { New-Item -ItemType Directory -Path "publish\wwwroot\uploads" -Force | Out-Null }
+Get-ChildItem -Path "Law Project\CaseManagement\wwwroot\uploads" -Recurse -Filter ".gitkeep" | ForEach-Object {
+    $dest = $_.FullName.Replace("Law Project\CaseManagement\", "publish\")
+    $parent = Split-Path -Parent $dest
+    if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+    Copy-Item -Path $_.FullName -Destination $dest -Force
+}
+Write-Host "✅ Release build, raw views, and static assets synced to publish/!" -ForegroundColor Green
 
 # 3. Verify Safe Vault Configuration
 Write-Host "`n[3/5] Verifying persistent vault paths in publish config..." -ForegroundColor Yellow

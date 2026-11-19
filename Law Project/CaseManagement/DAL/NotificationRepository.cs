@@ -22,19 +22,6 @@ namespace MVCCaseManagement.DAL
             return new SqlConnection(_connectionString);
         }
 
-        public void AddNotification(Notification notification)
-        {
-            using (var db = CreateConnection())
-            {
-                var query = @"
-                    INSERT INTO SYSTEM_NOTIFICATIONS 
-                    (UserID, DivisionID, Title, Message, RelatedCaseType, RelatedCaseID, LinkUrl, IsRead, CreatedDate) 
-                    VALUES 
-                    (@UserID, @DivisionID, @Title, @Message, @RelatedCaseType, @RelatedCaseID, @LinkUrl, @IsRead, @CreatedDate)";
-                db.Execute(query, notification);
-            }
-        }
-
         public void GenerateDailyAlerts()
         {
             try

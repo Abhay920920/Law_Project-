@@ -494,15 +494,6 @@ namespace MVCCaseManagement.DAL
             }
         }
 
-        public async Task<IEnumerable<GratuityCase>> GetCasesByDivision(int divisionId)
-        {
-             using (var connection = CreateConnection())
-            {
-                var query = "SELECT * FROM GRA_CASES WHERE DivisionCode = @DivisionCode ORDER BY CreatedDate DESC";
-                return await connection.QueryAsync<GratuityCase>(query, new { DivisionCode = divisionId });
-            }
-        }
-
         public async Task<DashboardStatsViewModel> GetDashboardStats(int divisionId = 0)
         {
             using (var connection = CreateConnection())

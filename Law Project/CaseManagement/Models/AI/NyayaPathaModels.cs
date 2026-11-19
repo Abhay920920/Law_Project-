@@ -5,18 +5,6 @@ using MVCCaseManagement.Models;
 
 namespace MVCCaseManagement.Models.AI
 {
-    public class AnthropicOptions
-    {
-        public const string SectionName = "Anthropic";
-
-        public string ApiKey { get; set; } = string.Empty;
-        public string Model { get; set; } = string.Empty;
-        public string BaseUrl { get; set; } = "https://api.anthropic.com";
-        public int MaxTokens { get; set; } = 4096;
-        public double Temperature { get; set; } = 0.2;
-        public int TimeoutSeconds { get; set; } = 90;
-    }
-
     public class NyayaPathaOptions
     {
         public const string SectionName = "NyayaPathaAI";
@@ -637,22 +625,6 @@ namespace MVCCaseManagement.Models.AI
         public string VerifiedAnswer { get; set; } = string.Empty;
     }
 
-    public class ConversationStateDto
-    {
-        public int ConversationId { get; set; }
-        public string? ActiveCaseType { get; set; }
-        public int? ActiveCaseId { get; set; }
-        public string? ActiveCaseNumber { get; set; }
-        public string? ActiveCNR { get; set; }
-        public string? ActiveVehicleNo { get; set; }
-        public string? ActiveAdvocate { get; set; }
-        public int? ActiveDivisionId { get; set; }
-        public string? ActiveCourt { get; set; }
-        public string? ActiveLegalIssue { get; set; }
-        public string? ActiveDateRange { get; set; }
-        public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
-    }
-
     public class NyayaPathaChatRequest
     {
         [Required]
@@ -682,22 +654,6 @@ namespace MVCCaseManagement.Models.AI
         public EvidenceSufficiencyEvaluation? Sufficiency { get; set; }
     }
 
-    public class DocumentChunkDto
-    {
-        public long ChunkId { get; set; }
-        public string CaseType { get; set; } = string.Empty;
-        public int CaseId { get; set; }
-        public string DocumentName { get; set; } = string.Empty;
-        public string DocumentHash { get; set; } = string.Empty;
-        public int PageNumber { get; set; } = 1;
-        public int ChunkIndex { get; set; } = 1;
-        public string? Section { get; set; }
-        public string? SectionHeader { get => Section; set => Section = value; }
-        public string ChunkText { get; set; } = string.Empty;
-        public int TokenCount { get; set; }
-        public DateTime CreatedAt { get; set; } = DateTime.Now;
-    }
-
     public class AIMessageFeedbackDto
     {
         public int FeedbackId { get; set; }
@@ -725,6 +681,17 @@ namespace MVCCaseManagement.Models.AI
         public List<Dictionary<string, object>> Records { get; set; } = new();
         public List<CitationDto> Citations { get; set; } = new();
     }
+
+    public class DocumentChunkDto
+    {
+        public string DocumentName { get; set; } = string.Empty;
+        public string DocumentHash { get; set; } = string.Empty;
+        public string CaseType { get; set; } = string.Empty;
+        public int CaseId { get; set; }
+        public int ChunkIndex { get; set; }
+        public int PageNumber { get; set; }
+        public string SectionHeader { get; set; } = string.Empty;
+        public string ChunkText { get; set; } = string.Empty;
+        public int TokenCount { get; set; }
+    }
 }
-
-

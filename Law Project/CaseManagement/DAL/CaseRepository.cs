@@ -2486,33 +2486,6 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
         }
 
         // Payment Management Methods
-        public bool SaveCasePayments(int caseId, List<CasePaymentViewModel> payments)
-        {
-            // Delete existing payments
-            string deleteQuery = "DELETE FROM MVC_CASE_PAYMENTS WHERE CaseID = @CaseID";
-            _db.ExecuteNonQuery(deleteQuery, new[] { new SqlParameter("@CaseID", caseId) });
-
-            // Insert new payments
-            if (payments != null && payments.Count > 0)
-            {
-                foreach (var payment in payments)
-                {
-                    string insertQuery = @"
-                        INSERT INTO MVC_CASE_PAYMENTS (CaseID, Amount, ChequeNumber, ChequeDate, Remarks)
-                        VALUES (@CaseID, @Amount, @ChequeNumber, @ChequeDate, @Remarks)";
-                    
-                    _db.ExecuteNonQuery(insertQuery, new[] {
-                        new SqlParameter("@CaseID", caseId),
-                        new SqlParameter("@Amount", payment.Amount),
-                        new SqlParameter("@ChequeNumber", payment.ChequeNumber ?? (object)DBNull.Value),
-                        new SqlParameter("@ChequeDate", payment.ChequeDate ?? (object)DBNull.Value),
-                        new SqlParameter("@Remarks", payment.Remarks ?? (object)DBNull.Value)
-                    });
-                }
-            }
-            return true;
-        }
-
         public List<CasePaymentViewModel> GetCasePayments(int caseId)
         {
             var payments = new List<CasePaymentViewModel>();

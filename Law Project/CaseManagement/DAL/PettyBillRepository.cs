@@ -259,44 +259,6 @@ namespace MVCCaseManagement.DAL
             return model;
         }
 
-        public List<PettyBillViewModel> GetPettyBillsByCaseId(int caseId)
-        {
-            var bills = new List<PettyBillViewModel>();
-
-            using (var connection = new SqlConnection(_connectionString))
-            {
-                connection.Open();
-
-                string query = @"
-                    SELECT BillID, MVCNo, MVCYear, BillDate, NetPayable, CreatedAt, UpdatedAt
-                    FROM PETTY_BILLS 
-                    WHERE CaseID = @CaseID
-                    ORDER BY CreatedAt DESC";
-
-                using (var cmd = new SqlCommand(query, connection))
-                {
-                    cmd.Parameters.AddWithValue("@CaseID", caseId);
-
-                    using (var reader = cmd.ExecuteReader())
-                    {
-                        while (reader.Read())
-                        {
-                            bills.Add(new PettyBillViewModel
-                            {
-                                BillID = reader.GetInt32(reader.GetOrdinal("BillID")),
-                                MVCNo = reader.IsDBNull(reader.GetOrdinal("MVCNo")) ? string.Empty : reader.GetString(reader.GetOrdinal("MVCNo")),
-                                MVCYear = reader.IsDBNull(reader.GetOrdinal("MVCYear")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("MVCYear")),
-                                BillDate = reader.IsDBNull(reader.GetOrdinal("BillDate")) ? null : (DateTime?)reader.GetDateTime(reader.GetOrdinal("BillDate")),
-                                NetPayable = reader.GetDecimal(reader.GetOrdinal("NetPayable"))
-                            });
-                        }
-                    }
-                }
-            }
-
-            return bills;
-        }
-
         public List<PettyBillViewModel> GetPettyBillsByMVC(string mvcNo, int mvcYear)
         {
             var bills = new List<PettyBillViewModel>();

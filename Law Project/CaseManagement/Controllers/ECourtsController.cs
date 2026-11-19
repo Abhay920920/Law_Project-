@@ -1846,33 +1846,6 @@ namespace MVCCaseManagement.Controllers
             }
         }
 
-        private static List<string> ExtractEstCodesFromComplexes(JsonElement complexes)
-        {
-            var list = new List<string>();
-            if (complexes.ValueKind != JsonValueKind.Object) return list;
-
-            foreach (var complexProp in complexes.EnumerateObject())
-            {
-                if (complexProp.Value.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var innerProp in complexProp.Value.EnumerateObject())
-                    {
-                        if (innerProp.Name.StartsWith("establishment", StringComparison.OrdinalIgnoreCase) &&
-                            innerProp.Value.ValueKind == JsonValueKind.Object &&
-                            innerProp.Value.TryGetProperty("est_code", out var codeElem))
-                        {
-                            string? codeStr = codeElem.GetString();
-                            if (!string.IsNullOrWhiteSpace(codeStr))
-                            {
-                                list.Add(codeStr.Trim());
-                            }
-                        }
-                    }
-                }
-            }
-            return list;
-        }
-
         // GET: /ECourts/AutoDiscoverCNR?estCode=...&caseType=...&regNo=...&regYear=...
         [HttpGet]
         public async Task<IActionResult> AutoDiscoverCNR(string estCode, string caseType, string regNo, string regYear, bool isHighCourt = false, int? caseId = null, string? firNo = null, string? firYear = null, string? policeStation = null, string? partyName = null)
@@ -2970,6 +2943,18 @@ namespace MVCCaseManagement.Controllers
                         {
                             caseKeyMap[sKey] = item;
                         }
+
+                        // Register secondary flexible lookup keys
+                        string cleanNumOnly = System.Text.RegularExpressions.Regex.Replace(item.RegNumber ?? "", @"[^\d]", "").TrimStart('0');
+                        if (!string.IsNullOrEmpty(cleanNumOnly))
+                        {
+                            string normType = System.Text.RegularExpressions.Regex.Replace(item.CaseType ?? "", @"[^\w]", "").ToUpperInvariant();
+                            if (!string.IsNullOrEmpty(normType))
+                            {
+                                caseKeyMap.TryAdd($"{normType}_{cleanNumOnly}", item);
+                            }
+                            caseKeyMap.TryAdd($"NUM_{cleanNumOnly}", item);
+                        }
                     }
                 }
 
@@ -3228,6 +3213,26 @@ namespace MVCCaseManagement.Controllers
                         {
                             matchedCauseItem = m2;
                         }
+                        else
+                        {
+                            // Flexible fallbacks: match by Type_Number or pure Number
+                            string rawNum = (c.CaseNumber ?? "").Trim();
+                            if (rawNum.Contains('/')) rawNum = rawNum.Split('/')[0];
+                            string cleanNum = System.Text.RegularExpressions.Regex.Replace(rawNum, @"[^\d]", "").TrimStart('0');
+                            string typeClean = System.Text.RegularExpressions.Regex.Replace(c.CaseTypeCode ?? "", @"[^\w]", "").ToUpperInvariant();
+
+                            if (!string.IsNullOrEmpty(cleanNum))
+                            {
+                                if (!string.IsNullOrEmpty(typeClean) && caseKeyMap.TryGetValue($"{typeClean}_{cleanNum}", out var m3))
+                                {
+                                    matchedCauseItem = m3;
+                                }
+                                else if (caseKeyMap.TryGetValue($"NUM_{cleanNum}", out var m4))
+                                {
+                                    matchedCauseItem = m4;
+                                }
+                            }
+                        }
                     }
 
                     if (matchedCauseItem != null)
@@ -3240,7 +3245,8 @@ namespace MVCCaseManagement.Controllers
                         }
                         if (!string.IsNullOrWhiteSpace(cleanHall))
                         {
-                            c.CourtNo = cleanHall.Length > 50 ? cleanHall.Substring(0, 50) : cleanHall;
+                            string formattedHall = FormatCourtHall(cleanHall, c.JudgeDesignation, c.EstCode);
+                            c.CourtNo = formattedHall.Length > 50 ? formattedHall.Substring(0, 50) : formattedHall;
                         }
                         if (!string.IsNullOrWhiteSpace(matchedCauseItem.CauseListItemNo))
                         {
@@ -3818,6 +3824,18 @@ namespace MVCCaseManagement.Controllers
                     {
                         caseKeyMap[sKey] = item;
                     }
+
+                    // Register secondary flexible lookup keys
+                    string cleanNumOnly = System.Text.RegularExpressions.Regex.Replace(item.RegNumber ?? "", @"[^\d]", "").TrimStart('0');
+                    if (!string.IsNullOrEmpty(cleanNumOnly))
+                    {
+                        string normType = System.Text.RegularExpressions.Regex.Replace(item.CaseType ?? "", @"[^\w]", "").ToUpperInvariant();
+                        if (!string.IsNullOrEmpty(normType))
+                        {
+                            caseKeyMap.TryAdd($"{normType}_{cleanNumOnly}", item);
+                        }
+                        caseKeyMap.TryAdd($"NUM_{cleanNumOnly}", item);
+                    }
                 }
 
                 // 2. Fetch all tracked cases for this module
@@ -3848,6 +3866,25 @@ namespace MVCCaseManagement.Controllers
                         {
                             match = m2;
                         }
+                        else
+                        {
+                            string rawNum = (c.CaseNumber ?? "").Trim();
+                            if (rawNum.Contains('/')) rawNum = rawNum.Split('/')[0];
+                            string cleanNum = System.Text.RegularExpressions.Regex.Replace(rawNum, @"[^\d]", "").TrimStart('0');
+                            string typeClean = System.Text.RegularExpressions.Regex.Replace(c.CaseTypeCode ?? "", @"[^\w]", "").ToUpperInvariant();
+
+                            if (!string.IsNullOrEmpty(cleanNum))
+                            {
+                                if (!string.IsNullOrEmpty(typeClean) && caseKeyMap.TryGetValue($"{typeClean}_{cleanNum}", out var m3))
+                                {
+                                    match = m3;
+                                }
+                                else if (caseKeyMap.TryGetValue($"NUM_{cleanNum}", out var m4))
+                                {
+                                    match = m4;
+                                }
+                            }
+                        }
                     }
 
                     if (match != null)
@@ -3859,6 +3896,8 @@ namespace MVCCaseManagement.Controllers
                         }
 
                         string courtNoVal = !string.IsNullOrWhiteSpace(cleanHall) ? (cleanHall.Length > 50 ? cleanHall.Substring(0, 50) : cleanHall) : (c.CourtNo ?? "");
+                        string formattedHall = FormatCourtHall(courtNoVal, c.JudgeDesignation, c.EstCode);
+                        courtNoVal = !string.IsNullOrWhiteSpace(formattedHall) ? (formattedHall.Length > 50 ? formattedHall.Substring(0, 50) : formattedHall) : courtNoVal;
                         string slNoVal = !string.IsNullOrWhiteSpace(match.CauseListItemNo) ? (match.CauseListItemNo.Length > 50 ? match.CauseListItemNo.Substring(0, 50) : match.CauseListItemNo) : (c.CauseListItemNo ?? "");
                         string clNoVal = !string.IsNullOrWhiteSpace(match.CauseListNo) ? (match.CauseListNo.Length > 50 ? match.CauseListNo.Substring(0, 50) : match.CauseListNo) : (c.CauseListNo ?? "");
                         DateTime nextDt = match.NextHearingDate ?? DateTime.Today;
@@ -5837,8 +5876,22 @@ namespace MVCCaseManagement.Controllers
         /// </summary>
         public static string NormalizeCaseKey(string? type, string? number, int? year)
         {
-            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(number)) return string.Empty;
-            string cleanType = System.Text.RegularExpressions.Regex.Replace(type.Trim(), @"[^\w]", "").ToUpperInvariant();
+            if (string.IsNullOrWhiteSpace(number)) return string.Empty;
+
+            string rawNum = number.Trim();
+            string? detectedType = null;
+            var typeMatch = System.Text.RegularExpressions.Regex.Match(rawNum, @"^([A-Za-z]+)[\s\/\.\-]+(.*)$");
+            if (typeMatch.Success)
+            {
+                detectedType = typeMatch.Groups[1].Value;
+                rawNum = typeMatch.Groups[2].Value.Trim();
+            }
+
+            string effType = !string.IsNullOrWhiteSpace(type) && !type.Equals("Case", StringComparison.OrdinalIgnoreCase) && !type.Equals("0")
+                ? type
+                : (detectedType ?? "");
+
+            string cleanType = System.Text.RegularExpressions.Regex.Replace(effType.Trim(), @"[^\w]", "").ToUpperInvariant();
             if (cleanType.Contains("WRITPETITION") || cleanType == "WP") cleanType = "WP";
             else if (cleanType.Contains("WRITAPPEAL") || cleanType == "WA") cleanType = "WA";
             else if (cleanType.Contains("MISCELLANEOUSFIRSTAPPEAL") || cleanType == "MFA") cleanType = "MFA";
@@ -5849,14 +5902,34 @@ namespace MVCCaseManagement.Controllers
             else if (cleanType.Contains("CRIMINALPETITION") || cleanType == "CRLP") cleanType = "CRLP";
             else if (cleanType.Contains("CRIMINALAPPEAL") || cleanType == "CRL_A" || cleanType == "CRLA") cleanType = "CRLA";
 
-            string cleanNum = System.Text.RegularExpressions.Regex.Replace(number, @"[^\d]", "");
+            string numPart = rawNum;
             string cleanYear = year.HasValue && year.Value > 1900 ? year.Value.ToString() : "";
-            if (string.IsNullOrEmpty(cleanYear) && number.Contains("/"))
+            if (rawNum.Contains('/'))
             {
-                var parts = number.Split('/');
-                if (parts.Length > 1) cleanYear = System.Text.RegularExpressions.Regex.Replace(parts[1], @"[^\d]", "");
+                var parts = rawNum.Split('/');
+                numPart = parts[0];
+                if (string.IsNullOrEmpty(cleanYear) && parts.Length > 1)
+                {
+                    string parsedYr = System.Text.RegularExpressions.Regex.Replace(parts[1], @"[^\d]", "");
+                    if (parsedYr.Length == 2) parsedYr = "20" + parsedYr;
+                    if (parsedYr.Length == 4) cleanYear = parsedYr;
+                }
             }
+            else if (rawNum.Contains('-'))
+            {
+                var parts = rawNum.Split('-');
+                numPart = parts[0];
+                if (string.IsNullOrEmpty(cleanYear) && parts.Length > 1)
+                {
+                    string parsedYr = System.Text.RegularExpressions.Regex.Replace(parts[1], @"[^\d]", "");
+                    if (parsedYr.Length == 2) parsedYr = "20" + parsedYr;
+                    if (parsedYr.Length == 4) cleanYear = parsedYr;
+                }
+            }
+
+            string cleanNum = System.Text.RegularExpressions.Regex.Replace(numPart, @"[^\d]", "").TrimStart('0');
             if (string.IsNullOrEmpty(cleanNum)) return string.Empty;
+
             return $"{cleanType}_{cleanNum}_{cleanYear}".ToUpperInvariant();
         }
 
@@ -7284,27 +7357,69 @@ namespace MVCCaseManagement.Controllers
                            ?? dict.GetValueOrDefault("acttitle")
                            ?? dict.GetValueOrDefault("ActName")
                            ?? dict.GetValueOrDefault("Act")
+                           ?? dict.GetValueOrDefault("under_act")
+                           ?? dict.GetValueOrDefault("act_desc")
+                           ?? dict.GetValueOrDefault("act_type")
+                           ?? dict.GetValueOrDefault("law")
+                           ?? dict.GetValueOrDefault("short_name")
                            ?? dict.GetValueOrDefault("name");
 
             // Extract Section from all known keys
             string? section = dict.GetValueOrDefault("section")
                            ?? dict.GetValueOrDefault("section_name")
                            ?? dict.GetValueOrDefault("sections")
+                           ?? dict.GetValueOrDefault("under_section")
                            ?? dict.GetValueOrDefault("sec")
                            ?? dict.GetValueOrDefault("Section");
 
-            if (!string.IsNullOrWhiteSpace(actName))
+            if (!string.IsNullOrWhiteSpace(section))
+            {
+                section = section.Trim().TrimEnd(',').Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(actName) && !actName.Equals("—") && !actName.Equals("-"))
             {
                 actName = actName.Trim();
             }
             else
             {
-                actName = "—";
-            }
-
-            if (!string.IsNullOrWhiteSpace(section))
-            {
-                section = section.Trim().TrimEnd(',').Trim();
+                // Infer authentic statutory act name when section is invoked
+                if (!string.IsNullOrWhiteSpace(section) && section != "—")
+                {
+                    string secTrim = section.Trim();
+                    if (secTrim == "4" || secTrim.StartsWith("4,") || secTrim.StartsWith("4 "))
+                    {
+                        actName = "Karnataka High Court Act, 1961";
+                    }
+                    else if (secTrim.StartsWith("173"))
+                    {
+                        actName = "Motor Vehicles Act, 1988";
+                    }
+                    else if (secTrim.StartsWith("30"))
+                    {
+                        actName = "Employees' Compensation Act, 1923";
+                    }
+                    else if (secTrim.StartsWith("226") || secTrim.StartsWith("227"))
+                    {
+                        actName = "Constitution of India";
+                    }
+                    else if (secTrim.StartsWith("10") || secTrim.StartsWith("33"))
+                    {
+                        actName = "Industrial Disputes Act, 1947";
+                    }
+                    else if (secTrim.StartsWith("7"))
+                    {
+                        actName = "Payment of Gratuity Act, 1972";
+                    }
+                    else
+                    {
+                        actName = "—";
+                    }
+                }
+                else
+                {
+                    actName = "—";
+                }
             }
             if (string.IsNullOrWhiteSpace(section))
             {

@@ -403,12 +403,6 @@ namespace MVCCaseManagement.Services.AI
             return (false, "None", "Unknown", "Fact or figure not explicitly substantiated in verified database or retrieved exhibits.");
         }
 
-        private static bool VerifySentenceAgainstEvidence(string sentence, string evidenceCorpus, EvidencePack pack)
-        {
-            var evaluated = EvaluateSentenceAgainstEvidence(sentence, evidenceCorpus, pack);
-            return evaluated.IsSupported;
-        }
-
         private static List<string> SplitIntoSentences(string text)
         {
             var list = new List<string>();

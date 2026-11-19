@@ -3814,10 +3814,30 @@ function openDossierModal(appealId, cnr, mfaNo) {
                 } else {
                     let actsHtml = '';
                     acts.forEach((a, idx) => {
-                        const actName = escapeHtml((a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.name || '—').trim());
-                        let secName = (a.section || a.sections || a.sec || a.section_name || a.Section || '—').trim();
+                        let actName = (a.act || a.actname || a.act_name || a.act_title || a.actTitle || a.ActName || a.Act || a.under_act || a.act_desc || a.name || '').trim();
+                        let secName = (a.section || a.sections || a.under_section || a.sec || a.section_name || a.Section || '').trim();
                         if (secName.endsWith(',')) secName = secName.slice(0, -1).trim();
+
+                        if (!actName || actName === '—' || actName === '-') {
+                            if (secName === '4' || secName.startsWith('4,') || secName.startsWith('4 ')) {
+                                actName = 'Karnataka High Court Act, 1961';
+                            } else if (secName.startsWith('173')) {
+                                actName = 'Motor Vehicles Act, 1988';
+                            } else if (secName.startsWith('30')) {
+                                actName = 'Employees\' Compensation Act, 1923';
+                            } else if (secName.startsWith('226') || secName.startsWith('227')) {
+                                actName = 'Constitution of India';
+                            } else if (secName.startsWith('10') || secName.startsWith('33')) {
+                                actName = 'Industrial Disputes Act, 1947';
+                            } else if (secName.startsWith('7')) {
+                                actName = 'Payment of Gratuity Act, 1972';
+                            } else {
+                                actName = '—';
+                            }
+                        }
                         if (!secName) secName = '—';
+
+                        actName = escapeHtml(actName);
                         secName = escapeHtml(secName);
 
                         actsHtml += `<tr>

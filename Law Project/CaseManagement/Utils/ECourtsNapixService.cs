@@ -1205,89 +1205,6 @@ namespace MVCCaseManagement.Utils
             return null;
         }
 
-        private static void DecodeCnrCodes(string cnr, out string stateCode, out string distCode)
-        {
-            stateCode = "29"; distCode = "";
-            if (string.IsNullOrWhiteSpace(cnr) || cnr.Length < 4) return;
-
-            string stPrefix = cnr.Substring(0, 2).ToUpper();
-            stateCode = stPrefix switch
-            {
-                "KA" => "29",
-                "MH" => "27",
-                "DL" => "7",
-                "TN" => "33",
-                "KL" => "32",
-                "AP" => "28",
-                "TS" => "36",
-                "GJ" => "24",
-                "RJ" => "8",
-                "UP" => "9",
-                "WB" => "19",
-                _ => "29"
-            };
-
-            if (stPrefix == "KA")
-            {
-                string prefix = cnr.Length >= 5 ? cnr.Substring(2, Math.Min(3, cnr.Length - 2)).ToUpper() : "";
-                string prefix2 = cnr.Length >= 4 ? cnr.Substring(2, 2).ToUpper() : "";
-
-                if (prefix2 == "DW" || prefix.StartsWith("DW") || prefix.StartsWith("DH"))
-                {
-                    distCode = "1";
-                }
-                else if (prefix2 == "BG" || prefix.StartsWith("BAG"))
-                {
-                    distCode = "4";
-                }
-                else if (prefix2 == "HS" || prefix.StartsWith("HAS"))
-                {
-                    distCode = "29";
-                }
-                else if (prefix2 == "BA" || prefix.StartsWith("BAL"))
-                {
-                    distCode = "31";
-                }
-                else if (prefix2 == "VN" || prefix.StartsWith("VJN"))
-                {
-                    distCode = "30";
-                }
-                else
-                {
-                    distCode = prefix switch
-                    {
-                        "UKA" or "UKN" or "UK" => "19",
-                        "UDU" or "UD" => "25",
-                        "DAG" or "DVG" or "DV" => "9",
-                        "MYS" or "MY" => "14",
-                        "BNG" or "BLN" or "BN" => "2",
-                        "BLR" or "BLU" or "BL" => "3",
-                        "BEL" or "BLG" or "BE" => "5",
-                        "BID" or "BI" => "6",
-                        "CKM" or "CHM" => "7",
-                        "CHK" or "CKB" or "CB" => "8",
-                        "CHI" or "CKG" or "CM" => "10",
-                        "CIT" or "CTA" or "CT" => "11",
-                        "DKS" or "DKN" or "DK" => "12",
-                        "GAD" or "GA" => "13",
-                        "KAR" or "KLG" or "KL" or "GL" => "15",
-                        "KOD" or "MDG" or "KD" => "16",
-                        "KOL" or "KL" => "17",
-                        "KOP" or "KP" => "18",
-                        "MAN" or "MN" => "20",
-                        "RAI" or "RC" => "21",
-                        "RAM" or "RM" => "22",
-                        "SHI" or "SMG" or "SH" => "23",
-                        "TUM" or "TBL" or "TM" => "24",
-                        "VIJ" or "VJP" or "BJ" => "26",
-                        "YAD" or "YD" => "27",
-                        "HAV" or "HV" => "28",
-                        _ => ""
-                    };
-                }
-            }
-        }
-
         public async Task<JsonElement?> GetCauselistAsync(string estCode, string courtNo, string causelistDate, string type = "civil", bool isHighCourt = false, string module = "MVC")
         {
             if (isHighCourt)
@@ -1680,47 +1597,6 @@ namespace MVCCaseManagement.Utils
             catch { }
 
             return null;
-        }
-
-        /// <summary>
-        /// Check if a NAPIX JSON element contains an embedded orders array under any known key.
-        /// </summary>
-        private static bool HasOrdersEmbedded(JsonElement root)
-        {
-            string[] orderKeys = {
-                "orders", "order_details", "orders_details", "case_orders", "interimorder", "finalorder",
-                "judgements", "judgments", "order_list", "final_order", "orderdetails", "judgment",
-                "history_of_case_hearings", "case_hearings", "interim_order", "interim_orders",
-                "historyofcasehearing", "case_history", "history_details", "hearing_history",
-                "businessdetails", "business_details", "judgment_copy", "order_copy", "hearing_orders", "proceedings"
-            };
-
-            bool Found(JsonElement elem, int depth)
-            {
-                if (depth > 8) return false;
-                if (elem.ValueKind == JsonValueKind.Object)
-                {
-                    foreach (var prop in elem.EnumerateObject())
-                    {
-                        if (Array.Exists(orderKeys, k => k.Equals(prop.Name, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            if (prop.Value.ValueKind == JsonValueKind.Array && prop.Value.GetArrayLength() > 0)
-                                return true;
-                            if (prop.Value.ValueKind == JsonValueKind.Object)
-                                return true;
-                        }
-                        if (Found(prop.Value, depth + 1)) return true;
-                    }
-                }
-                else if (elem.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in elem.EnumerateArray())
-                        if (Found(item, depth + 1)) return true;
-                }
-                return false;
-            }
-
-            return Found(root, 0);
         }
 
         private bool IsErrorJson(JsonElement root, string module = "MVC")

@@ -75,6 +75,12 @@ app_offline.htm
 ShadowCopy/
 **/ShadowCopy*/
 
+## e-Courts & Application Runtime Caches (preserve directory structure via .gitkeep)
+**/App_Data/causelist_cache/*
+!**/App_Data/causelist_cache/.gitkeep
+**/App_Data/party_search_cache/*
+!**/App_Data/party_search_cache/.gitkeep
+
 ## File Uploads & User Media (preserve directories via .gitkeep)
 uploads/*
 !uploads/**/.gitkeep
