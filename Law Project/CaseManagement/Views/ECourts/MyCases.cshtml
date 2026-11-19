@@ -783,9 +783,17 @@
                         </div>
 
                         <div class="d-flex align-items-center gap-2.5 flex-wrap">
+                            <!-- Group by Court Hall Toggle -->
+                            <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm">
+                                <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByCourtHallToggle" onchange="onGroupByCourtHallChange()" style="cursor: pointer;">
+                                <label class="form-check-label small fw-bold text-dark user-select-none" for="groupByCourtHallToggle" style="cursor: pointer;">
+                                    <i class="bi bi-bank2 text-warning-emphasis me-1"></i>Group by Court Hall
+                                </label>
+                            </div>
+
                             <!-- Group by Case Worker Toggle -->
                             <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm">
-                                <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByWorkerToggle" onchange="renderCasesTable()" style="cursor: pointer;">
+                                <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByWorkerToggle" onchange="onGroupByWorkerChange()" style="cursor: pointer;">
                                 <label class="form-check-label small fw-bold text-dark user-select-none" for="groupByWorkerToggle" style="cursor: pointer;">
                                     <i class="bi bi-diagram-3-fill text-primary me-1"></i>Group by Case Worker
                                 </label>
@@ -2282,6 +2290,76 @@
         }
     }
 
+    function onGroupByCourtHallChange() {
+        const hallToggle = document.getElementById("groupByCourtHallToggle");
+        const workerToggle = document.getElementById("groupByWorkerToggle");
+        if (hallToggle && hallToggle.checked && workerToggle) {
+            workerToggle.checked = false;
+        }
+        renderCasesTable();
+    }
+
+    function onGroupByWorkerChange() {
+        const hallToggle = document.getElementById("groupByCourtHallToggle");
+        const workerToggle = document.getElementById("groupByWorkerToggle");
+        if (workerToggle && workerToggle.checked && hallToggle) {
+            hallToggle.checked = false;
+        }
+        renderCasesTable();
+    }
+
+    function filterByCourtHallOnly(hallName) {
+        if (!hallName || hallName.includes("Awaited")) return;
+        const inp = document.getElementById("caseSearchInput");
+        if (inp) {
+            const match = hallName.match(/Court\s*Hall\s*\d+/i);
+            inp.value = match ? match[0] : hallName;
+            onSearchInputChanged();
+        }
+    }
+
+    function getCourtHallGroupName(c) {
+        if (!c) return "Court Hall Awaited / Unassigned";
+        let raw = (c.courtNo || "").trim();
+        if (!raw || raw === "—" || raw.toLowerCase() === "court hall" || raw.toLowerCase() === "awaited" || raw.toLowerCase() === "null") {
+            return "Court Hall Awaited / Unassigned";
+        }
+        if (/^\d+$/.test(raw)) {
+            return `Court Hall ${raw.padStart(2, '0')}`;
+        }
+        raw = raw.replace(/\bCourt Hall (\d)\b/i, "Court Hall 0$1");
+        return raw;
+    }
+
+    function compareCourtHallGroups(a, b) {
+        const unassignedName = "Court Hall Awaited / Unassigned";
+        if (a === unassignedName && b !== unassignedName) return 1;
+        if (b === unassignedName && a !== unassignedName) return -1;
+        if (a === unassignedName && b === unassignedName) return 0;
+
+        const matchA = a.match(/\b(?:Court\s*Hall)?\s*(\d+)/i);
+        const matchB = b.match(/\b(?:Court\s*Hall)?\s*(\d+)/i);
+
+        if (matchA && matchB) {
+            const numA = parseInt(matchA[1], 10);
+            const numB = parseInt(matchB[1], 10);
+            if (numA !== numB) return numA - numB;
+        } else if (matchA && !matchB) {
+            return -1;
+        } else if (!matchA && matchB) {
+            return 1;
+        }
+
+        return a.localeCompare(b);
+    }
+
+    function parseSerialNo(val) {
+        if (!val || val === '—') return 999999;
+        const clean = val.toString().replace(/^[^\d.]*/, '');
+        const num = parseFloat(clean);
+        return isNaN(num) ? 999999 : num;
+    }
+
     function toggleGroupCollapse(groupId) {
         const rows = document.querySelectorAll(`.group-row-${groupId}`);
         const icon = document.getElementById(`icon_${groupId}`);
@@ -3295,6 +3373,7 @@
         const selectedFilter = document.querySelector('input[name="statusFilter"]:checked')?.value || "all";
         const selectedWorker = document.getElementById("caseWorkerFilter")?.value || "all";
         const isGrouped = document.getElementById("groupByWorkerToggle")?.checked || false;
+        const isCourtHallGrouped = document.getElementById("groupByCourtHallToggle")?.checked || false;
         const preset = document.getElementById("hearingDatePreset")?.value || "all";
         const fromVal = document.getElementById("hearingDateFrom")?.value || "";
         const toVal = document.getElementById("hearingDateTo")?.value || "";
@@ -3351,6 +3430,26 @@
             return true;
         });
 
+        // Pre-sort if grouped so that items within each group remain contiguous across pagination
+        if (isCourtHallGrouped) {
+            filtered.sort((a, b) => {
+                const hallA = getCourtHallGroupName(a);
+                const hallB = getCourtHallGroupName(b);
+                const hallCmp = compareCourtHallGroups(hallA, hallB);
+                if (hallCmp !== 0) return hallCmp;
+                const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                if (sA !== sB) return sA - sB;
+                return (a.caseNumber || 0) - (b.caseNumber || 0);
+            });
+        } else if (isGrouped) {
+            filtered.sort((a, b) => {
+                const wA = (a.addedBy || "Central Office").trim();
+                const wB = (b.addedBy || "Central Office").trim();
+                return wA.localeCompare(wB);
+            });
+        }
+
         // Calculate pagination slices
         const totalCount = filtered.length;
         let pagedItems = filtered;
@@ -3375,12 +3474,13 @@
         // Update table summary
         const summaryEl = document.getElementById("tableSummaryText");
         if (summaryEl) {
+            const groupTag = isCourtHallGrouped ? ' <span class="badge bg-warning text-dark border border-warning-subtle extra-small ms-1"><i class="bi bi-bank2 me-1"></i>Grouped by Court Hall</span>' : (isGrouped ? ' <span class="badge bg-primary text-white border border-primary-subtle extra-small ms-1"><i class="bi bi-diagram-3-fill me-1"></i>Grouped by Worker</span>' : '');
             if (totalCount === 0) {
                 summaryEl.innerText = "Showing 0 cases";
             } else if (pageSize === "all") {
-                summaryEl.innerHTML = `Showing all <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}`;
+                summaryEl.innerHTML = `Showing all <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}${groupTag}`;
             } else {
-                summaryEl.innerHTML = `Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}`;
+                summaryEl.innerHTML = `Showing <strong>${startIndex + 1}</strong> to <strong>${endIndex}</strong> of <strong>${totalCount}</strong> tracked case(s)${totalCount !== allCasesData.length ? ` <span class="text-secondary">(filtered from ${allCasesData.length})</span>` : ''}${groupTag}`;
             }
         }
 
@@ -3432,6 +3532,97 @@
                     No cases match the selected filter criteria.
                 </div>`;
             }
+            return;
+        }
+
+        // Group by Court Hall Rendering
+        if (isCourtHallGrouped) {
+            const hallGroups = {};
+            pagedItems.forEach(c => {
+                const hall = getCourtHallGroupName(c);
+                if (!hallGroups[hall]) hallGroups[hall] = [];
+                hallGroups[hall].push(c);
+            });
+
+            let groupHtml = "";
+            let groupCardsHtml = "";
+            let overallIndex = startIndex;
+            const hallNames = Object.keys(hallGroups).sort(compareCourtHallGroups);
+
+            hallNames.forEach((hName, gIdx) => {
+                const hCases = hallGroups[hName];
+                hCases.sort((a, b) => {
+                    const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                    const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                    if (sA !== sB) return sA - sB;
+                    return (a.caseNumber || 0) - (b.caseNumber || 0);
+                });
+
+                const gId = `hgroup_${gIdx}`;
+                const pendingCnt = hCases.filter(c => !isCaseDisposed(c) && !isCaseDnp(c)).length;
+                const dnpCnt = hCases.filter(c => isCaseDnp(c)).length;
+                const disposedCnt = hCases.filter(c => isCaseDisposed(c)).length;
+                const todayCnt = hCases.filter(c => c.nextHearingDate && c.nextHearingDate.split('T')[0] === todayStr).length;
+
+                groupHtml += `
+                <tr class="table-group-header border-top border-bottom border-warning-subtle" style="background: linear-gradient(90deg, #fffbeb 0%, #ffffff 100%);">
+                    <td colspan="9" class="py-2.5 px-3">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <button type="button" class="btn btn-sm btn-link text-warning-emphasis p-0 text-decoration-none" onclick="toggleGroupCollapse('${gId}')" title="Collapse / Expand group">
+                                    <i class="bi bi-chevron-down fs-6 fw-bold" id="icon_${gId}"></i>
+                                </button>
+                                <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-3 py-1.5 fs-6 shadow-sm">
+                                    <i class="bi bi-bank2 me-1.5 text-warning-emphasis"></i>${escapeHtml(hName)}
+                                </span>
+                                <span class="badge bg-white text-dark border shadow-sm small py-1 px-2.5">
+                                    <strong>${hCases.length}</strong> Case(s)
+                                </span>
+                                ${todayCnt > 0 ? `<span class="badge bg-danger text-white small py-1 px-2"><i class="bi bi-calendar-check me-1"></i>${todayCnt} Listed Today</span>` : ''}
+                                <span class="badge bg-warning-subtle text-dark border border-warning small py-1 px-2">
+                                    <i class="bi bi-hourglass-split me-1 text-warning"></i>${pendingCnt} Pending
+                                </span>
+                                ${dnpCnt > 0 ? `<span class="badge bg-danger-subtle text-danger border border-danger small py-1 px-2"><i class="bi bi-x-octagon me-1"></i>${dnpCnt} DNP</span>` : ''}
+                                <span class="badge bg-success-subtle text-success border border-success small py-1 px-2">
+                                    <i class="bi bi-check-circle me-1 text-success"></i>${disposedCnt} Disposed
+                                </span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-warning text-dark rounded-pill extra-small px-2.5 py-1" onclick="filterByCourtHallOnly('${escapeJs(hName)}')" title="Filter table to only this court hall">
+                                    <i class="bi bi-funnel me-1"></i>Focus Hall
+                                </button>
+                            </div>
+                        </div>
+                    </td>
+                </tr>`;
+
+                // Mobile grouped cards wrapper
+                groupCardsHtml += `
+                <div class="card border-warning-subtle shadow-sm mb-3 rounded-3 overflow-hidden">
+                    <div class="card-header bg-warning-subtle border-bottom border-warning-subtle text-dark py-2 px-3 d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2.5 py-1 fw-bold fs-6">
+                                <i class="bi bi-bank2 me-1 text-dark"></i>${escapeHtml(hName)}
+                            </span>
+                            <span class="badge bg-white text-dark border extra-small">${hCases.length} Cases</span>
+                            ${todayCnt > 0 ? `<span class="badge bg-danger text-white extra-small">${todayCnt} Today</span>` : ''}
+                        </div>
+                        <button type="button" class="btn btn-xs btn-outline-dark rounded-pill extra-small px-2 py-0.5" onclick="filterByCourtHallOnly('${escapeJs(hName)}')">Focus</button>
+                    </div>
+                    <div class="card-body p-2 bg-light">`;
+
+                hCases.forEach(c => {
+                    overallIndex++;
+                    groupHtml += renderCaseRowHtml(c, overallIndex, gId);
+                    groupCardsHtml += renderCaseMobileCardHtml(c, overallIndex);
+                });
+
+                groupCardsHtml += `</div></div>`;
+            });
+
+            if (tbody) tbody.innerHTML = groupHtml;
+            if (cardsContainer) cardsContainer.innerHTML = groupCardsHtml;
+            updateTableScrollSync();
             return;
         }
 
@@ -3730,7 +3921,7 @@
         const toVal = document.getElementById("hearingDateTo")?.value || "";
         const todayStr = new Date().toISOString().split('T')[0];
 
-        return allCasesData.filter(c => {
+        const results = allCasesData.filter(c => {
             if (query) {
                 const searchStr = `${c.cnrNumber || ""} ${getDisplayCaseType(c)} ${c.caseTypeCode || ""} ${c.caseNumber || ""} ${c.caseYear || ""} ${c.petitioner || ""} ${c.respondent || ""} ${c.courtNo || ""} ${c.judgeDesignation || ""} ${c.courtEstName || ""} ${c.benchId || ""} ${c.benchName || ""} ${c.causeListType || ""} ${c.addedBy || ""}`.toLowerCase();
                 if (!searchStr.includes(query)) return false;
@@ -3761,6 +3952,29 @@
             }
             return true;
         });
+
+        const isCourtHallGrouped = document.getElementById("groupByCourtHallToggle")?.checked || false;
+        const isGrouped = document.getElementById("groupByWorkerToggle")?.checked || false;
+        if (isCourtHallGrouped) {
+            results.sort((a, b) => {
+                const hallA = getCourtHallGroupName(a);
+                const hallB = getCourtHallGroupName(b);
+                const hallCmp = compareCourtHallGroups(hallA, hallB);
+                if (hallCmp !== 0) return hallCmp;
+                const sA = parseSerialNo(a.itemNo || a.causeListItemNo);
+                const sB = parseSerialNo(b.itemNo || b.causeListItemNo);
+                if (sA !== sB) return sA - sB;
+                return (a.caseNumber || 0) - (b.caseNumber || 0);
+            });
+        } else if (isGrouped) {
+            results.sort((a, b) => {
+                const wA = (a.addedBy || "Central Office").trim();
+                const wB = (b.addedBy || "Central Office").trim();
+                return wA.localeCompare(wB);
+            });
+        }
+
+        return results;
     }
 
     function exportToExcel(scope = 'filtered') {
