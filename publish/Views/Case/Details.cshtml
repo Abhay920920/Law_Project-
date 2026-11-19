@@ -871,7 +871,7 @@
         </table>
     </div>
 
-    <!-- SECTION K – COMPENSATION BREAKDOWN (FILL THE APPLICABLE CASE TABLE) -->
+    <!-- SECTION K – COMPENSATION BREAKDOWN (APPLICABLE CASE TABLE ONLY) -->
     <div class="print-section mb-3">
         @{
             bool isDeathCase = (Model.CaseType?.ToLower().Contains("death") == true) || 
@@ -886,7 +886,7 @@
             </colgroup>
             <thead>
                 <tr class="report-section-header">
-                    <th colspan="3" class="text-center py-1">SECTION K – COMPENSATION BREAKDOWN (FILL THE APPLICABLE CASE TABLE)</th>
+                    <th colspan="3" class="text-center py-1">SECTION K – COMPENSATION BREAKDOWN (@(isDeathCase ? "DEATH CASE" : "INJURY CASE"))</th>
                 </tr>
                 <tr class="report-sub-header text-center">
                     <th>Category</th>
@@ -895,139 +895,142 @@
                 </tr>
             </thead>
             <tbody>
-                <!-- (a) DEATH CASE TABLE -->
-                <tr>
-                    <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
-                        (a) DEATH CASE<br />
-                        <span class="badge @(isDeathCase ? "bg-dark text-white" : "text-muted")" style="font-size: 7.5pt;">@(isDeathCase ? "[Applicable]" : "[N/A]")</span>
-                    </td>
-                    <td class="fw-semibold">Age of deceased</td>
-                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "—")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Occupation and monthly income</td>
-                    <td class="text-end">
-                        @(isDeathCase ? (Model.AdverseAward?.Occupation ?? "—") + (Model.AdverseAward?.IncomeConsidered.HasValue == true ? " • Rs. " + Model.AdverseAward.IncomeConsidered.Value.ToString("N2") : "") : "—")
-                    </td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Future prospects (%)</td>
-                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.FutureProspectsPercentage.HasValue == true ? $"{Model.AdverseAward.FutureProspectsPercentage.Value}%" : "—")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Personal expenses deduction</td>
-                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.PersonalExpensesDeduction.HasValue == true ? $"{Model.AdverseAward.PersonalExpensesDeduction.Value}%" : "—")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Multiplier applied</td>
-                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.Multiplier.HasValue == true ? Model.AdverseAward.Multiplier.Value.ToString() : "—")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of dependency</td>
-                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfDependency.HasValue == true ? Model.AdverseAward.LossOfDependency.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of consortium</td>
-                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfConsortium.HasValue == true ? Model.AdverseAward.LossOfConsortium.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of estate</td>
-                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfEstate.HasValue == true ? Model.AdverseAward.LossOfEstate.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Funeral expenses</td>
-                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.FuneralExpenses.HasValue == true ? Model.AdverseAward.FuneralExpenses.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of love and affection (if awarded)</td>
-                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfLoveAffection.HasValue == true ? Model.AdverseAward.LossOfLoveAffection.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr class="fw-bold" style="background-color: #f8f9fa;">
-                    <td>Total compensation awarded</td>
-                    <td class="text-end font-monospace fs-6">Rs. @(isDeathCase ? (Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">NWKRTC liability / apportioned share</td>
-                    <td class="text-end font-monospace">
-                        @(isDeathCase 
-                            ? (Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") + (Model.AdverseAward?.LiableAmount.HasValue == true ? " (Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "") 
-                            : "—")
-                    </td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Interest rate (%)</td>
-                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
-                </tr>
-
-                <!-- (b) INJURY CASE TABLE -->
-                <tr>
-                    <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
-                        (b) INJURY CASE<br />
-                        <span class="badge @(!isDeathCase ? "bg-dark text-white" : "text-muted")" style="font-size: 7.5pt;">@(!isDeathCase ? "[Applicable]" : "[N/A]")</span>
-                    </td>
-                    <td class="fw-semibold">Age and occupation of injured</td>
-                    <td class="text-end">
-                        @(!isDeathCase ? (Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "") + (!string.IsNullOrEmpty(Model.AdverseAward?.Occupation) ? " • " + Model.AdverseAward.Occupation : "") : "—")
-                    </td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Nature of injuries / disability percentage</td>
-                    <td class="text-end">
-                        @(!isDeathCase ? (Model.AdverseAward?.InjuryDetails ?? "—") + (Model.AdverseAward?.DisabilityPercentage.HasValue == true ? $" ({Model.AdverseAward.DisabilityPercentage.Value}% disability)" : "") : "—")
-                    </td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Pain and suffering</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.PainSufferings.HasValue == true ? Model.AdverseAward.PainSufferings.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Medical expenses</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.MedicalExpenseOther.HasValue == true ? Model.AdverseAward.MedicalExpenseOther.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Conveyance, attendant and nourishment</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.ConveyanceAttendant.HasValue == true ? Model.AdverseAward.ConveyanceAttendant.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of income during laid-up period</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfIncomeLaidUp.HasValue == true ? Model.AdverseAward.LossOfIncomeLaidUp.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of future income / earning capacity</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfFutureIncome.HasValue == true ? Model.AdverseAward.LossOfFutureIncome.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Loss of amenities</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfAmenities.HasValue == true ? Model.AdverseAward.LossOfAmenities.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Future medical expenses</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.FutureMedicalExpenses.HasValue == true ? Model.AdverseAward.FutureMedicalExpenses.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Other heads</td>
-                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.InjuryOtherExpense.HasValue == true ? Model.AdverseAward.InjuryOtherExpense.Value.ToString("N2") : "0.00")</td>
-                </tr>
-                <tr class="fw-bold" style="background-color: #f8f9fa;">
-                    <td>Total compensation awarded</td>
-                    <td class="text-end font-monospace fs-6">Rs. @(!isDeathCase ? (Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00") : "0.00")</td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">NWKRTC liability / apportioned share</td>
-                    <td class="text-end font-monospace">
-                        @(!isDeathCase 
-                            ? (Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") + (Model.AdverseAward?.LiableAmount.HasValue == true ? " (Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "") 
-                            : "—")
-                    </td>
-                </tr>
-                <tr>
-                    <td class="fw-semibold">Interest rate (%)</td>
-                    <td class="text-end">@(!isDeathCase && Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
-                </tr>
+                @if (isDeathCase)
+                {
+                    <!-- DEATH CASE TABLE -->
+                    <tr>
+                        <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
+                            DEATH CASE
+                        </td>
+                        <td class="fw-semibold">Age of deceased</td>
+                        <td class="text-end">@(Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "—")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Occupation and monthly income</td>
+                        <td class="text-end">
+                            @(Model.AdverseAward?.Occupation ?? "—") 
+                            @(Model.AdverseAward?.IncomeConsidered.HasValue == true ? "• Rs. " + Model.AdverseAward.IncomeConsidered.Value.ToString("N2") : "")
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Future prospects (%)</td>
+                        <td class="text-end">@(Model.AdverseAward?.FutureProspectsPercentage.HasValue == true ? $"{Model.AdverseAward.FutureProspectsPercentage.Value}%" : "—")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Personal expenses deduction</td>
+                        <td class="text-end">@(Model.AdverseAward?.PersonalExpensesDeduction.HasValue == true ? $"{Model.AdverseAward.PersonalExpensesDeduction.Value}%" : "—")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Multiplier applied</td>
+                        <td class="text-end">@(Model.AdverseAward?.Multiplier.HasValue == true ? Model.AdverseAward.Multiplier.Value.ToString() : "—")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of dependency</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfDependency.HasValue == true ? Model.AdverseAward.LossOfDependency.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of consortium</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfConsortium.HasValue == true ? Model.AdverseAward.LossOfConsortium.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of estate</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfEstate.HasValue == true ? Model.AdverseAward.LossOfEstate.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Funeral expenses</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.FuneralExpenses.HasValue == true ? Model.AdverseAward.FuneralExpenses.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of love and affection (if awarded)</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfLoveAffection.HasValue == true ? Model.AdverseAward.LossOfLoveAffection.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr class="fw-bold" style="background-color: #f8f9fa;">
+                        <td>Total compensation awarded</td>
+                        <td class="text-end font-monospace fs-6">Rs. @(Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">NWKRTC liability / apportioned share</td>
+                        <td class="text-end font-monospace">
+                            @(Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") 
+                            @(Model.AdverseAward?.LiableAmount.HasValue == true ? "(Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "")
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Interest rate (%)</td>
+                        <td class="text-end">@(Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
+                    </tr>
+                }
+                else
+                {
+                    <!-- INJURY CASE TABLE -->
+                    <tr>
+                        <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
+                            INJURY CASE
+                        </td>
+                        <td class="fw-semibold">Age and occupation of injured</td>
+                        <td class="text-end">
+                            @(Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "") 
+                            @(!string.IsNullOrEmpty(Model.AdverseAward?.Occupation) ? "• " + Model.AdverseAward.Occupation : "")
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Nature of injuries / disability percentage</td>
+                        <td class="text-end">
+                            @(Model.AdverseAward?.InjuryDetails ?? "—") 
+                            @(Model.AdverseAward?.DisabilityPercentage.HasValue == true ? $"({Model.AdverseAward.DisabilityPercentage.Value}% disability)" : "")
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Pain and suffering</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.PainSufferings.HasValue == true ? Model.AdverseAward.PainSufferings.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Medical expenses</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.MedicalExpenseOther.HasValue == true ? Model.AdverseAward.MedicalExpenseOther.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Conveyance, attendant and nourishment</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.ConveyanceAttendant.HasValue == true ? Model.AdverseAward.ConveyanceAttendant.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of income during laid-up period</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfIncomeLaidUp.HasValue == true ? Model.AdverseAward.LossOfIncomeLaidUp.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of future income / earning capacity</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfFutureIncome.HasValue == true ? Model.AdverseAward.LossOfFutureIncome.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Loss of amenities</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.LossOfAmenities.HasValue == true ? Model.AdverseAward.LossOfAmenities.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Future medical expenses</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.FutureMedicalExpenses.HasValue == true ? Model.AdverseAward.FutureMedicalExpenses.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Other heads</td>
+                        <td class="text-end font-monospace">@(Model.AdverseAward?.InjuryOtherExpense.HasValue == true ? Model.AdverseAward.InjuryOtherExpense.Value.ToString("N2") : "0.00")</td>
+                    </tr>
+                    <tr class="fw-bold" style="background-color: #f8f9fa;">
+                        <td>Total compensation awarded</td>
+                        <td class="text-end font-monospace fs-6">Rs. @(Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00")</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">NWKRTC liability / apportioned share</td>
+                        <td class="text-end font-monospace">
+                            @(Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") 
+                            @(Model.AdverseAward?.LiableAmount.HasValue == true ? "(Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "")
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="fw-semibold">Interest rate (%)</td>
+                        <td class="text-end">@(Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
+                    </tr>
+                }
             </tbody>
         </table>
     </div>
-
     <!-- SECTION L – LIST OF DOCUMENTS ENCLOSED -->
     <div class="print-section mb-4">
         <table class="table-report">
