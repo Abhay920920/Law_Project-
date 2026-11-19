@@ -100,18 +100,57 @@
         background-color: #e2e8f0;
         color: #0f172a;
     }
-    .table-cases thead th {
-        font-size: 0.72rem;
-        letter-spacing: 0.5px;
-        font-weight: 700;
-        color: #475569;
-        background-color: #f8fafc;
-        border-bottom: 2px solid #e2e8f0;
-        padding-top: 12px;
-        padding-bottom: 12px;
+    /* Clean Light Borders & Modern Alignment for Table */
+    .table-cases {
+        border: 1px solid #e2e8f0 !important;
+        border-collapse: separate !important;
+        border-spacing: 0 !important;
+        width: 100% !important;
     }
-    .table-cases tbody tr:hover {
-        background-color: #f8fafc;
+    .table-cases thead th {
+        font-size: 0.72rem !important;
+        letter-spacing: 0.5px !important;
+        font-weight: 700 !important;
+        color: #334155 !important;
+        background-color: #f8fafc !important;
+        border-top: 1px solid #e2e8f0 !important;
+        border-bottom: 2px solid #cbd5e1 !important;
+        border-right: 1px solid #e2e8f0 !important;
+        padding: 10px 12px !important;
+        white-space: nowrap !important;
+        vertical-align: middle !important;
+    }
+    .table-cases thead th:last-child {
+        border-right: none !important;
+    }
+    .table-cases tbody td {
+        border-bottom: 1px solid #e9ecef !important;
+        border-right: 1px solid #edf2f7 !important;
+        padding: 9px 12px !important;
+        vertical-align: middle !important;
+        background-color: #ffffff;
+    }
+    .table-cases tbody td:last-child {
+        border-right: none !important;
+    }
+    .table-cases tbody tr:hover td {
+        background-color: #f8fafc !important;
+    }
+    .table-cases tr.table-group-header td {
+        border-top: 1px solid #fed7aa !important;
+        border-bottom: 1px solid #fed7aa !important;
+        border-right: none !important;
+    }
+    .table-cases tr.table-subgroup-header td {
+        border-top: 1px solid #e2e8f0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        border-right: none !important;
+    }
+    .table-cases tr.hearing-drawer-row td {
+        border-top: none !important;
+        border-bottom: 2px solid #cbd5e1 !important;
+        border-right: none !important;
+        padding: 12px 14px !important;
     }
     .spin-animation {
         animation: spin 1s linear infinite;
@@ -370,7 +409,7 @@
     }
 </style>
 
-<div class="mycases-page px-2 px-md-4 py-3">
+<div class="mycases-page">
 
     <!-- Header Banner -->
     <div class="mycases-header-gradient p-3 p-md-4 mb-3 mb-md-4 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2.5">
@@ -844,19 +883,19 @@
         </div>
 
         <!-- Cases Desktop Table (Visible on lg and up) -->
-        <div class="table-responsive d-none d-lg-block" id="myCasesTableResponsive" style="min-height: 380px;">
+        <div class="table-responsive d-none d-lg-block border-top" id="myCasesTableResponsive" style="min-height: 380px;">
             <table class="table table-hover align-middle mb-0 table-cases" id="myCasesTable">
                 <thead class="bg-light text-muted small text-uppercase">
                     <tr>
-                        <th style="width: 45px;" class="ps-3">#</th>
-                        <th style="min-width: 155px;">CNR Number</th>
-                        <th style="min-width: 130px;">Case No &amp; Type</th>
-                        <th style="min-width: 220px;">Court Hall &amp; Bench</th>
-                        <th style="min-width: 260px;">Parties</th>
-                        <th style="min-width: 160px;">Next Hearing / Stage</th>
-                        <th style="min-width: 95px;">Status</th>
+                        <th style="width: 55px;" class="ps-3 text-center">#</th>
+                        <th style="min-width: 165px;">CNR Number</th>
+                        <th style="min-width: 135px;">Case No &amp; Type</th>
+                        <th style="min-width: 230px;">Court Hall &amp; Bench</th>
+                        <th style="min-width: 250px;">Parties</th>
+                        <th style="min-width: 165px;">Next Hearing / Stage</th>
+                        <th style="min-width: 100px;" class="text-center">Status</th>
                         <th style="min-width: 180px;">Remarks</th>
-                        <th style="min-width: 165px;" class="text-end pe-3">Actions</th>
+                        <th style="min-width: 175px;" class="text-end pe-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="myCasesTbody">
@@ -2757,8 +2796,8 @@
 
         return `
         <tr id="row_${c.trackedID}" ${rowClassAttr}>
-            <td class="text-muted fw-bold ps-3">
-                <div class="d-flex align-items-center gap-1">
+            <td class="text-muted fw-bold ps-3 text-center" style="width: 55px;">
+                <div class="d-flex align-items-center justify-content-center gap-1">
                     <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none" onclick="toggleHearingDrawer(${c.trackedID})" title="Toggle Hearing History & Daily Status Drawer">
                         <i class="bi bi-chevron-right fs-6 fw-bold text-secondary" id="drawer_icon_${c.trackedID}"></i>
                     </button>
@@ -2819,7 +2858,7 @@
             <td>
                 ${hearingDisplay}
             </td>
-            <td>
+            <td class="text-center" style="min-width: 100px;">
                 ${statusBadge}
             </td>
             <td>
