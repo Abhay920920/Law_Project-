@@ -1,4 +1,4 @@
-@model MVCCaseManagement.Models.MVCCaseViewModel
+﻿@model MVCCaseManagement.Models.MVCCaseViewModel
 
 @{
     ViewData["Title"] = "Case Details - " + Model.MVCNo;
@@ -8,487 +8,1042 @@
 <!-- ========================================== -->
 <!-- OFFICIAL FEASIBILITY REPORT PRINT VIEW    -->
 <!-- ========================================== -->
-<div id="print-view" class="d-none d-print-block" style="font-family: 'Times New Roman', serif; font-size: 12pt;">
+<div id="print-view" class="d-none d-print-block" style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; color: #000;">
     
-    <!-- Main Header -->
-    <div class="text-center mb-4 fw-bold">
-        <h4 class="mb-0 text-uppercase">@(OrgService.GetCurrentSettings().OrganizationShortName) - @Model.DivisionName</h4>
+    <!-- Corporation Header -->
+    <div class="text-center mb-3">
+        <h5 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px; font-size: 13pt;">NORTH WESTERN KARNATAKA ROAD TRANSPORT CORPORATION</h5>
+        <h6 class="fw-bold mb-1 text-uppercase" style="letter-spacing: 0.5px; font-size: 11pt;">LAW DEPARTMENT – CENTRAL OFFICE, HUBBALLI</h6>
+        <div class="fw-bold text-decoration-underline mt-2" style="font-size: 11.5pt;">CONSOLIDATED MVC CASE FEASIBILITY REPORT</div>
+        <div class="fst-italic mt-1" style="font-size: 9.5pt;">(Common format for Death and Injury Claims) &bull; Division: <strong>@Model.DivisionName</strong></div>
     </div>
 
-    <div class="mb-3 text-center"><strong><u>DETAILS OF THE CASE</u></strong></div>
-    
-    <!-- Main Details Table -->
-    <table class="table table-bordered border-dark" style="font-size: 11pt;">
-        <tbody>
-            <tr>
-                <td style="width: 8%;"><strong>Sl No</strong></td>
-                <td style="width: 42%;"><strong>DESCRIPTION</strong></td>
-                <td style="width: 50%;"><strong>DETAILS OF THE CASE</strong></td>
-            </tr>
-            <tr>
-                <td>01</td>
-                <td>Name of the Division</td>
-                <td>@Model.DivisionName</td>
-            </tr>
-            <tr>
-                <td>02</td>
-                <td>MACT Court</td>
-                <td>@Model.MACTName</td>
-            </tr>
-            <tr>
-                <td>03</td>
-                <td>MVC No</td>
-                <td>@Model.MVCNo/@Model.MVCYear</td>
-            </tr>
-            @if (!string.IsNullOrEmpty(Model.CNRNumber))
-            {
-                <tr class="table-info font-weight-bold">
-                    <td>03a</td>
-                    <td>eCourts 16-Digit CNR</td>
-                    <td>
-                        <span class="badge bg-primary fs-6 font-monospace"><i class="bi bi-broadcast me-1"></i> @Model.CNRNumber</span>
-                    </td>
-                </tr>
-            }
-            <tr>
-                <td>04</td>
-                <td>Date of Accident</td>
-                <td>@Model.AccidentDate?.ToString("dd-MM-yyyy")</td>
-            </tr>
-            <tr>
-                <td>05</td>
-                <td>Accident vehicle No</td>
-                <td>@Model.VehicleNo</td>
-            </tr>
-            <tr>
-                <td>06</td>
-                <td>Whether accident ST vehicle is insured with Insurance Company (Domestic/Volvo/other ST vehicle)</td>
-                <td>@(Model.AdverseAward?.IsBusInsured == true ? "Insured - " + Model.AdverseAward.BusInsuranceDetails : "Self insured.")</td>
-            </tr>
-            <tr>
-                <td>06a</td>
-                <td>Whether claimant was passenger in ST Bus</td>
-                <td>@(Model.IsSTPassenger == true ? "Yes" : "No")</td>
-            </tr>
-
-            <tr>
-                <td>07</td>
-                <td>Date of the claim petition</td>
-                <td>@Model.AdverseAward?.ClaimPetitionDate?.ToString("dd-MM-yyyy")</td>
-            </tr>
-            <tr>
-                <td>08</td>
-                <td>Date of judgment</td>
-                <td>@Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy")</td>
-            </tr>
-
-            <tr>
-                <td>10</td>
-                <td>Details of claimant & amount claimed</td>
-                <td>
-                    @if (Model.Petitioners.Any())
-                    {
-                        @for (int i = 0; i < Model.Petitioners.Count; i++)
-                        {
-                            <div>@(i + 1)) @Model.Petitioners[i].PetitionerName (@(Model.Petitioners[i].Relationship == "Others" ? Model.Petitioners[i].RelationshipOthers : Model.Petitioners[i].Relationship))</div>
-                        }
-                        <div>TOTAL CLAIM AMOUNT: Rs. @(Model.ClaimAmount?.ToString("N2"))</div>
-                    }
-                </td>
-            </tr>
-            @if (Model.ThirdPartyFlag && Model.Respondents != null && Model.Respondents.Any())
-            {
-                <tr>
-                    <td>10a</td>
-                    <td>Respondent Details</td>
-                    <td>
-                        @for (int i = 0; i < Model.Respondents.Count; i++)
-                        {
-                            <div>@(i + 1)) @Model.Respondents[i].RespondentName @(!string.IsNullOrEmpty(Model.Respondents[i].Remarks) ? "- " + Model.Respondents[i].Remarks : "")</div>
-                        }
-                    </td>
-                </tr>
-            }
-            <tr>
-                <td>11</td>
-                <td>Statement of objection filed or not (if not reason for not filing objection statement)</td>
-                <td>@(Model.AdverseAward?.ObjectionFiled == true ? "Filed. " + Model.AdverseAward.ObjectionRemarks : "Not Filed")</td>
-            </tr>
-            <tr>
-                <td>12</td>
-                <td>Evidence adduced by petitioner (Including no of witness examined)</td>
-                <td>
-                    @if (Model.AdverseAward?.PetitionerPWNames?.Any() == true)
-                    {
-                        @string.Join(", ", Model.AdverseAward.PetitionerPWNames.Select((pw, idx) => $"PW {idx + 1} - {pw}"))
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>13</td>
-                <td>Whether doctor examined by the petitioner, if yes, name of the doctor</td>
-                <td>
-                    @if (Model.AdverseAward?.Doctors?.Any() == true)
-                    {
-                         @:Yes - @string.Join(", ", Model.AdverseAward.Doctors.Select(d => $"{d.DoctorName} (Treated: {(d.IsTreated ? "Yes" : "No")})"))
-                    }
-                    else
-                    {
-                        <text>No</text>
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>14</td>
-                <td>Driver examined or otherwise (if not reason for not examining the driver)</td>
-                <td>
-                    @if (Model.AdverseAward?.RWNames?.Any() == true)
-                    {
-                        @string.Join(", ", Model.AdverseAward.RWNames.Select((rw, idx) => $"RW {idx + 1}"))
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>15</td>
-                <td>Remarks of the unit head on T.R.18 (if ST driver is responsible, Name & punishment imposed against ST driver)</td>
-                <td>@Model.AdverseAward?.TR18Remarks</td>
-            </tr>
-            <tr>
-                <td>16</td>
-                <td>Whether the name of the petitioner /deceased found in the TR 18 (list of injured/died)</td>
-                <td>@(Model.Petitioners.Any() ? "Yes" : "No")</td>
-            </tr>
-            <tr>
-                <td>17</td>
-                <td>Is it alleged Accident (if yes, whether investigation has been conducted)</td>
-                <td>@(Model.AdverseAward?.IsAllegedAccident == true ? "Yes" : "No")</td>
-            </tr>
-            <tr>
-                <td>17a</td>
-                <td>Whether FIR Filed against ST Driver</td>
-                <td>@(Model.AdverseAward?.IsFIRFiled == true ? "Yes" : "No")</td>
-            </tr>
-            <tr>
-                <td>17a-i</td>
-                <td>Whether Chargesheet filed against ST Driver</td>
-                <td>@(Model.AdverseAward?.IsChargeSheetFiled == true ? "Yes" : "No")</td>
-            </tr>
-            <tr>
-                <td>17b</td>
-                <td>Bus Camera Installed / Footage Produced / Photograph Produced</td>
-                <td>
-                    Camera: @(Model.AdverseAward?.IsBusCameraInstalled == true ? "Yes" : "No"), 
-                    Footage: @(Model.AdverseAward?.IsCameraFootageProduced == true ? "Yes" : "No"), 
-                    Photo: @(Model.AdverseAward?.IsPhotographProduced == true ? "Yes" : "No")
-                </td>
-            </tr>
-            <tr>
-                <td>17c</td>
-                <td>Police Sketch Enclosed / Exhibit No</td>
-                <td>@(Model.AdverseAward?.IsPoliceSketchEnclosed == true ? "Yes" : "No") @(!string.IsNullOrEmpty(Model.AdverseAward?.PoliceSketchExhibitNo) ? " (Ex No: " + Model.AdverseAward.PoliceSketchExhibitNo + ")" : "")</td>
-            </tr>
-            <tr>
-                <td>17d</td>
-                <td>Evidence based on Security Report</td>
-                <td>
-                    @(Model.AdverseAward?.IsEvidenceBasedOnSecurityReport == true ? "Yes" : "No")
-                    @if (Model.AdverseAward?.IsEvidenceBasedOnSecurityReport == false && !string.IsNullOrEmpty(Model.AdverseAward?.SecurityReportNoEvidenceReason))
-                    {
-                        <div>Reason: @Model.AdverseAward.SecurityReportNoEvidenceReason</div>
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>18</td>
-                <td>Finding on issue of negligence & liability of corporation</td>
-                <td>@Model.DisposalRemarks</td>
-            </tr>
-            <tr>
-                <td>19</td>
-                <td>Whether connected cases pending /disposed & details</td>
-                <td>
-                    @if (Model.ConnectedCases.Any() || (Model.AdverseAward?.ConnectedCases.Any() == true))
-                    {
-                        @* 1. Basic Linkages (Section E) *@
-                        var uniqueCases = Model.ConnectedCases.GroupBy(c => new { c.ConnectedMVCNo, c.ConnectedYear }).Select(g => g.First());
-                        foreach (var conn in uniqueCases)
-                        {
-                            <div class="mb-1"><strong>@conn.ConnectedMVCNo/@conn.ConnectedYear</strong> - @conn.Remarks</div>
-                        }
-
-                        @* 2. Adverse Award Details (Section G) *@
-                        @if (Model.AdverseAward != null && Model.AdverseAward.ConnectedCases.Any())
-                        {
-                            <div class="mt-2 border-top pt-1 small"><strong>Award Details (Adverse):</strong></div>
-                            @foreach (var adv in Model.AdverseAward.ConnectedCases)
-                            {
-                                <div class="mb-3 ps-2 border-start border-2">
-                                    <div class="fw-bold" style="font-size: 10pt;">@adv.ConnectedMVCNo/@adv.ConnectedYear @(!string.IsNullOrEmpty(adv.MACT) ? "- " + adv.MACT : "") (@adv.Status)</div>
-                                    <table class="w-100" style="font-size: 9pt; border-collapse: collapse;">
-                                        <tr>
-                                            <td style="width: 25%; padding: 1px;">Amt: <strong>@adv.AwardDetails?.AwardAmount</strong></td>
-                                            <td style="width: 25%; padding: 1px;">Int: @adv.AwardDetails?.InterestRate%</td>
-                                            <td style="width: 20%; padding: 1px;">Age: @adv.AwardDetails?.VictimAge</td>
-                                            <td style="width: 30%; padding: 1px;">Occ: @adv.AwardDetails?.Occupation</td>
-                                        </tr>
-                                        <tr>
-                                            <td colspan="2" style="padding: 1px;">Income: @adv.AwardDetails?.IncomeConsidered</td>
-                                            <td colspan="2" style="padding: 1px;">Injury: @adv.AwardDetails?.InjuryDetails</td>
-                                        </tr>
-                                    </table>
-                                </div>
-                            }
-                        }
-                    }
-                    else
-                    {
-                        <text>No</text>
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>20</td>
-                <td>Whether double petition filed, including in other MACT'S</td>
-                <td>@(Model.DoubleClaimFlag ? "Yes - " + Model.AdverseAward?.DoubleClaimDetails : "No")</td>
-            </tr>
-
-            <tr>
-                <td>21</td>
-                <td>Whether Impleading Application filed by Corporation (if not, reason)</td>
-                <td>
-                    @(Model.AdverseAward?.IsImpleadingAppFiled == true ? "Yes" : "No")
-                    @if (Model.AdverseAward?.IsImpleadingAppFiled == false && !string.IsNullOrEmpty(Model.AdverseAward?.ImpleadingAppNotFiledReason))
-                    {
-                        <div>Reason: @Model.AdverseAward.ImpleadingAppNotFiledReason</div>
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>22</td>
-                <td>Manner of Accident</td>
-                <td>
-                    <div>@(string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccident) ? "—" : Model.AdverseAward.MannerOfAccident)</div>
-                    @if (!string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccidentRO))
-                    {
-                        <div class="text-muted extra-small mt-1"><em>RO Report:</em> @Model.AdverseAward.MannerOfAccidentRO</div>
-                    }
-                </td>
-            </tr>
-            <tr>
-                <td>22</td>
-                <td>Injury/Death</td>
-                <td>@Model.CaseType</td>
-            </tr>
-            <tr>
-                <td>23</td>
-                <td>Security Investigation Conducted?</td>
-                <td>@(Model.AdverseAward?.SecurityRequired == true ? "Yes" : "No")</td>
-            </tr>
-            <tr>
-                <td>24</td>
-                <td>Whether there is delay in obtaining/sending CC and reasons for delay / EP Status</td>
-                <td>
-                    <div>Case decided on - @Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy")</div>
-                    @if (Model.AdverseAward?.IsEPFiled == true)
-                    {
-                        <div class="fw-bold text-primary mt-1">EP Filed: Yes</div>
-                        <div>Amount Deposited in EP: @(Model.AdverseAward?.IsAmountDepositedInEP == true ? "Yes" : "No")</div>
-                        @if (Model.AdverseAward?.IsAmountDepositedInEP == true && Model.AdverseAward?.EPDepositedAmount.HasValue == true)
-                        {
-                            <div class="fw-bold text-success mt-1">EP Deposited Amount: Rs. @Model.AdverseAward.EPDepositedAmount?.ToString("N2")</div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.EPNumber))
-                        {
-                            <div class="mt-1 small"><strong>EP Number:</strong> @Model.AdverseAward.EPNumber</div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.EPCourt))
-                        {
-                            <div class="mt-1 small"><strong>EP Court:</strong> @Model.AdverseAward.EPCourt</div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.AsPerECourts))
-                        {
-                            <div class="mt-1 small"><strong>EP Status (As per e-Courts):</strong> @Model.AdverseAward.AsPerECourts</div>
-                        }
-                    }
-                    else
-                    {
-                        <div class="mt-1">EP Filed: No</div>
-                    }
-                    <div class="mt-2 pt-1 border-top border-secondary small">
-                        <div>Copy applied on - @Model.AdverseAward?.CopyAppliedDate?.ToString("dd-MM-yyyy")</div>
-                        <div>copy ready on - @Model.AdverseAward?.CopyIssuedDate?.ToString("dd-MM-yyyy")</div>
-                        <div>copy received at division - @Model.AdverseAward?.CopyReceivedDate?.ToString("dd-MM-yyyy")</div>
-                        @if (Model.AdverseAward?.CopyDeliveredDate.HasValue == true)
-                        {
-                            <div>Copy Delivered on - @Model.AdverseAward?.CopyDeliveredDate?.ToString("dd-MM-yyyy")</div>
-                        }
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td>25</td>
-                <td>Compensation awarded:</td>
-                <td>Rs. @(Model.AdverseAward?.AwardAmount?.ToString("N0")) @Model.AdverseAward?.InterestRate% Int.</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>a) Age of the Injury/Death</td>
-                <td>@Model.CaseType - Age: @Model.AdverseAward?.VictimAge years</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>b) Occupation</td>
-                <td>@Model.AdverseAward?.Occupation</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>c) Income</td>
-                <td>Rs. @(Model.AdverseAward?.IncomeConsidered?.ToString("N2")) Per annum</td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>d) Injuries suffered / Details of Damages / Breakdown</td>
-                <td>
-                    <div>@Model.AdverseAward?.InjuryDetails</div>
-                    <div class="mt-2 small">
-                        <table class="table table-sm table-bordered border-dark mb-0" style="font-size: 9pt;">
-                            @if (Model.AdverseAward?.InjuryType == "Death")
-                            {
-                                <tr><td>Loss of dependency</td><td class="text-end">@Model.AdverseAward?.LossOfDependency?.ToString("N2")</td></tr>
-                                <tr><td>Loss of consortium</td><td class="text-end">@Model.AdverseAward?.LossOfConsortium?.ToString("N2")</td></tr>
-                                <tr><td>Loss of estate</td><td class="text-end">@Model.AdverseAward?.LossOfEstate?.ToString("N2")</td></tr>
-                                <tr><td>Funeral expenses</td><td class="text-end">@Model.AdverseAward?.FuneralExpenses?.ToString("N2")</td></tr>
-                                <tr><td>Loss of love & affection</td><td class="text-end">@Model.AdverseAward?.LossOfLoveAffection?.ToString("N2")</td></tr>
-                                <tr><td>Medical & Other expense</td><td class="text-end">@Model.AdverseAward?.MedicalExpenseOther?.ToString("N2")</td></tr>
-                            }
-                            else
-                            {
-                                <tr><td>Pain & sufferings</td><td class="text-end">@Model.AdverseAward?.PainSufferings?.ToString("N2")</td></tr>
-                                <tr><td>Conveyance, etc.</td><td class="text-end">@Model.AdverseAward?.ConveyanceAttendant?.ToString("N2")</td></tr>
-                                <tr><td>Loss of future income</td><td class="text-end">@Model.AdverseAward?.LossOfFutureIncome?.ToString("N2")</td></tr>
-                                <tr><td>Loss of income (laid up)</td><td class="text-end">@Model.AdverseAward?.LossOfIncomeLaidUp?.ToString("N2")</td></tr>
-                                <tr><td>Loss of amenities</td><td class="text-end">@Model.AdverseAward?.LossOfAmenities?.ToString("N2")</td></tr>
-                                <tr><td>Future medical exp.</td><td class="text-end">@Model.AdverseAward?.FutureMedicalExpenses?.ToString("N2")</td></tr>
-                                <tr><td>Other expense</td><td class="text-end">@Model.AdverseAward?.InjuryOtherExpense?.ToString("N2")</td></tr>
-                            }
-                        </table>
-                    </div>
-                </td>
-            </tr>
-            <tr>
-                <td></td>
-                <td>e) Victim Status & Income Verification</td>
-                <td>
-                    Salaried: @(Model.AdverseAward?.IsVictimSalaried == true ? "Yes" : "No"),
-                    Verified: @(Model.AdverseAward?.IsIncomeCrossVerified == true ? "Yes" : "No"),
-                    Tallies with Docs: @(Model.AdverseAward?.DoesIncomeTallyWithDocuments == true ? "Yes" : "No")
-                </td>
-            </tr>
-            <tr>
-                <td>26</td>
-                <td>Any other information about the claim, which not covered above (Copy Remarks)</td>
-                <td>@Model.AdverseAward?.CertifiedCopyRemarks</td>
-            </tr>
-            @if (!string.IsNullOrEmpty(Model.AdverseAward?.FutureProspectus))
-            {
-                <tr>
-                    <td>27</td>
-                    <td>Future Prospectus</td>
-                    <td>@Model.AdverseAward.FutureProspectus</td>
-                </tr>
-            }
-            <tr>
-                <td>28</td>
-                <td>Details of the punishment imposed against the Vehicle driver/conductor, for causing accident</td>
-                <td>@Model.AdverseAward?.DriverPunishmentStatus</td>
-            </tr>
-            <tr>
-                <td>29</td>
-                <td>How much Amount of Interim compensation is paid to the relatives of the deceased/injured</td>
-                <td>@(Model.AdverseAward?.InterimCompAmount.HasValue == true ? "Rs. " + Model.AdverseAward.InterimCompAmount?.ToString("N2") : "No")</td>
-            </tr>
-            <tr>
-                <td>30</td>
-                <td>The said interim compensation paid is deducted by the MACT in the awarded amount or not. If not deducted give the details reasons</td>
-                <td>@(Model.AdverseAward?.InterimCompDeducted == true ? "Yes, deducted" : "No")</td>
-            </tr>
-            <tr>
-                <td>31</td>
-                <td>Detailed opinion of the panel advocate</td>
-                <td>@Model.AdverseAward?.AdvocateOpinion</td>
-            </tr>
-            <tr>
-                <td>32</td>
-                <td>Opinion of the L O</td>
-                <td>@Model.AdverseAward?.LOOpinion</td>
-            </tr>
-            <tr>
-                <td>33</td>
-                <td>Opinion of the DC</td>
-                <td>@Model.AdverseAward?.DCOpinion</td>
-            </tr>
-            @if(Model.LinkedAppeal != null)
-            {
-                <tr>
-                    <td>34</td>
-                    <td>Appeal & Compliance details</td>
-                    <td>
-                        <div><strong>Initial Action:</strong> @Model.LinkedAppeal.InitialAction @(Model.LinkedAppeal.ApprovalDate.HasValue ? "(Appr: " + Model.LinkedAppeal.ApprovalDate.Value.ToString("dd-MM-yyyy") + ")" : "")</div>
-                        @if(!string.IsNullOrEmpty(Model.LinkedAppeal.CorpMFANumber))
-                        {
-                            <div><strong>Corp MFA:</strong> @Model.LinkedAppeal.CorpMFANumber/@Model.LinkedAppeal.CorpMFAYear (@Model.LinkedAppeal.CorpMFAStatus) - @Model.LinkedAppeal.HighCourtBench</div>
-                        }
-                        @if(!string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMFANumber) || !string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMVCNumber))
-                        {
-                            <div class="mt-1 border-top pt-1">
-                                <strong>Claimant Appeal Workflow:</strong>
-                                <br/>MFA No: @Model.LinkedAppeal.ClaimantMFANumber / @Model.LinkedAppeal.ClaimantMFAYear
-                                <br/>Bench: @(Model.LinkedAppeal.HighCourtBench == "Others" ? Model.LinkedAppeal.OtherHighCourtBench : Model.LinkedAppeal.HighCourtBench) | Advocate: @Model.LinkedAppeal.ClaimantMFAAdvocate
-                                <br/>Entrustment: @Model.LinkedAppeal.ClaimantMFAEntrustmentNo (@(Model.LinkedAppeal.ClaimantMFAEntrustmentDate?.ToString("dd-MM-yyyy") ?? "")) 
-                                <br/>Decision: @Model.LinkedAppeal.ClaimantMFADecision | Action: @Model.LinkedAppeal.ClaimantActionTaken
-                                @if(!string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantApprovalNo))
-                                {
-                                    <br/><text>Post-Decision Approval: @(Model.LinkedAppeal.ClaimantApprovalNo) (@(Model.LinkedAppeal.ClaimantApprovalDate?.ToString("dd-MM-yyyy") ?? ""))</text>
-                                }
-                            </div>
-                        }
-                        @if(Model.LinkedAppeal.IsClaimantSCAppeal)
-                        {
-                            <div class="mt-1 p-1 bg-light border">
-                                <strong>Claimant SC Tracking:</strong> 
-                                @if(!Model.LinkedAppeal.IsClaimantSCPending)
-                                {
-                                     <span>No: @Model.LinkedAppeal.ClaimantSCNumber / @Model.LinkedAppeal.ClaimantSCYear</span>
-                                }
-                                else { <span>(Pending Filing)</span> }
-                                <br/>Status: @Model.LinkedAppeal.ClaimantSCStatus | Outcome: @Model.LinkedAppeal.ClaimantSCOutcome
-                            </div>
-                        }
-                        <div class="mt-1 pt-1 border-top">
-                            <strong>Final Compliance:</strong> @Model.LinkedAppeal.FinalComplianceStatus 
-                            (Date: @Model.LinkedAppeal.FinalComplianceDate?.ToString("dd-MM-yyyy"))
-                        </div>
-                        @if(Model.LinkedAppeal.AmountDeposited.HasValue)
-                        {
-                            <div><strong>Amt Deposited:</strong> Rs. @Model.LinkedAppeal.AmountDeposited?.ToString("N2")</div>
-                        }
-                        <div class="small fst-italic">Remarks: @Model.LinkedAppeal.FinalRemarks</div>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-    
-    
-    <!-- Documents List -->
-    <div class="mt-5">
-        <div class="mb-2"><strong>LIST OF DOCUMENTS ENCLOSED</strong></div>
-        <table class="table table-bordered border-dark" style="font-size: 11pt;">
+    <!-- SECTION A – BASIC CASE DETAILS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
             <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION A – BASIC CASE DETAILS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
                 <tr>
-                    <th style="width: 10%;" class="text-center">S.No</th>
-                    <th>Description of Documents</th>
-                    <th style="width: 15%;" class="text-center">Pages</th>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Name of Division</td>
+                    <td>@Model.DivisionName</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Name of MACT / Court and place &amp; 16-Digit CNR No.</td>
+                    <td>
+                        <div><strong>Court:</strong> @(string.IsNullOrEmpty(Model.MACTName) ? "—" : Model.MACTName)</div>
+                        @if (!string.IsNullOrEmpty(Model.CNRNumber))
+                        {
+                            <div class="mt-1"><strong>CNR:</strong> <span class="font-monospace fw-bold">@Model.CNRNumber</span></div>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">MVC No. and year</td>
+                    <td><strong>MVC @Model.MVCNo / @Model.MVCYear</strong></td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Nature of claim: Death / Injury</td>
+                    <td><span class="fw-bold">@(string.IsNullOrEmpty(Model.CaseType) ? (Model.AdverseAward?.InjuryType ?? "—") : Model.CaseType)</span></td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Name(s) of claimant(s) / petitioner(s) &amp; Relationship</td>
+                    <td>
+                        @if (Model.Petitioners != null && Model.Petitioners.Any())
+                        {
+                            @for (int i = 0; i < Model.Petitioners.Count; i++)
+                            {
+                                <div>@(i + 1)) @Model.Petitioners[i].PetitionerName (@(Model.Petitioners[i].Relationship == "Others" ? Model.Petitioners[i].RelationshipOthers : Model.Petitioners[i].Relationship))</div>
+                            }
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Name of deceased / injured person</td>
+                    <td>
+                        @{
+                            var primaryVictim = Model.Petitioners?.FirstOrDefault()?.PetitionerName;
+                        }
+                        @(string.IsNullOrEmpty(primaryVictim) ? "—" : primaryVictim)
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Date of accident</td>
+                    <td>@(Model.AccidentDate?.ToString("dd-MM-yyyy") ?? "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">8</td>
+                    <td class="fw-semibold">Date of filing of claim petition</td>
+                    <td>@(Model.AdverseAward?.ClaimPetitionDate?.ToString("dd-MM-yyyy") ?? Model.ClaimPetitionDate?.ToString("dd-MM-yyyy") ?? "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">9</td>
+                    <td class="fw-semibold">Date of judgment / award</td>
+                    <td><strong>@(Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy") ?? "—")</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION B – ACCIDENT AND VEHICLE DETAILS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION B – ACCIDENT AND VEHICLE DETAILS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Registration number(s) of vehicle(s) involved &amp; Vehicle Type</td>
+                    <td>
+                        <div><strong>Vehicle No:</strong> @(string.IsNullOrEmpty(Model.VehicleNo) ? "—" : Model.VehicleNo)</div>
+                        <div><strong>Vehicle Type:</strong> @(string.IsNullOrEmpty(Model.VehicleType) ? "Corporation" : Model.VehicleType)</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Whether the NWKRTC vehicle is self-insured / insured with an insurance company; if yes details to be furnished</td>
+                    <td>
+                        @(Model.AdverseAward?.IsBusInsured == true 
+                            ? "Insured with Insurance Company: " + (Model.AdverseAward.BusInsuranceDetails ?? "Details furnished in records") 
+                            : "Self-Insured by Corporation")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Whether the deceased / injured was a passenger in the ST bus</td>
+                    <td><strong>@(Model.IsSTPassenger ? "Yes" : "No")</strong></td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Manner of accident as stated in the claim petition</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccident) ? "—" : Model.AdverseAward.MannerOfAccident)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Manner of accident as per departmental records / RO report</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.MannerOfAccidentRO) ? "—" : Model.AdverseAward.MannerOfAccidentRO)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether one or more vehicles were involved; furnish details of other vehicles</td>
+                    <td>
+                        @if (Model.OppositeVehicleNumbers != null && Model.OppositeVehicleNumbers.Any())
+                        {
+                            <div><strong>Opposite Vehicle(s):</strong> @string.Join(", ", Model.OppositeVehicleNumbers)</div>
+                        }
+                        @if (Model.Respondents != null && Model.Respondents.Any())
+                        {
+                            <div class="mt-1">
+                                <strong>Other Respondents:</strong>
+                                @for (int r = 0; r < Model.Respondents.Count; r++)
+                                {
+                                    <div>@(r + 1)) @Model.Respondents[r].RespondentName @(!string.IsNullOrEmpty(Model.Respondents[r].Remarks) ? "— " + Model.Respondents[r].Remarks : "")</div>
+                                }
+                            </div>
+                        }
+                        @if ((Model.OppositeVehicleNumbers == null || !Model.OppositeVehicleNumbers.Any()) && (Model.Respondents == null || !Model.Respondents.Any()))
+                        {
+                            <span>Single Vehicle Involved (ST Bus)</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Whether the deceased / injured was a pillion rider / inmate of another vehicle</td>
+                    <td>@(Model.IsOppositeVehicleInmate ? "Yes" : "No")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION C – DEPARTMENTAL RECORDS, TR-18 AND ACTION AGAINST CREW -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION C – DEPARTMENTAL RECORDS, TR-18 AND ACTION AGAINST CREW</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Whether the name of the deceased / injured is recorded in TR-18</td>
+                    <td>@(Model.AdverseAward?.IsDeceasedInTR18 == true ? "Yes" : "No")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Remarks / findings of Unit Head on TR-18</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.TR18Remarks) ? "—" : Model.AdverseAward.TR18Remarks)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Whether complete accident records, RO report and TR-18 are enclosed</td>
+                    <td>@(!string.IsNullOrEmpty(Model.AdverseAward?.TR18UploadPath) ? "Yes, Enclosed" : "Accident Records on File")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Whether FIR is registered against the ST driver; furnish crime number</td>
+                    <td>@(Model.AdverseAward?.IsFIRFiled == true ? "Yes, FIR Registered against ST Driver" : "No FIR registered against ST Driver")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether charge sheet is filed against the ST driver; furnish details</td>
+                    <td>@(Model.AdverseAward?.IsChargeSheetFiled == true ? "Yes, Chargesheet filed against ST Driver" : "No")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether departmental enquiry is initiated / pending / concluded</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.DriverPunishmentStatus) ? "—" : Model.AdverseAward.DriverPunishmentStatus)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Punishment imposed by Disciplinary Authority, if any; mention whether DE is pending</td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(Model.AdverseAward?.PunishmentRemarks))
+                        {
+                            <div>@Model.AdverseAward.PunishmentRemarks</div>
+                        }
+                        else
+                        {
+                            <div>@(string.IsNullOrEmpty(Model.AdverseAward?.DriverPunishmentStatus) ? "—" : Model.AdverseAward.DriverPunishmentStatus)</div>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">8</td>
+                    <td class="fw-semibold">Details of action taken against driver / conductor, if any</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.PunishmentRemarks) ? (Model.AdverseAward?.DriverPunishmentStatus ?? "—") : Model.AdverseAward.PunishmentRemarks)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">9</td>
+                    <td class="fw-semibold">Whether security investigation was conducted; state findings (genuine / false / inconclusive)</td>
+                    <td>
+                        @(Model.AdverseAward?.SecurityRequired == true 
+                            ? "Conducted (" + (Model.AdverseAward?.IsEvidenceBasedOnSecurityReport == true ? "Genuine / Evidence Adduced" : "Completed") + ")" 
+                            : "Not Conducted / Not Required")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">10</td>
+                    <td class="fw-semibold">If accident is disputed / alleged, whether security investigation is conducted; if not, reasons</td>
+                    <td>
+                        @(Model.AdverseAward?.IsAllegedAccident == true || Model.IsAllegedAccident 
+                            ? "Alleged Accident — Investigation: " + (Model.AdverseAward?.SecurityRequired == true ? "Conducted" : "Pending/Not Conducted") 
+                            : "Regular Accident (Not Disputed / Disputed: No)")
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION D – CLAIM PETITION, LIMITATION AND PLEADINGS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION D – CLAIM PETITION, LIMITATION AND PLEADINGS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Amount claimed</td>
+                    <td><strong>Rs. @(Model.ClaimAmount?.ToString("N2") ?? "0.00")</strong></td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Whether claim petition was filed within the period of limitation</td>
+                    <td>@(Model.IsWithinLimitation ? "Yes, within limitation" : "No, delayed") @(!string.IsNullOrEmpty(Model.LimitationRemark) ? " (" + Model.LimitationRemark + ")" : "")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">If delayed, whether application for condonation of delay was filed; enclose IA</td>
+                    <td>@(Model.AdverseAward?.IsDelayApplicationFiled == true ? "Yes, Delay Application (IA) Filed" : "No / Not Applicable")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Whether delay was condoned; enclose certified copy of relevant order</td>
+                    <td>@(Model.AdverseAward?.IsDelayCondonedAdverse == true || Model.IsDelayCondoned == true ? "Yes, Delay Condoned by Tribunal" : "No / Not Applicable")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether statement of objections / written statement was filed; if not, state reasons</td>
+                    <td>@(Model.AdverseAward?.ObjectionFiled == true || Model.IsObjectionFiled ? "Filed" + (!string.IsNullOrEmpty(Model.AdverseAward?.ObjectionRemarks) ? " — " + Model.AdverseAward.ObjectionRemarks : "") : "Not Filed")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether impleading application was required / filed (particularly where multiple vehicles are involved); if not, state reasons</td>
+                    <td>
+                        @(Model.AdverseAward?.IsImpleadingAppFiled == true 
+                            ? "Yes, Impleading Application Filed" 
+                            : "No" + (!string.IsNullOrEmpty(Model.AdverseAward?.ImpleadingAppNotFiledReason) ? " — " + Model.AdverseAward.ImpleadingAppNotFiledReason : ""))
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Whether any double / parallel claim petition is filed before this or another MACT; details and action taken</td>
+                    <td>@(Model.DoubleClaimFlag ? "Yes, Double Claim — " + (Model.AdverseAward?.DoubleClaimDetails ?? "Recorded in Connected Cases") : "No")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION E – EVIDENCE AND TRIAL PROCEEDINGS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION E – EVIDENCE AND TRIAL PROCEEDINGS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Evidence adduced by claimant(s) / petitioner(s), including witnesses examined and exhibits marked</td>
+                    <td>
+                        @if (Model.AdverseAward?.PetitionerPWNames != null && Model.AdverseAward.PetitionerPWNames.Any())
+                        {
+                            @string.Join(", ", Model.AdverseAward.PetitionerPWNames.Select((pw, idx) => $"PW {idx + 1} - {pw}"))
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Whether ST driver was examined; if not, state reasons</td>
+                    <td>
+                        @if (Model.AdverseAward?.RWNames != null && Model.AdverseAward.RWNames.Any())
+                        {
+                            @string.Join(", ", Model.AdverseAward.RWNames.Select((rw, idx) => $"RW {idx + 1} - {rw}"))
+                        }
+                        else
+                        {
+                            <span>Driver Not Examined</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Whether conductor / other departmental witnesses were examined; furnish details</td>
+                    <td>
+                        @if (Model.CorpEvidence != null && Model.CorpEvidence.Any())
+                        {
+                            @string.Join("; ", Model.CorpEvidence.Select(c => $"{c.Name} ({c.Designation})"))
+                        }
+                        else
+                        {
+                            <span>@(Model.AdverseAward?.HasRWEvidence == true ? "Examined as per RW records" : "No other departmental witnesses examined")</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Injury cases: whether doctor was examined; name, qualification and whether treating doctor</td>
+                    <td>
+                        @if (Model.AdverseAward?.Doctors != null && Model.AdverseAward.Doctors.Any())
+                        {
+                            @string.Join("; ", Model.AdverseAward.Doctors.Select(d => $"{d.DoctorName} (Treating Doctor: {(d.IsTreated ? "Yes" : "No")})"))
+                        }
+                        else
+                        {
+                            <span>No Doctor Examined / Not Applicable</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether age proof of deceased / injured is obtained; specify document and age established</td>
+                    <td>
+                        @(Model.AdverseAward?.VictimAge != null 
+                            ? $"Established Age: {Model.AdverseAward.VictimAge} Years" + (!string.IsNullOrEmpty(Model.AdverseAward.AgeProofUploadPath) ? " (Proof Enclosed)" : "") 
+                            : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether bus cameras were installed in the ST bus</td>
+                    <td>@(Model.AdverseAward?.IsBusCameraInstalled == true ? "Yes, Camera Installed" : "No")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">If cameras were installed, whether footage was preserved and produced before Tribunal; if not, reasons</td>
+                    <td>@(Model.AdverseAward?.IsCameraFootageProduced == true ? "Yes, Footage Produced" : "No / Not Produced")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">8</td>
+                    <td class="fw-semibold">Whether photographs of accident / vehicle / injuries are produced before Tribunal; if not, reasons</td>
+                    <td>
+                        @(Model.AdverseAward?.IsPhotographProduced == true 
+                            ? "Yes, Produced" 
+                            : "No" + (!string.IsNullOrEmpty(Model.AdverseAward?.PhotographNotProducedReason) ? " — " + Model.AdverseAward.PhotographNotProducedReason : ""))
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">9</td>
+                    <td class="fw-semibold">Whether police sketch is produced before Tribunal; mention exhibit number</td>
+                    <td>
+                        @(Model.AdverseAward?.IsPoliceSketchEnclosed == true 
+                            ? "Yes, Produced" + (!string.IsNullOrEmpty(Model.AdverseAward?.PoliceSketchExhibitNo) ? " (Exhibit No: " + Model.AdverseAward.PoliceSketchExhibitNo + ")" : "") 
+                            : "No")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">10</td>
+                    <td class="fw-semibold">If sketch is not produced, whether copy is available with Division; if no sketch was drawn, state so</td>
+                    <td>@(!string.IsNullOrEmpty(Model.AdverseAward?.PoliceSketchExhibitNo) ? "Exhibit marked as " + Model.AdverseAward.PoliceSketchExhibitNo : "Available in Division Records")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">11</td>
+                    <td class="fw-semibold">Any other material evidence / admissions / contradictions relevant to the case</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.CertifiedCopyRemarks) ? (Model.DisposalRemarks ?? "—") : Model.AdverseAward.CertifiedCopyRemarks)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION F – FINDINGS ON NEGLIGENCE AND CORPORATION LIABILITY -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION F – FINDINGS ON NEGLIGENCE AND CORPORATION LIABILITY</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Finding of MACT on rashness and negligence</td>
+                    <td>@(string.IsNullOrEmpty(Model.DisposalRemarks) ? "Negligence fastened as per MACT Judgment & Award" : Model.DisposalRemarks)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Whether negligence is attributed wholly or partly to the ST driver / Corporation</td>
+                    <td>
+                        @(Model.AdverseAward?.IsCorpLiable == true 
+                            ? (Model.AdverseAward?.LiabilityPercentage < 100 
+                                ? $"Partly ({Model.AdverseAward?.LiabilityPercentage}%)" 
+                                : "Wholly (100% on ST Driver / Corporation)") 
+                            : "Not Corp Liable")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Percentage of liability fastened on NWKRTC, if apportioned</td>
+                    <td><strong>@(Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%")</strong> @(Model.AdverseAward?.LiableAmount.HasValue == true ? $"(Rs. {Model.AdverseAward.LiableAmount.Value:N2})" : "")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Whether liability of other vehicle / driver is considered; details</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.LiabilityRemarks) ? "—" : Model.AdverseAward.LiabilityRemarks)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether the finding on negligence is supported by FIR, charge sheet, sketch, oral and documentary evidence</td>
+                    <td>
+                        @(Model.AdverseAward?.IsChargeSheetFiled == true && Model.AdverseAward?.IsFIRFiled == true 
+                            ? "Finding supported by Police Records (FIR & Charge Sheet)" 
+                            : "Examined based on Trial Evidence & Tribunal Findings")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Specific grounds, if any, to challenge the finding on negligence</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.AdvocateOpinion) ? "Grounds to be formulated based on advocate opinion & cross-examination" : Model.AdverseAward.AdvocateOpinion)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION G – CLAIMANT VERIFICATION AND COMPENSATION -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION G – CLAIMANT VERIFICATION AND COMPENSATION</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Whether claimant / deceased / injured was salaried / self-employed / otherwise employed; specify occupation</td>
+                    <td>
+                        <div><strong>Status:</strong> @(Model.AdverseAward?.IsVictimSalaried == true ? "Salaried" : "Self-Employed / Other")</div>
+                        <div><strong>Occupation:</strong> @(string.IsNullOrEmpty(Model.AdverseAward?.Occupation) ? "—" : Model.AdverseAward.Occupation)</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Monthly / annual income considered by MACT</td>
+                    <td>
+                        @if (Model.AdverseAward?.IncomeConsidered.HasValue == true)
+                        {
+                            <div><strong>Rs. @Model.AdverseAward.IncomeConsidered.Value.ToString("N2")</strong> (@(Model.AdverseAward.IncomePeriod ?? "monthly"))</div>
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Whether income is cross-verified with employer / salary records / income-tax records / other documents; whether it tallies</td>
+                    <td>
+                        Cross-Verified: <strong>@(Model.AdverseAward?.IsIncomeCrossVerified == true ? "Yes" : "No")</strong> &bull; 
+                        Tallies with Documents: <strong>@(Model.AdverseAward?.DoesIncomeTallyWithDocuments == true ? "Yes" : "No")</strong>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Age considered by MACT and supporting proof</td>
+                    <td>@(Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether medical bills are verified (injury cases); whether bills tally with amount awarded</td>
+                    <td>@(Model.AdverseAward?.IsMedicalBillsVerified == true ? "Yes, Medical Bills Verified & Tallied" : "No / Not Applicable")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether medical expenses were paid / reimbursed by NWKRTC, ARF, medical insurance company or employer; furnish amount and proof</td>
+                    <td>
+                        @(Model.IsMedicalExpensesPaid 
+                            ? $"Paid by NWKRTC: Rs. {Model.MedicalPaidAmount?.ToString("N2")}" + (!string.IsNullOrEmpty(Model.MedicalPaidRemarks) ? $" ({Model.MedicalPaidRemarks})" : "") 
+                            : "No Medical Expenses Paid by Corporation")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Whether ex-gratia / interim compensation / ARF amount was paid; furnish details</td>
+                    <td>
+                        @if (Model.AdverseAward?.InterimCompAmount.HasValue == true && Model.AdverseAward.InterimCompAmount.Value > 0)
+                        {
+                            <span>Paid: Rs. @Model.AdverseAward.InterimCompAmount.Value.ToString("N2")</span>
+                        }
+                        else if (Model.IsARFAmountPaid && Model.ARFPaidAmount.HasValue)
+                        {
+                            <span>ARF Paid: Rs. @Model.ARFPaidAmount.Value.ToString("N2") (@Model.ARFPaidRemarks)</span>
+                        }
+                        else
+                        {
+                            <span>Nil</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">8</td>
+                    <td class="fw-semibold">Whether interim / ex-gratia amount was deducted from the award; if not, reasons</td>
+                    <td>@(Model.AdverseAward?.InterimCompDeducted == true ? "Yes, Deducted by Tribunal in Award" : "No / Not Deducted")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">9</td>
+                    <td class="fw-semibold">Whether any other relevant document concerning dependency, disability, treatment or income is available</td>
+                    <td>
+                        @(Model.AdverseAward?.DisabilityPercentage.HasValue == true 
+                            ? $"Disability Assessed: {Model.AdverseAward.DisabilityPercentage.Value}%" 
+                            : "—")
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION H – CONNECTED CASES, APPEALS AND EXECUTION PROCEEDINGS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION H – CONNECTED CASES, APPEALS AND EXECUTION PROCEEDINGS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Details of connected MVC / other cases: pending / disposed, case numbers and outcome</td>
+                    <td>
+                        @if (Model.ConnectedCases != null && Model.ConnectedCases.Any())
+                        {
+                            var uniqueCases = Model.ConnectedCases.GroupBy(c => new { c.ConnectedMVCNo, c.ConnectedYear }).Select(g => g.First());
+                            foreach (var conn in uniqueCases)
+                            {
+                                <div><strong>@conn.ConnectedMVCNo/@conn.ConnectedYear</strong> @(!string.IsNullOrEmpty(conn.MACT) ? "- " + conn.MACT : "") (@(conn.Status ?? "Connected")) @(!string.IsNullOrEmpty(conn.Remarks) ? "- " + conn.Remarks : "")</div>
+                            }
+                        }
+                        else
+                        {
+                            <span>No Connected Cases</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Whether appeal / cross-objection / review is filed by claimant or Corporation; case number and status</td>
+                    <td>
+                        @if (Model.LinkedAppeal != null)
+                        {
+                            if (!string.IsNullOrEmpty(Model.LinkedAppeal.CorpMFANumber))
+                            {
+                                <div><strong>Corp MFA:</strong> @Model.LinkedAppeal.CorpMFANumber/@Model.LinkedAppeal.CorpMFAYear (@Model.LinkedAppeal.CorpMFAStatus) &bull; @Model.LinkedAppeal.HighCourtBench</div>
+                            }
+                            if (!string.IsNullOrEmpty(Model.LinkedAppeal.ClaimantMFANumber))
+                            {
+                                <div><strong>Claimant MFA:</strong> @Model.LinkedAppeal.ClaimantMFANumber/@Model.LinkedAppeal.ClaimantMFAYear (@Model.LinkedAppeal.ClaimantMFADecision)</div>
+                            }
+                        }
+                        else
+                        {
+                            <span>Under Feasibility Review / No Appeal Filed Yet</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Whether appeal approval was sought / granted; reference number and date</td>
+                    <td>
+                        @if (Model.LinkedAppeal != null && !string.IsNullOrEmpty(Model.LinkedAppeal.ApprovalOutwardNo))
+                        {
+                            <div><strong>Approval Ref:</strong> @Model.LinkedAppeal.ApprovalOutwardNo (@(Model.LinkedAppeal.ApprovalDate?.ToString("dd-MM-yyyy") ?? ""))</div>
+                        }
+                        else
+                        {
+                            <span>@(Model.LinkedAppeal?.InitialAction ?? "Pending Proposal")</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Whether execution petition (EP) is filed; EP number, date and present stage</td>
+                    <td>
+                        @if (Model.AdverseAward?.IsEPFiled == true)
+                        {
+                            <div><strong>EP Filed:</strong> Yes</div>
+                            <div><strong>EP No:</strong> @(string.IsNullOrEmpty(Model.AdverseAward.EPNumber) ? "—" : Model.AdverseAward.EPNumber)</div>
+                            <div><strong>Court:</strong> @(string.IsNullOrEmpty(Model.AdverseAward.EPCourt) ? "—" : Model.AdverseAward.EPCourt)</div>
+                            <div><strong>Stage:</strong> @(string.IsNullOrEmpty(Model.AdverseAward.EPStage) ? "—" : Model.AdverseAward.EPStage)</div>
+                        }
+                        else
+                        {
+                            <span>EP Filed: No</span>
+                        }
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether attachment warrant / recovery proceedings are issued</td>
+                    <td>@(Model.AdverseAward?.IsEPFiled == true && Model.AdverseAward?.IsAmountDepositedInEP == true ? "Warrant / Recovery initiated" : "No Attachment Warrant Issued")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Whether any amount is deposited pursuant to EP / attachment; date and amount</td>
+                    <td>
+                        @(Model.AdverseAward?.IsAmountDepositedInEP == true && Model.AdverseAward.EPDepositedAmount.HasValue
+                            ? $"Yes — Rs. {Model.AdverseAward.EPDepositedAmount.Value:N2} Deposited"
+                            : "Nil / No Amount Deposited in EP")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">7</td>
+                    <td class="fw-semibold">Whether any amount has been paid / deposited earlier; furnish details and proof</td>
+                    <td>
+                        @if (Model.AdverseAward?.Payments != null && Model.AdverseAward.Payments.Any())
+                        {
+                            @for (int p = 0; p < Model.AdverseAward.Payments.Count; p++)
+                            {
+                                var pay = Model.AdverseAward.Payments[p];
+                                <div>@(p + 1)) Rs. @pay.Amount.ToString("N2") (@(pay.PaymentType ?? "Payment")) dt. @(pay.ChequeDate?.ToString("dd-MM-yyyy") ?? pay.CreatedDate.ToString("dd-MM-yyyy"))</div>
+                            }
+                        }
+                        else if (Model.LinkedAppeal?.AmountDeposited.HasValue == true)
+                        {
+                            <span>Rs. @Model.LinkedAppeal.AmountDeposited.Value.ToString("N2") Deposited in Appeal</span>
+                        }
+                        else
+                        {
+                            <span>Nil</span>
+                        }
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION I – JUDGMENT, CERTIFIED COPY AND PRESENT STATUS -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION I – JUDGMENT, CERTIFIED COPY AND PRESENT STATUS</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Date of judgment / award and date on which copy was applied for</td>
+                    <td>
+                        <div><strong>Award Date:</strong> @(Model.AdverseAward?.AwardDate?.ToString("dd-MM-yyyy") ?? "—")</div>
+                        <div><strong>Copy Applied Date:</strong> @(Model.AdverseAward?.CopyAppliedDate?.ToString("dd-MM-yyyy") ?? "—")</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Date certified copy was made ready</td>
+                    <td>@(Model.AdverseAward?.CopyIssuedDate?.ToString("dd-MM-yyyy") ?? "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Date certified copy was delivered</td>
+                    <td>@(Model.AdverseAward?.CopyDeliveredDate?.ToString("dd-MM-yyyy") ?? "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Date certified copy was received by Division</td>
+                    <td>@(Model.AdverseAward?.CopyReceivedDate?.ToString("dd-MM-yyyy") ?? "—")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether there was delay in applying for / obtaining / forwarding certified copy; reasons and responsibility</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.CertifiedCopyRemarks) ? "No procedural delay recorded; obtained in regular course." : Model.AdverseAward.CertifiedCopyRemarks)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION J – OPINION OF PANEL ADVOCATE AND LAW OFFICER -->
+    <div class="print-section mb-3">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 45%;" />
+                <col style="width: 48%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION J – OPINION OF PANEL ADVOCATE AND LAW OFFICER</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Remarks</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="text-center fw-bold">1</td>
+                    <td class="fw-semibold">Detailed opinion of Panel Advocate with specific grounds on negligence and quantum</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.AdvocateOpinion) ? "—" : Model.AdverseAward.AdvocateOpinion)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">2</td>
+                    <td class="fw-semibold">Opinion of LO / ALO on finding of MACT regarding rashness and negligence (reasons / grounds only)</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.LOOpinion) ? "—" : Model.AdverseAward.LOOpinion)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">3</td>
+                    <td class="fw-semibold">Opinion of LO / ALO on quantum of compensation (reasons / grounds only)</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.LOOpinion) ? "Examined with respect to structured formula & precedents." : Model.AdverseAward.LOOpinion)</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">4</td>
+                    <td class="fw-semibold">Whether the award is fit for appeal; if yes, specify substantial grounds and proposed relief</td>
+                    <td>@(Model.LinkedAppeal?.InitialAction ?? "Feasibility examination by Law Department")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">5</td>
+                    <td class="fw-semibold">Whether any clarification / additional records are required before taking a decision</td>
+                    <td>@(Model.LinkedAppeal?.InitialActionRemarks ?? "Nil")</td>
+                </tr>
+                <tr>
+                    <td class="text-center fw-bold">6</td>
+                    <td class="fw-semibold">Recommendation of Divisional Controller</td>
+                    <td>@(string.IsNullOrEmpty(Model.AdverseAward?.DCOpinion) ? "—" : Model.AdverseAward.DCOpinion)</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION K – COMPENSATION BREAKDOWN (FILL THE APPLICABLE CASE TABLE) -->
+    <div class="print-section mb-3">
+        @{
+            bool isDeathCase = (Model.CaseType?.ToLower().Contains("death") == true) || 
+                               (Model.CaseType?.ToLower().Contains("fatal") == true) || 
+                               (Model.AdverseAward?.InjuryType?.ToLower() == "death");
+        }
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 14%;" />
+                <col style="width: 56%;" />
+                <col style="width: 30%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION K – COMPENSATION BREAKDOWN (FILL THE APPLICABLE CASE TABLE)</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Category</th>
+                    <th>Particulars / Heads</th>
+                    <th>Amount awarded (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- (a) DEATH CASE TABLE -->
+                <tr>
+                    <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
+                        (a) DEATH CASE<br />
+                        <span class="badge @(isDeathCase ? "bg-dark text-white" : "text-muted")" style="font-size: 7.5pt;">@(isDeathCase ? "[Applicable]" : "[N/A]")</span>
+                    </td>
+                    <td class="fw-semibold">Age of deceased</td>
+                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "—")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Occupation and monthly income</td>
+                    <td class="text-end">
+                        @(isDeathCase ? (Model.AdverseAward?.Occupation ?? "—") + (Model.AdverseAward?.IncomeConsidered.HasValue == true ? " • Rs. " + Model.AdverseAward.IncomeConsidered.Value.ToString("N2") : "") : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Future prospects (%)</td>
+                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.FutureProspectsPercentage.HasValue == true ? $"{Model.AdverseAward.FutureProspectsPercentage.Value}%" : "—")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Personal expenses deduction</td>
+                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.PersonalExpensesDeduction.HasValue == true ? $"{Model.AdverseAward.PersonalExpensesDeduction.Value}%" : "—")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Multiplier applied</td>
+                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.Multiplier.HasValue == true ? Model.AdverseAward.Multiplier.Value.ToString() : "—")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of dependency</td>
+                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfDependency.HasValue == true ? Model.AdverseAward.LossOfDependency.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of consortium</td>
+                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfConsortium.HasValue == true ? Model.AdverseAward.LossOfConsortium.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of estate</td>
+                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfEstate.HasValue == true ? Model.AdverseAward.LossOfEstate.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Funeral expenses</td>
+                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.FuneralExpenses.HasValue == true ? Model.AdverseAward.FuneralExpenses.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of love and affection (if awarded)</td>
+                    <td class="text-end font-monospace">@(isDeathCase && Model.AdverseAward?.LossOfLoveAffection.HasValue == true ? Model.AdverseAward.LossOfLoveAffection.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr class="fw-bold" style="background-color: #f8f9fa;">
+                    <td>Total compensation awarded</td>
+                    <td class="text-end font-monospace fs-6">Rs. @(isDeathCase ? (Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">NWKRTC liability / apportioned share</td>
+                    <td class="text-end font-monospace">
+                        @(isDeathCase 
+                            ? (Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") + (Model.AdverseAward?.LiableAmount.HasValue == true ? " (Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "") 
+                            : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Interest rate (%)</td>
+                    <td class="text-end">@(isDeathCase && Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
+                </tr>
+
+                <!-- (b) INJURY CASE TABLE -->
+                <tr>
+                    <td rowspan="13" class="text-center fw-bold align-middle bg-light" style="font-size: 9.5pt;">
+                        (b) INJURY CASE<br />
+                        <span class="badge @(!isDeathCase ? "bg-dark text-white" : "text-muted")" style="font-size: 7.5pt;">@(!isDeathCase ? "[Applicable]" : "[N/A]")</span>
+                    </td>
+                    <td class="fw-semibold">Age and occupation of injured</td>
+                    <td class="text-end">
+                        @(!isDeathCase ? (Model.AdverseAward?.VictimAge.HasValue == true ? $"{Model.AdverseAward.VictimAge.Value} Years" : "") + (!string.IsNullOrEmpty(Model.AdverseAward?.Occupation) ? " • " + Model.AdverseAward.Occupation : "") : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Nature of injuries / disability percentage</td>
+                    <td class="text-end">
+                        @(!isDeathCase ? (Model.AdverseAward?.InjuryDetails ?? "—") + (Model.AdverseAward?.DisabilityPercentage.HasValue == true ? $" ({Model.AdverseAward.DisabilityPercentage.Value}% disability)" : "") : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Pain and suffering</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.PainSufferings.HasValue == true ? Model.AdverseAward.PainSufferings.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Medical expenses</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.MedicalExpenseOther.HasValue == true ? Model.AdverseAward.MedicalExpenseOther.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Conveyance, attendant and nourishment</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.ConveyanceAttendant.HasValue == true ? Model.AdverseAward.ConveyanceAttendant.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of income during laid-up period</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfIncomeLaidUp.HasValue == true ? Model.AdverseAward.LossOfIncomeLaidUp.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of future income / earning capacity</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfFutureIncome.HasValue == true ? Model.AdverseAward.LossOfFutureIncome.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Loss of amenities</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.LossOfAmenities.HasValue == true ? Model.AdverseAward.LossOfAmenities.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Future medical expenses</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.FutureMedicalExpenses.HasValue == true ? Model.AdverseAward.FutureMedicalExpenses.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Other heads</td>
+                    <td class="text-end font-monospace">@(!isDeathCase && Model.AdverseAward?.InjuryOtherExpense.HasValue == true ? Model.AdverseAward.InjuryOtherExpense.Value.ToString("N2") : "0.00")</td>
+                </tr>
+                <tr class="fw-bold" style="background-color: #f8f9fa;">
+                    <td>Total compensation awarded</td>
+                    <td class="text-end font-monospace fs-6">Rs. @(!isDeathCase ? (Model.AdverseAward?.AwardAmount?.ToString("N2") ?? "0.00") : "0.00")</td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">NWKRTC liability / apportioned share</td>
+                    <td class="text-end font-monospace">
+                        @(!isDeathCase 
+                            ? (Model.AdverseAward?.LiabilityPercentage != null ? Model.AdverseAward.LiabilityPercentage + "%" : "100%") + (Model.AdverseAward?.LiableAmount.HasValue == true ? " (Rs. " + Model.AdverseAward.LiableAmount.Value.ToString("N2") + ")" : "") 
+                            : "—")
+                    </td>
+                </tr>
+                <tr>
+                    <td class="fw-semibold">Interest rate (%)</td>
+                    <td class="text-end">@(!isDeathCase && Model.AdverseAward?.InterestRate != null ? Model.AdverseAward.InterestRate + "% p.a." : "—")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SECTION L – LIST OF DOCUMENTS ENCLOSED -->
+    <div class="print-section mb-4">
+        <table class="table-report">
+            <colgroup>
+                <col style="width: 7%;" />
+                <col style="width: 63%;" />
+                <col style="width: 30%;" />
+            </colgroup>
+            <thead>
+                <tr class="report-section-header">
+                    <th colspan="3" class="text-center py-1">SECTION L – LIST OF DOCUMENTS ENCLOSED</th>
+                </tr>
+                <tr class="report-sub-header text-center">
+                    <th>Sl. No.</th>
+                    <th>Particulars</th>
+                    <th>Details / Page no. / Remarks</th>
                 </tr>
             </thead>
             <tbody>
@@ -498,9 +1053,9 @@
                     foreach (var doc in Model.AdverseAward.EnclosedDocuments)
                     {
                         <tr>
-                            <td class="text-center">@sno</td>
+                            <td class="text-center fw-bold">@sno</td>
                             <td>@doc.DocName</td>
-                            <td class="text-center">@(doc.PageCount?.ToString() ?? "-")</td>
+                            <td class="text-center">@(doc.PageCount.HasValue ? $"Page: {doc.PageCount.Value}" : "Enclosed")</td>
                         </tr>
                         sno++;
                     }
@@ -508,9 +1063,40 @@
                 else
                 {
                     <tr>
-                        <td colspan="3" class="text-center py-3 italic">No documents identified at the time of registration.</td>
+                        <td class="text-center fw-bold">1</td>
+                        <td>
+                            <em>(List of documents enclosed should be mentioned separately with page Nos. If any required documents are not enclosed the same is required to be mentioned)</em>
+                        </td>
+                        <td class="text-center text-muted">As per Case File Enclosures</td>
                     </tr>
                 }
+            </tbody>
+        </table>
+    </div>
+
+    <!-- SIGNATURES AND AUTHORIZATION BLOCK -->
+    <div class="signature-box mt-4 pt-3" style="page-break-inside: avoid;">
+        <table style="width: 100%; border: none;">
+            <tbody>
+                <tr style="border: none;">
+                    <td style="width: 32%; text-align: center; border: none; vertical-align: bottom;">
+                        <div style="height: 50px;"></div>
+                        <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">Case Worker / Assistant</div>
+                        <div style="font-size: 9pt; color: #555;">Legal Section, @Model.DivisionName</div>
+                    </td>
+                    <td style="width: 4%; border: none;"></td>
+                    <td style="width: 32%; text-align: center; border: none; vertical-align: bottom;">
+                        <div style="height: 50px;"></div>
+                        <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">Law Officer / ALO</div>
+                        <div style="font-size: 9pt; color: #555;">@Model.DivisionName Division</div>
+                    </td>
+                    <td style="width: 4%; border: none;"></td>
+                    <td style="width: 32%; text-align: center; border: none; vertical-align: bottom;">
+                        <div style="height: 50px;"></div>
+                        <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold; font-size: 10.5pt;">Divisional Controller</div>
+                        <div style="font-size: 9pt; color: #555;">NWKRTC, @Model.DivisionName</div>
+                    </td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -806,12 +1392,17 @@
 
         /* PRINT STYLES */
         @@media print {
-            @@page { size: A4; margin: 2cm; }
+            @@page { 
+                size: A4 portrait; 
+                margin: 12mm 15mm 12mm 15mm; 
+            }
             body { 
-                font-family: 'Times New Roman', serif !important; 
-                background: white !important; 
-                color: black !important;
-                font-size: 12pt !important;
+                font-family: 'Times New Roman', Times, serif !important; 
+                background: #fff !important; 
+                color: #000 !important;
+                font-size: 10pt !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
             }
             
             /* Visibility Toggles */
@@ -819,14 +1410,54 @@
             .d-print-block { display: block !important; }
             
             /* Table Styling for Print */
-            .table-bordered { border: 2px solid #000 !important; }
-            .table-bordered th, .table-bordered td { border: 1px solid #000 !important; padding: 4px 8px !important; }
-            .bg-light { background-color: #f0f0f0 !important; -webkit-print-color-adjust: exact; }
+            .table-report {
+                width: 100% !important;
+                table-layout: fixed !important;
+                border-collapse: collapse !important;
+                margin-bottom: 0 !important;
+            }
+            .table-report th, .table-report td {
+                border: 1px solid #000 !important;
+                padding: 4px 7px !important;
+                vertical-align: top !important;
+                word-wrap: break-word !important;
+                font-size: 9.5pt !important;
+                line-height: 1.3 !important;
+            }
+            .report-section-header {
+                background-color: #e9ecef !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                font-weight: 700 !important;
+                border: 1.5px solid #000 !important;
+                font-size: 10pt !important;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .report-sub-header {
+                background-color: #f8f9fa !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+                font-weight: 600 !important;
+                font-size: 9.5pt !important;
+            }
+            .print-section {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                margin-bottom: 12px !important;
+            }
+            tr {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            .signature-box {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                margin-top: 25px !important;
+            }
 
             /* Ensure full width */
             .w-100 { width: 100% !important; }
-            
-            /* Remove URL headers/footers if possible in browser settings */
         }
     </style>
 }
