@@ -355,20 +355,44 @@ namespace MVCCaseManagement.Services.ECourts
                     try
                     {
                         using var conn = _db.GetConnection();
-                        var tracked = await conn.QueryAsync<(string? CaseTypeCode, string? CaseNumber, int? CaseYear)>(
-                            "SELECT CaseTypeCode, CaseNumber, CaseYear FROM admin_Law.ECOURTS_TRACKED_CASES WHERE CaseNumber IS NOT NULL");
+                        var tracked = await conn.QueryAsync<(string? CaseTypeCode, string? CaseNumber, int? CaseYear, string? CNRNumber)>(
+                            "SELECT CaseTypeCode, CaseNumber, CaseYear, CNRNumber FROM admin_Law.ECOURTS_TRACKED_CASES WHERE CaseNumber IS NOT NULL OR CNRNumber IS NOT NULL");
                         foreach (var tc in tracked)
                         {
+                            if (!string.IsNullOrWhiteSpace(tc.CNRNumber) && !tc.CNRNumber.EndsWith("000000"))
+                            {
+                                knownTrackedKeys.Add(tc.CNRNumber.Trim().ToUpperInvariant());
+                            }
+
                             if (!string.IsNullOrWhiteSpace(tc.CaseTypeCode) && !string.IsNullOrWhiteSpace(tc.CaseNumber))
                             {
                                 string cType = Regex.Replace(tc.CaseTypeCode.Trim(), @"[^\w]", "").ToUpperInvariant();
+                                if (cType.Contains("WRITPETITION") || cType == "WP") cType = "WP";
+                                else if (cType.Contains("WRITAPPEAL") || cType == "WA") cType = "WA";
+                                else if (cType.Contains("MISCELLANEOUSFIRSTAPPEAL") || cType == "MFA") cType = "MFA";
+                                else if (cType.Contains("CONTEMPTOFCALL") || cType == "CCC") cType = "CCC";
+                                else if (cType.Contains("REGULARSECONDAPPEAL") || cType == "RSA") cType = "RSA";
+
                                 string cNum = tc.CaseNumber.Trim();
                                 string cYr = tc.CaseYear?.ToString() ?? "";
-                                if (!string.IsNullOrEmpty(cYr))
+                                if (cNum.Contains('/'))
+                                {
+                                    var parts = cNum.Split('/');
+                                    cNum = parts[0].Trim();
+                                    if (string.IsNullOrEmpty(cYr) && parts.Length > 1) cYr = Regex.Replace(parts[1].Trim(), @"[^\d]", "");
+                                }
+                                cNum = Regex.Replace(cNum, @"[^\d]", "").TrimStart('0');
+                                if (int.TryParse(cYr, out int yVal))
+                                {
+                                    if (yVal < 100) yVal += 2000;
+                                    cYr = yVal.ToString();
+                                }
+
+                                // Strictly require 4-digit year! NEVER whitelist a number without its year to prevent false-matching private/unrelated cases of other years.
+                                if (!string.IsNullOrEmpty(cType) && !string.IsNullOrEmpty(cNum) && !string.IsNullOrEmpty(cYr) && cYr.Length == 4)
                                 {
                                     knownTrackedKeys.Add($"{cType}_{cNum}_{cYr}");
                                 }
-                                knownTrackedKeys.Add($"{cType}_{cNum}");
                             }
                         }
                     }
@@ -717,13 +741,19 @@ namespace MVCCaseManagement.Services.ECourts
                     string caseType = Regex.Replace(rawCaseType, @"\s+NO\.?", "").Trim();
                     string caseNoWithYr = m.Groups[3].Value.Trim();
 
-                    string regNumber = "";
+                    string regNumber = caseNoWithYr;
                     string regYear = targetDate.Year.ToString();
                     var parts = caseNoWithYr.Split('/');
                     if (parts.Length == 2)
                     {
                         regNumber = parts[0].Trim();
                         regYear = parts[1].Trim();
+                    }
+                    string cleanNum = Regex.Replace(regNumber, @"[^\d]", "").TrimStart('0');
+                    if (int.TryParse(regYear, out int yrVal))
+                    {
+                        if (yrVal < 100) yrVal += 2000;
+                        regYear = yrVal.ToString();
                     }
 
                     int startIndex = m.Index + m.Length;
@@ -732,9 +762,15 @@ namespace MVCCaseManagement.Services.ECourts
                         ? fullText.Substring(startIndex, endIndex - startIndex)
                         : "";
 
-                    string itemKeyWithYr = $"{caseType}_{regNumber}_{regYear}".ToUpperInvariant();
-                    string itemKeyNoYr = $"{caseType}_{regNumber}".ToUpperInvariant();
-                    bool isKnownTracked = knownTrackedKeys != null && (knownTrackedKeys.Contains(itemKeyWithYr) || knownTrackedKeys.Contains(itemKeyNoYr));
+                    string normCaseType = Regex.Replace(caseType, @"[^\w]", "").ToUpperInvariant();
+                    if (normCaseType.Contains("WRITPETITION") || normCaseType == "WP") normCaseType = "WP";
+                    else if (normCaseType.Contains("WRITAPPEAL") || normCaseType == "WA") normCaseType = "WA";
+                    else if (normCaseType.Contains("MISCELLANEOUSFIRSTAPPEAL") || normCaseType == "MFA") normCaseType = "MFA";
+                    else if (normCaseType.Contains("CONTEMPTOFCALL") || normCaseType == "CCC") normCaseType = "CCC";
+                    else if (normCaseType.Contains("REGULARSECONDAPPEAL") || normCaseType == "RSA") normCaseType = "RSA";
+
+                    string itemKeyWithYr = $"{normCaseType}_{cleanNum}_{regYear}".ToUpperInvariant();
+                    bool isKnownTracked = knownTrackedKeys != null && knownTrackedKeys.Contains(itemKeyWithYr);
 
                     // Check if block contains NWKRTC relevance or is an actively tracked case in NWKRTC database
                     if (!isKnownTracked && !IsNwkrtcRelated(blockText, estCode, caseType))

@@ -2938,22 +2938,17 @@ namespace MVCCaseManagement.Controllers
                             cnrMap[item.CNRNumber.Trim().ToUpperInvariant()] = item;
                         }
 
-                        string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, int.TryParse(item.RegYear, out int y) ? y : null);
-                        if (!string.IsNullOrEmpty(sKey) && !caseKeyMap.ContainsKey(sKey))
+                        int? regY = null;
+                        if (int.TryParse(item.RegYear, out int parsedY))
+                        {
+                            if (parsedY > 0 && parsedY < 100) parsedY += 2000;
+                            if (parsedY > 1900 && parsedY < 2100) regY = parsedY;
+                        }
+                        string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, regY);
+                        // Strict Key Indexing: require full CaseType + RegNumber + 4-digit RegYear (never loose keys without year)
+                        if (!string.IsNullOrEmpty(sKey) && !sKey.EndsWith("_") && !caseKeyMap.ContainsKey(sKey))
                         {
                             caseKeyMap[sKey] = item;
-                        }
-
-                        // Register secondary flexible lookup keys
-                        string cleanNumOnly = System.Text.RegularExpressions.Regex.Replace(item.RegNumber ?? "", @"[^\d]", "").TrimStart('0');
-                        if (!string.IsNullOrEmpty(cleanNumOnly))
-                        {
-                            string normType = System.Text.RegularExpressions.Regex.Replace(item.CaseType ?? "", @"[^\w]", "").ToUpperInvariant();
-                            if (!string.IsNullOrEmpty(normType))
-                            {
-                                caseKeyMap.TryAdd($"{normType}_{cleanNumOnly}", item);
-                            }
-                            caseKeyMap.TryAdd($"NUM_{cleanNumOnly}", item);
                         }
                     }
                 }
@@ -3208,29 +3203,40 @@ namespace MVCCaseManagement.Controllers
                     }
                     else
                     {
-                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, c.CaseYear);
-                        if (!string.IsNullOrEmpty(cKey) && caseKeyMap.TryGetValue(cKey, out var m2))
+                        int? cYr = c.CaseYear;
+                        string rawNum = (c.CaseNumber ?? "").Trim();
+                        if (rawNum.Contains('/') && (!cYr.HasValue || cYr.Value <= 1900))
                         {
-                            matchedCauseItem = m2;
-                        }
-                        else
-                        {
-                            // Flexible fallbacks: match by Type_Number or pure Number
-                            string rawNum = (c.CaseNumber ?? "").Trim();
-                            if (rawNum.Contains('/')) rawNum = rawNum.Split('/')[0];
-                            string cleanNum = System.Text.RegularExpressions.Regex.Replace(rawNum, @"[^\d]", "").TrimStart('0');
-                            string typeClean = System.Text.RegularExpressions.Regex.Replace(c.CaseTypeCode ?? "", @"[^\w]", "").ToUpperInvariant();
-
-                            if (!string.IsNullOrEmpty(cleanNum))
+                            var p = rawNum.Split('/');
+                            if (p.Length > 1 && int.TryParse(System.Text.RegularExpressions.Regex.Replace(p[1], @"[^\d]", ""), out int py))
                             {
-                                if (!string.IsNullOrEmpty(typeClean) && caseKeyMap.TryGetValue($"{typeClean}_{cleanNum}", out var m3))
-                                {
-                                    matchedCauseItem = m3;
-                                }
-                                else if (caseKeyMap.TryGetValue($"NUM_{cleanNum}", out var m4))
-                                {
-                                    matchedCauseItem = m4;
-                                }
+                                if (py < 100) py += 2000;
+                                if (py > 1900 && py < 2100) cYr = py;
+                            }
+                        }
+                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, cYr);
+                        // Strict Key Matching: require matching CaseType, CaseNumber AND 4-digit CaseYear (reject loose year-less fallbacks)
+                        if (!string.IsNullOrEmpty(cKey) && !cKey.EndsWith("_") && caseKeyMap.TryGetValue(cKey, out var m2))
+                        {
+                            // Edge Case Check: Bench & EstCode compatibility
+                            string itemEst = "";
+                            if (!string.IsNullOrWhiteSpace(m2.CNRNumber) && m2.CNRNumber.Length >= 6 && m2.CNRNumber.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase))
+                            {
+                                itemEst = m2.CNRNumber.Substring(0, 6).ToUpperInvariant();
+                            }
+                            else if (!string.IsNullOrWhiteSpace(m2.HighCourtBench))
+                            {
+                                if (m2.HighCourtBench.Contains("Dharwad", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC02";
+                                else if (m2.HighCourtBench.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase) || m2.HighCourtBench.Contains("Gulbarga", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC03";
+                                else if (m2.HighCourtBench.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) || m2.HighCourtBench.Contains("Principal", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC01";
+                            }
+
+                            bool benchMatches = string.IsNullOrWhiteSpace(c.EstCode) || string.IsNullOrWhiteSpace(itemEst) ||
+                                                c.EstCode.Trim().Equals(itemEst, StringComparison.OrdinalIgnoreCase);
+
+                            if (benchMatches)
+                            {
+                                matchedCauseItem = m2;
                             }
                         }
                     }
@@ -3819,22 +3825,17 @@ namespace MVCCaseManagement.Controllers
                         cnrMap[item.CNRNumber.Trim().ToUpperInvariant()] = item;
                     }
 
-                    string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, int.TryParse(item.RegYear, out int y) ? y : null);
-                    if (!string.IsNullOrEmpty(sKey) && !caseKeyMap.ContainsKey(sKey))
+                    int? regY = null;
+                    if (int.TryParse(item.RegYear, out int parsedY))
+                    {
+                        if (parsedY > 0 && parsedY < 100) parsedY += 2000;
+                        if (parsedY > 1900 && parsedY < 2100) regY = parsedY;
+                    }
+                    string sKey = NormalizeCaseKey(item.CaseType, item.RegNumber, regY);
+                    // Strict Key Indexing: require full CaseType + RegNumber + 4-digit RegYear (never loose keys without year)
+                    if (!string.IsNullOrEmpty(sKey) && !sKey.EndsWith("_") && !caseKeyMap.ContainsKey(sKey))
                     {
                         caseKeyMap[sKey] = item;
-                    }
-
-                    // Register secondary flexible lookup keys
-                    string cleanNumOnly = System.Text.RegularExpressions.Regex.Replace(item.RegNumber ?? "", @"[^\d]", "").TrimStart('0');
-                    if (!string.IsNullOrEmpty(cleanNumOnly))
-                    {
-                        string normType = System.Text.RegularExpressions.Regex.Replace(item.CaseType ?? "", @"[^\w]", "").ToUpperInvariant();
-                        if (!string.IsNullOrEmpty(normType))
-                        {
-                            caseKeyMap.TryAdd($"{normType}_{cleanNumOnly}", item);
-                        }
-                        caseKeyMap.TryAdd($"NUM_{cleanNumOnly}", item);
                     }
                 }
 
@@ -3861,28 +3862,40 @@ namespace MVCCaseManagement.Controllers
                     }
                     else
                     {
-                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, c.CaseYear);
-                        if (!string.IsNullOrEmpty(cKey) && caseKeyMap.TryGetValue(cKey, out var m2))
+                        int? cYr = c.CaseYear;
+                        string rawNum = (c.CaseNumber ?? "").Trim();
+                        if (rawNum.Contains('/') && (!cYr.HasValue || cYr.Value <= 1900))
                         {
-                            match = m2;
-                        }
-                        else
-                        {
-                            string rawNum = (c.CaseNumber ?? "").Trim();
-                            if (rawNum.Contains('/')) rawNum = rawNum.Split('/')[0];
-                            string cleanNum = System.Text.RegularExpressions.Regex.Replace(rawNum, @"[^\d]", "").TrimStart('0');
-                            string typeClean = System.Text.RegularExpressions.Regex.Replace(c.CaseTypeCode ?? "", @"[^\w]", "").ToUpperInvariant();
-
-                            if (!string.IsNullOrEmpty(cleanNum))
+                            var p = rawNum.Split('/');
+                            if (p.Length > 1 && int.TryParse(System.Text.RegularExpressions.Regex.Replace(p[1], @"[^\d]", ""), out int py))
                             {
-                                if (!string.IsNullOrEmpty(typeClean) && caseKeyMap.TryGetValue($"{typeClean}_{cleanNum}", out var m3))
-                                {
-                                    match = m3;
-                                }
-                                else if (caseKeyMap.TryGetValue($"NUM_{cleanNum}", out var m4))
-                                {
-                                    match = m4;
-                                }
+                                if (py < 100) py += 2000;
+                                if (py > 1900 && py < 2100) cYr = py;
+                            }
+                        }
+                        string cKey = NormalizeCaseKey(c.CaseTypeCode, c.CaseNumber, cYr);
+                        // Strict Key Matching: require matching CaseType, CaseNumber AND 4-digit CaseYear (reject loose year-less fallbacks)
+                        if (!string.IsNullOrEmpty(cKey) && !cKey.EndsWith("_") && caseKeyMap.TryGetValue(cKey, out var m2))
+                        {
+                            // Edge Case Check: Bench & EstCode compatibility
+                            string itemEst = "";
+                            if (!string.IsNullOrWhiteSpace(m2.CNRNumber) && m2.CNRNumber.Length >= 6 && m2.CNRNumber.StartsWith("KAHC", StringComparison.OrdinalIgnoreCase))
+                            {
+                                itemEst = m2.CNRNumber.Substring(0, 6).ToUpperInvariant();
+                            }
+                            else if (!string.IsNullOrWhiteSpace(m2.HighCourtBench))
+                            {
+                                if (m2.HighCourtBench.Contains("Dharwad", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC02";
+                                else if (m2.HighCourtBench.Contains("Kalaburagi", StringComparison.OrdinalIgnoreCase) || m2.HighCourtBench.Contains("Gulbarga", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC03";
+                                else if (m2.HighCourtBench.Contains("Bengaluru", StringComparison.OrdinalIgnoreCase) || m2.HighCourtBench.Contains("Principal", StringComparison.OrdinalIgnoreCase)) itemEst = "KAHC01";
+                            }
+
+                            bool benchMatches = string.IsNullOrWhiteSpace(c.EstCode) || string.IsNullOrWhiteSpace(itemEst) ||
+                                                c.EstCode.Trim().Equals(itemEst, StringComparison.OrdinalIgnoreCase);
+
+                            if (benchMatches)
+                            {
+                                match = m2;
                             }
                         }
                     }
