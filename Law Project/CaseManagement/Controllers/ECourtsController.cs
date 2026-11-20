@@ -5846,7 +5846,7 @@ namespace MVCCaseManagement.Controllers
                     }
                     else if (!string.IsNullOrWhiteSpace(jName) && jName.Contains("REGISTRAR", StringComparison.OrdinalIgnoreCase))
                     {
-                        rawHall = "Court Hall (Registrar)";
+                        rawHall = "Court Hall: REGISTRAR (JUDICIAL)";
                     }
 
                     if (string.IsNullOrWhiteSpace(rawHall)) continue;
@@ -5983,13 +5983,12 @@ namespace MVCCaseManagement.Controllers
                 }
             }
 
-            // 3. If rawCourt or judge designates Registrar / Administrative Hall
+            // 3. If rawCourt or judge designates Registrar / Administrative Hall (matches High Court official portal dropdown: REGISTRAR(JUDICIAL))
             string jUpper = (judge ?? "").ToUpperInvariant();
             string rUpper = s.ToUpperInvariant();
-            if (jUpper.Contains("REGISTRAR") || rUpper.Contains("REGISTRAR"))
+            if (jUpper.Contains("REGISTRAR") || rUpper.Contains("REGISTRAR") || rUpper.Contains("CHAMBER"))
             {
-                string regHall = $"Court Hall (Registrar){benchSuffix}";
-                return regHall.Length > 50 ? regHall.Substring(0, 50) : regHall;
+                return "Court Hall: REGISTRAR (JUDICIAL)";
             }
 
             // 4. Preserve authentic non-empty court name from NAPIX if not generic placeholder

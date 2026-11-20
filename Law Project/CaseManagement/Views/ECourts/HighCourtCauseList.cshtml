@@ -2674,9 +2674,8 @@ function renderHcCauselistPage() {
                 const isDb = /Division\s+Bench/i.test(courtNo);
                 cleanHallName = isDb ? `Court Hall ${hallNum} (Division Bench)` : `Court Hall ${hallNum}`;
                 courtNo = `${cleanHallName}${serialSuffix}`;
-            } else if (/REGISTRAR/i.test(courtNo)) {
-                const inChambers = /CHAMBERS?/i.test(courtNo);
-                cleanHallName = inChambers ? 'In Chambers (Addl. Registrar Judicial)' : 'Court Hall (Addl. Registrar Judicial)';
+            } else if (/REGISTRAR/i.test(courtNo) || /CHAMBER/i.test(courtNo)) {
+                cleanHallName = 'Court Hall: REGISTRAR (JUDICIAL)';
                 courtNo = `${cleanHallName}${serialSuffix}`;
             } else if (/CHIEF\s+JUSTICE/i.test(courtNo)) {
                 cleanHallName = 'Court Hall 1 (Chief Justice)';

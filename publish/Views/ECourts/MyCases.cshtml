@@ -2397,6 +2397,9 @@
         if (!raw || raw === "—" || raw.toLowerCase() === "court hall" || raw.toLowerCase() === "awaited" || raw.toLowerCase() === "null") {
             return "Court Hall Awaited / Unassigned";
         }
+        if (raw.toLowerCase().includes("registrar") || raw.toLowerCase().includes("chamber")) {
+            return "Court Hall: REGISTRAR (JUDICIAL)";
+        }
         if (/^\d+$/.test(raw)) {
             return `Court Hall ${raw.padStart(2, '0')}`;
         }
@@ -2833,7 +2836,7 @@
                     <i class="bi bi-building me-1 text-primary"></i>${escapeHtml(c.courtEstName || c.estCode || 'Court')}
                 </div>
                 <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
-                    ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim()))) ? `
+                    ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || c.courtNo.toLowerCase().includes("registrar") || /^\d+$/.test(c.courtNo.trim()))) ? `
                     <span class="badge ${isTodayListed ? 'bg-warning text-dark font-monospace fw-bold shadow-sm' : 'bg-warning-subtle text-dark border border-warning font-monospace fw-bold'}" title="Physical Court Hall">
                         <i class="bi bi-bank2 me-1 ${isTodayListed ? 'text-dark' : 'text-secondary'}"></i>${escapeHtml(c.courtNo)}
                     </span>` : ''}
@@ -2841,7 +2844,7 @@
                     ${(c.causeListNo && c.causeListNo !== '—') ? `<span class="badge bg-light text-secondary border extra-small" title="Cause List Number">Cause List No. ${escapeHtml(c.causeListNo)}</span>` : ''}
                     ${c.benchId ? `<span class="badge bg-info-subtle text-info border border-info font-monospace extra-small" title="NIC Bench ID"><i class="bi bi-hash"></i>Bench ${escapeHtml(c.benchId)}</span>` : ''}
                     ${(() => {
-                        const hasCourtHall = Boolean(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || /^\d+$/.test(c.courtNo.trim())));
+                        const hasCourtHall = Boolean(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || c.courtNo.toLowerCase().includes("registrar") || /^\d+$/.test(c.courtNo.trim())));
                         const isDivision = c.benchName && c.benchName.toLowerCase().includes("division");
                         if (isDivision) return `<span class="badge bg-light text-dark border extra-small">Division Bench</span>`;
                         if (!hasCourtHall && c.benchName && !c.benchName.toLowerCase().includes("single bench")) return `<span class="badge bg-light text-dark border extra-small">${escapeHtml(c.benchName)}</span>`;
