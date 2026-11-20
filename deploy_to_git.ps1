@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Automated zero-loss build, test, publish, and git-push deployment script for NWKRTC Law Project.
 .DESCRIPTION
@@ -29,7 +29,7 @@ Write-Host "✅ All tests passed successfully!" -ForegroundColor Green
 
 # 2. Build & Publish Release
 Write-Host "`n[2/5] Publishing Release build to publish/..." -ForegroundColor Yellow
-dotnet publish "Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release -o publish
+dotnet publish "Law Project\CaseManagement\MVCCaseManagement.csproj" -c Release -o publish --no-restore
 if ($LASTEXITCODE -ne 0) {
     Write-Error "dotnet publish failed! Aborting deployment."
     exit 1
@@ -75,8 +75,13 @@ if (-not (Test-Path $gitExe)) {
 }
 
 & $gitExe add -A
-& $gitExe commit -m $CommitMessage
-Write-Host "✅ Git commit created!" -ForegroundColor Green
+$status = (& $gitExe status --porcelain)
+if ($status) {
+    & $gitExe commit -m $CommitMessage
+    Write-Host "✅ Git commit created!" -ForegroundColor Green
+} else {
+    Write-Host "ℹ️ Working tree clean, proceeding to verify push." -ForegroundColor Cyan
+}
 
 # 5. Git Push
 Write-Host "`n[5/5] Pushing to origin main..." -ForegroundColor Yellow
