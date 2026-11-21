@@ -3243,6 +3243,8 @@ namespace MVCCaseManagement.Controllers
 
                     if (matchedCauseItem != null)
                     {
+                        c.IsInTodaysCauseList = true;
+                        c.CauseListVerifiedDate = DateTime.Today.ToString("yyyy-MM-dd");
                         string rawHall = matchedCauseItem.CourtHall ?? "";
                         string cleanHall = rawHall;
                         if (cleanHall.Contains("(Serial No."))
@@ -3299,6 +3301,21 @@ namespace MVCCaseManagement.Controllers
                                 });
                         }
                         catch { }
+                    }
+                    else
+                    {
+                        bool hasVerifiedItemToday = c.NextHearingDate.HasValue &&
+                                                    c.NextHearingDate.Value.Date == DateTime.Today &&
+                                                    !string.IsNullOrWhiteSpace(c.CauseListItemNo) &&
+                                                    !string.IsNullOrWhiteSpace(c.CourtNo) &&
+                                                    !c.CourtNo.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) &&
+                                                    !c.CourtNo.Equals("Division Bench", StringComparison.OrdinalIgnoreCase) &&
+                                                    !c.CourtNo.Equals("Court Hall", StringComparison.OrdinalIgnoreCase);
+                        c.IsInTodaysCauseList = hasVerifiedItemToday;
+                        if (hasVerifiedItemToday)
+                        {
+                            c.CauseListVerifiedDate = DateTime.Today.ToString("yyyy-MM-dd");
+                        }
                     }
 
                     // Strictly real data: Only attempt live High Court sitting hall resolution if the case is genuinely scheduled for TODAY and court hall is still generic
@@ -4746,7 +4763,28 @@ namespace MVCCaseManagement.Controllers
                     if (diffDays == 0)
                     {
                         c.HearingUrgency = "TODAY";
-                        c.HearingAnalysisSummary = $"🔥 LISTED TODAY • Stage: {c.StagePurpose ?? "Hearing"}";
+                        if (!c.IsInTodaysCauseList)
+                        {
+                            bool hasVerifiedItemToday = !string.IsNullOrWhiteSpace(c.CauseListItemNo) &&
+                                                        !string.IsNullOrWhiteSpace(c.CourtNo) &&
+                                                        !c.CourtNo.Equals("Single Bench", StringComparison.OrdinalIgnoreCase) &&
+                                                        !c.CourtNo.Equals("Division Bench", StringComparison.OrdinalIgnoreCase) &&
+                                                        !c.CourtNo.Equals("Court Hall", StringComparison.OrdinalIgnoreCase);
+                            if (hasVerifiedItemToday)
+                            {
+                                c.IsInTodaysCauseList = true;
+                                c.CauseListVerifiedDate = today.ToString("yyyy-MM-dd");
+                            }
+                        }
+
+                        if (c.IsInTodaysCauseList)
+                        {
+                            c.HearingAnalysisSummary = $"🔥 VERIFIED ON TODAY'S CAUSE LIST • Court Hall: {c.CourtNo} • Item: {c.ItemNo ?? c.CauseListItemNo}";
+                        }
+                        else
+                        {
+                            c.HearingAnalysisSummary = $"⏳ Scheduled for Today in CIS (Not in Today's Published Cause List)";
+                        }
                     }
                     else if (diffDays == 1)
                     {

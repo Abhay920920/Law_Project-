@@ -45,6 +45,8 @@ namespace MVCCaseManagement.Models
         public string? CauseListNo { get; set; }
         public string? CauseListItemNo { get; set; }
         public string? ItemNo { get; set; }
+        public bool IsInTodaysCauseList { get; set; }
+        public string? CauseListVerifiedDate { get; set; }
 
         // Daily Proceedings & Hearing Date Analysis properties
         public string? FirstHearingDate { get; set; }
