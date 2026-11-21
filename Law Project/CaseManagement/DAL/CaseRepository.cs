@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using Microsoft.Data.SqlClient;
@@ -2379,8 +2379,8 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                     // No Action Taken (Sent to CO but no Initial Action)
                     string noActionQuery = @"
                         SELECT COUNT(*) 
-                        FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad 
-                        LEFT JOIN APPEAL_DETAILS WITH (NOLOCK) apel ON ad.CaseID = apel.CaseID 
+                        FROM MVC_CASE_ADVERSE_DETAILS ad WITH (NOLOCK) 
+                        LEFT JOIN APPEAL_DETAILS apel WITH (NOLOCK) ON ad.CaseID = apel.CaseID 
                         WHERE ad.ForwardingStatus = 'Sent to Central Office' 
                         AND (apel.InitialAction IS NULL OR apel.InitialAction = '')";
                     stats.NoActionTakenCount = (int)_db.ExecuteScalar(noActionQuery, null)!;
@@ -2390,7 +2390,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                 string recentQuery = @"
                     SELECT TOP 5
                         c.CaseID, c.MVCNo, c.MACTID, m.MACTName, c.DisposalResult, c.CreatedAt, c.NextHearingDate
-                    FROM MVC_CASES WITH (NOLOCK) c
+                    FROM MVC_CASES c WITH (NOLOCK)
                     JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                     WHERE (@DivisionID = 0 OR @DivisionID = 5 OR c.DivisionID = @DivisionID)
                     ORDER BY c.CreatedAt DESC";
@@ -2523,7 +2523,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         query = @"
                             SELECT 
                                 c.CaseID, c.MVCNo, c.MACTID, m.MACTName, c.DisposalResult, c.CreatedAt, c.NextHearingDate
-                            FROM MVC_CASES WITH (NOLOCK) c
+                            FROM MVC_CASES c WITH (NOLOCK)
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE CAST(c.NextHearingDate AS DATE) >= CAST(@StartDate AS DATE)
                               AND CAST(c.NextHearingDate AS DATE) <= CAST(@EndDate AS DATE)
@@ -2536,7 +2536,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         query = @"
                             SELECT 
                                 c.CaseID, c.MVCNo, c.MACTID, m.MACTName, c.DisposalResult, c.CreatedAt, c.NextHearingDate
-                            FROM MVC_CASES WITH (NOLOCK) c
+                            FROM MVC_CASES c WITH (NOLOCK)
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE CAST(c.NextHearingDate AS DATE) = CAST(@StartDate AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR c.DivisionID = @DivisionID)
@@ -2592,7 +2592,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 m.MACTName AS CourtOrAuthority, c.DisposalResult, c.CreatedAt, c.NextHearingDate, 
                                 ('/Case/Details/' + CAST(c.CaseID AS VARCHAR)) AS DetailsUrl,
                                 c.CNRNumber, 0 AS DaysOverdue, c.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM MVC_CASES WITH (NOLOCK) c
+                            FROM MVC_CASES c WITH (NOLOCK)
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE CAST(c.NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR c.DivisionID = @DivisionID)");
@@ -2608,7 +2608,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 lc.DisposalResult, lc.CreatedDate AS CreatedAt, lc.NextHearingDate, 
                                 ('/Labour/Details/' + CAST(lc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 lc.CNRNumber, 0 AS DaysOverdue, lc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM LABOUR_CASES WITH (NOLOCK) lc
+                            FROM LABOUR_CASES lc WITH (NOLOCK)
                             LEFT JOIN LABOUR_COURTS lcourt ON lc.CourtID = lcourt.CourtID
                             WHERE CAST(lc.NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR lc.DivisionID = @DivisionID)");
@@ -2621,7 +2621,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 s.Status AS DisposalResult, s.CreatedDate AS CreatedAt, s.NextHearingDate, 
                                 ('/Labour/ServiceMatterDetails/' + CAST(s.ServiceID AS VARCHAR)) AS DetailsUrl,
                                 s.CNRNumber, 0 AS DaysOverdue, ISNULL(s.Status, '') AS Stage, NULL AS CourtHall, 1 AS IsHighCourt
-                            FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) s
+                            FROM LABOUR_SERVICE_MATTERS s WITH (NOLOCK)
                             WHERE CAST(s.NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR s.DivisionID = @DivisionID)");
                     }
@@ -2635,7 +2635,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 gc.DisposalResult, gc.CreatedDate AS CreatedAt, gc.NextHearingDate, 
                                 ('/Gratuity/Details/' + CAST(gc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 NULL AS CNRNumber, 0 AS DaysOverdue, gc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM GRA_CASES WITH (NOLOCK) gc
+                            FROM GRA_CASES gc WITH (NOLOCK)
                             WHERE CAST(gc.NextHearingDate AS DATE) = CAST(GETDATE() AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR gc.DivisionCode = @DivisionID)");
                     }
@@ -2650,7 +2650,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 oc.DisposalStatus AS DisposalResult, oc.CreatedDate AS CreatedAt, oc.NextDateOfHearing AS NextHearingDate, 
                                 ('/Home/OtherCourtsCaseDetails/' + CAST(oc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 NULL AS CNRNumber, 0 AS DaysOverdue, oc.CaseStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM OTHER_CASES WITH (NOLOCK) oc
+                            FROM OTHER_CASES oc WITH (NOLOCK)
                             WHERE CAST(oc.NextDateOfHearing AS DATE) = CAST(GETDATE() AS DATE)
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR oc.DivisionID = @DivisionID)");
                     }
@@ -2713,8 +2713,8 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 m.MACTName AS CourtOrAuthority, c.DisposalResult, c.CreatedAt, c.NextHearingDate, 
                                 ('/Case/Details/' + CAST(c.CaseID AS VARCHAR)) AS DetailsUrl,
                                 c.CNRNumber, 0 AS DaysOverdue, c.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM MVC_CASE_ADVERSE_DETAILS WITH (NOLOCK) ad 
-                            JOIN MVC_CASES WITH (NOLOCK) c ON ad.CaseID = c.CaseID
+                            FROM MVC_CASE_ADVERSE_DETAILS ad WITH (NOLOCK) 
+                            JOIN MVC_CASES c WITH (NOLOCK) ON ad.CaseID = c.CaseID
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE (CAST(ad.AwardDate AS DATE) = CAST(GETDATE() AS DATE) OR ad.AwardDate >= DATEADD(day, -30, GETDATE()))
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR c.DivisionID = @DivisionID)");
@@ -2730,7 +2730,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 lc.DisposalResult, lc.CreatedDate AS CreatedAt, lc.NextHearingDate, 
                                 ('/Labour/Details/' + CAST(lc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 lc.CNRNumber, 0 AS DaysOverdue, lc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM LABOUR_CASES WITH (NOLOCK) lc
+                            FROM LABOUR_CASES lc WITH (NOLOCK)
                             LEFT JOIN LABOUR_COURTS lcourt ON lc.CourtID = lcourt.CourtID
                             WHERE (CAST(lc.DisposalDate AS DATE) = CAST(GETDATE() AS DATE) OR lc.DisposalDate >= DATEADD(day, -30, GETDATE()))
                               AND lc.DisposalResult IN ('Against', 'Favor')
@@ -2744,7 +2744,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 s.Status AS DisposalResult, s.CreatedDate AS CreatedAt, s.NextHearingDate, 
                                 ('/Labour/ServiceMatterDetails/' + CAST(s.ServiceID AS VARCHAR)) AS DetailsUrl,
                                 s.CNRNumber, 0 AS DaysOverdue, ISNULL(s.Status, '') AS Stage, NULL AS CourtHall, 1 AS IsHighCourt
-                            FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) s
+                            FROM LABOUR_SERVICE_MATTERS s WITH (NOLOCK)
                             WHERE (CAST(s.DisposalDate AS DATE) = CAST(GETDATE() AS DATE) OR s.DisposalDate >= DATEADD(day, -30, GETDATE()))
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR s.DivisionID = @DivisionID)");
                     }
@@ -2758,7 +2758,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 gc.DisposalResult, gc.CreatedDate AS CreatedAt, gc.NextHearingDate, 
                                 ('/Gratuity/Details/' + CAST(gc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 NULL AS CNRNumber, 0 AS DaysOverdue, gc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM GRA_CASES WITH (NOLOCK) gc
+                            FROM GRA_CASES gc WITH (NOLOCK)
                             WHERE (CAST(gc.DisposalDate AS DATE) = CAST(GETDATE() AS DATE) OR gc.DisposalDate >= DATEADD(day, -30, GETDATE()))
                               AND gc.DisposalResult IN ('Against', 'Dismissed')
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR gc.DivisionCode = @DivisionID)");
@@ -2822,8 +2822,8 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 m.MACTName AS CourtOrAuthority, c.DisposalResult, c.CreatedAt, a.FinalComplianceDate AS NextHearingDate, 
                                 ('/Case/Details/' + CAST(c.CaseID AS VARCHAR)) AS DetailsUrl,
                                 c.CNRNumber, DATEDIFF(day, GETDATE(), a.FinalComplianceDate) AS DaysOverdue, c.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM APPEAL_DETAILS WITH (NOLOCK) a 
-                            JOIN MVC_CASES WITH (NOLOCK) c ON a.CaseID = c.CaseID
+                            FROM APPEAL_DETAILS a WITH (NOLOCK) 
+                            JOIN MVC_CASES c WITH (NOLOCK) ON a.CaseID = c.CaseID
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE a.FinalComplianceDate IS NOT NULL
                               AND (
@@ -2843,7 +2843,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 lc.DisposalResult, lc.CreatedDate AS CreatedAt, lc.CO_StayComplianceDate AS NextHearingDate, 
                                 ('/Labour/Details/' + CAST(lc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 lc.CNRNumber, DATEDIFF(day, GETDATE(), lc.CO_StayComplianceDate) AS DaysOverdue, lc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM LABOUR_CASES WITH (NOLOCK) lc
+                            FROM LABOUR_CASES lc WITH (NOLOCK)
                             LEFT JOIN LABOUR_COURTS lcourt ON lc.CourtID = lcourt.CourtID
                             WHERE lc.CO_StayComplianceDate IS NOT NULL
                               AND (
@@ -2862,7 +2862,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 gc.DisposalResult, gc.CreatedDate AS CreatedAt, gc.StayComplianceDate AS NextHearingDate, 
                                 ('/Gratuity/Details/' + CAST(gc.CaseID AS VARCHAR)) AS DetailsUrl,
                                 NULL AS CNRNumber, DATEDIFF(day, GETDATE(), gc.StayComplianceDate) AS DaysOverdue, gc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM GRA_CASES WITH (NOLOCK) gc
+                            FROM GRA_CASES gc WITH (NOLOCK)
                             WHERE gc.StayComplianceDate IS NOT NULL
                               AND (
                                 (gc.StayComplianceDate >= CAST(GETDATE() AS DATE) AND gc.StayComplianceDate <= DATEADD(day, 30, CAST(GETDATE() AS DATE)))
@@ -2931,7 +2931,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 c.CNRNumber, 
                                 CASE WHEN c.NextHearingDate IS NOT NULL THEN DATEDIFF(day, c.NextHearingDate, GETDATE()) ELSE 999 END AS DaysOverdue,
                                 c.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM MVC_CASES WITH (NOLOCK) c
+                            FROM MVC_CASES c WITH (NOLOCK)
                             JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                             WHERE c.NextHearingDate < CAST(GETDATE() AS DATE) 
                               AND (c.DisposalResult IS NULL OR c.DisposalResult = 'Pending' OR c.DisposalResult = '')
@@ -2950,7 +2950,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 lc.CNRNumber,
                                 CASE WHEN lc.NextHearingDate IS NOT NULL THEN DATEDIFF(day, lc.NextHearingDate, GETDATE()) ELSE 999 END AS DaysOverdue,
                                 lc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM LABOUR_CASES WITH (NOLOCK) lc
+                            FROM LABOUR_CASES lc WITH (NOLOCK)
                             LEFT JOIN LABOUR_COURTS lcourt ON lc.CourtID = lcourt.CourtID
                             WHERE lc.NextHearingDate < CAST(GETDATE() AS DATE) 
                               AND (lc.DisposalResult IS NULL OR lc.DisposalResult = 'Pending' OR lc.CaseStatus = 'Pending' OR lc.CaseStatus = '' OR lc.CaseStatus IS NULL)
@@ -2966,7 +2966,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 s.CNRNumber,
                                 CASE WHEN s.NextHearingDate IS NOT NULL THEN DATEDIFF(day, s.NextHearingDate, GETDATE()) ELSE 999 END AS DaysOverdue,
                                 ISNULL(s.Status, '') AS Stage, NULL AS CourtHall, 1 AS IsHighCourt
-                            FROM LABOUR_SERVICE_MATTERS WITH (NOLOCK) s
+                            FROM LABOUR_SERVICE_MATTERS s WITH (NOLOCK)
                             WHERE s.NextHearingDate < CAST(GETDATE() AS DATE) 
                               AND (s.Status IS NULL OR s.Status = 'Pending' OR s.Status = '')
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR s.DivisionID = @DivisionID)");
@@ -2983,7 +2983,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 NULL AS CNRNumber,
                                 CASE WHEN gc.NextHearingDate IS NOT NULL THEN DATEDIFF(day, gc.NextHearingDate, GETDATE()) ELSE 999 END AS DaysOverdue,
                                 gc.CurrentStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM GRA_CASES WITH (NOLOCK) gc
+                            FROM GRA_CASES gc WITH (NOLOCK)
                             WHERE gc.NextHearingDate < CAST(GETDATE() AS DATE) 
                               AND (gc.DisposalResult IS NULL OR gc.DisposalResult = 'Pending' OR gc.DisposalResult = '')
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR gc.DivisionCode = @DivisionID)");
@@ -3001,7 +3001,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                                 NULL AS CNRNumber,
                                 CASE WHEN oc.NextDateOfHearing IS NOT NULL THEN DATEDIFF(day, oc.NextDateOfHearing, GETDATE()) ELSE 999 END AS DaysOverdue,
                                 oc.CaseStage AS Stage, NULL AS CourtHall, 0 AS IsHighCourt
-                            FROM OTHER_CASES WITH (NOLOCK) oc
+                            FROM OTHER_CASES oc WITH (NOLOCK)
                             WHERE oc.NextDateOfHearing < CAST(GETDATE() AS DATE) 
                               AND (oc.DisposalStatus IS NULL OR oc.DisposalStatus = 'Pending' OR oc.DisposalStatus = '')
                               AND (@DivisionID = 0 OR @DivisionID = 5 OR oc.DivisionID = @DivisionID)");
@@ -3435,7 +3435,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                     conn.Open();
                     string query = @"
                         SELECT c.*, d.DivisionNameEnglish as TransferredFromDivisionName
-                        FROM MVC_CASES WITH (NOLOCK) c
+                        FROM MVC_CASES c WITH (NOLOCK)
                         JOIN DIVISION_MASTER d ON c.TransferredFromDivisionID = d.DivisionID
                         WHERE c.DivisionID = @DivisionID 
                           AND c.TransferredFromDivisionID IS NOT NULL 
@@ -4003,7 +4003,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         c.ClosureDate, c.CreatedAt, c.CNRNumber, c.EstCode, c.CaseTypeCode,
                         d.DivisionNameEnglish as DivisionName,
                         m.MACTName
-                    FROM MVC_CASES WITH (NOLOCK) c
+                    FROM MVC_CASES c WITH (NOLOCK)
                     LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
                     LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                     WHERE c.ThirdPartyFlag = 1";
@@ -4111,7 +4111,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
             {
                 string query = @"
                     SELECT COUNT(*)
-                    FROM MVC_CASES WITH (NOLOCK) c
+                    FROM MVC_CASES c WITH (NOLOCK)
                     LEFT JOIN DIVISION_MASTER d ON c.DivisionID = d.DivisionID
                     LEFT JOIN MACT_MASTER m ON c.MACTID = m.MACTID
                     WHERE c.ThirdPartyFlag = 1";
@@ -4161,7 +4161,7 @@ if (adverseAward.CustomCompensationHeads != null && adverseAward.CustomCompensat
                         SUM(CASE WHEN c.DisposalResult = 'Favor' THEN 1 ELSE 0 END) AS Favor,
                         SUM(CASE WHEN c.DisposalResult = 'Against' THEN 1 ELSE 0 END) AS Against,
                         SUM(CASE WHEN c.DisposalResult IS NULL OR c.DisposalResult = '' OR c.DisposalStatus = 'Pending' OR c.DisposalStatus IS NULL THEN 1 ELSE 0 END) AS Pending
-                    FROM MVC_CASES WITH (NOLOCK) c
+                    FROM MVC_CASES c WITH (NOLOCK)
                     WHERE c.ThirdPartyFlag = 1";
 
                 var paramsList = new List<SqlParameter>();
