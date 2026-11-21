@@ -774,8 +774,7 @@
                             <!-- Quick Preset Select -->
                             <select id="hearingDatePreset" class="form-select form-select-sm rounded-pill border-secondary-subtle px-3 py-1 fw-semibold text-dark shadow-sm" style="width: auto; min-width: 175px;" onchange="onHearingPresetChange()">
                                 <option value="all">All Hearing Dates</option>
-                                <option value="causelist_today">🎯 Verified on Today's Cause List Only</option>
-                                <option value="today">📅 Listed Today (All Scheduled)</option>
+                                <option value="today">📅 Listed Today</option>
                                 <option value="tomorrow">📅 Listed Tomorrow</option>
                                 <option value="this_week">🗓 Next 7 Days</option>
                                 <option value="this_month">🗓 Next 30 Days</option>
@@ -823,14 +822,6 @@
                         </div>
 
                         <div class="d-flex align-items-center gap-2.5 flex-wrap">
-                            <!-- Verified Cause List Only Toggle -->
-                            <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm" title="Show only matters physically present on today's High Court cause list">
-                                <input class="form-check-input ms-0 mt-0" type="checkbox" id="onlyVerifiedCauseListToggle" onchange="onVerifiedCauseListToggleChange()" style="cursor: pointer;">
-                                <label class="form-check-label small fw-bold text-dark user-select-none" for="onlyVerifiedCauseListToggle" style="cursor: pointer;">
-                                    <i class="bi bi-patch-check-fill text-success me-1"></i>Only on Cause List
-                                </label>
-                            </div>
-
                             <!-- Group by Court Hall Toggle -->
                             <div class="form-check form-switch d-flex align-items-center gap-2 mb-0 py-1 px-3 bg-white rounded-pill border shadow-sm">
                                 <input class="form-check-input ms-0 mt-0" type="checkbox" id="groupByCourtHallToggle" onchange="onGroupByCourtHallChange()" style="cursor: pointer;">
@@ -2183,58 +2174,31 @@
             return `${y}-${m}-${day}`;
         };
 
-        const verifiedToggle = document.getElementById("onlyVerifiedCauseListToggle");
-
         if (preset === "all" || preset === "unscheduled" || preset === "overdue") {
             fromInput.value = "";
             toInput.value = "";
-            if (verifiedToggle) verifiedToggle.checked = false;
-        } else if (preset === "causelist_today") {
-            const todayStr = formatDate(now);
-            fromInput.value = todayStr;
-            toInput.value = todayStr;
-            if (verifiedToggle) verifiedToggle.checked = true;
         } else if (preset === "today") {
             const todayStr = formatDate(now);
             fromInput.value = todayStr;
             toInput.value = todayStr;
-            if (verifiedToggle) verifiedToggle.checked = false;
         } else if (preset === "tomorrow") {
             const tomorrow = new Date(now);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tomorrowStr = formatDate(tomorrow);
             fromInput.value = tomorrowStr;
             toInput.value = tomorrowStr;
-            if (verifiedToggle) verifiedToggle.checked = false;
         } else if (preset === "this_week") {
             const in7 = new Date(now);
             in7.setDate(in7.getDate() + 7);
             fromInput.value = formatDate(now);
             toInput.value = formatDate(in7);
-            if (verifiedToggle) verifiedToggle.checked = false;
         } else if (preset === "this_month") {
             const in30 = new Date(now);
             in30.setDate(in30.getDate() + 30);
             fromInput.value = formatDate(now);
             toInput.value = formatDate(in30);
-            if (verifiedToggle) verifiedToggle.checked = false;
         }
 
-        filterCasesTable();
-    }
-
-    function onVerifiedCauseListToggleChange() {
-        const toggle = document.getElementById("onlyVerifiedCauseListToggle");
-        const preset = document.getElementById("hearingDatePreset");
-        if (toggle && toggle.checked) {
-            if (preset && preset.value === "today") {
-                preset.value = "causelist_today";
-            }
-        } else {
-            if (preset && preset.value === "causelist_today") {
-                preset.value = "today";
-            }
-        }
         filterCasesTable();
     }
 
@@ -2255,8 +2219,6 @@
         document.getElementById("hearingDatePreset").value = "all";
         document.getElementById("hearingDateFrom").value = "";
         document.getElementById("hearingDateTo").value = "";
-        const verifiedToggle = document.getElementById("onlyVerifiedCauseListToggle");
-        if (verifiedToggle) verifiedToggle.checked = false;
         filterCasesTable();
     }
 
@@ -2756,18 +2718,13 @@
         const todayStr = new Date().toISOString().split('T')[0];
 
         const isTodayListed = c.hearingUrgency === "TODAY";
-        const isTodayVerifiedCauseList = Boolean(c.isInTodaysCauseList);
         const isTomorrowListed = c.hearingUrgency === "TOMORROW";
 
         // Next Hearing Date & Urgency Analysis formatting
         let hearingDisplay = "";
         let urgencyBadge = "";
         if (c.hearingUrgency === "TODAY") {
-            if (isTodayVerifiedCauseList) {
-                urgencyBadge = `<span class="badge bg-danger text-white extra-small px-1.5 py-0.5 shadow-sm" title="Verified present on today's published High Court cause list"><i class="bi bi-patch-check-fill me-0.5"></i>LISTED TODAY</span>`;
-            } else {
-                urgencyBadge = `<span class="badge bg-secondary text-white extra-small px-1.5 py-0.5" title="Scheduled date in CIS but not verified on today's published physical cause list"><i class="bi bi-clock-history me-0.5"></i>SCHEDULED (NOT LISTED)</span>`;
-            }
+            urgencyBadge = `<span class="badge bg-danger text-white extra-small px-1.5 py-0.5"><i class="bi bi-fire me-0.5"></i>TODAY</span>`;
         } else if (c.hearingUrgency === "TOMORROW") {
             urgencyBadge = `<span class="badge bg-warning text-dark extra-small px-1.5 py-0.5"><i class="bi bi-lightning-fill me-0.5"></i>TOMORROW</span>`;
         } else if (c.hearingUrgency === "THIS_WEEK") {
@@ -2879,13 +2836,6 @@
                     <i class="bi bi-building me-1 text-primary"></i>${escapeHtml(c.courtEstName || c.estCode || 'Court')}
                 </div>
                 <div class="d-flex align-items-center gap-1.5 flex-wrap my-1">
-                    ${isTodayVerifiedCauseList ? `
-                    <span class="badge bg-success text-white font-monospace extra-small fw-bold shadow-sm" title="Physically verified on today's published cause list">
-                        <i class="bi bi-patch-check-fill me-1"></i>Cause List Verified
-                    </span>` : (isTodayListed ? `
-                    <span class="badge bg-secondary-subtle text-secondary border border-secondary extra-small" title="Scheduled for today in CIS, but not verified on physical cause list">
-                        <i class="bi bi-dash-circle me-1"></i>Not in Cause List
-                    </span>` : '')}
                     ${(c.courtNo && (c.courtNo.toLowerCase().includes("court hall") || c.courtNo.toLowerCase().includes("registrar") || /^\d+$/.test(c.courtNo.trim()))) ? `
                     <span class="badge ${isTodayListed ? 'bg-warning text-dark font-monospace fw-bold shadow-sm' : 'bg-warning-subtle text-dark border border-warning font-monospace fw-bold'}" title="Physical Court Hall">
                         <i class="bi bi-bank2 me-1 ${isTodayListed ? 'text-dark' : 'text-secondary'}"></i>${escapeHtml(c.courtNo)}
@@ -3573,11 +3523,6 @@
                 }
             }
 
-            const onlyVerified = (preset === "causelist_today") || (document.getElementById("onlyVerifiedCauseListToggle")?.checked || false);
-            if (onlyVerified) {
-                if (!c.isInTodaysCauseList) return false;
-            }
-
             if (preset === "unscheduled") {
                 if (hDate || isDisposed || isDnp) return false;
             } else if (preset === "overdue") {
@@ -3701,17 +3646,8 @@
         // Update Hearing Filter Summary Badge
         const summaryBadge = document.getElementById("hearingFilterSummaryBadge");
         if (summaryBadge) {
-            const verifiedCount = allCasesData.filter(c => c.isInTodaysCauseList).length;
-            const todayScheduledCount = allCasesData.filter(c => {
-                if (!c.nextHearingDate) return false;
-                return c.nextHearingDate.split('T')[0] === todayStr && !isCaseDisposed(c) && !isCaseDnp(c);
-            }).length;
-
-            if (preset === "causelist_today") {
-                summaryBadge.innerHTML = `<i class="bi bi-patch-check-fill text-success me-1"></i>Verified on Cause List (${filtered.length} of ${todayScheduledCount} scheduled)`;
-            } else if (preset === "today") {
-                const verifiedInFilter = filtered.filter(c => c.isInTodaysCauseList).length;
-                summaryBadge.innerHTML = `<i class="bi bi-calendar-check text-primary me-1"></i>Scheduled Today: ${filtered.length} <span class="badge bg-success ms-1">${verifiedInFilter} on Cause List</span>`;
+            if (preset === "today") {
+                summaryBadge.innerHTML = `<i class="bi bi-calendar-check text-success me-1"></i>Listed Today (${filtered.length})`;
             } else if (preset === "tomorrow") {
                 summaryBadge.innerHTML = `<i class="bi bi-calendar-event text-primary me-1"></i>Listed Tomorrow (${filtered.length})`;
             } else if (preset === "this_week") {
