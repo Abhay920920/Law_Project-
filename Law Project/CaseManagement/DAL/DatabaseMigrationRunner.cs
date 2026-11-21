@@ -1699,6 +1699,7 @@ namespace MVCCaseManagement.DAL
                             recordCmd16.ExecuteNonQuery();
                         }
                         logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_4_OrgSettingsMigrationId, migTimer16.ElapsedMilliseconds);
+                    }
 
                     // 17. Filtered Indexes for Active Hearings and High Court listings (V017)
                     const string v1_2_5_ActiveHearingsIndexesMigrationId = "20261029_v1_2_5_Active_Hearings_Filtered_Indexes";
@@ -2035,6 +2036,109 @@ namespace MVCCaseManagement.DAL
                         }
                     }
 
+                    // 20. Migration: Covering Nonclustered Indexes for Dashboard, Hearings, and Case Queries
+                    const string v1_2_8_CoveringIndexesMigrationId = "20261121_v1_2_8_Dashboard_And_Case_Query_Covering_Indexes";
+                    using (var checkCmd20 = new SqlCommand("SELECT COUNT(*) FROM SCHEMA_MIGRATIONS WHERE MigrationID = @id", conn))
+                    {
+                        checkCmd20.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_8_CoveringIndexesMigrationId });
+                        bool isMig20Applied = ((int?)checkCmd20.ExecuteScalar() ?? 0) > 0;
+
+                        if (!isMig20Applied)
+                        {
+                            logger.LogInformation("Applying migration {MigrationId}: Creating dashboard and query covering indexes...", v1_2_8_CoveringIndexesMigrationId);
+                            var migTimer20 = Stopwatch.StartNew();
+
+                            string mig20Sql = @"
+                                SET QUOTED_IDENTIFIER ON;
+                                SET ANSI_NULLS ON;
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MVC_CASES_Division_NextHearing' AND object_id = OBJECT_ID('MVC_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_MVC_CASES_Division_NextHearing ON MVC_CASES (DivisionID, NextHearingDate)
+                                    INCLUDE (CaseID, MVCNo, MVCYear, MACTID, DisposalResult, CreatedAt, CNRNumber, CurrentStage);
+
+                                IF EXISTS (
+                                    SELECT 1 FROM sys.indexes i 
+                                    WHERE i.name = 'IX_MVC_CASES_ThirdParty_Division' 
+                                      AND i.object_id = OBJECT_ID('dbo.MVC_CASES')
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM sys.index_columns ic 
+                                          JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                                          WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND c.name = 'CreatedAt' AND ic.is_included_column = 1
+                                      )
+                                )
+                                    DROP INDEX [IX_MVC_CASES_ThirdParty_Division] ON [dbo].[MVC_CASES];
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MVC_CASES_ThirdParty_Division' AND object_id = OBJECT_ID('MVC_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_MVC_CASES_ThirdParty_Division ON MVC_CASES (ThirdPartyFlag, DivisionID)
+                                    INCLUDE (CaseID, MVCNo, MVCYear, VehicleNo, ClaimAmount, AdvocateName, DisposalResult, DisposalStatus, NextHearingDate, CreatedAt, MACTID);
+
+                                IF EXISTS (
+                                    SELECT 1 FROM sys.indexes i 
+                                    WHERE i.name = 'IX_MVC_CASES_Transfers' 
+                                      AND i.object_id = OBJECT_ID('dbo.MVC_CASES')
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM sys.index_columns ic 
+                                          JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                                          WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND c.name = 'MVCYear' AND ic.is_included_column = 1
+                                      )
+                                )
+                                    DROP INDEX [IX_MVC_CASES_Transfers] ON [dbo].[MVC_CASES];
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MVC_CASES_Transfers' AND object_id = OBJECT_ID('MVC_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_MVC_CASES_Transfers ON MVC_CASES (DivisionID, IsTransferViewed, TransferredFromDivisionID)
+                                    INCLUDE (TransferDate, CaseID, MVCNo, MVCYear);
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_LABOUR_CASES_Division_NextHearing' AND object_id = OBJECT_ID('LABOUR_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_LABOUR_CASES_Division_NextHearing ON LABOUR_CASES (DivisionID, NextHearingDate)
+                                    INCLUDE (CaseID, CaseType, CaseNumber, CaseYear, CourtID, DisposalResult, CreatedDate, CNRNumber, CurrentStage, CO_StayComplianceDate, DisposalDate, OtherCourtDetails, CaseStatus);
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_GRA_CASES_Division_NextHearing' AND object_id = OBJECT_ID('GRA_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_GRA_CASES_Division_NextHearing ON GRA_CASES (DivisionCode, NextHearingDate)
+                                    INCLUDE (CaseID, PGANumber, CourtType, DisposalResult, CreatedDate, CurrentStage, StayComplianceDate, DisposalDate, ClaimantName);
+
+                                IF EXISTS (
+                                    SELECT 1 FROM sys.indexes i 
+                                    WHERE i.name = 'IX_MVC_CASE_ADVERSE_Forwarding_AwardDate' 
+                                      AND i.object_id = OBJECT_ID('dbo.MVC_CASE_ADVERSE_DETAILS')
+                                      AND NOT EXISTS (
+                                          SELECT 1 FROM sys.index_columns ic 
+                                          JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                                          WHERE ic.object_id = i.object_id AND ic.index_id = i.index_id AND c.name = 'AwardAmount' AND ic.is_included_column = 1
+                                      )
+                                )
+                                    DROP INDEX [IX_MVC_CASE_ADVERSE_Forwarding_AwardDate] ON [dbo].[MVC_CASE_ADVERSE_DETAILS];
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_MVC_CASE_ADVERSE_Forwarding_AwardDate' AND object_id = OBJECT_ID('MVC_CASE_ADVERSE_DETAILS'))
+                                    CREATE NONCLUSTERED INDEX IX_MVC_CASE_ADVERSE_Forwarding_AwardDate ON MVC_CASE_ADVERSE_DETAILS (ForwardingStatus, AwardDate)
+                                    INCLUDE (CaseID, AwardAmount);
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_APPEAL_DETAILS_Compliance_Status' AND object_id = OBJECT_ID('APPEAL_DETAILS'))
+                                    CREATE NONCLUSTERED INDEX IX_APPEAL_DETAILS_Compliance_Status ON APPEAL_DETAILS (FinalComplianceDate)
+                                    INCLUDE (CaseID, InitialAction, CorpSCStatus, CorpSCNumber, ClaimantSCStatus, ClaimantSCNumber);
+
+                                IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OTHER_CASES_Division_Hearing' AND object_id = OBJECT_ID('OTHER_CASES'))
+                                    CREATE NONCLUSTERED INDEX IX_OTHER_CASES_Division_Hearing ON OTHER_CASES (DivisionID, NextDateOfHearing)
+                                    INCLUDE (CaseID, CaseType, CaseNumber, CaseYear, Court, DisposalStatus, CreatedDate, CaseStage);
+                            ";
+
+                            using (var migCmd20 = new SqlCommand(mig20Sql, conn))
+                            {
+                                migCmd20.CommandTimeout = 180;
+                                migCmd20.ExecuteNonQuery();
+                            }
+
+                            string recordSql20 = @"
+                                INSERT INTO SCHEMA_MIGRATIONS (MigrationID, Description, ExecutionTimeMs)
+                                VALUES (@id, @desc, @time)";
+                            using (var recordCmd20 = new SqlCommand(recordSql20, conn))
+                            {
+                                recordCmd20.Parameters.Add(new SqlParameter("@id", SqlDbType.NVarChar, 200) { Value = v1_2_8_CoveringIndexesMigrationId });
+                                recordCmd20.Parameters.Add(new SqlParameter("@desc", SqlDbType.NVarChar, 500) { Value = "Create targeted covering nonclustered indexes for dashboard, hearings, transfers, adverse awards, and appeal queries" });
+                                recordCmd20.Parameters.Add(new SqlParameter("@time", SqlDbType.Int) { Value = (int)migTimer20.ElapsedMilliseconds });
+                                recordCmd20.ExecuteNonQuery();
+                            }
+                            logger.LogInformation("Migration {MigrationId} applied successfully in {Elapsed}ms.", v1_2_8_CoveringIndexesMigrationId, migTimer20.ElapsedMilliseconds);
+                        }
                     }
                 }
                 finally
